@@ -39,7 +39,7 @@ repos:
       - id: isort
         name: isort (python)
         files: ^py/.+
-        args: [--settings-path=./py/pyproject.toml]
+        args: [--settings-path=./pyproject.toml]
 
 default_language_version:
   python: python3.11
