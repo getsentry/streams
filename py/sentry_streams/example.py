@@ -19,9 +19,7 @@ def run_stream() -> None:
     jar_file = os.path.join(
         os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar"
     )
-    kafka_jar_file = os.path.join(
-        os.path.abspath(libs_path), "kafka-clients-3.4.0.jar"
-    )
+    kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
 
     print(kafka_jar_file)
     print(jar_file)
@@ -50,7 +48,5 @@ def run_stream() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        stream=sys.stdout, level=logging.INFO, format="%(message)s"
-    )
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
     run_stream()

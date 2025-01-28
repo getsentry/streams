@@ -1,4 +1,0 @@
-black
-pre-commit
-pytest
-mypy

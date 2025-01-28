@@ -17,7 +17,7 @@ repos:
     hooks:
       - id: black
         files: ^py/.+
-        args: [--config=./py/pyproject.toml]
+        args: [--config=./pyproject.toml]
   - repo: https://github.com/pycqa/flake8
     rev: 7.1.1
     hooks:
@@ -39,7 +39,7 @@ repos:
       - id: isort
         name: isort (python)
         files: ^py/.+
-        args: [--settings-path=./py/pyproject.toml]
+        args: [--settings-path=./pyproject.toml]
 
 default_language_version:
   python: python3.11

@@ -1,24 +1,17 @@
-reset-python:
-	pre-commit clean
-	rm -rf .venv
-.PHONY: reset-python
-
 install-dev:
-	cd py && \
-	pip install -r requirements.txt && \
-	pip install -r requirements-dev.txt && \
-	pip install -e .
+	./scripts/flink-jar-download.sh
+	which uv || (curl -LsSf https://astral.sh/uv/install.sh | sh)
+	uv sync
 .PHONY: install-dev
 
 install-pre-commit-hook:
-	pre-commit install --install-hooks
+	.venv/bin/pre-commit install --install-hooks
 .PHONY: install-pre-commit-hook
 
 tests:
-	cd py/tests && pytest -vv .
+	.venv/bin/pytest -vv py/tests
 .PHONY: tests
 
 typecheck:
-	cd py && \
-	mypy --config-file mypy.ini --strict .
+	.venv/bin/mypy --config-file py/mypy.ini --strict py/
 .PHONY: typecheck
