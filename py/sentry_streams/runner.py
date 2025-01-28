@@ -1,11 +1,12 @@
 import sys
 import os
+from typing import Any, cast
 
-from sinks import Pipeline
+from sentry_streams.sinks import Pipeline, WithInput
 from pyflink.datastream import StreamExecutionEnvironment
 
-def main():
-    pipeline_globals = {}
+def main() -> None:
+    pipeline_globals: dict[str, Any] = {}
 
     with open(sys.argv[1]) as f:
         exec(f.read(), pipeline_globals)
@@ -34,10 +35,11 @@ def main():
         }
     }
 
-    def recurse_edge(input_name: str, stream):
-        for next_step in p.edges.get(input_name, ()):
-            print(f"Apply step: {next_step}")
-            recurse_edge(next_step, p.steps[next_step].apply_edge(stream, environment_config))
+    def recurse_edge(input_name: str, stream: Any) -> None:
+        for next_step_name in p.edges.get(input_name, ()):
+            print(f"Apply step: {next_step_name}")
+            next_step: WithInput = cast(WithInput, p.steps[next_step_name])
+            recurse_edge(next_step_name, next_step.apply_edge(stream, environment_config))
 
     for source in p.sources:
         print(f"Apply source: {source.name}")
