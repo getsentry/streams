@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentry-streams"
+version = "0.0.1"
+description = "The python Sentry Streaming API"
+readme = "README.md"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["sentry_streams"]
+
+[tool.setuptools.package-data]
+sentry_streams = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+skip-magic-trailing-comma = true
+
+[tool.isort]
+profile = "black"
+line_length = 88
