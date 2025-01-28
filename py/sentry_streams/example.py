@@ -38,7 +38,7 @@ def run_stream() -> None:
     )
     # define the source
     kafka_consumer.set_start_from_earliest()
-    env.add_source(kafka_consumer).print().name("Kafka Source")
+    env.add_source(kafka_consumer).print() # .name("Kafka Source")
 
     # define the sink
     print("Printing result to stdout. Use --output to specify output path.")
