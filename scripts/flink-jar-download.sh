@@ -1,7 +1,7 @@
-#!/usr/bin/env bash
-set -euxo pipefail
+#!/bin/sh
+set -euo pipefail
 
-HERE="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+HERE="$( cd "$( dirname "$0" )" && pwd )"
 
 # URL of the file to download
 KAFKA_CONNECTOR_FILE="flink-connector-kafka-3.4.0-1.20.jar"
@@ -17,8 +17,16 @@ DEST_DIR="${HERE}/../flink_libs"
 mkdir -p "$DEST_DIR"
 
 # Download the file using curl
-curl -o "$DEST_DIR/$KAFKA_CONNECTOR_FILE" "$KAFKA_CONNECTOR"
-echo "Download completed: $DEST_DIR/$KAFKA_CONNECTOR_FILE"
 
-curl -o "$DEST_DIR/$KAFKA_CLIENTS_FILE" "$KAFKA_CLIENTS"
-echo "Download completed: $DEST_DIR/$KAFKA_CLIENTS_FILE"
+download() (
+    if [ -f "$1" ]; then
+        echo "File already exists: $1"
+    else
+        echo "Downloading $2"
+        curl -o "$1" "$2"
+        echo "Download completed: $1"
+    fi
+)
+
+download "$DEST_DIR/$KAFKA_CONNECTOR_FILE" "$KAFKA_CONNECTOR"
+download "$DEST_DIR/$KAFKA_CLIENTS_FILE" "$KAFKA_CLIENTS"
