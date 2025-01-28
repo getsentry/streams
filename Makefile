@@ -1,5 +1,5 @@
 install-dev:
-	sh scripts/flink-jar-download.sh
+	./scripts/flink-jar-download.sh
 	which uv || (curl -LsSf https://astral.sh/uv/install.sh | sh)
 	uv sync
 .PHONY: install-dev
