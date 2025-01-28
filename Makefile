@@ -17,3 +17,8 @@ install-pre-commit-hook:
 tests:
 	cd py/tests && pytest -vv .
 .PHONY: tests
+
+typecheck:
+	cd py && \
+	mypy --config-file mypy.ini --strict .
+.PHONY: typecheck
