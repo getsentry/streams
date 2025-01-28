@@ -10,6 +10,8 @@ Python interpreter.
 
 Run `direnv allow` and run `python py/sentry_streams/example.py`.
 
+Run `echo hello world | kcat -P -b 127.0.0.1:9092 -t events` to send some events and see them printed.
+
 We need a better way to do this, but at this point of the project it
 is alright.
 
