@@ -21,10 +21,10 @@ addopts = "-ra -q"
 testpaths = ["tests"]
 
 [tool.black]
-line-length = 88
+line-length = 79
 target-version = ['py311']
 skip-magic-trailing-comma = true
 
 [tool.isort]
 profile = "black"
-line_length = 88
+line_length = 79
