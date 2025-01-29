@@ -33,6 +33,7 @@ def main() -> None:
     environment_config = {
         "topics": {
             "logical-events": "events",
+            "transformed-events": "transformed-events",
         }
     }
 
