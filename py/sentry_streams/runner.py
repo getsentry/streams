@@ -1,9 +1,10 @@
-import sys
 import os
+import sys
 from typing import Any, cast
 
-from sentry_streams.sinks import Pipeline, WithInput
 from pyflink.datastream import StreamExecutionEnvironment
+from sentry_streams.sinks import Pipeline, WithInput
+
 
 def main() -> None:
     pipeline_globals: dict[str, Any] = {}
@@ -11,7 +12,7 @@ def main() -> None:
     with open(sys.argv[1]) as f:
         exec(f.read(), pipeline_globals)
 
-    p: Pipeline = pipeline_globals['pipeline']
+    p: Pipeline = pipeline_globals["pipeline"]
 
     libs_path = os.environ.get("FLINK_LIBS")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
@@ -39,7 +40,9 @@ def main() -> None:
         for next_step_name in p.edges.get(input_name, ()):
             print(f"Apply step: {next_step_name}")
             next_step: WithInput = cast(WithInput, p.steps[next_step_name])
-            recurse_edge(next_step_name, next_step.apply_edge(stream, environment_config))
+            recurse_edge(
+                next_step_name, next_step.apply_edge(stream, environment_config)
+            )
 
     for source in p.sources:
         print(f"Apply source: {source.name}")
