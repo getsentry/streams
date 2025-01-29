@@ -37,18 +37,55 @@ def main() -> None:
         }
     }
 
-    def recurse_edge(input_name: str, stream: Any) -> None:
-        for next_step_name in p.edges.get(input_name, ()):
-            print(f"Apply step: {next_step_name}")
-            next_step: WithInput = cast(WithInput, p.steps[next_step_name])
-            recurse_edge(
-                next_step_name, next_step.apply_edge(stream, environment_config)
-            )
+    # Recursively builds a source --> sink path for every source
+    # This means there may be repetition
+    # def recurse_edge(input_name: str, stream: Any) -> None:
+    #     for next_step_name in p.edges.get(input_name, ()):
+    #         print(f"Apply step: {next_step_name}")
+    #         next_step: WithInput = cast(WithInput, p.steps[next_step_name])
+    #         recurse_edge(
+    #             next_step_name, next_step.apply_edge(stream, environment_config)
+    #         )
+
+    # # Assume we only deal with 1-1 steps for now
+    # for source in p.sources:
+    #     print(f"Apply source: {source.name}")
+    #     env_source = source.apply_source(env, environment_config)
+    #     recurse_edge(source.name, env_source)
+
+    def iterate_edges(step_streams: dict[str, Any]) -> None:
+        while step_streams:
+            for input_name in list(step_streams):
+                out_step = p.outgoing_edges[input_name]
+                input_stream = step_streams.pop(input_name)
+
+                if not out_step:
+                    continue
+                # check if the inputs are fanning out
+                if len(out_step) > 1:
+                    pass
+
+                # check if the inputs are fanning in
+                else:
+                    if len(p.incoming_edges[out_step[0]]) > 1:
+                        pass
+
+                    # 1:1 between input and output stream
+                    else:
+                        next_step: WithInput = cast(WithInput, p.steps[out_step[0]])
+                        print(f"Apply step: {next_step.name}")
+                        output_stream = next_step.apply_edge(
+                            input_stream, environment_config
+                        )
+                        step_streams[next_step.name] = output_stream
+
+    step_streams = {}
 
     for source in p.sources:
         print(f"Apply source: {source.name}")
         env_source = source.apply_source(env, environment_config)
-        recurse_edge(source.name, env_source)
+        step_streams[source.name] = env_source
+        iterate_edges(step_streams)
 
     # submit for execution
     env.execute()
