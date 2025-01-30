@@ -58,13 +58,15 @@ def main() -> None:
 
                 if not output_steps:
                     continue
+
                 # check if the inputs are fanning out
                 if len(output_steps) > 1:
                     pass
 
-                # check if the inputs are fanning in
                 else:
                     output_step_name = output_steps.pop()
+
+                    # check if the inputs are fanning in
                     if len(p.incoming_edges[output_step_name]) > 1:
                         pass
 
