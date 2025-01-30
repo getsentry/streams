@@ -16,9 +16,7 @@ def run_stream() -> None:
     libs_path = os.environ.get("FLINK_LIBS")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
 
-    jar_file = os.path.join(
-        os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar"
-    )
+    jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
     kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
 
     print(kafka_jar_file)
@@ -38,7 +36,7 @@ def run_stream() -> None:
     )
     # define the source
     kafka_consumer.set_start_from_earliest()
-    env.add_source(kafka_consumer).print().name("Kafka Source")
+    env.add_source(kafka_consumer).print()  # .name("Kafka Source")
 
     # define the sink
     print("Printing result to stdout. Use --output to specify output path.")
