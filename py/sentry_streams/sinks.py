@@ -64,8 +64,7 @@ class RawKafkaSink(WithInput):
 
     def apply_edge(self, stream: Any, environment_config: dict[str, Any]) -> Any:
         from pyflink.common.serialization import SimpleStringSchema
-        from pyflink.datastream.connectors.kafka import (
-            KafkaRecordSerializationSchema, KafkaSink)
+        from pyflink.datastream.connectors.kafka import KafkaRecordSerializationSchema, KafkaSink
 
         KAFKA_BROKER = "localhost:9092"
 
@@ -93,8 +92,9 @@ class RawKafkaSource(Source):
     def apply_source(self, env: Any, environment_config: dict[str, Any]) -> Any:
         # TODO: split this out into a completely separate file?
         from pyflink.common.serialization import SimpleStringSchema
-        from pyflink.datastream.connectors import \
-            FlinkKafkaConsumer  # type: ignore
+        from pyflink.datastream.connectors import (  # type: ignore[no-untyped-defs]
+            FlinkKafkaConsumer,
+        )
 
         KAFKA_BROKER = "localhost:9092"
         kafka_consumer = FlinkKafkaConsumer(
