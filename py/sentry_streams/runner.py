@@ -17,9 +17,7 @@ def main() -> None:
     libs_path = os.environ.get("FLINK_LIBS")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
 
-    jar_file = os.path.join(
-        os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar"
-    )
+    jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
     kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
 
     print(kafka_jar_file)
@@ -72,13 +70,9 @@ def main() -> None:
 
                     # 1:1 between input and output stream
                     else:
-                        next_step: WithInput = cast(
-                            WithInput, p.steps[output_step_name]
-                        )
+                        next_step: WithInput = cast(WithInput, p.steps[output_step_name])
                         print(f"Apply step: {next_step.name}")
-                        output_stream = next_step.apply_edge(
-                            input_stream, environment_config
-                        )
+                        output_stream = next_step.apply_edge(input_stream, environment_config)
                         step_streams[next_step.name] = output_stream
 
     step_streams = {}
