@@ -95,7 +95,7 @@ class RawKafkaSource(Source):
     def apply_source(self, env: Any, environment_config: dict[str, Any]) -> Any:
         # TODO: split this out into a completely separate file?
         from pyflink.common.serialization import SimpleStringSchema
-        from pyflink.datastream.connectors import (
+        from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
             FlinkKafkaConsumer,
         )
 
