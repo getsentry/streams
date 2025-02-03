@@ -3,7 +3,9 @@ import sys
 from typing import Any, cast
 
 from pyflink.datastream import StreamExecutionEnvironment
-from sentry_streams.sinks import Pipeline, WithInput
+from sentry_streams.adapters.flink_adapter import FlinkAdapter
+from sentry_streams.adapters.stream_adapter import StreamAdapter
+from sentry_streams.primitives import Pipeline, RuntimeTranslator, WithInput
 
 
 def main() -> None:
@@ -12,16 +14,14 @@ def main() -> None:
     with open(sys.argv[1]) as f:
         exec(f.read(), pipeline_globals)
 
-    p: Pipeline = pipeline_globals["pipeline"]
+    pipeline: Pipeline = pipeline_globals["pipeline"]
+    p_graph = pipeline.graph
 
     libs_path = os.environ.get("FLINK_LIBS")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
 
     jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
     kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
-
-    print(kafka_jar_file)
-    print(jar_file)
 
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
@@ -32,26 +32,19 @@ def main() -> None:
         "topics": {
             "logical-events": "events",
             "transformed-events": "transformed-events",
-        }
+        },
+        "broker": "localhost:9092",
     }
 
-    # def recurse_edge(input_name: str, stream: Any) -> None:
-    #     for next_step_name in p.edges.get(input_name, ()):
-    #         print(f"Apply step: {next_step_name}")
-    #         next_step: WithInput = cast(WithInput, p.steps[next_step_name])
-    #         recurse_edge(
-    #             next_step_name, next_step.apply_edge(stream, environment_config)
-    #         )
+    runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
+    translator = RuntimeTranslator(runtime_config)
 
-    # for source in p.sources:
-    #     print(f"Apply source: {source.name}")
-    #     env_source = source.apply_source(env, environment_config)
-    #     recurse_edge(source.name, env_source)
+    pipeline.set_translator(translator)
 
     def iterate_edges(step_streams: dict[str, Any]) -> None:
         while step_streams:
             for input_name in list(step_streams):
-                output_steps = p.outgoing_edges[input_name]
+                output_steps = p_graph.outgoing_edges[input_name]
                 input_stream = step_streams.pop(input_name)
 
                 if not output_steps:
@@ -65,21 +58,22 @@ def main() -> None:
                     output_step_name = output_steps.pop()
 
                     # check if the inputs are fanning in
-                    if len(p.incoming_edges[output_step_name]) > 1:
+                    if len(p_graph.incoming_edges[output_step_name]) > 1:
                         pass
 
                     # 1:1 between input and output stream
                     else:
-                        next_step: WithInput = cast(WithInput, p.steps[output_step_name])
+                        next_step: WithInput = cast(WithInput, p_graph.steps[output_step_name])
                         print(f"Apply step: {next_step.name}")
-                        output_stream = next_step.apply_edge(input_stream, environment_config)
+                        output_stream = next_step.apply_edge(input_stream)
                         step_streams[next_step.name] = output_stream
 
     step_streams = {}
 
-    for source in p.sources:
+    for source in p_graph.sources:
         print(f"Apply source: {source.name}")
-        env_source = source.apply_source(env, environment_config)
+        env_source = source.apply_source()
+        assert env_source is not None
         step_streams[source.name] = env_source
         iterate_edges(step_streams)
 
