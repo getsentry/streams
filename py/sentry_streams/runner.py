@@ -36,6 +36,7 @@ def main() -> None:
         "broker": "localhost:9092",
     }
 
+    # This will not be harcdoded in the future
     runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
     translator = RuntimeTranslator(runtime_config)
 

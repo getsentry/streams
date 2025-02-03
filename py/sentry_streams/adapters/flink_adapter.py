@@ -30,8 +30,6 @@ class FlinkAdapter(StreamAdapter):
             },
         )
 
-        kafka_consumer.set_start_from_earliest()
-
         return self.env.add_source(kafka_consumer)
 
     def sink(self, step_config: Mapping[str, Any], stream: Any) -> Any:
