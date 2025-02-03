@@ -15,6 +15,8 @@ from sentry_streams.pipeline import (
 
 # Traverses over edges in a PipelineGraph, building the
 # stream incrementally by applying steps and transformations
+# It currently has the structure to deal with, but has no
+# real support for, fan-in and fan-out streams
 def iterate_edges(step_streams: dict[str, Any], p_graph: PipelineGraph) -> Any:
     output_stream = None
     while step_streams:
