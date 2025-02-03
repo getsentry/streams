@@ -15,8 +15,8 @@ def test_pipeline() -> None:
 
     pipeline_globals: dict[str, Any] = {}
 
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    config_file = "/".join(dir_path.split("/")[:-1]) + "/" + "sentry_streams/example_config.py"
+    dir_path = os.path.abspath("")
+    config_file = os.path.join(dir_path, "sentry_streams/example_config.py")
 
     with open(config_file) as f:
         exec(f.read(), pipeline_globals)
@@ -24,7 +24,7 @@ def test_pipeline() -> None:
     pipeline: Pipeline = pipeline_globals["pipeline"]
     p_graph = pipeline.graph
 
-    libs_path = os.environ.get("FLINK_LIBS")
+    libs_path = os.path.join("/".join(dir_path.split("/")[:-1]), "flink_libs")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
 
     jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
