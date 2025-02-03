@@ -15,7 +15,10 @@ def test_pipeline() -> None:
 
     pipeline_globals: dict[str, Any] = {}
 
-    with open("sentry_streams/example_config.py") as f:
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    config_file = "/".join(dir_path.split("/")[:-1]) + "/" + "sentry_streams/example_config.py"
+
+    with open(config_file) as f:
         exec(f.read(), pipeline_globals)
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
