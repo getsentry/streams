@@ -16,8 +16,9 @@ def test_pipeline() -> None:
     pipeline_globals: dict[str, Any] = {}
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
+    print(dir_path)
     config_file = os.path.join(
-        "/".join(dir_path.split("/")[:-1]), "py/sentry_streams/example_config.py"
+        "/".join(dir_path.split("/")[:-1]), "sentry_streams/example_config.py"
     )
 
     with open(config_file) as f:
