@@ -8,9 +8,10 @@ from sentry_streams.pipeline import Pipeline, RuntimeTranslator
 from sentry_streams.runner import iterate_edges
 
 
-# Essentially identical to runner
+# Essentially identical to runner for now
 # Checks basic input and output stream types
-# of a simple Flink program
+# of a simple Flink program that uses
+# Pipeline abstractions
 def test_pipeline() -> None:
 
     pipeline_globals: dict[str, Any] = {}
