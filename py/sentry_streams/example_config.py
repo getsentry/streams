@@ -1,4 +1,4 @@
-from sentry_streams.primitives import Pipeline, RawKafkaSink, RawKafkaSource
+from sentry_streams.pipeline import Pipeline, RawKafkaSink, RawKafkaSource
 
 # pipeline: special name
 pipeline = Pipeline()

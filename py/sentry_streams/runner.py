@@ -5,7 +5,7 @@ from typing import Any, cast
 from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.flink_adapter import FlinkAdapter
 from sentry_streams.adapters.stream_adapter import StreamAdapter
-from sentry_streams.primitives import Pipeline, RuntimeTranslator, WithInput
+from sentry_streams.pipeline import Pipeline, RuntimeTranslator, WithInput
 
 
 def main() -> None:

@@ -107,9 +107,3 @@ class RawKafkaSource(Source):
         stream = self.ctx.translator.translate_source(step_config)
 
         return stream
-
-
-@dataclass
-class Printer(WithInput):
-    def apply_edge(self, stream: Any) -> Any:
-        return stream.print()
