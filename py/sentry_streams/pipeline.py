@@ -54,7 +54,6 @@ class _Stage:
 
 @dataclass
 class Step(_Stage):
-
     def __post_init__(self) -> None:
         self.ctx.register(self)
 
