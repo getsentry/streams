@@ -1,4 +1,4 @@
-from typing import Any, Mapping
+from typing import Any, Mapping, MutableMapping
 
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import StreamExecutionEnvironment
@@ -14,7 +14,7 @@ from sentry_streams.adapters.stream_adapter import StreamAdapter
 
 class FlinkAdapter(StreamAdapter):
 
-    def __init__(self, config: dict[str, Any], env: StreamExecutionEnvironment) -> None:
+    def __init__(self, config: MutableMapping[str, Any], env: StreamExecutionEnvironment) -> None:
         self.environment_config = config
         self.env = env
 

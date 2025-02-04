@@ -1,10 +1,10 @@
 import os
 import sys
-from typing import Any, cast
+from typing import Any, MutableMapping, cast
 
 from pyflink.datastream import StreamExecutionEnvironment
-from sentry_streams.adapters.flink_adapter import FlinkAdapter
 from sentry_streams.adapters.stream_adapter import StreamAdapter
+from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import (
     Pipeline,
     RuntimeTranslator,
@@ -17,7 +17,7 @@ from sentry_streams.pipeline import (
 # It currently has the structure to deal with, but has no
 # real support for, fan-in and fan-out streams
 def iterate_edges(
-    step_streams: dict[str, Any], p_graph: Pipeline, translator: RuntimeTranslator
+    step_streams: MutableMapping[str, Any], p_graph: Pipeline, translator: RuntimeTranslator
 ) -> Any:
 
     output_stream = None

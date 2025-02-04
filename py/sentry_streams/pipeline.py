@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, MutableMapping
 
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 
@@ -34,9 +34,9 @@ class RuntimeTranslator:
 
 class Pipeline:
     def __init__(self) -> None:
-        self.steps: dict[str, Step] = {}
-        self.incoming_edges: dict[str, list[str]] = defaultdict(list)
-        self.outgoing_edges: dict[str, list[str]] = defaultdict(list)
+        self.steps: MutableMapping[str, Step] = {}
+        self.incoming_edges: MutableMapping[str, list[str]] = defaultdict(list)
+        self.outgoing_edges: MutableMapping[str, list[str]] = defaultdict(list)
         self.sources: list[Source] = []
 
     def register(self, step: Step) -> None:

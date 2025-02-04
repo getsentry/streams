@@ -2,8 +2,8 @@ import os
 from typing import Any
 
 from pyflink.datastream import DataStream, DataStreamSink, StreamExecutionEnvironment
-from sentry_streams.adapters.flink_adapter import FlinkAdapter
 from sentry_streams.adapters.stream_adapter import StreamAdapter
+from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import Pipeline, RuntimeTranslator
 from sentry_streams.runner import iterate_edges
 
