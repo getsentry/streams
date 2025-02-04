@@ -32,17 +32,6 @@ class RuntimeTranslator:
         return translated_fn(step_config, stream)
 
 
-# Iterator has all the info about each node that it
-# needs, you can just access the canonical primitive name
-# and then build up the stream
-
-# if you had a Visitor, visiting each node means
-# you can abstract away children
-# Visitor would manage the env/stream
-# each node would have a reference to its children nodes
-# Visitor doesn't have access to any private attributes of nodes
-
-
 class Pipeline:
     def __init__(self) -> None:
         self.steps: dict[str, Step] = {}
