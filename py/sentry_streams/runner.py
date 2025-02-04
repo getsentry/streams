@@ -44,7 +44,7 @@ def iterate_edges(
                 else:
                     next_step: WithInput = cast(WithInput, p_graph.steps[output_step_name])
                     print(f"Apply step: {next_step.name}")
-                    next_step_stream = translator.translate_with_input(next_step, input_stream)
+                    next_step_stream = translator.translate_step(next_step, input_stream)
                     step_streams[next_step.name] = next_step_stream
                     output_stream = next_step_stream
 
@@ -56,8 +56,6 @@ def main() -> None:
 
     with open(sys.argv[1]) as f:
         exec(f.read(), pipeline_globals)
-
-    pipeline: Pipeline = pipeline_globals["pipeline"]
 
     libs_path = os.environ.get("FLINK_LIBS")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
@@ -78,6 +76,7 @@ def main() -> None:
         "broker": "localhost:9092",
     }
 
+    pipeline: Pipeline = pipeline_globals["pipeline"]
     # This will not be harcdoded in the future
     runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
     translator = RuntimeTranslator(runtime_config)
@@ -86,7 +85,7 @@ def main() -> None:
 
     for source in pipeline.sources:
         print(f"Apply source: {source.name}")
-        env_source = translator.translate_source(source)
+        env_source = translator.translate_step(source)
         step_streams[source.name] = env_source
         iterate_edges(step_streams, pipeline, translator)
 

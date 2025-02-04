@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, MutableMapping
+from typing import Any, MutableMapping, Optional
 
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 
@@ -11,25 +11,20 @@ class RuntimeTranslator:
     def __init__(self, runtime_adapter: StreamAdapter):
         self.adapter = runtime_adapter
 
-    def translate_source(self, source: Source) -> Any:
-        translated_fn = getattr(self.adapter, "source")
-
-        step_config = {}
-
-        if hasattr(source, "logical_topic"):
-            step_config["topic"] = source.logical_topic
-
-        return translated_fn(step_config)
-
-    def translate_with_input(self, step: WithInput, stream: Any) -> Any:
+    def translate_step(self, step: Step, stream: Optional[Any] = None) -> Any:
+        assert hasattr(step, "step_type")
         next_step = step.step_type
         translated_fn = getattr(self.adapter, next_step)
         step_config = {}
 
+        # build step-specific config
         if hasattr(step, "logical_topic"):
             step_config["topic"] = step.logical_topic
 
-        return translated_fn(step_config, stream)
+        if stream:
+            return translated_fn(step_config, stream)
+        else:
+            return translated_fn(step_config)
 
 
 class Pipeline:
@@ -37,7 +32,7 @@ class Pipeline:
         self.steps: MutableMapping[str, Step] = {}
         self.incoming_edges: MutableMapping[str, list[str]] = defaultdict(list)
         self.outgoing_edges: MutableMapping[str, list[str]] = defaultdict(list)
-        self.sources: list[Source] = []
+        self.sources: list[KafkaSource] = []
 
     def register(self, step: Step) -> None:
         assert step.name not in self.steps
@@ -47,7 +42,7 @@ class Pipeline:
         self.incoming_edges[_to.name].append(_from.name)
         self.outgoing_edges[_from.name].append(_to.name)
 
-    def register_source(self, step: Source) -> None:
+    def register_source(self, step: KafkaSource) -> None:
         self.sources.append(step)
 
 
@@ -55,15 +50,20 @@ class Pipeline:
 class _Stage:
     name: str
     ctx: Pipeline
-    step_type: str
 
 
+@dataclass
 class Step(_Stage):
+
     def __post_init__(self) -> None:
         self.ctx.register(self)
 
 
-class Source(Step):
+@dataclass
+class KafkaSource(Step):
+    logical_topic: str
+    step_type: str = "source"
+
     def __post_init__(self) -> None:
         super().__post_init__()
         self.ctx.register_source(self)
@@ -80,10 +80,6 @@ class WithInput(Step):
 
 
 @dataclass
-class RawKafkaSink(WithInput):
+class KafkaSink(WithInput):
     logical_topic: str
-
-
-@dataclass
-class RawKafkaSource(Source):
-    logical_topic: str
+    step_type: str = "sink"
