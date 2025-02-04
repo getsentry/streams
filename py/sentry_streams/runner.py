@@ -7,7 +7,6 @@ from sentry_streams.adapters.flink_adapter import FlinkAdapter
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.pipeline import (
     Pipeline,
-    PipelineGraph,
     RuntimeTranslator,
     WithInput,
 )
@@ -17,7 +16,10 @@ from sentry_streams.pipeline import (
 # stream incrementally by applying steps and transformations
 # It currently has the structure to deal with, but has no
 # real support for, fan-in and fan-out streams
-def iterate_edges(step_streams: dict[str, Any], p_graph: PipelineGraph) -> Any:
+def iterate_edges(
+    step_streams: dict[str, Any], p_graph: Pipeline, translator: RuntimeTranslator
+) -> Any:
+
     output_stream = None
     while step_streams:
         for input_name in list(step_streams):
@@ -42,7 +44,7 @@ def iterate_edges(step_streams: dict[str, Any], p_graph: PipelineGraph) -> Any:
                 else:
                     next_step: WithInput = cast(WithInput, p_graph.steps[output_step_name])
                     print(f"Apply step: {next_step.name}")
-                    next_step_stream = next_step.apply_edge(input_stream)
+                    next_step_stream = translator.translate_with_input(next_step, input_stream)
                     step_streams[next_step.name] = next_step_stream
                     output_stream = next_step_stream
 
@@ -56,7 +58,6 @@ def main() -> None:
         exec(f.read(), pipeline_globals)
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    p_graph = pipeline.graph
 
     libs_path = os.environ.get("FLINK_LIBS")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
@@ -81,15 +82,13 @@ def main() -> None:
     runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
     translator = RuntimeTranslator(runtime_config)
 
-    pipeline.set_translator(translator)
-
     step_streams = {}
 
-    for source in p_graph.sources:
+    for source in pipeline.sources:
         print(f"Apply source: {source.name}")
-        env_source = source.apply_source()
+        env_source = translator.translate_source(source)
         step_streams[source.name] = env_source
-        iterate_edges(step_streams, p_graph)
+        iterate_edges(step_streams, pipeline, translator)
 
     # submit for execution
     env.execute()

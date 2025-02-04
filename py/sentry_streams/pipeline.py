@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 
@@ -11,21 +11,39 @@ class RuntimeTranslator:
     def __init__(self, runtime_adapter: StreamAdapter):
         self.adapter = runtime_adapter
 
-    def translate_source(self, step_config: Mapping[str, Any]) -> Any:
+    def translate_source(self, source: Source) -> Any:
         translated_fn = getattr(self.adapter, "source")
+
+        step_config = {}
+
+        if hasattr(source, "logical_topic"):
+            step_config["topic"] = source.logical_topic
 
         return translated_fn(step_config)
 
-    def translate_with_input(
-        self, step: WithInput, step_config: Mapping[str, Any], stream: Any
-    ) -> Any:
+    def translate_with_input(self, step: WithInput, stream: Any) -> Any:
         next_step = step.step_type
         translated_fn = getattr(self.adapter, next_step)
+        step_config = {}
+
+        if hasattr(step, "logical_topic"):
+            step_config["topic"] = step.logical_topic
 
         return translated_fn(step_config, stream)
 
 
-class PipelineGraph:
+# Iterator has all the info about each node that it
+# needs, you can just access the canonical primitive name
+# and then build up the stream
+
+# if you had a Visitor, visiting each node means
+# you can abstract away children
+# Visitor would manage the env/stream
+# each node would have a reference to its children nodes
+# Visitor doesn't have access to any private attributes of nodes
+
+
+class Pipeline:
     def __init__(self) -> None:
         self.steps: dict[str, Step] = {}
         self.incoming_edges: dict[str, list[str]] = defaultdict(list)
@@ -44,33 +62,22 @@ class PipelineGraph:
         self.sources.append(step)
 
 
-class Pipeline:
-    def __init__(self) -> None:
-        self.graph = PipelineGraph()
-
-    def set_translator(self, translator: RuntimeTranslator) -> None:
-        self.translator = translator
-
-
 @dataclass
 class _Stage:
     name: str
     ctx: Pipeline
+    step_type: str
 
 
 class Step(_Stage):
-    step_type: str
-
     def __post_init__(self) -> None:
-        self.ctx.graph.register(self)
+        self.ctx.register(self)
 
 
 class Source(Step):
     def __post_init__(self) -> None:
         super().__post_init__()
-        self.ctx.graph.register_source(self)
-
-    def apply_source(self) -> Any: ...
+        self.ctx.register_source(self)
 
 
 @dataclass
@@ -80,30 +87,14 @@ class WithInput(Step):
     def __post_init__(self) -> None:
         super().__post_init__()
         for input in self.inputs:
-            self.ctx.graph.register_edge(input, self)
-
-    def apply_edge(self, stream: Any) -> Any: ...
+            self.ctx.register_edge(input, self)
 
 
 @dataclass
 class RawKafkaSink(WithInput):
     logical_topic: str
-    step_type: str
-
-    def apply_edge(self, stream: Any) -> Any:
-        step_config = {"topic": self.logical_topic}
-        sink_output = self.ctx.translator.translate_with_input(self, step_config, stream)
-
-        return sink_output
 
 
 @dataclass
 class RawKafkaSource(Source):
     logical_topic: str
-    step_type: str
-
-    def apply_source(self) -> Any:
-        step_config = {"topic": self.logical_topic}
-        stream = self.ctx.translator.translate_source(step_config)
-
-        return stream

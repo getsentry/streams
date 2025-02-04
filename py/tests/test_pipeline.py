@@ -26,7 +26,6 @@ def test_pipeline() -> None:
         exec(f.read(), pipeline_globals)
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    p_graph = pipeline.graph
 
     libs_path = os.path.join("/".join(dir_path.split("/")[:-2]), "flink_libs")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
@@ -47,19 +46,16 @@ def test_pipeline() -> None:
         "broker": "localhost:9092",
     }
 
-    # This will not be harcdoded in the future
     runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
     translator = RuntimeTranslator(runtime_config)
 
-    pipeline.set_translator(translator)
-
     step_streams = {}
 
-    for source in p_graph.sources:
+    for source in pipeline.sources:
         print(f"Apply source: {source.name}")
-        env_source = source.apply_source()
+        env_source = translator.translate_source(source)
         assert type(env_source) is DataStream
         step_streams[source.name] = env_source
-        output_stream = iterate_edges(step_streams, p_graph)
+        output_stream = iterate_edges(step_streams, pipeline, translator)
 
     assert type(output_stream) is DataStreamSink
