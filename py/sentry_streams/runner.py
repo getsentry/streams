@@ -3,11 +3,10 @@ import sys
 from typing import Any, cast
 
 from pyflink.datastream import StreamExecutionEnvironment
-from sentry_streams.adapters.stream_adapter import StreamAdapter
+from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import (
     Pipeline,
-    RuntimeTranslator,
     WithInput,
 )
 

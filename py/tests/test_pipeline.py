@@ -2,9 +2,9 @@ import json
 import os
 
 from pyflink.datastream import StreamExecutionEnvironment
-from sentry_streams.adapters.stream_adapter import StreamAdapter
+from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
 from sentry_streams.flink.flink_adapter import FlinkAdapter
-from sentry_streams.pipeline import KafkaSink, KafkaSource, Pipeline, RuntimeTranslator
+from sentry_streams.pipeline import KafkaSink, KafkaSource, Pipeline
 from sentry_streams.runner import iterate_edges
 
 

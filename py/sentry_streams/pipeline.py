@@ -2,23 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, MutableMapping, Optional
-
-from sentry_streams.adapters.stream_adapter import StreamAdapter
-
-
-class RuntimeTranslator:
-    def __init__(self, runtime_adapter: StreamAdapter):
-        self.adapter = runtime_adapter
-
-    def translate_step(self, step: Step, stream: Optional[Any] = None) -> Any:
-        assert hasattr(step, "step_type")
-        translated_fn = getattr(self.adapter, step.step_type)
-
-        if stream:
-            return translated_fn(step, stream)
-        else:
-            return translated_fn(step)
+from typing import MutableMapping
 
 
 class Pipeline:
