@@ -30,19 +30,26 @@ class Pipeline:
 
 
 @dataclass
-class _Stage:
+class Step:
+    """
+    A generic Step, whose incoming
+    and outgoing edges are registered
+    against a Pipeline.
+    """
+
     name: str
     ctx: Pipeline
 
-
-@dataclass
-class Step(_Stage):
     def __post_init__(self) -> None:
         self.ctx.register(self)
 
 
 @dataclass
 class KafkaSource(Step):
+    """
+    A Source which reads from Kafka.
+    """
+
     logical_topic: str
 
     def __post_init__(self) -> None:
@@ -52,6 +59,11 @@ class KafkaSource(Step):
 
 @dataclass
 class WithInput(Step):
+    """
+    A generic Step representing a logical
+    step which has inputs.
+    """
+
     inputs: list[Step]
 
     def __post_init__(self) -> None:
@@ -62,9 +74,17 @@ class WithInput(Step):
 
 @dataclass
 class Sink(WithInput):
+    """
+    A generic Sink, to be extended.
+    """
+
     pass
 
 
 @dataclass
 class KafkaSink(Sink):
+    """
+    A Sink which specifically writes to Kafka.
+    """
+
     logical_topic: str
