@@ -39,7 +39,6 @@ class Step(_Stage):
 @dataclass
 class KafkaSource(Step):
     logical_topic: str
-    step_type: str = "source"
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -57,6 +56,10 @@ class WithInput(Step):
 
 
 @dataclass
-class KafkaSink(WithInput):
+class Sink(WithInput):
+    pass
+
+
+@dataclass
+class KafkaSink(Sink):
     logical_topic: str
-    step_type: str = "sink"

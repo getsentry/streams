@@ -11,7 +11,7 @@ from sentry_streams.pipeline import (
 )
 
 
-def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator) -> Any:
+def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator) -> None:
     """
     Traverses over edges in a PipelineGraph, building the
     stream incrementally by applying steps and transformations
