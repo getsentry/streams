@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Any, MutableMapping, cast
+from typing import Any, cast
 
 from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import StreamAdapter
@@ -12,43 +12,46 @@ from sentry_streams.pipeline import (
 )
 
 
-# Traverses over edges in a PipelineGraph, building the
-# stream incrementally by applying steps and transformations
-# It currently has the structure to deal with, but has no
-# real support for, fan-in and fan-out streams
-def iterate_edges(
-    step_streams: MutableMapping[str, Any], p_graph: Pipeline, translator: RuntimeTranslator
-) -> Any:
+def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator) -> Any:
+    """
+    Traverses over edges in a PipelineGraph, building the
+    stream incrementally by applying steps and transformations
+    It currently has the structure to deal with, but has no
+    real support for, fan-in and fan-out streams
+    """
 
-    output_stream = None
-    while step_streams:
-        for input_name in list(step_streams):
-            output_steps = p_graph.outgoing_edges[input_name]
-            input_stream = step_streams.pop(input_name)
+    step_streams = {}
 
-            if not output_steps:
-                continue
+    for source in p_graph.sources:
+        print(f"Apply source: {source.name}")
+        source_stream = translator.translate_step(source)
+        step_streams[source.name] = source_stream
 
-            # check if the inputs are fanning out
-            if len(output_steps) > 1:
-                pass
+        while step_streams:
+            for input_name in list(step_streams):
+                output_steps = p_graph.outgoing_edges[input_name]
+                input_stream = step_streams.pop(input_name)
 
-            else:
-                output_step_name = output_steps.pop()
+                if not output_steps:
+                    continue
 
-                # check if the inputs are fanning in
-                if len(p_graph.incoming_edges[output_step_name]) > 1:
+                # check if the inputs are fanning out
+                if len(output_steps) > 1:
                     pass
 
-                # 1:1 between input and output stream
                 else:
-                    next_step: WithInput = cast(WithInput, p_graph.steps[output_step_name])
-                    print(f"Apply step: {next_step.name}")
-                    next_step_stream = translator.translate_step(next_step, input_stream)
-                    step_streams[next_step.name] = next_step_stream
-                    output_stream = next_step_stream
+                    output_step_name = output_steps.pop()
 
-    return output_stream
+                    # check if the inputs are fanning in
+                    if len(p_graph.incoming_edges[output_step_name]) > 1:
+                        pass
+
+                    # 1:1 between input and output stream
+                    else:
+                        next_step: WithInput = cast(WithInput, p_graph.steps[output_step_name])
+                        print(f"Apply step: {next_step.name}")
+                        next_step_stream = translator.translate_step(next_step, input_stream)
+                        step_streams[next_step.name] = next_step_stream
 
 
 def main() -> None:
@@ -81,13 +84,7 @@ def main() -> None:
     runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
     translator = RuntimeTranslator(runtime_config)
 
-    step_streams = {}
-
-    for source in pipeline.sources:
-        print(f"Apply source: {source.name}")
-        env_source = translator.translate_step(source)
-        step_streams[source.name] = env_source
-        iterate_edges(step_streams, pipeline, translator)
+    iterate_edges(pipeline, translator)
 
     # submit for execution
     env.execute()

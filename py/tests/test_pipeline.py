@@ -1,29 +1,16 @@
+import json
 import os
-from typing import Any
 
-from pyflink.datastream import DataStream, DataStreamSink, StreamExecutionEnvironment
+from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.flink.flink_adapter import FlinkAdapter
-from sentry_streams.pipeline import Pipeline, RuntimeTranslator
+from sentry_streams.pipeline import KafkaSink, KafkaSource, Pipeline, RuntimeTranslator
 from sentry_streams.runner import iterate_edges
 
 
-# Essentially identical to runner for now
-# Checks basic input and output stream types
-# of a simple Flink program that uses
-# Pipeline abstractions
 def test_pipeline() -> None:
 
-    pipeline_globals: dict[str, Any] = {}
-
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    config_file = os.path.join(
-        "/".join(dir_path.split("/")[:-1]), "sentry_streams/example_config.py"
-    )
-
-    with open(config_file) as f:
-        exec(f.read(), pipeline_globals)
-
     libs_path = os.path.join("/".join(dir_path.split("/")[:-2]), "flink_libs")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
 
@@ -43,17 +30,52 @@ def test_pipeline() -> None:
         "broker": "localhost:9092",
     }
 
-    pipeline: Pipeline = pipeline_globals["pipeline"]
     runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
     translator = RuntimeTranslator(runtime_config)
 
-    step_streams = {}
+    pipeline = Pipeline()
 
-    for source in pipeline.sources:
-        print(f"Apply source: {source.name}")
-        env_source = translator.translate_step(source)
-        assert type(env_source) is DataStream
-        step_streams[source.name] = env_source
-        output_stream = iterate_edges(step_streams, pipeline, translator)
+    source = KafkaSource(
+        name="myinput",
+        ctx=pipeline,
+        logical_topic="logical-events",
+    )
 
-    assert type(output_stream) is DataStreamSink
+    _ = KafkaSink(
+        name="kafkasink",
+        ctx=pipeline,
+        inputs=[source],
+        logical_topic="transformed-events",
+    )
+
+    iterate_edges(pipeline, translator)
+
+    expected_plan = {
+        "nodes": [
+            {
+                "id": 1,
+                "type": "Source: Custom Source",
+                "pact": "Data Source",
+                "contents": "Source: Custom Source",
+                "parallelism": 1,
+            },
+            {
+                "id": 3,
+                "type": "Sink: Writer",
+                "pact": "Operator",
+                "contents": "Sink: Writer",
+                "parallelism": 1,
+                "predecessors": [{"id": 1, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+            {
+                "id": 5,
+                "type": "Sink: Committer",
+                "pact": "Operator",
+                "contents": "Sink: Committer",
+                "parallelism": 1,
+                "predecessors": [{"id": 3, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+        ]
+    }
+
+    env.get_execution_plan() == json.dumps(expected_plan)

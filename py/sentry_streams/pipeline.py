@@ -13,18 +13,12 @@ class RuntimeTranslator:
 
     def translate_step(self, step: Step, stream: Optional[Any] = None) -> Any:
         assert hasattr(step, "step_type")
-        next_step = step.step_type
-        translated_fn = getattr(self.adapter, next_step)
-        step_config = {}
-
-        # build step-specific config
-        if hasattr(step, "logical_topic"):
-            step_config["topic"] = step.logical_topic
+        translated_fn = getattr(self.adapter, step.step_type)
 
         if stream:
-            return translated_fn(step_config, stream)
+            return translated_fn(step, stream)
         else:
-            return translated_fn(step_config)
+            return translated_fn(step)
 
 
 class Pipeline:
