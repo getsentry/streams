@@ -6,6 +6,11 @@ from typing import MutableMapping
 
 
 class Pipeline:
+    """
+    A graph representing the connections between
+    logical Steps.
+    """
+
     def __init__(self) -> None:
         self.steps: MutableMapping[str, Step] = {}
         self.incoming_edges: MutableMapping[str, list[str]] = defaultdict(list)

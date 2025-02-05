@@ -5,7 +5,11 @@ from sentry_streams.pipeline import KafkaSource, Sink, Step
 
 
 class StreamAdapter(ABC):
-    "Class for mapping sentry_streams APIs and primitives to runtime-specific ones"
+    """
+    A generic adapter for mapping sentry_streams APIs
+    and primitives to runtime-specific ones. This can
+    be extended to specific runtimes.
+    """
 
     @abstractmethod
     def source(self, step: Step) -> Any:
@@ -17,6 +21,13 @@ class StreamAdapter(ABC):
 
 
 class RuntimeTranslator:
+    """
+    A runtime-agnostic translator
+    which can apply the physical steps and transformations
+    to a stream. Uses a StreamAdapter to determine
+    which underlying runtime to translate to.
+    """
+
     def __init__(self, runtime_adapter: StreamAdapter):
         self.adapter = runtime_adapter
 
