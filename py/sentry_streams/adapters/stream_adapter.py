@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, assert_never
 
-from sentry_streams.pipeline import KafkaSource, Sink, Step
+from sentry_streams.pipeline import Step, StepType
 
 
 class StreamAdapter(ABC):
@@ -32,11 +32,14 @@ class RuntimeTranslator:
         self.adapter = runtime_adapter
 
     def translate_step(self, step: Step, stream: Optional[Any] = None) -> Any:
-        if isinstance(step, KafkaSource):
+        assert hasattr(step, "step_type")
+        step_type = step.step_type
+
+        if step_type is StepType.SOURCE:
             return self.adapter.source(step)
 
-        elif isinstance(step, Sink):
+        elif step_type is StepType.SINK:
             return self.adapter.sink(step, stream)
 
         else:
-            raise AssertionError(f"Expected valid Step, but got {step}")
+            assert_never(step.step_type)

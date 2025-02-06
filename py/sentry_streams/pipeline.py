@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
 from typing import MutableMapping
+
+
+class StepType(Enum):
+    SINK = "sink"
+    SOURCE = "source"
 
 
 class Pipeline:
@@ -51,6 +57,7 @@ class KafkaSource(Step):
     """
 
     logical_topic: str
+    step_type: StepType = StepType.SOURCE
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -73,18 +80,10 @@ class WithInput(Step):
 
 
 @dataclass
-class Sink(WithInput):
-    """
-    A generic Sink, to be extended.
-    """
-
-    pass
-
-
-@dataclass
-class KafkaSink(Sink):
+class KafkaSink(WithInput):
     """
     A Sink which specifically writes to Kafka.
     """
 
     logical_topic: str
+    step_type: StepType = StepType.SINK
