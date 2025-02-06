@@ -1,16 +1,17 @@
-from sentry_streams.sinks import Pipeline, RawKafkaSink, RawKafkaSource
+from sentry_streams.pipeline import KafkaSink, KafkaSource, Pipeline
 
 # pipeline: special name
 pipeline = Pipeline()
 
-source = RawKafkaSource(name="myinput", ctx=pipeline, logical_topic="logical-events")
-
-sink = RawKafkaSink(
-    name="kafkasink", ctx=pipeline, inputs=[source], logical_topic="transformed-events"
+source = KafkaSource(
+    name="myinput",
+    ctx=pipeline,
+    logical_topic="logical-events",
 )
 
-# Printer(
-#     name='myprinter',
-#     ctx=pipeline,
-#     inputs=[source],
-# )
+sink = KafkaSink(
+    name="kafkasink",
+    ctx=pipeline,
+    inputs=[source],
+    logical_topic="transformed-events",
+)
