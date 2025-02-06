@@ -42,4 +42,4 @@ class RuntimeTranslator:
             return self.adapter.sink(step, stream)
 
         else:
-            assert_never(step.step_type)
+            assert_never(step_type)
