@@ -1,5 +1,7 @@
+from importlib import import_module
 from typing import Any, MutableMapping
 
+from pyflink.common import Types
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
@@ -23,9 +25,10 @@ class FlinkAdapter(StreamAdapter):
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
+        deserialization_schema = SimpleStringSchema()
         kafka_consumer = FlinkKafkaConsumer(
             topics=self.environment_config["topics"][topic],
-            deserialization_schema=SimpleStringSchema(),
+            deserialization_schema=deserialization_schema,
             properties={
                 "bootstrap.servers": self.environment_config["broker"],
                 "group.id": "python-flink-consumer",
@@ -53,3 +56,16 @@ class FlinkAdapter(StreamAdapter):
         )
 
         return stream.sink_to(sink)
+
+    def map(self, step: Step, stream: Any) -> Any:
+
+        assert hasattr(step, "function")
+        fn_path = step.function
+        mod, cls, fn = fn_path.rsplit(".", 2)
+
+        imported_cls = getattr(import_module(mod), cls)
+        imported_fn = getattr(imported_cls, fn)
+
+        # The output type must be specified
+        # TODO: Remove hardcoded output type
+        return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())

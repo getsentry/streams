@@ -9,6 +9,7 @@ from typing import MutableMapping
 class StepType(Enum):
     SINK = "sink"
     SOURCE = "source"
+    MAP = "map"
 
 
 class Pipeline:
@@ -87,3 +88,13 @@ class KafkaSink(WithInput):
 
     logical_topic: str
     step_type: StepType = StepType.SINK
+
+
+@dataclass
+class Map(WithInput):
+    """
+    A simple 1:1 Map, taking a single input to single output
+    """
+
+    function: str
+    step_type: StepType = StepType.MAP

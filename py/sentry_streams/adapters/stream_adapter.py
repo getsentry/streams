@@ -19,6 +19,10 @@ class StreamAdapter(ABC):
     def sink(self, step: Step, stream: Any) -> Any:
         raise NotImplementedError
 
+    @abstractmethod
+    def map(self, step: Step, stream: Any) -> Any:
+        raise NotImplementedError
+
 
 class RuntimeTranslator:
     """
@@ -40,6 +44,9 @@ class RuntimeTranslator:
 
         elif step_type is StepType.SINK:
             return self.adapter.sink(step, stream)
+
+        elif step_type is StepType.MAP:
+            return self.adapter.map(step, stream)
 
         else:
             assert_never(step_type)
