@@ -4,7 +4,7 @@ import os
 from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
 from sentry_streams.flink.flink_adapter import FlinkAdapter
-from sentry_streams.pipeline import KafkaSink, KafkaSource, Pipeline
+from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline
 from sentry_streams.runner import iterate_edges
 
 
@@ -41,10 +41,17 @@ def test_pipeline() -> None:
         logical_topic="logical-events",
     )
 
+    map = Map(
+        name="mymap",
+        ctx=pipeline,
+        inputs=[source],
+        function="sentry_streams.sample_function.EventsPipelineMapFunction.simple_map",
+    )
+
     _ = KafkaSink(
         name="kafkasink",
         ctx=pipeline,
-        inputs=[source],
+        inputs=[map],
         logical_topic="transformed-events",
     )
 
@@ -60,22 +67,29 @@ def test_pipeline() -> None:
                 "parallelism": 1,
             },
             {
-                "id": 3,
-                "type": "Sink: Writer",
+                "id": 2,
+                "type": "Map",
                 "pact": "Operator",
-                "contents": "Sink: Writer",
+                "contents": "Map",
                 "parallelism": 1,
                 "predecessors": [{"id": 1, "ship_strategy": "FORWARD", "side": "second"}],
             },
             {
-                "id": 5,
+                "id": 4,
+                "type": "Sink: Writer",
+                "pact": "Operator",
+                "contents": "Sink: Writer",
+                "parallelism": 1,
+                "predecessors": [{"id": 2, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+            {
+                "id": 6,
                 "type": "Sink: Committer",
                 "pact": "Operator",
                 "contents": "Sink: Committer",
                 "parallelism": 1,
-                "predecessors": [{"id": 3, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 4, "ship_strategy": "FORWARD", "side": "second"}],
             },
         ]
     }
-
     env.get_execution_plan() == json.dumps(expected_plan)
