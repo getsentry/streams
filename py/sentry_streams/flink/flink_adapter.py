@@ -1,4 +1,6 @@
-from importlib import import_module
+import importlib.util
+import sys
+from types import ModuleType
 from typing import Any, MutableMapping
 
 from pyflink.common import Types
@@ -64,9 +66,20 @@ class FlinkAdapter(StreamAdapter):
         fn_path = step.function
         mod, cls, fn = fn_path.rsplit(".", 2)
 
-        imported_cls = getattr(import_module(mod), cls)
-        imported_fn = getattr(imported_cls, fn)
+        module: ModuleType
+
+        if mod in sys.modules:
+            module = sys.modules[mod]
+
+        elif (spec := importlib.util.find_spec(mod)) is not None:
+            module = importlib.util.module_from_spec(spec)
+
+        else:
+            raise ImportError(f"Can't find module {mod}")
 
         # The output type must be specified
         # TODO: Remove hardcoded output type
+        imported_cls = getattr(module, cls)
+        imported_fn = getattr(imported_cls, fn)
+
         return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
