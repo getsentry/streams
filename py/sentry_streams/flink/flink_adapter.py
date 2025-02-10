@@ -16,6 +16,7 @@ from sentry_streams.pipeline import Step
 
 
 class FlinkAdapter(StreamAdapter):
+    # TODO: make the (de)serialization schema configurable
 
     def __init__(self, config: MutableMapping[str, Any], env: StreamExecutionEnvironment) -> None:
         self.environment_config = config
