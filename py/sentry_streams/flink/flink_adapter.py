@@ -1,6 +1,3 @@
-import importlib.util
-import sys
-from types import ModuleType
 from typing import Any, MutableMapping
 
 from pyflink.common import Types
@@ -15,6 +12,7 @@ from pyflink.datastream.connectors.kafka import (
 )
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.pipeline import Step
+from sentry_streams.utils import get_module
 
 
 class FlinkAdapter(StreamAdapter):
@@ -66,20 +64,15 @@ class FlinkAdapter(StreamAdapter):
         fn_path = step.function
         mod, cls, fn = fn_path.rsplit(".", 2)
 
-        module: ModuleType
+        try:
+            module = get_module(mod)
 
-        if mod in sys.modules:
-            module = sys.modules[mod]
+        except ImportError as e:
+            raise e
 
-        elif (spec := importlib.util.find_spec(mod)) is not None:
-            module = importlib.util.module_from_spec(spec)
-
-        else:
-            raise ImportError(f"Can't find module {mod}")
-
-        # The output type must be specified
-        # TODO: Remove hardcoded output type
         imported_cls = getattr(module, cls)
         imported_fn = getattr(imported_cls, fn)
 
+        # The output type must be specified
+        # TODO: Remove hardcoded output type
         return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
