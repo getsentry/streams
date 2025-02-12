@@ -10,6 +10,6 @@ class EventsPipelineMapFunction:
     @staticmethod
     def simple_map(value: str) -> str:
         d = json.loads(value)
-        res: str = d.get("a", "no_value")
+        res: str = d.get("name", "no name")
 
-        return res
+        return "hello " + res
