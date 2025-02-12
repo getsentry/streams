@@ -11,7 +11,7 @@ from sentry_streams.runner import iterate_edges
 
 
 @pytest.fixture(autouse=True)
-def setup_function() -> Generator[tuple[StreamExecutionEnvironment, RuntimeTranslator]]:
+def setup_function() -> Generator[tuple[StreamExecutionEnvironment, RuntimeTranslator], None, None]:
     dir_path = os.path.dirname(os.path.realpath(__file__))
     libs_path = os.path.join("/".join(dir_path.split("/")[:-2]), "flink_libs")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
