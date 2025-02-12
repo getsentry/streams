@@ -11,7 +11,9 @@ from sentry_streams.runner import iterate_edges
 
 
 @pytest.fixture(autouse=True)
-def setup_function() -> Generator[tuple[StreamExecutionEnvironment, RuntimeTranslator], None, None]:
+def setup_basic_flink_env() -> (
+    Generator[tuple[StreamExecutionEnvironment, RuntimeTranslator], None, None]
+):
     dir_path = os.path.dirname(os.path.realpath(__file__))
     libs_path = os.path.join("/".join(dir_path.split("/")[:-2]), "flink_libs")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
@@ -151,15 +153,54 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
 
 @pytest.mark.parametrize("pipeline,expected_plan", [basic(), basic_map()])
 def test_pipeline(
-    setup_function: tuple[StreamExecutionEnvironment, RuntimeTranslator],
+    setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator],
     pipeline: Pipeline,
     expected_plan: MutableMapping[str, list[dict[str, Any]]],
 ) -> None:
     env: StreamExecutionEnvironment
     translator: RuntimeTranslator
 
-    env, translator = setup_function
+    env, translator = setup_basic_flink_env
 
     iterate_edges(pipeline, translator)
 
     assert json.loads(env.get_execution_plan()) == expected_plan
+
+
+def bad_map() -> Pipeline:
+    pipeline = Pipeline()
+
+    source = KafkaSource(
+        name="myinput",
+        ctx=pipeline,
+        logical_topic="logical-events",
+    )
+
+    map = Map(
+        name="mymap",
+        ctx=pipeline,
+        inputs=[source],
+        function="sentry_streams.unknown_module.EventsPipelineMapFunction.simple_map",
+    )
+
+    _ = KafkaSink(
+        name="kafkasink",
+        ctx=pipeline,
+        inputs=[map],
+        logical_topic="transformed-events",
+    )
+
+    return pipeline
+
+
+@pytest.mark.parametrize("pipeline", [bad_map()])
+def test_map_import(
+    setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator],
+    pipeline: Pipeline,
+) -> None:
+    translator: RuntimeTranslator
+
+    _, translator = setup_basic_flink_env
+
+    with pytest.raises(ImportError):
+        iterate_edges(pipeline, translator)
