@@ -96,5 +96,9 @@ class Map(WithInput):
     A simple 1:1 Map, taking a single input to single output
     """
 
+    # TODO: Support a reference to a function (Callable)
+    # instead of a raw string
+    # TODO: Allow product to both enable and access
+    # configuration (e.g. a DB that is used as part of Map)
     function: str
     step_type: StepType = StepType.MAP

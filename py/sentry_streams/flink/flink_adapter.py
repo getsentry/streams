@@ -17,6 +17,12 @@ from sentry_streams.utils import get_module
 
 class FlinkAdapter(StreamAdapter):
     # TODO: make the (de)serialization schema configurable
+    # TODO: infer the output type from steps which
+    # perform transformations / maps.
+
+    # NOTE: Output type must be specified for steps
+    # that send data to a next step that
+    # performs serialization (e.g. Map --> Sink)
 
     def __init__(self, config: MutableMapping[str, Any], env: StreamExecutionEnvironment) -> None:
         self.environment_config = config
@@ -73,6 +79,5 @@ class FlinkAdapter(StreamAdapter):
         imported_cls = getattr(module, cls)
         imported_fn = getattr(imported_cls, fn)
 
-        # The output type must be specified
-        # TODO: Remove hardcoded output type
+        # TODO: Ensure output type is configurable like the schema above
         return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
