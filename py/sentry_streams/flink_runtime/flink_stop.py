@@ -1,9 +1,10 @@
 import argparse
+import sys
 
 from sentry_streams.flink_runtime.flink_api import cancel_job
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Cancels all the Flink jobs with a given application name"
     )
@@ -22,6 +23,8 @@ def main():
     for id in deleted_ids:
         print(f"- ID: {id}")
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

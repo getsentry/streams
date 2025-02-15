@@ -4,7 +4,7 @@ import subprocess
 from sentry_streams.flink_runtime.flink_api import list_jobs
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Deploys a Sentry Streams Flink application on the local cluster."
     )
@@ -69,6 +69,8 @@ def main():
         print(f"Application {args.application} deployed successfully.")
     else:
         print(f"Failed to deploy application {args.application}.")
+
+    return 0
 
 
 if __name__ == "__main__":
