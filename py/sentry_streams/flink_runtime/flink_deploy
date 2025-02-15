@@ -1,0 +1,75 @@
+import argparse
+import subprocess
+
+from sentry_streams.flink_runtime.flink_api import list_jobs
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Deploys a Sentry Streams Flink application on the local cluster."
+    )
+    parser.add_argument(
+        "--jobmanager",
+        "-j",
+        type=str,
+        default="jobmanager",
+        help="The container name of the Flink Job Manager",
+    )
+    parser.add_argument(
+        "--name",
+        "-n",
+        type=str,
+        default="name",
+        help="The name of the Flink Job",
+    )
+    parser.add_argument(
+        "application",
+        type=str,
+        help=(
+            "The Sentry Stream application file. This has to be relative "
+            "to the path mounted in the job manager as the /apps directory."
+        ),
+    )
+
+    args = parser.parse_args()
+
+    print(f"Job Manager: {args.jobmanager}")
+    print(f"Deploying application: {args.application}")
+
+    running_jobs = list_jobs("http://localhost:8081")
+    names = [job["name"] for job in running_jobs]
+    if args.name in names:
+        print(f"Job {args.name} is already running.")
+        return -1
+
+    result = subprocess.run(
+        [
+            "docker",
+            "exec",
+            args.jobmanager,
+            "/opt/flink/bin/flink",
+            "run",
+            "--detached",
+            "-pyclientexec",
+            "/usr/bin/python3.11",
+            "--python",
+            "/apps/sentry_streams/runner.py",
+            "--name",
+            args.name,
+            f"/apps/{args.application}",
+        ]
+    )
+
+    if result.stdout:
+        print(result.stdout.decode())
+    if result.stderr:
+        print(result.stderr.decode())
+
+    if result.returncode == 0:
+        print(f"Application {args.application} deployed successfully.")
+    else:
+        print(f"Failed to deploy application {args.application}.")
+
+
+if __name__ == "__main__":
+    main()

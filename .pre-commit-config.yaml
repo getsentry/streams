@@ -31,6 +31,7 @@ repos:
         additional_dependencies: [
           pytest==7.1.2,
           apache-flink==1.20.0,
+          types-requests,
         ]
         files: ^py/.+
   - repo: https://github.com/pycqa/isort
