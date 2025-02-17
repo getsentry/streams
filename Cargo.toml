@@ -6,4 +6,19 @@ edition = "2021"
 [lib]
 path = "rust-streams/src/lib.rs"
 
+[[bin]]
+name = "flight-server"
+path = "rust-streams/src/bin/flight-server.rs"
+
+[[bin]]
+name = "flight-client"
+path = "rust-streams/src/bin/flight-client.rs"
+
 [dependencies]
+arrow = "54.2.0"
+arrow-flight = "54.2.0"
+tokio = { version = "1.0", default-features = false, features = ["full"]}
+tonic = { version = "0.12.3", default-features = false, features = ["transport", "codegen", "prost"] }
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
+tokio-stream = "0.1"
+datafusion = "45.0.0"
