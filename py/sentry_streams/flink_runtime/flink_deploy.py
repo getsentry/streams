@@ -23,20 +23,28 @@ def main() -> int:
         help="The name of the Flink Job",
     )
     parser.add_argument(
+        "--jobmanager-address",
+        "-a",
+        type=str,
+        default="localhost:8081",
+        help="Host and port of the Flink Job Manager to send API calls",
+    )
+    parser.add_argument(
         "application",
         type=str,
         help=(
-            "The Sentry Stream application file. This has to be relative "
+            "The Sentry Streams application file. This has to be relative "
             "to the path mounted in the job manager as the /apps directory."
         ),
     )
 
     args = parser.parse_args()
 
-    print(f"Job Manager: {args.jobmanager}")
+    print(f"Job Manager Container: {args.jobmanager}")
+    print(f"Job Manager Host:port: {args.jobmanager_address}")
     print(f"Deploying application: {args.application}")
 
-    running_jobs = list_jobs("http://localhost:8081")
+    running_jobs = list_jobs(f"http://{args.jobmanager_address}")
     names = [job["name"] for job in running_jobs]
     if args.name in names:
         print(f"Job {args.name} is already running.")
