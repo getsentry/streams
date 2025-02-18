@@ -157,8 +157,6 @@ def test_pipeline(
     pipeline: Pipeline,
     expected_plan: MutableMapping[str, list[dict[str, Any]]],
 ) -> None:
-    env: StreamExecutionEnvironment
-    translator: RuntimeTranslator
 
     env, translator = setup_basic_flink_env
 
