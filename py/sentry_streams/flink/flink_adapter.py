@@ -1,5 +1,6 @@
 from typing import Any, MutableMapping
 
+from pyflink.common import Types
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
@@ -10,10 +11,18 @@ from pyflink.datastream.connectors.kafka import (
     KafkaSink,
 )
 from sentry_streams.adapters.stream_adapter import StreamAdapter
+from sentry_streams.modules import get_module
 from sentry_streams.pipeline import Step
 
 
 class FlinkAdapter(StreamAdapter):
+    # TODO: make the (de)serialization schema configurable
+    # TODO: infer the output type from steps which
+    # perform transformations / maps.
+
+    # NOTE: Output type must be specified for steps
+    # that send data to a next step that
+    # performs serialization (e.g. Map --> Sink)
 
     def __init__(self, config: MutableMapping[str, Any], env: StreamExecutionEnvironment) -> None:
         self.environment_config = config
@@ -23,9 +32,10 @@ class FlinkAdapter(StreamAdapter):
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
+        deserialization_schema = SimpleStringSchema()
         kafka_consumer = FlinkKafkaConsumer(
             topics=self.environment_config["topics"][topic],
-            deserialization_schema=SimpleStringSchema(),
+            deserialization_schema=deserialization_schema,
             properties={
                 "bootstrap.servers": self.environment_config["broker"],
                 "group.id": "python-flink-consumer",
@@ -53,3 +63,21 @@ class FlinkAdapter(StreamAdapter):
         )
 
         return stream.sink_to(sink)
+
+    def map(self, step: Step, stream: Any) -> Any:
+
+        assert hasattr(step, "function")
+        fn_path = step.function
+        mod, cls, fn = fn_path.rsplit(".", 2)
+
+        try:
+            module = get_module(mod)
+
+        except ImportError:
+            raise
+
+        imported_cls = getattr(module, cls)
+        imported_fn = getattr(imported_cls, fn)
+
+        # TODO: Ensure output type is configurable like the schema above
+        return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
