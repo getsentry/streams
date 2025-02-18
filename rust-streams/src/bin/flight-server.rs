@@ -17,22 +17,43 @@ use tonic::transport::Server;
 use tonic::{Request, Response, Status, Streaming};
 
 fn build_batch() -> RecordBatch {
-    let string_values = vec![Some("row1"), Some("row2"), Some("row3")];
-    let int_values = vec![Some(1), Some(2), Some(3)];
+    let messages = vec![
+        Some("{\"id\":1,\"name\":\"Item1\",\"value\":10}"),
+        Some("{\"id\":2,\"name\":\"Item2\",\"value\":20}"),
+        Some("{\"id\":3,\"name\":\"Item3\",\"value\":30}"),
+        Some("{\"id\":4,\"name\":\"Item4\",\"value\":40}"),
+        Some("{\"id\":5,\"name\":\"Item5\",\"value\":50}"),
+        Some("{\"id\":6,\"name\":\"Item6\",\"value\":60}"),
+        Some("{\"id\":7,\"name\":\"Item7\",\"value\":70}"),
+        Some("{\"id\":8,\"name\":\"Item8\",\"value\":80}"),
+        Some("{\"id\":9,\"name\":\"Item9\",\"value\":90}"),
+    ];
 
-    let string_array = StringArray::from(string_values);
+    let int_values = vec![
+        Some(0),
+        Some(1),
+        Some(2),
+        Some(3),
+        Some(4),
+        Some(5),
+        Some(6),
+        Some(7),
+        Some(8),
+    ];
+
+    let string_array = StringArray::from(messages);
     let int_array = Int32Array::from(int_values);
 
     let schema = Schema::new(vec![
-        Field::new("string_column", DataType::Utf8, false),
-        Field::new("int_column", DataType::Int32, false),
+        Field::new("offset", DataType::Int32, false),
+        Field::new("message", DataType::Utf8, false),
     ]);
 
     RecordBatch::try_new(
         Arc::new(schema),
         vec![
-            Arc::new(string_array) as Arc<dyn arrow::array::Array>,
             Arc::new(int_array) as Arc<dyn arrow::array::Array>,
+            Arc::new(string_array) as Arc<dyn arrow::array::Array>,
         ],
     )
     .unwrap()

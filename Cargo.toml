@@ -22,3 +22,4 @@ tonic = { version = "0.12.3", default-features = false, features = ["transport",
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 tokio-stream = "0.1"
 datafusion = "45.0.0"
+serde_json = "1.0.138"
