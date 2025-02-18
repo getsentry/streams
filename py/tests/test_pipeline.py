@@ -196,8 +196,6 @@ def test_map_import(
     setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator],
     pipeline: Pipeline,
 ) -> None:
-    translator: RuntimeTranslator
-
     _, translator = setup_basic_flink_env
 
     with pytest.raises(ImportError):
