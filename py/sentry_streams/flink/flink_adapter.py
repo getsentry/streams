@@ -11,8 +11,8 @@ from pyflink.datastream.connectors.kafka import (
     KafkaSink,
 )
 from sentry_streams.adapters.stream_adapter import StreamAdapter
+from sentry_streams.modules import get_module
 from sentry_streams.pipeline import Step
-from sentry_streams.utils import get_module
 
 
 class FlinkAdapter(StreamAdapter):
@@ -73,8 +73,8 @@ class FlinkAdapter(StreamAdapter):
         try:
             module = get_module(mod)
 
-        except ImportError as e:
-            raise e
+        except ImportError:
+            raise
 
         imported_cls = getattr(module, cls)
         imported_fn = getattr(imported_cls, fn)
