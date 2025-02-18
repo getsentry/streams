@@ -9,6 +9,7 @@ from typing import MutableMapping
 class StepType(Enum):
     SINK = "sink"
     SOURCE = "source"
+    MAP = "map"
 
 
 class Pipeline:
@@ -21,7 +22,7 @@ class Pipeline:
         self.steps: MutableMapping[str, Step] = {}
         self.incoming_edges: MutableMapping[str, list[str]] = defaultdict(list)
         self.outgoing_edges: MutableMapping[str, list[str]] = defaultdict(list)
-        self.sources: list[KafkaSource] = []
+        self.sources: list[Source] = []
 
     def register(self, step: Step) -> None:
         assert step.name not in self.steps
@@ -31,7 +32,7 @@ class Pipeline:
         self.incoming_edges[_to.name].append(_from.name)
         self.outgoing_edges[_from.name].append(_to.name)
 
-    def register_source(self, step: KafkaSource) -> None:
+    def register_source(self, step: Source) -> None:
         self.sources.append(step)
 
 
@@ -51,7 +52,14 @@ class Step:
 
 
 @dataclass
-class KafkaSource(Step):
+class Source(Step):
+    """
+    A generic Source.
+    """
+
+
+@dataclass
+class KafkaSource(Source):
     """
     A Source which reads from Kafka.
     """
@@ -80,10 +88,31 @@ class WithInput(Step):
 
 
 @dataclass
-class KafkaSink(WithInput):
+class Sink(WithInput):
+    """
+    A generic Sink.
+    """
+
+
+@dataclass
+class KafkaSink(Sink):
     """
     A Sink which specifically writes to Kafka.
     """
 
     logical_topic: str
     step_type: StepType = StepType.SINK
+
+
+@dataclass
+class Map(WithInput):
+    """
+    A simple 1:1 Map, taking a single input to single output
+    """
+
+    # TODO: Support a reference to a function (Callable)
+    # instead of a raw string
+    # TODO: Allow product to both enable and access
+    # configuration (e.g. a DB that is used as part of Map)
+    function: str
+    step_type: StepType = StepType.MAP
