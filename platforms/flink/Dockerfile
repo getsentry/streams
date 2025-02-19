@@ -28,7 +28,11 @@ RUN /bin/sh -c set -eux; ARCH="$(dpkg --print-architecture)"; \
 RUN echo Python version ${PYTHON_VERSION}
 # install python3 and pip3
 RUN apt-get update -y && \
-    apt-get install -y python${PYTHON_VERSION} python3-pip python${PYTHON_VERSION}-distutils python${PYTHON_VERSION}-dev&& \
+    apt-get install -y \
+    python${PYTHON_VERSION} \
+    python3-pip python${PYTHON_VERSION}-distutils \
+    python${PYTHON_VERSION}-dev \
+    jq && \
     rm -rf /var/lib/apt/lists/*
 
 ENV FILE_NAME=flink-sql-connector-kafka-${KAFKA_CONNECTOR_VERSION}-${FLINK_VERSION}.jar
@@ -43,6 +47,9 @@ FROM build_base
 # that we need to run in Flink. This would be less disruptive for the systems
 # that need to run streaming applications now that we are still testing
 # platforms.
-ARG REQUIREMENTS=requirements.txt
-COPY ${REQUIREMENTS} ./
-RUN python3.11 -m pip install -r requirements.txt
+RUN python3.11 -m pip install yq
+ARG PY_PROJECT=py/pyproject.toml
+COPY ${PY_PROJECT} ./
+RUN tomlq -r '.project.dependencies' pyproject.toml > ./requirements.txt
+RUN echo ./requirements.txt
+RUN python3.11 -m pip install -r ./requirements.txt
