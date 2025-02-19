@@ -10,6 +10,7 @@ from pyflink.datastream.connectors.kafka import (
     KafkaRecordSerializationSchema,
     KafkaSink,
 )
+
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.modules import get_module
 from sentry_streams.pipeline import Step
