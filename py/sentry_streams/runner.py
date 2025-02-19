@@ -3,6 +3,7 @@ import os
 from typing import Any, cast
 
 from pyflink.datastream import StreamExecutionEnvironment
+
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import (
@@ -63,6 +64,13 @@ def main() -> None:
         help="The name of the Flink Job",
     )
     parser.add_argument(
+        "--broker",
+        "-b",
+        type=str,
+        default="kafka:9093",
+        help="The broker the job should connect to",
+    )
+    parser.add_argument(
         "application",
         type=str,
         help=(
@@ -82,12 +90,12 @@ def main() -> None:
     env.set_parallelism(1)
 
     if libs_path is not None:
-        # assert libs_path is not None, "FLINK_LIBS environment variable is not set"
+        # If the libraries path is provided load the
+        jar_file = os.path.join(
+            os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
+        )
 
-        jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
-        kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
-
-        env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
+        env.add_jars(f"file://{jar_file}")
 
     # TODO: read from yaml file
     environment_config = {
@@ -95,7 +103,7 @@ def main() -> None:
             "logical-events": "events",
             "transformed-events": "transformed-events",
         },
-        "broker": "kafka:9093",
+        "broker": args.broker,
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]

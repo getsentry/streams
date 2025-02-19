@@ -20,13 +20,12 @@ def run_stream() -> None:
     env.set_parallelism(1)
 
     if libs_path is not None:
-        jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
-        kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
+        # If the libraries path is provided load the
+        jar_file = os.path.join(
+            os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
+        )
 
-        print(kafka_jar_file)
-        print(jar_file)
-
-        env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
+        env.add_jars(f"file://{jar_file}")
 
     kafka_consumer = FlinkKafkaConsumer(
         topics=INPUT_TOPIC,
