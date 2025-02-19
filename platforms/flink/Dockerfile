@@ -50,6 +50,6 @@ FROM build_base
 RUN python3.11 -m pip install yq
 ARG PY_PROJECT=py/pyproject.toml
 COPY ${PY_PROJECT} ./
-RUN tomlq -r '.project.dependencies' pyproject.toml > ./requirements.txt
-RUN echo ./requirements.txt
+RUN tomlq -r '.project.dependencies' pyproject.toml | jq -r '.[]' > ./requirements.txt
+RUN cat ./requirements.txt
 RUN python3.11 -m pip install -r ./requirements.txt
