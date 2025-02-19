@@ -7,7 +7,8 @@ name = "sentry-streams"
 version = "0.0.1"
 description = "The python Sentry Streaming API"
 readme = "README.md"
-requires-python = ">=3.11"
+# Cannot use 3.12 because of pyflink.
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "apache-flink==1.20.0",
     "setuptools==75.8.0",
