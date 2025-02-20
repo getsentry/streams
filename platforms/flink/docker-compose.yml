@@ -11,8 +11,9 @@ x-flink-config: &flink-config |
   jobmanager.rpc.address: jobmanager
   taskmanager.memory.process.size: 1024m
   taskmanager.numberOfTaskSlots: 2
-  python.executable: /usr/bin/python3.11
   python.files: /apps
+
+# python.executable: /usr/bin/python3.11
 
 # TODO: port this to devservices
 services:
@@ -47,7 +48,7 @@ services:
     container_name: jobmanager
     build:
       context: ../../
-      dockerfile: ./platforms/flink/Dockerfile
+      dockerfile: ./platforms/flink/snuba/Dockerfile
     networks:
       - flink
     volumes:
@@ -65,7 +66,7 @@ services:
     image: localimage/sentry-flink:latest
     build:
       context: ../../
-      dockerfile: ./platforms/flink/Dockerfile
+      dockerfile: ./platforms/flink/snuba/Dockerfile
     networks:
       - flink
     volumes:
