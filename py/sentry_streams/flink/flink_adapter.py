@@ -28,6 +28,21 @@ class FlinkAdapter(StreamAdapter):
         self.environment_config = config
         self.env = env
 
+    def get_function_from_step(self, step: Step) -> Any:
+        assert hasattr(step, "function")
+        fn_path = step.function
+        mod, cls, fn = fn_path.rsplit(".", 2)
+
+        try:
+            module = get_module(mod)
+
+        except ImportError:
+            raise
+
+        imported_cls = getattr(module, cls)
+        imported_fn = getattr(imported_cls, fn)
+        return imported_fn
+
     def source(self, step: Step) -> Any:
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
@@ -65,19 +80,16 @@ class FlinkAdapter(StreamAdapter):
         return stream.sink_to(sink)
 
     def map(self, step: Step, stream: Any) -> Any:
-
-        assert hasattr(step, "function")
-        fn_path = step.function
-        mod, cls, fn = fn_path.rsplit(".", 2)
-
-        try:
-            module = get_module(mod)
-
-        except ImportError:
-            raise
-
-        imported_cls = getattr(module, cls)
-        imported_fn = getattr(imported_cls, fn)
+        imported_fn = self.get_function_from_step(step)
 
         # TODO: Ensure output type is configurable like the schema above
         return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
+
+    def filter(self, step: Step, stream: Any) -> Any:
+        imported_fn = self.get_function_from_step(step)
+
+        # filtered = stream.filter(func=lambda msg: imported_fn(msg))
+        # assert type(filtered) is bool, (
+        #     f"Filter function must return a bool, got {type(filtered)} instead"
+        # )
+        return stream.filter(func=lambda msg: imported_fn(msg))

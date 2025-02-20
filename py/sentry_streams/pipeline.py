@@ -10,6 +10,7 @@ class StepType(Enum):
     SINK = "sink"
     SOURCE = "source"
     MAP = "map"
+    FILTER = "filter"
 
 
 class Pipeline:
@@ -116,3 +117,15 @@ class Map(WithInput):
     # configuration (e.g. a DB that is used as part of Map)
     function: str
     step_type: StepType = StepType.MAP
+
+
+@dataclass
+class Filter(WithInput):
+    """
+    A simple Filter, taking a single input and either returning it or None as output
+    """
+
+    # TODO: Support a reference to a function (Callable)
+    # instead of a raw string
+    function: str
+    step_type: StepType = StepType.FILTER

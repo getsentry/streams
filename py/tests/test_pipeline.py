@@ -102,7 +102,7 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
         name="mymap",
         ctx=pipeline,
         inputs=[source],
-        function="sentry_streams.sample_function.EventsPipelineMapFunction.simple_map",
+        function="sentry_streams.sample_functions.EventsPipelineFunctions.simple_map",
     )
 
     _ = KafkaSink(
@@ -157,7 +157,6 @@ def test_pipeline(
     pipeline: Pipeline,
     expected_plan: MutableMapping[str, list[dict[str, Any]]],
 ) -> None:
-
     env, translator = setup_basic_flink_env
 
     iterate_edges(pipeline, translator)
@@ -178,7 +177,7 @@ def bad_map() -> Pipeline:
         name="mymap",
         ctx=pipeline,
         inputs=[source],
-        function="sentry_streams.unknown_module.EventsPipelineMapFunction.simple_map",
+        function="sentry_streams.unknown_module.EventsPipelineFunctions.simple_map",
     )
 
     _ = KafkaSink(

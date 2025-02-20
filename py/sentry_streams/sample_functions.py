@@ -1,7 +1,7 @@
 import json
 
 
-class EventsPipelineMapFunction:
+class EventsPipelineFunctions:
     """
     Sample user-defined functions to
     plug into pipeline
@@ -13,3 +13,8 @@ class EventsPipelineMapFunction:
         res: str = d.get("name", "no name")
 
         return "hello " + res
+
+    @staticmethod
+    def simple_filter(value: str) -> bool:
+        d = json.loads(value)
+        return True if "name" in d else False

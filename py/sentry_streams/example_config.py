@@ -1,4 +1,10 @@
-from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline
+from sentry_streams.pipeline import (
+    Filter,
+    KafkaSink,
+    KafkaSource,
+    Map,
+    Pipeline,
+)
 
 # pipeline: special name
 pipeline = Pipeline()
@@ -9,11 +15,18 @@ source = KafkaSource(
     logical_topic="logical-events",
 )
 
+filter = Filter(
+    name="myfilter",
+    ctx=pipeline,
+    inputs=[source],
+    function="sentry_streams.sample_functions.EventsPipelineFunctions.simple_filter",
+)
+
 map = Map(
     name="mymap",
     ctx=pipeline,
-    inputs=[source],
-    function="sentry_streams.sample_function.EventsPipelineMapFunction.simple_map",
+    inputs=[filter],
+    function="sentry_streams.sample_functions.EventsPipelineFunctions.simple_map",
 )
 
 sink = KafkaSink(
