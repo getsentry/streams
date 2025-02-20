@@ -53,8 +53,8 @@ services:
     volumes:
       - flink_data:/tmp/
       - type: bind
-        source: ../../py
-        target: /apps
+        source: ../../py/sentry_streams
+        target: /apps/sentry_streams
     ports:
       - "8081:8081"
     environment:
@@ -71,8 +71,8 @@ services:
     volumes:
       - flink_data:/tmp/
       - type: bind
-        source: ../../py
-        target: /apps
+        source: ../../py/sentry_streams
+        target: /apps/sentry_streams
     environment:
       FLINK_PROPERTIES: *flink-config
     command: taskmanager
