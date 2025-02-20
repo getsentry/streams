@@ -1,4 +1,4 @@
-from sentry_streams.user_functions.agg_template import Accumulator
+from sentry_streams.user_functions.function_template import Accumulator
 
 
 class WordCounter(Accumulator):

@@ -1,6 +1,6 @@
 from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline, Reduce
 from sentry_streams.user_functions.sample_agg import WordCounter
-from sentry_streams.user_functions.sample_group_by import my_group_by
+from sentry_streams.user_functions.sample_group_by import GroupByWord
 from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
 
 # pipeline: special name
@@ -23,7 +23,7 @@ reduce = Reduce(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
-    group_by_key=my_group_by,
+    group_by_key=GroupByWord(),
     aggregate_fn=WordCounter(),
 )
 

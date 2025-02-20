@@ -1,7 +1,7 @@
 from typing import Any
 
-from pyflink.datastream.functions import AggregateFunction
-from sentry_streams.user_functions.agg_template import Accumulator
+from pyflink.datastream.functions import AggregateFunction, KeySelector
+from sentry_streams.user_functions.function_template import Accumulator, GroupBy
 
 
 class FlinkAggregate(AggregateFunction):
@@ -24,3 +24,12 @@ class FlinkAggregate(AggregateFunction):
     def merge(self, acc_a: Any, acc_b: Any) -> Any:
         print("MERGE")
         return self.acc.merge(acc_a, acc_b)
+
+
+class FlinkGroupBy(KeySelector):
+
+    def __init__(self, group_by: GroupBy) -> None:
+        self.group_by = group_by
+
+    def get_key(self, value: Any) -> Any:
+        return self.group_by.get_group_by_key(value)

@@ -1,9 +1,7 @@
-def my_group_by(msg_payload: tuple[str, int]) -> str:
-    return msg_payload[0]
+from sentry_streams.user_functions.function_template import GroupBy
 
 
-def dumb_group_by(msg: str) -> str:
-    return msg
+class GroupByWord(GroupBy):
 
-
-# lambda x: x[0] simplest
+    def get_group_by_key(self, payload: tuple[str, int]) -> str:
+        return payload[0]

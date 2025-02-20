@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, MutableMapping
 
-from sentry_streams.user_functions.agg_template import Accumulator
+from sentry_streams.user_functions.function_template import Accumulator, GroupBy
 
 
 class StepType(Enum):
@@ -132,8 +132,7 @@ class Map(WithInput):
 
 @dataclass
 class Reduce(WithInput):
-    # group_by_key: refactor to Callable reference
-    group_by_key: Callable[..., Any]
+    group_by_key: GroupBy
     # windowing mechanism, is this going to be mandatory?
     # windowing: Window
     # aggregation (use standard accumulator)
@@ -143,4 +142,13 @@ class Reduce(WithInput):
     # consider making this a class
     storage: StateBackend = StateBackend.HASH_MAP
 
-    # keyed stream --> windowed stream --> reduce to datastream
+
+# watermarking mechanism
+# percentage
+# strict timestamp
+# number of events
+
+# 3 ways for implementing reduce:
+# reshuffling -- load balancing
+# semantic partitioning and then local storage
+# watermarking

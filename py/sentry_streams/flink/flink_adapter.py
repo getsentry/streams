@@ -1,4 +1,4 @@
-from typing import Any, Callable, MutableMapping
+from typing import Any, MutableMapping
 
 from pyflink.common import Time, Types, WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
@@ -13,9 +13,11 @@ from pyflink.datastream.connectors.kafka import (
 )
 from pyflink.datastream.window import TumblingEventTimeWindows
 from sentry_streams.adapters.stream_adapter import StreamAdapter
-from sentry_streams.flink.flink_agg_fn import FlinkAggregate
+from sentry_streams.flink.flink_agg_fn import FlinkAggregate, FlinkGroupBy
 from sentry_streams.pipeline import Step
-from sentry_streams.user_functions.agg_template import Accumulator
+from sentry_streams.user_functions.function_template import Accumulator, GroupBy
+
+FLINK_TYPE_MAP = {tuple[str, int]: Types.TUPLE([Types.STRING(), Types.INT()]), str: Types.STRING()}
 
 
 class FlinkAdapter(StreamAdapter):
@@ -71,23 +73,16 @@ class FlinkAdapter(StreamAdapter):
 
         assert hasattr(step, "function")
         imported_fn = step.function
+        return_type = imported_fn.__annotations__["return"]
 
         # TODO: Ensure output type is configurable like the schema above
         return stream.map(
-            func=lambda msg: imported_fn(msg),
-            output_type=Types.TUPLE([Types.STRING(), Types.INT()]),
+            func=lambda msg: imported_fn(msg), output_type=FLINK_TYPE_MAP[return_type]
         )
 
-    # receives a DataStream, returns a DataStream
-    # optional: group by, windowing
-    # required: aggregation
     def reduce(self, step: Step, stream: Any) -> Any:
-
-        # group by and agg are required
-        # windowing is optional and inserted between those 2
-
         assert hasattr(step, "group_by_key")
-        key: Callable[[tuple[str, int]], str] = step.group_by_key
+        key: GroupBy = step.group_by_key
 
         assert hasattr(step, "aggregate_fn")
         agg: Accumulator = step.aggregate_fn
@@ -97,11 +92,14 @@ class FlinkAdapter(StreamAdapter):
         )
         time_stream = stream.assign_timestamps_and_watermarks(watermark_strategy)
 
-        keyed_stream = time_stream.key_by(key)
+        keyed_stream = time_stream.key_by(FlinkGroupBy(key))
         windowed_stream = keyed_stream.window(TumblingEventTimeWindows.of(Time.seconds(1)))
 
+        return_type = agg.get_output.__annotations__["return"]
+
+        # TODO: Figure out a systematic way to convert types
         return windowed_stream.aggregate(
             FlinkAggregate(agg),
             accumulator_type=Types.TUPLE([Types.STRING(), Types.INT()]),
-            output_type=Types.STRING(),
+            output_type=FLINK_TYPE_MAP[return_type],
         )

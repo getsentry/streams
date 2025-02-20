@@ -3,6 +3,11 @@ from typing import Any
 
 
 class Accumulator(ABC):
+    """
+    The standard Accumulator template.
+    Define these functions to build a custom
+    Accumulator for aggregation.
+    """
 
     @abstractmethod
     def create(self) -> Any:
@@ -21,8 +26,13 @@ class Accumulator(ABC):
         raise NotImplementedError
 
 
-# class GroupBy(ABC):
+class GroupBy(ABC):
+    """
+    The standard GroupBy / keying template.
+    Extend this to create your own custom
+    GroupBy.
+    """
 
-#     @abstractmethod
-#     def get_key(payload):
-#         pass
+    @abstractmethod
+    def get_group_by_key(self, payload: Any) -> Any:
+        raise NotImplementedError
