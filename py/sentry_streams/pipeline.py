@@ -3,13 +3,25 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import MutableMapping
+from typing import Any, Callable, MutableMapping
+
+from sentry_streams.user_functions.agg_template import Accumulator
 
 
 class StepType(Enum):
     SINK = "sink"
     SOURCE = "source"
     MAP = "map"
+    REDUCE = "reduce"
+
+
+class StateBackend(Enum):
+    HASH_MAP = "hash_map"
+
+
+class Window(Enum):
+    SLIDING = "sliding"
+    TUMBLING = "tumbling"
 
 
 class Pipeline:
@@ -114,5 +126,21 @@ class Map(WithInput):
     # instead of a raw string
     # TODO: Allow product to both enable and access
     # configuration (e.g. a DB that is used as part of Map)
-    function: str
+    function: Callable[..., Any]
     step_type: StepType = StepType.MAP
+
+
+@dataclass
+class Reduce(WithInput):
+    # group_by_key: refactor to Callable reference
+    group_by_key: Callable[..., Any]
+    # windowing mechanism, is this going to be mandatory?
+    # windowing: Window
+    # aggregation (use standard accumulator)
+    aggregate_fn: Accumulator
+    step_type: StepType = StepType.REDUCE
+    # storage: a fixed (enum?) set of storage backends we provide
+    # consider making this a class
+    storage: StateBackend = StateBackend.HASH_MAP
+
+    # keyed stream --> windowed stream --> reduce to datastream

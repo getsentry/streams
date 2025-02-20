@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional, assert_never
 
-from sentry_streams.pipeline import Map, Sink, Source, Step, StepType
+from sentry_streams.pipeline import Map, Reduce, Sink, Source, Step, StepType
 
 
 class StreamAdapter(ABC):
@@ -21,6 +21,10 @@ class StreamAdapter(ABC):
 
     @abstractmethod
     def map(self, step: Map, stream: Any) -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def reduce(self, step: Reduce, stream: Any) -> Any:
         raise NotImplementedError
 
 
@@ -50,6 +54,10 @@ class RuntimeTranslator:
         elif step_type is StepType.MAP:
             assert isinstance(step, Map)
             return self.adapter.map(step, stream)
+
+        elif step_type is StepType.REDUCE:
+            assert isinstance(step, Reduce)
+            return self.adapter.reduce(step, stream)
 
         else:
             assert_never(step_type)

@@ -1,4 +1,7 @@
-from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline
+from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline, Reduce
+from sentry_streams.user_functions.sample_agg import WordCounter
+from sentry_streams.user_functions.sample_group_by import my_group_by
+from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
 
 # pipeline: special name
 pipeline = Pipeline()
@@ -13,12 +16,20 @@ map = Map(
     name="mymap",
     ctx=pipeline,
     inputs=[source],
-    function="sentry_streams.sample_function.EventsPipelineMapFunction.simple_map",
+    function=EventsPipelineMapFunction.simple_map,
+)
+
+reduce = Reduce(
+    name="myreduce",
+    ctx=pipeline,
+    inputs=[map],
+    group_by_key=my_group_by,
+    aggregate_fn=WordCounter(),
 )
 
 sink = KafkaSink(
     name="kafkasink",
     ctx=pipeline,
-    inputs=[map],
+    inputs=[reduce],
     logical_topic="transformed-events",
 )
