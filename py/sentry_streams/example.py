@@ -14,13 +14,14 @@ KAFKA_BROKER = "localhost:9092"
 
 def run_stream() -> None:
     libs_path = os.environ.get("FLINK_LIBS")
-    # assert libs_path is not None, "FLINK_LIBS environment variable is not set"
 
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
 
     if libs_path is not None:
-        # If the libraries path is provided load the
+        # If the libraries path is provided load the libraries from
+        # provided local path. Otherwise assume the libraries are in
+        # Flink's lib directory.
         jar_file = os.path.join(
             os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
         )
