@@ -1,4 +1,5 @@
-from typing import Any, MutableMapping
+from inspect import get_annotations
+from typing import Any, Callable, MutableMapping
 
 from pyflink.common import Types
 from pyflink.common.serialization import SimpleStringSchema
@@ -27,6 +28,12 @@ class FlinkAdapter(StreamAdapter):
     def __init__(self, config: MutableMapping[str, Any], env: StreamExecutionEnvironment) -> None:
         self.environment_config = config
         self.env = env
+
+    def assert_return_type(self, function: Callable[[Any], bool], expected_type: type) -> None:
+        return_type = get_annotations(function)["return"]
+        assert (
+            return_type is expected_type
+        ), f"Filter function {function.__name__} must return a bool, got {return_type} instead"
 
     def get_function_from_step(self, step: Step) -> Any:
         assert hasattr(step, "function")
@@ -87,6 +94,7 @@ class FlinkAdapter(StreamAdapter):
 
     def filter(self, step: Step, stream: Any) -> Any:
         imported_fn = self.get_function_from_step(step)
+        self.assert_return_type(imported_fn, bool)
 
         # filtered = stream.filter(func=lambda msg: imported_fn(msg))
         # assert type(filtered) is bool, (

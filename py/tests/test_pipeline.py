@@ -226,7 +226,7 @@ def test_pipeline(
     assert json.loads(env.get_execution_plan()) == expected_plan
 
 
-def bad_map() -> Pipeline:
+def bad_import_map() -> Pipeline:
     pipeline = Pipeline()
 
     source = KafkaSource(
@@ -252,7 +252,7 @@ def bad_map() -> Pipeline:
     return pipeline
 
 
-def bad_filter() -> Pipeline:
+def bad_import_filter() -> Pipeline:
     pipeline = Pipeline()
 
     source = KafkaSource(
@@ -278,12 +278,49 @@ def bad_filter() -> Pipeline:
     return pipeline
 
 
-@pytest.mark.parametrize("pipeline", [bad_map(), bad_filter()])
-def test_map_import(
+@pytest.mark.parametrize("pipeline", [bad_import_map(), bad_import_filter()])
+def test_import(
     setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator],
     pipeline: Pipeline,
 ) -> None:
     _, translator = setup_basic_flink_env
 
     with pytest.raises(ImportError):
+        iterate_edges(pipeline, translator)
+
+
+def bad_type_filter() -> Pipeline:
+    pipeline = Pipeline()
+
+    source = KafkaSource(
+        name="myinput",
+        ctx=pipeline,
+        logical_topic="logical-events",
+    )
+
+    map = Filter(
+        name="myfilter",
+        ctx=pipeline,
+        inputs=[source],
+        function="sentry_streams.sample_functions.EventsPipelineFunctions.wrong_type_filter",
+    )
+
+    _ = KafkaSink(
+        name="kafkasink",
+        ctx=pipeline,
+        inputs=[map],
+        logical_topic="transformed-events",
+    )
+
+    return pipeline
+
+
+@pytest.mark.parametrize("pipeline", [bad_type_filter()])
+def test_typing(
+    setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator],
+    pipeline: Pipeline,
+) -> None:
+    _, translator = setup_basic_flink_env
+
+    with pytest.raises(AssertionError):
         iterate_edges(pipeline, translator)
