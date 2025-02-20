@@ -6,7 +6,7 @@ import pytest
 from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
 from sentry_streams.flink.flink_adapter import FlinkAdapter
-from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline
+from sentry_streams.pipeline import Filter, KafkaSink, KafkaSource, Map, Pipeline
 from sentry_streams.runner import iterate_edges
 
 
@@ -151,7 +151,69 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     return (pipeline, expected)
 
 
-@pytest.mark.parametrize("pipeline,expected_plan", [basic(), basic_map()])
+def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
+    pipeline = Pipeline()
+
+    source = KafkaSource(
+        name="myinput",
+        ctx=pipeline,
+        logical_topic="logical-events",
+    )
+
+    map = Filter(
+        name="myfilter",
+        ctx=pipeline,
+        inputs=[source],
+        function="sentry_streams.sample_functions.EventsPipelineFunctions.simple_filter",
+    )
+
+    _ = KafkaSink(
+        name="kafkasink",
+        ctx=pipeline,
+        inputs=[map],
+        logical_topic="transformed-events",
+    )
+
+    expected = {
+        "nodes": [
+            {
+                "id": 14,
+                "type": "Source: Custom Source",
+                "pact": "Data Source",
+                "contents": "Source: Custom Source",
+                "parallelism": 1,
+            },
+            {
+                "id": 15,
+                "type": "Filter",
+                "pact": "Operator",
+                "contents": "Filter",
+                "parallelism": 1,
+                "predecessors": [{"id": 14, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+            {
+                "id": 17,
+                "type": "Sink: Writer",
+                "pact": "Operator",
+                "contents": "Sink: Writer",
+                "parallelism": 1,
+                "predecessors": [{"id": 15, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+            {
+                "id": 19,
+                "type": "Sink: Committer",
+                "pact": "Operator",
+                "contents": "Sink: Committer",
+                "parallelism": 1,
+                "predecessors": [{"id": 17, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+        ]
+    }
+
+    return (pipeline, expected)
+
+
+@pytest.mark.parametrize("pipeline,expected_plan", [basic(), basic_map(), basic_filter()])
 def test_pipeline(
     setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator],
     pipeline: Pipeline,
@@ -190,7 +252,33 @@ def bad_map() -> Pipeline:
     return pipeline
 
 
-@pytest.mark.parametrize("pipeline", [bad_map()])
+def bad_filter() -> Pipeline:
+    pipeline = Pipeline()
+
+    source = KafkaSource(
+        name="myinput",
+        ctx=pipeline,
+        logical_topic="logical-events",
+    )
+
+    map = Filter(
+        name="myfilter",
+        ctx=pipeline,
+        inputs=[source],
+        function="sentry_streams.unknown_module.EventsPipelineFunctions.simple_filter",
+    )
+
+    _ = KafkaSink(
+        name="kafkasink",
+        ctx=pipeline,
+        inputs=[map],
+        logical_topic="transformed-events",
+    )
+
+    return pipeline
+
+
+@pytest.mark.parametrize("pipeline", [bad_map(), bad_filter()])
 def test_map_import(
     setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator],
     pipeline: Pipeline,
