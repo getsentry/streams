@@ -20,6 +20,9 @@ map = Map(
     function=EventsPipelineMapFunction.simple_map,
 )
 
+# A sample window.
+# Windows are assigned 3 elements.
+# But aggregation can be triggered as soon as 2 elements are seen.
 reduce_window = TumblingCountWindow(trigger=CountingTrigger(2), window_size=3)
 
 reduce = Reduce(
