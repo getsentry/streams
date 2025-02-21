@@ -4,7 +4,10 @@ import json
 class EventsPipelineMapFunction:
     """
     Sample user-defined functions to
-    plug into pipeline
+    plug into pipeline. Group together
+    functions that are related (e.g.
+    part of the same pipeline) into
+    classes like this one.
     """
 
     @staticmethod

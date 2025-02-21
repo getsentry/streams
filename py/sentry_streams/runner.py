@@ -51,7 +51,6 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator) -> None:
                         next_step: WithInput = cast(WithInput, p_graph.steps[output_step_name])
                         print(f"Apply step: {next_step.name}")
                         next_step_stream = translator.translate_step(next_step, input_stream)
-                        print(f"stream type {type(next_step_stream)}")
                         step_streams[next_step.name] = next_step_stream
 
 
