@@ -13,7 +13,7 @@ from pyflink.datastream.connectors.kafka import (
 
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline import Map, Step
+from sentry_streams.pipeline import Filter, Map, Step
 
 
 class FlinkAdapter(StreamAdapter):
@@ -84,8 +84,7 @@ class FlinkAdapter(StreamAdapter):
         # TODO: Ensure output type is configurable like the schema above
         return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
 
-    def filter(self, step: Step, stream: Any) -> Any:
-        assert hasattr(step, "function")
+    def filter(self, step: Filter, stream: Any) -> Any:
         imported_fn = step.function
         return_type = imported_fn.__annotations__["return"]
         assert (
