@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import MutableMapping
+from typing import Any, Callable, MutableMapping
 
 
 class StepType(Enum):
@@ -125,7 +125,5 @@ class Filter(WithInput):
     A simple Filter, taking a single input and either returning it or None as output
     """
 
-    # TODO: Support a reference to a function (Callable)
-    # instead of a raw string
-    function: str
+    function: Callable[..., Any]
     step_type: StepType = StepType.FILTER
