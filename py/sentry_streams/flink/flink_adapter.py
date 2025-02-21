@@ -13,7 +13,7 @@ from pyflink.datastream.connectors.kafka import (
 
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline import Step
+from sentry_streams.pipeline import Map, Step
 
 
 class FlinkAdapter(StreamAdapter):
@@ -65,20 +65,21 @@ class FlinkAdapter(StreamAdapter):
 
         return stream.sink_to(sink)
 
-    def map(self, step: Step, stream: Any) -> Any:
+    def map(self, step: Map, stream: Any) -> Any:
+        if isinstance(step.function, str):
+            fn_path = step.function
+            mod, cls, fn = fn_path.rsplit(".", 2)
 
-        assert hasattr(step, "function")
-        fn_path = step.function
-        mod, cls, fn = fn_path.rsplit(".", 2)
+            try:
+                module = get_module(mod)
 
-        try:
-            module = get_module(mod)
+            except ImportError:
+                raise
 
-        except ImportError:
-            raise
-
-        imported_cls = getattr(module, cls)
-        imported_fn = getattr(imported_cls, fn)
+            imported_cls = getattr(module, cls)
+            imported_fn = getattr(imported_cls, fn)
+        else:
+            imported_fn = step.function
 
         # TODO: Ensure output type is configurable like the schema above
         return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
