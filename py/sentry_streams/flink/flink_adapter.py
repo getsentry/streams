@@ -11,6 +11,7 @@ from pyflink.datastream.connectors.kafka import (
     KafkaRecordSerializationSchema,
     KafkaSink,
 )
+
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.modules import get_module
 from sentry_streams.pipeline import Step
@@ -41,10 +42,12 @@ class FlinkAdapter(StreamAdapter):
 
         if libs_path:
             jar_file = os.path.join(
-                os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar"
+                os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
             )
-            kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
-
+            kafka_jar_file = os.path.join(
+                os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
+            )
+            print(kafka_jar_file)
             env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
 
         env.set_parallelism(flink_config.get("parallelism", 1))

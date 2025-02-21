@@ -1,4 +1,5 @@
 import pytest
+
 from sentry_streams.adapters.stream_adapter import PipelineConfig
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 

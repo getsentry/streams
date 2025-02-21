@@ -1,4 +1,4 @@
-import sys
+import argparse
 from typing import Any, cast
 
 from sentry_streams.adapters import AdapterType, load_adapter
@@ -52,9 +52,34 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Runs a Flink application.")
+    parser.add_argument(
+        "--name",
+        "-n",
+        type=str,
+        default="Flink Job",
+        help="The name of the Flink Job",
+    )
+    parser.add_argument(
+        "--broker",
+        "-b",
+        type=str,
+        default="kafka:9093",
+        help="The broker the job should connect to",
+    )
+    parser.add_argument(
+        "application",
+        type=str,
+        help=(
+            "The Sentry Stream application file. This has to be relative "
+            "to the path mounted in the job manager as the /apps directory."
+        ),
+    )
     pipeline_globals: dict[str, Any] = {}
 
-    with open(sys.argv[1]) as f:
+    args = parser.parse_args()
+
+    with open(args.application) as f:
         exec(f.read(), pipeline_globals)
 
     # TODO: read from yaml file
@@ -63,7 +88,7 @@ def main() -> None:
             "logical-events": "events",
             "transformed-events": "transformed-events",
         },
-        "broker": "localhost:9092",
+        "broker": args.broker,
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
