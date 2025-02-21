@@ -1,6 +1,6 @@
 from typing import Any, MutableMapping
 
-from pyflink.common import Time, Types, WatermarkStrategy
+from pyflink.common import Types, WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.common.time import Duration
 from pyflink.datastream import StreamExecutionEnvironment
@@ -11,11 +11,15 @@ from pyflink.datastream.connectors.kafka import (
     KafkaRecordSerializationSchema,
     KafkaSink,
 )
-from pyflink.datastream.window import TumblingEventTimeWindows
 from sentry_streams.adapters.stream_adapter import StreamAdapter
-from sentry_streams.flink.flink_agg_fn import FlinkAggregate, FlinkGroupBy
-from sentry_streams.pipeline import Step
-from sentry_streams.user_functions.function_template import Accumulator, GroupBy
+from sentry_streams.flink.flink_fn_translator import (
+    FlinkAggregate,
+    FlinkGroupBy,
+    FlinkWindows,
+)
+from sentry_streams.pipeline import Reduce, Step
+from sentry_streams.user_functions.function_template import Accumulator
+from sentry_streams.window import Window
 
 FLINK_TYPE_MAP = {tuple[str, int]: Types.TUPLE([Types.STRING(), Types.INT()]), str: Types.STRING()}
 
@@ -38,6 +42,8 @@ class FlinkAdapter(StreamAdapter):
         topic = step.logical_topic
 
         deserialization_schema = SimpleStringSchema()
+
+        # TODO: Look into using KafkaSource instead
         kafka_consumer = FlinkKafkaConsumer(
             topics=self.environment_config["topics"][topic],
             deserialization_schema=deserialization_schema,
@@ -80,20 +86,31 @@ class FlinkAdapter(StreamAdapter):
             func=lambda msg: imported_fn(msg), output_type=FLINK_TYPE_MAP[return_type]
         )
 
-    def reduce(self, step: Step, stream: Any) -> Any:
-        assert hasattr(step, "group_by_key")
-        key: GroupBy = step.group_by_key
+    def reduce(self, step: Reduce, stream: Any) -> Any:
 
-        assert hasattr(step, "aggregate_fn")
         agg: Accumulator = step.aggregate_fn
+        windowing: Window = step.windowing
+        flink_window = FlinkWindows(windowing)
+        window_assigner = flink_window.build_window()
+
+        # The only optional parameter
+        group_by = hasattr(step, "group_by_key")
 
         watermark_strategy = WatermarkStrategy.for_monotonous_timestamps().with_idleness(
             Duration.of_seconds(5)
         )
         time_stream = stream.assign_timestamps_and_watermarks(watermark_strategy)
 
-        keyed_stream = time_stream.key_by(FlinkGroupBy(key))
-        windowed_stream = keyed_stream.window(TumblingEventTimeWindows.of(Time.seconds(1)))
+        if group_by:
+            group_by_key = step.group_by_key
+            assert group_by_key is not None
+
+            keyed_stream = time_stream.key_by(FlinkGroupBy(group_by_key))
+
+            windowed_stream = keyed_stream.window(window_assigner)
+
+        else:
+            windowed_stream = time_stream.window_all(window_assigner)
 
         return_type = agg.get_output.__annotations__["return"]
 

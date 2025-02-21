@@ -3,9 +3,10 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, MutableMapping
+from typing import Any, Callable, MutableMapping, Optional
 
 from sentry_streams.user_functions.function_template import Accumulator, GroupBy
+from sentry_streams.window import Window
 
 
 class StepType(Enum):
@@ -17,11 +18,6 @@ class StepType(Enum):
 
 class StateBackend(Enum):
     HASH_MAP = "hash_map"
-
-
-class Window(Enum):
-    SLIDING = "sliding"
-    TUMBLING = "tumbling"
 
 
 class Pipeline:
@@ -132,15 +128,19 @@ class Map(WithInput):
 
 @dataclass
 class Reduce(WithInput):
-    group_by_key: GroupBy
+    group_by_key: Optional[GroupBy]
     # windowing mechanism, is this going to be mandatory?
-    # windowing: Window
+    windowing: Window
     # aggregation (use standard accumulator)
     aggregate_fn: Accumulator
     step_type: StepType = StepType.REDUCE
     # storage: a fixed (enum?) set of storage backends we provide
     # consider making this a class
     storage: StateBackend = StateBackend.HASH_MAP
+
+
+# Watermarking in this way produces a new stream
+# with timestamped data
 
 
 # watermarking mechanism

@@ -2,6 +2,7 @@ from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline, Reduc
 from sentry_streams.user_functions.sample_agg import WordCounter
 from sentry_streams.user_functions.sample_group_by import GroupByWord
 from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
+from sentry_streams.window import CountingTrigger, TumblingCountWindow
 
 # pipeline: special name
 pipeline = Pipeline()
@@ -19,11 +20,14 @@ map = Map(
     function=EventsPipelineMapFunction.simple_map,
 )
 
+reduce_window = TumblingCountWindow(trigger=CountingTrigger(2), window_size=3)
+
 reduce = Reduce(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
     group_by_key=GroupByWord(),
+    windowing=reduce_window,
     aggregate_fn=WordCounter(),
 )
 
