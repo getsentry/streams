@@ -1,8 +1,6 @@
-import os
 import sys
 from typing import Any, cast
 
-from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import (
@@ -59,16 +57,6 @@ def main() -> None:
     with open(sys.argv[1]) as f:
         exec(f.read(), pipeline_globals)
 
-    libs_path = os.environ.get("FLINK_LIBS")
-    assert libs_path is not None, "FLINK_LIBS environment variable is not set"
-
-    jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
-    kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
-
-    env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_parallelism(1)
-    env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
-
     # TODO: read from yaml file
     environment_config = {
         "topics": {
@@ -79,14 +67,12 @@ def main() -> None:
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    # This will not be harcdoded in the future
-    runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
-    translator = RuntimeTranslator(runtime_config)
+    runtime: StreamAdapter = FlinkAdapter.build(environment_config)
+    translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
 
-    # submit for execution
-    env.execute()
+    runtime.run()
 
 
 if __name__ == "__main__":

@@ -1,10 +1,9 @@
 import json
-import os
 from typing import Any, Generator, MutableMapping
 
 import pytest
 from pyflink.datastream import StreamExecutionEnvironment
-from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
+from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline
 from sentry_streams.runner import iterate_edges
@@ -14,16 +13,6 @@ from sentry_streams.runner import iterate_edges
 def setup_basic_flink_env() -> (
     Generator[tuple[StreamExecutionEnvironment, RuntimeTranslator], None, None]
 ):
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    libs_path = os.path.join("/".join(dir_path.split("/")[:-2]), "flink_libs")
-    assert libs_path is not None, "FLINK_LIBS environment variable is not set"
-
-    jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
-    kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
-
-    env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_parallelism(1)
-    env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
 
     # TODO: read from yaml file
     environment_config = {
@@ -33,11 +22,10 @@ def setup_basic_flink_env() -> (
         },
         "broker": "localhost:9092",
     }
+    runtime = FlinkAdapter.build(environment_config)
+    translator = RuntimeTranslator(runtime)
 
-    runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
-    translator = RuntimeTranslator(runtime_config)
-
-    setup_data = (env, translator)
+    setup_data = (runtime.env, translator)
 
     yield setup_data
 
