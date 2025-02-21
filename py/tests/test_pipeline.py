@@ -4,6 +4,7 @@ from typing import Any, Generator, MutableMapping
 
 import pytest
 from pyflink.datastream import StreamExecutionEnvironment
+
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline
@@ -18,12 +19,11 @@ def setup_basic_flink_env() -> (
     libs_path = os.path.join("/".join(dir_path.split("/")[:-2]), "flink_libs")
     assert libs_path is not None, "FLINK_LIBS environment variable is not set"
 
-    jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
-    kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
+    jar_file = os.path.join(os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar")
 
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
-    env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
+    env.add_jars(f"file://{jar_file}")
 
     # TODO: read from yaml file
     environment_config = {

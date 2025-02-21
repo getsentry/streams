@@ -14,17 +14,19 @@ KAFKA_BROKER = "localhost:9092"
 
 def run_stream() -> None:
     libs_path = os.environ.get("FLINK_LIBS")
-    assert libs_path is not None, "FLINK_LIBS environment variable is not set"
-
-    jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
-    kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
-
-    print(kafka_jar_file)
-    print(jar_file)
 
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
-    env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
+
+    if libs_path is not None:
+        # If the libraries path is provided load the libraries from
+        # provided local path. Otherwise assume the libraries are in
+        # Flink's lib directory.
+        jar_file = os.path.join(
+            os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
+        )
+
+        env.add_jars(f"file://{jar_file}")
 
     kafka_consumer = FlinkKafkaConsumer(
         topics=INPUT_TOPIC,
