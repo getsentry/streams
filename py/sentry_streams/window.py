@@ -15,7 +15,10 @@ class Trigger:
 @dataclass
 class EventTimeTrigger(Trigger):
     """
-    The default window trigger.
+    Triggers based on progress of
+    event time of event data. Once the
+    watermark exceeds the end of the
+    window, window function is triggered.
     """
 
 
@@ -23,8 +26,8 @@ class EventTimeTrigger(Trigger):
 class CountingTrigger(Trigger):
     """
     Specifically triggers window functions
-    (for example, aggregates) upon reaching
-    an event count threshold.
+    (for example, aggregates) when the number
+    of elements in a window exceeds the count.
     """
 
     count: int
@@ -32,6 +35,13 @@ class CountingTrigger(Trigger):
 
 @dataclass
 class IntervalTrigger(Trigger):
+    """
+    Triggers continuously
+    based on intervals. In this
+    case, event time watermarks
+    define the interval boundaries.
+    """
+
     interval: timedelta
 
 
@@ -47,21 +57,52 @@ class Window:
 
 @dataclass
 class SlidingCountWindow(Window):
+    """
+    A sliding window which is configured
+    by counts. Size and slide are both
+    in terms of number of elements.
+
+    The window slide determines how
+    frequently a window is started. (e.g.
+    every 10 elements). Windows can
+    overlap.
+    """
+
     window_size: int
     window_slide: int
 
 
 @dataclass
 class SlidingEventTimeWindow(Window):
+    """
+    A sliding window where size and slide
+    are both in terms of event time.
+
+    The window slide determines how
+    frequently a window is started. (
+    e.g. every 5 minutes). Windows
+    can overlap.
+    """
+
     window_size: timedelta
     window_slide: timedelta
 
 
 @dataclass
 class TumblingCountWindow(Window):
+    """
+    A fixed-size window with no overlap.
+    Size is in terms of number of elements.
+    """
+
     window_size: int
 
 
 @dataclass
 class TumblingEventTimeWindow(Window):
+    """
+    A fixed-size window with no overlap.
+    Size is in terms of event time passed.
+    """
+
     window_size: timedelta
