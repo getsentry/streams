@@ -5,6 +5,7 @@ from sentry_streams.pipeline import (
     Map,
     Pipeline,
 )
+from sentry_streams.sample_function import EventsPipelineMapFunction
 from sentry_streams.user_functions.sample_filter import EventsPiplineFilterFunctions
 
 # pipeline: special name
@@ -27,7 +28,7 @@ map = Map(
     name="mymap",
     ctx=pipeline,
     inputs=[filter],
-    function="sentry_streams.sample_functions.EventsPipelineFunctions.simple_map",
+    function=EventsPipelineMapFunction.simple_map,
 )
 
 sink = KafkaSink(

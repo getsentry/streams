@@ -1,7 +1,7 @@
 import json
 
 
-class EventsPipelineFunctions:
+class EventsPipelineMapFunction:
     """
     Sample user-defined functions to
     plug into pipeline
