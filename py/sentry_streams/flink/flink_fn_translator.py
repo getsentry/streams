@@ -17,6 +17,7 @@ from pyflink.datastream.window import (
     TumblingEventTimeWindows,
     WindowAssigner,
 )
+
 from sentry_streams.user_functions.function_template import Accumulator, GroupBy
 from sentry_streams.window import (
     CountingTrigger,
@@ -36,19 +37,15 @@ class FlinkAggregate(AggregateFunction):
         self.acc = acc
 
     def create_accumulator(self) -> Any:
-        print("CREATED")
         return self.acc.create()
 
     def add(self, value: Any, accumulator: Any) -> Any:
-        print("ADDED")
         return self.acc.add(accumulator, value)
 
     def get_result(self, accumulator: Any) -> Any:
-        print("RESULT")
         return self.acc.get_output(accumulator)
 
     def merge(self, acc_a: Any, acc_b: Any) -> Any:
-        print("MERGE")
         return self.acc.merge(acc_a, acc_b)
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, MutableMapping, Optional
+from typing import Any, Callable, MutableMapping, Optional, Union
 
 from sentry_streams.user_functions.function_template import Accumulator, GroupBy
 from sentry_streams.window import Window
@@ -112,43 +112,32 @@ class KafkaSink(Sink):
     step_type: StepType = StepType.SINK
 
 
+# TODO: Define proper typing for messages
+MapFunction = Callable[[Any], Any]
+
+
 @dataclass
 class Map(WithInput):
     """
-    A simple 1:1 Map, taking a single input to single output
+    A simple 1:1 Map, taking a single input to single output.
     """
 
-    # TODO: Support a reference to a function (Callable)
-    # instead of a raw string
+    # We support both referencing map function via a direct reference
+    # to the symbol and through a string.
+    # The direct reference to the symbol allows for strict type checking
+    # The string is likely to be used in cross code base pipelines where
+    # the symbol is just not present in the current code base.
+    function: Union[MapFunction, str]
+    step_type: StepType = StepType.MAP
+
     # TODO: Allow product to both enable and access
     # configuration (e.g. a DB that is used as part of Map)
-    function: Callable[..., Any]
-    step_type: StepType = StepType.MAP
 
 
 @dataclass
 class Reduce(WithInput):
     group_by_key: Optional[GroupBy]
-    # windowing mechanism, is this going to be mandatory?
     windowing: Window
-    # aggregation (use standard accumulator)
     aggregate_fn: Accumulator
     step_type: StepType = StepType.REDUCE
-    # storage: a fixed (enum?) set of storage backends we provide
-    # consider making this a class
-    storage: StateBackend = StateBackend.HASH_MAP
-
-
-# Watermarking in this way produces a new stream
-# with timestamped data
-
-
-# watermarking mechanism
-# percentage
-# strict timestamp
-# number of events
-
-# 3 ways for implementing reduce:
-# reshuffling -- load balancing
-# semantic partitioning and then local storage
-# watermarking
+    storage: StateBackend = StateBackend.HASH_MAP  # WIP
