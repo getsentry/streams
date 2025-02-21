@@ -1,8 +1,9 @@
+import argparse
 import os
-import sys
 from typing import Any, cast
 
 from pyflink.datastream import StreamExecutionEnvironment
+
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import (
@@ -55,20 +56,47 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Runs a Flink application.")
+    parser.add_argument(
+        "--name",
+        "-n",
+        type=str,
+        default="Flink Job",
+        help="The name of the Flink Job",
+    )
+    parser.add_argument(
+        "--broker",
+        "-b",
+        type=str,
+        default="kafka:9093",
+        help="The broker the job should connect to",
+    )
+    parser.add_argument(
+        "application",
+        type=str,
+        help=(
+            "The Sentry Stream application file. This has to be relative "
+            "to the path mounted in the job manager as the /apps directory."
+        ),
+    )
     pipeline_globals: dict[str, Any] = {}
 
-    with open(sys.argv[1]) as f:
+    args = parser.parse_args()
+
+    with open(args.application) as f:
         exec(f.read(), pipeline_globals)
 
     libs_path = os.environ.get("FLINK_LIBS")
-    assert libs_path is not None, "FLINK_LIBS environment variable is not set"
-
-    jar_file = os.path.join(os.path.abspath(libs_path), "flink-connector-kafka-3.4.0-1.20.jar")
-    kafka_jar_file = os.path.join(os.path.abspath(libs_path), "kafka-clients-3.4.0.jar")
-
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
-    env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
+
+    if libs_path is not None:
+        # If the libraries path is provided load the
+        jar_file = os.path.join(
+            os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
+        )
+
+        env.add_jars(f"file://{jar_file}")
 
     # TODO: read from yaml file
     environment_config = {
@@ -76,7 +104,7 @@ def main() -> None:
             "logical-events": "events",
             "transformed-events": "transformed-events",
         },
-        "broker": "localhost:9092",
+        "broker": args.broker,
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
@@ -87,7 +115,7 @@ def main() -> None:
     iterate_edges(pipeline, translator)
 
     # submit for execution
-    env.execute()
+    env.execute(job_name=args.name)
 
 
 if __name__ == "__main__":
