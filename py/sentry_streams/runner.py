@@ -1,8 +1,8 @@
 import sys
 from typing import Any, cast
 
-from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
-from sentry_streams.flink.flink_adapter import FlinkAdapter
+from sentry_streams.adapters import AdapterType, load_adapter
+from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.pipeline import (
     Pipeline,
     WithInput,
@@ -67,7 +67,7 @@ def main() -> None:
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    runtime: StreamAdapter = FlinkAdapter.build(environment_config)
+    runtime = load_adapter(AdapterType.FLINK, environment_config)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
