@@ -9,6 +9,7 @@ from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdap
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline
 from sentry_streams.runner import iterate_edges
+from sentry_streams.sample_function import EventsPipelineMapFunction
 
 
 @pytest.fixture(autouse=True)
@@ -102,7 +103,7 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
         name="mymap",
         ctx=pipeline,
         inputs=[source],
-        function="sentry_streams.sample_function.EventsPipelineMapFunction.simple_map",
+        function=EventsPipelineMapFunction.simple_map,
     )
 
     _ = KafkaSink(
