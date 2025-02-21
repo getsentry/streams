@@ -26,9 +26,9 @@ reduce = Reduce(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
-    group_by_key=GroupByWord(),
     windowing=reduce_window,
     aggregate_fn=WordCounter(),
+    group_by_key=GroupByWord(),
 )
 
 sink = KafkaSink(

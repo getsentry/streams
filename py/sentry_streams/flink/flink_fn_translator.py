@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Any
 
-from pyflink.common import Time
+from pyflink.common import Time, Types
 from pyflink.datastream.functions import AggregateFunction, KeySelector
 from pyflink.datastream.window import (
     CountSlidingWindowAssigner,
@@ -29,6 +29,8 @@ from sentry_streams.window import (
     TumblingEventTimeWindow,
     Window,
 )
+
+FLINK_TYPE_MAP = {tuple[str, int]: Types.TUPLE([Types.STRING(), Types.INT()]), str: Types.STRING()}
 
 
 class FlinkAggregate(AggregateFunction):

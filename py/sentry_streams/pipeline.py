@@ -136,8 +136,8 @@ class Map(WithInput):
 
 @dataclass
 class Reduce(WithInput):
-    group_by_key: Optional[GroupBy]
     windowing: Window
     aggregate_fn: Accumulator
+    group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE
     storage: StateBackend = StateBackend.HASH_MAP  # WIP

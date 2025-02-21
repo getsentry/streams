@@ -2,7 +2,6 @@ from typing import Any, MutableMapping
 
 from pyflink.common import Types, WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
-from pyflink.common.time import Duration
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
     FlinkKafkaConsumer,
@@ -14,6 +13,7 @@ from pyflink.datastream.connectors.kafka import (
 
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.flink.flink_fn_translator import (
+    FLINK_TYPE_MAP,
     FlinkAggregate,
     FlinkGroupBy,
     FlinkWindows,
@@ -22,8 +22,6 @@ from sentry_streams.modules import get_module
 from sentry_streams.pipeline import Map, Reduce, Step
 from sentry_streams.user_functions.function_template import Accumulator
 from sentry_streams.window import Window
-
-FLINK_TYPE_MAP = {tuple[str, int]: Types.TUPLE([Types.STRING(), Types.INT()]), str: Types.STRING()}
 
 
 class FlinkAdapter(StreamAdapter):
@@ -105,13 +103,15 @@ class FlinkAdapter(StreamAdapter):
         windowing: Window = step.windowing
         flink_window = FlinkWindows(windowing)
         window_assigner = flink_window.build_window()
+        trigger = flink_window.get_trigger()
 
         # The only optional parameter
-        group_by = hasattr(step, "group_by_key")
+        group_by = step.group_by_key
 
-        watermark_strategy = WatermarkStrategy.for_monotonous_timestamps().with_idleness(
-            Duration.of_seconds(5)
-        )
+        # TODO: Configure WatermarkStrategy as part of KafkaSource
+        # Injecting strategy within a step like here produces
+        # a new, watermarked stream
+        watermark_strategy = WatermarkStrategy.for_monotonous_timestamps()
         time_stream = stream.assign_timestamps_and_watermarks(watermark_strategy)
 
         if group_by:
@@ -120,10 +120,10 @@ class FlinkAdapter(StreamAdapter):
 
             keyed_stream = time_stream.key_by(FlinkGroupBy(group_by_key))
 
-            windowed_stream = keyed_stream.window(window_assigner)
+            windowed_stream = keyed_stream.window(window_assigner).trigger(trigger)
 
         else:
-            windowed_stream = time_stream.window_all(window_assigner)
+            windowed_stream = time_stream.window_all(window_assigner).trigger(trigger)
 
         return_type = agg.get_output.__annotations__["return"]
 

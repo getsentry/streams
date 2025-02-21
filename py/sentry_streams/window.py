@@ -21,6 +21,12 @@ class EventTimeTrigger(Trigger):
 
 @dataclass
 class CountingTrigger(Trigger):
+    """
+    Specifically triggers window functions
+    (for example, aggregates) upon reaching
+    an event count threshold.
+    """
+
     count: int
 
 
