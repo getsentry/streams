@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import MutableMapping
+from typing import Any, Callable, MutableMapping, Union
 
 
 class StepType(Enum):
@@ -104,15 +104,23 @@ class KafkaSink(Sink):
     step_type: StepType = StepType.SINK
 
 
+# TODO: Define proper typing for messages
+MapFunction = Callable[[Any], Any]
+
+
 @dataclass
 class Map(WithInput):
     """
-    A simple 1:1 Map, taking a single input to single output
+    A simple 1:1 Map, taking a single input to single output.
     """
 
-    # TODO: Support a reference to a function (Callable)
-    # instead of a raw string
     # TODO: Allow product to both enable and access
     # configuration (e.g. a DB that is used as part of Map)
-    function: str
+
+    # We support both referencing map function via a direct reference
+    # to the symbol and through a string.
+    # The direct reference to the symbol allows for strict type checking
+    # The string is likely to be used in cross code base pipelines where
+    # the symbol is just not present in the current code base.
+    function: Union[MapFunction, str]
     step_type: StepType = StepType.MAP
