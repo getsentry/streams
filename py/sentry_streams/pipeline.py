@@ -111,7 +111,18 @@ MapFunction = Callable[[Any], Any]
 
 
 @dataclass
-class Map(WithInput):
+class TransformStep(WithInput):
+    """
+    A generic step representing a step performing a transform operation
+    on input data.
+    """
+
+    function: Union[Callable[..., Any], str]
+    step_type: StepType
+
+
+@dataclass
+class Map(TransformStep):
     """
     A simple 1:1 Map, taking a single input to single output.
     """
@@ -129,7 +140,7 @@ class Map(WithInput):
 
 
 @dataclass
-class Filter(WithInput):
+class Filter(TransformStep):
     """
     A simple Filter, taking a single input and either returning it or None as output
     """
