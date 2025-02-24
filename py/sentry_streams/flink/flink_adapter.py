@@ -47,7 +47,6 @@ class FlinkAdapter(StreamAdapter):
             kafka_jar_file = os.path.join(
                 os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
             )
-            print(kafka_jar_file)
             env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
 
         env.set_parallelism(flink_config.get("parallelism", 1))
