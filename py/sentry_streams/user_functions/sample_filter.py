@@ -8,10 +8,9 @@ class EventsPiplineFilterFunctions:
         return True if "name" in d else False
 
     @staticmethod
-    def wrong_type_filter(value: str) -> str:
+    def wrong_type_filter(value: str) -> str:  # type: ignore[empty-body]
         # TODO: move test functions into the tests/ folder somehow
         """
-        Filter with wrong return type, used in tests
+        Filter function with wrong return type, used in tests
         """
-        d = json.loads(value)
-        return "True" if "name" in d else "False"
+        pass

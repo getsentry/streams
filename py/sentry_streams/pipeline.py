@@ -133,5 +133,5 @@ class Filter(WithInput):
     A simple Filter, taking a single input and either returning it or None as output
     """
 
-    function: Callable[..., Any]
+    function: Callable[[Any], bool]
     step_type: StepType = StepType.FILTER

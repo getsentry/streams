@@ -262,39 +262,3 @@ def test_import(
 
     with pytest.raises(ImportError):
         iterate_edges(pipeline, translator)
-
-
-def bad_type_filter() -> Pipeline:
-    pipeline = Pipeline()
-
-    source = KafkaSource(
-        name="myinput",
-        ctx=pipeline,
-        logical_topic="logical-events",
-    )
-
-    filter = Filter(
-        name="myfilter",
-        ctx=pipeline,
-        inputs=[source],
-        function=EventsPiplineFilterFunctions.wrong_type_filter,
-    )
-
-    _ = KafkaSink(
-        name="kafkasink",
-        ctx=pipeline,
-        inputs=[filter],
-        logical_topic="transformed-events",
-    )
-
-    return pipeline
-
-
-def test_typing(
-    setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator],
-    pipeline: Pipeline = bad_type_filter(),
-) -> None:
-    _, translator = setup_basic_flink_env
-
-    with pytest.raises(AssertionError):
-        iterate_edges(pipeline, translator)

@@ -86,9 +86,4 @@ class FlinkAdapter(StreamAdapter):
 
     def filter(self, step: Filter, stream: Any) -> Any:
         imported_fn = step.function
-        return_type = imported_fn.__annotations__["return"]
-        assert (
-            return_type is bool
-        ), f"Filter function {imported_fn.__name__} must return a bool, got {return_type} instead"
-
         return stream.filter(func=lambda msg: imported_fn(msg))
