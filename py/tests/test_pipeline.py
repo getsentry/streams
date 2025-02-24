@@ -10,7 +10,7 @@ from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import Filter, KafkaSink, KafkaSource, Map, Pipeline
 from sentry_streams.runner import iterate_edges
 from sentry_streams.sample_function import EventsPipelineMapFunction
-from sentry_streams.user_functions.sample_filter import EventsPiplineFilterFunctions
+from sentry_streams.user_functions.sample_filter import EventsPipelineFilterFunctions
 
 
 @pytest.fixture(autouse=True)
@@ -166,7 +166,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
         name="myfilter",
         ctx=pipeline,
         inputs=[source],
-        function=EventsPiplineFilterFunctions.simple_filter,
+        function=EventsPipelineFilterFunctions.simple_filter,
     )
 
     _ = KafkaSink(

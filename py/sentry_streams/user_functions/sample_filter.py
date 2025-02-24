@@ -1,7 +1,7 @@
 import json
 
 
-class EventsPiplineFilterFunctions:
+class EventsPipelineFilterFunctions:
     @staticmethod
     def simple_filter(value: str) -> bool:
         d = json.loads(value)

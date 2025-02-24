@@ -6,7 +6,7 @@ from sentry_streams.pipeline import (
     Pipeline,
 )
 from sentry_streams.sample_function import EventsPipelineMapFunction
-from sentry_streams.user_functions.sample_filter import EventsPiplineFilterFunctions
+from sentry_streams.user_functions.sample_filter import EventsPipelineFilterFunctions
 
 # pipeline: special name
 pipeline = Pipeline()
@@ -21,7 +21,7 @@ filter = Filter(
     name="myfilter",
     ctx=pipeline,
     inputs=[source],
-    function=EventsPiplineFilterFunctions.simple_filter,
+    function=EventsPipelineFilterFunctions.simple_filter,
 )
 
 map = Map(
