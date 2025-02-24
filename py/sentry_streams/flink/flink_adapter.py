@@ -13,7 +13,7 @@ from pyflink.datastream.connectors.kafka import (
 
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline import Filter, Map, Step, TransformStep
+from sentry_streams.pipeline import Filter, Map, Step
 
 
 class FlinkAdapter(StreamAdapter):
@@ -29,7 +29,7 @@ class FlinkAdapter(StreamAdapter):
         self.environment_config = config
         self.env = env
 
-    def load_function(self, step: TransformStep) -> Any:
+    def load_function(self, step: Step) -> Any:
         """
         Takes a transform step containing a function, and either returns
         the function (if it's a Callable) or dynamically loads and returns the
@@ -37,6 +37,7 @@ class FlinkAdapter(StreamAdapter):
         """
         # TODO: break out the dynamic loading logic into a
         # normalization layer before the flink adapter
+        assert hasattr(step, "function"), "load_function() requires a step containing a function."
         if isinstance(step.function, str):
             fn_path = step.function
             mod, cls, fn = fn_path.rsplit(".", 2)

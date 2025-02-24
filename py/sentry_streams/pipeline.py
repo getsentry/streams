@@ -136,6 +136,3 @@ class Filter(WithInput):
 
     function: Union[FilterFunction, str]
     step_type: StepType = StepType.FILTER
-
-
-TransformStep = Map | Filter
