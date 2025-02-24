@@ -66,6 +66,8 @@ class FlinkAdapter(StreamAdapter):
         return stream.sink_to(sink)
 
     def map(self, step: Map, stream: Any) -> Any:
+        # TODO: break out the dynamic loading logic into a
+        # normalization layer before the flink adapter
         if isinstance(step.function, str):
             fn_path = step.function
             mod, cls, fn = fn_path.rsplit(".", 2)
@@ -85,5 +87,20 @@ class FlinkAdapter(StreamAdapter):
         return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
 
     def filter(self, step: Filter, stream: Any) -> Any:
-        imported_fn = step.function
+        # TODO: break out the dynamic loading logic into a
+        # normalization layer before the flink adapter
+        if isinstance(step.function, str):
+            fn_path = step.function
+            mod, cls, fn = fn_path.rsplit(".", 2)
+
+            try:
+                module = get_module(mod)
+
+            except ImportError:
+                raise
+
+            imported_cls = getattr(module, cls)
+            imported_fn = getattr(imported_cls, fn)
+        else:
+            imported_fn = step.function
         return stream.filter(func=lambda msg: imported_fn(msg))
