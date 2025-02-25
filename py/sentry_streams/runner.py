@@ -68,6 +68,16 @@ def main() -> None:
         help="The broker the job should connect to",
     )
     parser.add_argument(
+        "--adapter",
+        "-a",
+        type=str,
+        choices=[adapter.value for adapter in AdapterType],
+        help=(
+            "The stream adapter to instantiate. Valid values are: "
+            f"{', '.join(adapter.name for adapter in AdapterType)}"
+        ),
+    )
+    parser.add_argument(
         "application",
         type=str,
         help=(
@@ -75,6 +85,7 @@ def main() -> None:
             "to the path mounted in the job manager as the /apps directory."
         ),
     )
+
     pipeline_globals: dict[str, Any] = {}
 
     args = parser.parse_args()
@@ -92,7 +103,7 @@ def main() -> None:
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    runtime = load_adapter(AdapterType.FLINK, environment_config)
+    runtime = load_adapter(AdapterType(args.adapter), environment_config)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)

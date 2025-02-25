@@ -6,6 +6,7 @@ from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 
 class AdapterType(Enum):
     FLINK = "flink"
+    DUMMY = "dummy"
 
 
 def load_adapter(adapter_type: Union[AdapterType, str], config: PipelineConfig) -> StreamAdapter:
@@ -32,6 +33,10 @@ def load_adapter(adapter_type: Union[AdapterType, str], config: PipelineConfig) 
             from sentry_streams.flink.flink_adapter import FlinkAdapter
 
             return FlinkAdapter.build(config)
+        elif adapter_type == AdapterType.DUMMY:
+            from sentry_streams.dummy.dummy_adapter import DummyAdapter
+
+            return DummyAdapter.build(config)
         else:
             assert_never()
 
