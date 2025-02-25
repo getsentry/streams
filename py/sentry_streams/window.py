@@ -1,62 +1,20 @@
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Generic, TypeVar
+
+MeasurementUnit = TypeVar("MeasurementUnit", int, timedelta)
 
 
 @dataclass
-class Trigger:
-    """
-    A generic representation of a window trigger.
-    The trigger defines when a window is marked
-    as completed in order to fire a function
-    or computation on the window.
-    """
-
-
-@dataclass
-class EventTimeTrigger(Trigger):
-    """
-    Triggers based on progress of
-    event time of event data. Once the
-    watermark exceeds the end of the
-    window, window function is triggered.
-    """
-
-
-@dataclass
-class CountingTrigger(Trigger):
-    """
-    Specifically triggers window functions
-    (for example, aggregates) when the number
-    of elements in a window exceeds the count.
-    """
-
-    count: int
-
-
-@dataclass
-class IntervalTrigger(Trigger):
-    """
-    Triggers continuously
-    based on intervals. In this
-    case, event time watermarks
-    define the interval boundaries.
-    """
-
-    interval: timedelta
-
-
-@dataclass
-class Window:
+class Window(Generic[MeasurementUnit]):
     """
     A generic representation of a Window.
     Each Window can have a trigger plugged in.
     """
 
-    trigger: Trigger
-
 
 @dataclass
-class SlidingCountWindow(Window):
+class SlidingCountWindow(Window[MeasurementUnit]):
     """
     A sliding window which is configured
     by counts. Size and slide are both
@@ -68,12 +26,12 @@ class SlidingCountWindow(Window):
     overlap.
     """
 
-    window_size: int
-    window_slide: int
+    window_size: MeasurementUnit
+    window_slide: MeasurementUnit
 
 
 @dataclass
-class SlidingEventTimeWindow(Window):
+class SlidingEventTimeWindow(Window[MeasurementUnit]):
     """
     A sliding window where size and slide
     are both in terms of event time.
@@ -84,25 +42,25 @@ class SlidingEventTimeWindow(Window):
     can overlap.
     """
 
-    window_size: timedelta
-    window_slide: timedelta
+    window_size: MeasurementUnit
+    window_slide: MeasurementUnit
 
 
 @dataclass
-class TumblingCountWindow(Window):
+class TumblingCountWindow(Window[MeasurementUnit]):
     """
     A fixed-size window with no overlap.
     Size is in terms of number of elements.
     """
 
-    window_size: int
+    window_size: MeasurementUnit
 
 
 @dataclass
-class TumblingEventTimeWindow(Window):
+class TumblingEventTimeWindow(Window[MeasurementUnit]):
     """
     A fixed-size window with no overlap.
     Size is in terms of event time passed.
     """
 
-    window_size: timedelta
+    window_size: MeasurementUnit

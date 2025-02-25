@@ -1,30 +1,21 @@
 from datetime import timedelta
-from typing import Any
+from typing import Any, Generic
 
 from pyflink.common import Time, Types
 from pyflink.datastream.functions import AggregateFunction, KeySelector
 from pyflink.datastream.window import (
     CountSlidingWindowAssigner,
-    CountTrigger,
     CountTumblingWindowAssigner,
-)
-from pyflink.datastream.window import EventTimeTrigger as FlinkEventTimeTrigger
-from pyflink.datastream.window import (
     SlidingEventTimeWindows,
-)
-from pyflink.datastream.window import Trigger as FlinkTrigger
-from pyflink.datastream.window import (
     TumblingEventTimeWindows,
     WindowAssigner,
 )
 
 from sentry_streams.user_functions.function_template import Accumulator, GroupBy
 from sentry_streams.window import (
-    CountingTrigger,
-    EventTimeTrigger,
+    MeasurementUnit,
     SlidingCountWindow,
     SlidingEventTimeWindow,
-    Trigger,
     TumblingCountWindow,
     TumblingEventTimeWindow,
     Window,
@@ -71,44 +62,29 @@ def to_flink_time(timestamp: timedelta) -> Time:
     return flink_time
 
 
-class FlinkWindows:
+class FlinkWindows(Generic[MeasurementUnit]):
 
-    def __init__(self, window: Window) -> None:
-        self.window = window
+    def __init__(self, window: Window[MeasurementUnit]) -> None:
+        self.window: Window[MeasurementUnit] = window
 
     def build_window(self) -> WindowAssigner[Any, Any]:
 
-        window: Window = self.window
+        window: Window[MeasurementUnit] = self.window
 
         match window:
-            case SlidingEventTimeWindow(_, window_size, window_slide):
+            case SlidingEventTimeWindow(window_size, window_slide):
                 return SlidingEventTimeWindows.of(
                     to_flink_time(window_size), to_flink_time(window_slide)
                 )
 
-            case SlidingCountWindow(_, window_size, window_slide):
+            case SlidingCountWindow(window_size, window_slide):
                 return CountSlidingWindowAssigner.of(window_size, window_slide)
 
-            case TumblingEventTimeWindow(_, window_size):
+            case TumblingEventTimeWindow(window_size):
                 return TumblingEventTimeWindows.of(to_flink_time(window_size))
 
-            case TumblingCountWindow(_, window_size):
+            case TumblingCountWindow(window_size):
                 return CountTumblingWindowAssigner.of(window_size)
 
             case _:
                 raise TypeError(f"{window} is not a supported Window type")
-
-    def get_trigger(self) -> FlinkTrigger[Any, Any]:
-
-        trigger: Trigger = self.window.trigger
-
-        match trigger:
-
-            case CountingTrigger(count):
-                return CountTrigger(count)
-
-            case EventTimeTrigger():
-                return FlinkEventTimeTrigger()
-
-            case _:
-                raise TypeError(f"{trigger} is not a supported Trigger type")

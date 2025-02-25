@@ -2,7 +2,7 @@ from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline, Reduc
 from sentry_streams.user_functions.sample_agg import WordCounter
 from sentry_streams.user_functions.sample_group_by import GroupByWord
 from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
-from sentry_streams.window import CountingTrigger, TumblingCountWindow
+from sentry_streams.window import TumblingCountWindow
 
 # pipeline: special name
 pipeline = Pipeline()
@@ -23,7 +23,7 @@ map = Map(
 # A sample window.
 # Windows are assigned 3 elements.
 # But aggregation can be triggered as soon as 2 elements are seen.
-reduce_window = TumblingCountWindow(trigger=CountingTrigger(2), window_size=3)
+reduce_window = TumblingCountWindow(window_size=3)
 
 reduce = Reduce(
     name="myreduce",

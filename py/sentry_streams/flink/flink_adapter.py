@@ -1,4 +1,4 @@
-from typing import Any, MutableMapping
+from typing import Any, MutableMapping, Union
 
 from pyflink.common import Types, WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
@@ -10,6 +10,12 @@ from pyflink.datastream.connectors.kafka import (
     KafkaRecordSerializationSchema,
     KafkaSink,
 )
+from pyflink.datastream.data_stream import (
+    AllWindowedStream,
+    DataStream,
+    DataStreamSink,
+    WindowedStream,
+)
 
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.flink.flink_fn_translator import (
@@ -20,11 +26,9 @@ from sentry_streams.flink.flink_fn_translator import (
 )
 from sentry_streams.modules import get_module
 from sentry_streams.pipeline import Map, Reduce, Step
-from sentry_streams.user_functions.function_template import Accumulator
-from sentry_streams.window import Window
 
 
-class FlinkAdapter(StreamAdapter):
+class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
     # TODO: make the (de)serialization schema configurable
     # TODO: infer the output type from steps which
     # perform transformations / maps.
@@ -37,7 +41,7 @@ class FlinkAdapter(StreamAdapter):
         self.environment_config = config
         self.env = env
 
-    def source(self, step: Step) -> Any:
+    def source(self, step: Step) -> DataStream:
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
@@ -55,7 +59,7 @@ class FlinkAdapter(StreamAdapter):
 
         return self.env.add_source(kafka_consumer)
 
-    def sink(self, step: Step, stream: Any) -> Any:
+    def sink(self, step: Step, stream: DataStream) -> DataStreamSink:
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
@@ -75,7 +79,7 @@ class FlinkAdapter(StreamAdapter):
 
         return stream.sink_to(sink)
 
-    def map(self, step: Map, stream: Any) -> Any:
+    def map(self, step: Map, stream: DataStream) -> DataStream:
         if isinstance(step.function, str):
             fn_path = step.function
             mod, cls, fn = fn_path.rsplit(".", 2)
@@ -97,13 +101,12 @@ class FlinkAdapter(StreamAdapter):
             func=lambda msg: imported_fn(msg), output_type=FLINK_TYPE_MAP[return_type]
         )
 
-    def reduce(self, step: Reduce, stream: Any) -> Any:
+    def reduce(self, step: Reduce, stream: DataStream) -> DataStream:
 
-        agg: Accumulator = step.aggregate_fn
-        windowing: Window = step.windowing
+        agg = step.aggregate_fn
+        windowing = step.windowing
         flink_window = FlinkWindows(windowing)
         window_assigner = flink_window.build_window()
-        trigger = flink_window.get_trigger()
 
         # The only optional parameter
         group_by = step.group_by_key
@@ -120,10 +123,12 @@ class FlinkAdapter(StreamAdapter):
 
             keyed_stream = time_stream.key_by(FlinkGroupBy(group_by_key))
 
-            windowed_stream = keyed_stream.window(window_assigner).trigger(trigger)
+            windowed_stream: Union[WindowedStream, AllWindowedStream] = keyed_stream.window(
+                window_assigner
+            )
 
         else:
-            windowed_stream = time_stream.window_all(window_assigner).trigger(trigger)
+            windowed_stream = time_stream.window_all(window_assigner)
 
         return_type = agg.get_output.__annotations__["return"]
 
