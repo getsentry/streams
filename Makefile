@@ -1,17 +1,17 @@
 install-dev:
 	./scripts/flink-jar-download.sh
 	which uv || (curl -LsSf https://astral.sh/uv/install.sh | sh)
-	uv sync --project ./py
+	uv sync --project ./sentry_streams
 .PHONY: install-dev
 
 install-pre-commit-hook:
-	./py/.venv/bin/pre-commit install --install-hooks
+	./sentry_streams/.venv/bin/pre-commit install --install-hooks
 .PHONY: install-pre-commit-hook
 
 tests:
-	./py/.venv/bin/pytest -vv py/tests
+	./sentry_streams/.venv/bin/pytest -vv sentry_streams/tests
 .PHONY: tests
 
 typecheck:
-	./py/.venv/bin/mypy --config-file py/mypy.ini --strict py/
+	./sentry_streams/.venv/bin/mypy --config-file sentry_streams/mypy.ini --strict sentry_streams/
 .PHONY: typecheck
