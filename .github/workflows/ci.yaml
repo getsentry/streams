@@ -21,3 +21,5 @@ jobs:
 
         - name: Run tests
           run: make tests
+          env:
+            FLINK_LIBS: ./flink_libs

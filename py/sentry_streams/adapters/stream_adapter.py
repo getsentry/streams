@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional, assert_never
+from typing import Any, Mapping, Optional, Self, assert_never
 
 from sentry_streams.pipeline import Filter, Map, Sink, Source, Step, StepType
+
+PipelineConfig = Mapping[str, Any]
 
 
 class StreamAdapter(ABC):
@@ -11,16 +13,50 @@ class StreamAdapter(ABC):
     be extended to specific runtimes.
     """
 
+    @classmethod
+    @abstractmethod
+    def build(cls, config: PipelineConfig) -> Self:
+        """
+        Create an adapter and instantiate the runtime specific context.
+
+        This method exists so that we can define the type of the
+        Pipeline config.
+
+        Pipeline config contains the fields needed to instantiate the
+        pipeline.
+        #TODO: Provide a more structured way to represent config.
+        # currently we rely on the adapter to validate the content while
+        # there are a lot of configuration elements that can be adapter
+        # agnostic.
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def source(self, step: Source) -> Any:
+        """
+        Builds a stream source for the platform the adapter supports.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def sink(self, step: Sink, stream: Any) -> Any:
+        """
+        Builds a stream sink for the platform the adapter supports.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def map(self, step: Map, stream: Any) -> Any:
+        """
+        Build a map operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def run(self) -> None:
+        """
+        Starts the pipeline
+        """
         raise NotImplementedError
 
     @abstractmethod

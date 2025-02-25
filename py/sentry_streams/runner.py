@@ -1,11 +1,8 @@
 import argparse
-import os
 from typing import Any, cast
 
-from pyflink.datastream import StreamExecutionEnvironment
-
-from sentry_streams.adapters.stream_adapter import RuntimeTranslator, StreamAdapter
-from sentry_streams.flink.flink_adapter import FlinkAdapter
+from sentry_streams.adapters import AdapterType, load_adapter
+from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.pipeline import (
     Pipeline,
     WithInput,
@@ -85,18 +82,6 @@ def main() -> None:
     with open(args.application) as f:
         exec(f.read(), pipeline_globals)
 
-    libs_path = os.environ.get("FLINK_LIBS")
-    env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_parallelism(1)
-
-    if libs_path is not None:
-        # If the libraries path is provided load the
-        jar_file = os.path.join(
-            os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
-        )
-
-        env.add_jars(f"file://{jar_file}")
-
     # TODO: read from yaml file
     environment_config = {
         "topics": {
@@ -107,14 +92,12 @@ def main() -> None:
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    # This will not be harcdoded in the future
-    runtime_config: StreamAdapter = FlinkAdapter(environment_config, env)
-    translator = RuntimeTranslator(runtime_config)
+    runtime = load_adapter(AdapterType.FLINK, environment_config)
+    translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
 
-    # submit for execution
-    env.execute(job_name=args.name)
+    runtime.run()
 
 
 if __name__ == "__main__":
