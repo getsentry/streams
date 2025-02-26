@@ -33,7 +33,7 @@ filter = Filter(
 map = Map(
     name="mymap",
     ctx=pipeline,
-    inputs=[source],
+    inputs=[filter],
     function=EventsPipelineMapFunction.simple_map,
 )
 

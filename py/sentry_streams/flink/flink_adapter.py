@@ -26,7 +26,14 @@ from sentry_streams.flink.flink_fn_translator import (
     convert_to_flink_type,
 )
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline import Filter, Map, Reduce, Step, TransformStep
+from sentry_streams.pipeline import (
+    Filter,
+    Map,
+    Reduce,
+    Sink,
+    Source,
+    TransformStep,
+)
 from sentry_streams.user_functions.function_template import (
     InputType,
     IntermediateType,
@@ -96,7 +103,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         else:
             return step.function
 
-    def source(self, step: Step) -> DataStream:
+    def source(self, step: Source) -> DataStream:
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
@@ -114,7 +121,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         return self.env.add_source(kafka_consumer)
 
-    def sink(self, step: Step, stream: DataStream) -> DataStreamSink:
+    def sink(self, step: Sink, stream: DataStream) -> DataStreamSink:
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
@@ -133,6 +140,11 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         )
 
         return stream.sink_to(sink)
+
+    def filter(self, step: Filter, stream: DataStream) -> DataStream:
+        imported_fn = self.load_function(step)
+
+        return stream.filter(func=lambda msg: imported_fn(msg))
 
     def map(self, step: Map, stream: DataStream) -> DataStream:
         imported_fn = self.load_function(step)
@@ -185,10 +197,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             accumulator_type=convert_to_flink_type(acc_type),
             output_type=convert_to_flink_type(return_type),
         )
-
-    def filter(self, step: Filter, stream: DataStream) -> DataStream:
-        imported_fn = self.load_function(step)
-        return stream.filter(func=lambda msg: imported_fn(msg))
 
     def run(self) -> None:
         self.env.execute()
