@@ -22,7 +22,7 @@ docker exec -it kafka \
     --create
 ```
 
-Run `echo hello world | kcat -P -b 127.0.0.1:9092 -t events` to send some events and see them printed.
+Run `echo '{"test": "hello world"}' | kcat -P -b 127.0.0.1:9092 -t events` to send some events and see them printed.
 
 If you have Java installed you can skip the container and just run the
 application python file directly. That will start Flink.
