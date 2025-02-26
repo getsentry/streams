@@ -1,8 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Generic, TypeVar
+
+InputType = TypeVar("InputType")
+OutputType = TypeVar("OutputType")
+IntermediateType = TypeVar("IntermediateType")
 
 
-class Accumulator(ABC):
+class Accumulator(ABC, Generic[InputType, IntermediateType, OutputType]):
     """
     The standard Accumulator template.
     Define these functions to build a custom
@@ -10,19 +14,19 @@ class Accumulator(ABC):
     """
 
     @abstractmethod
-    def create(self) -> Any:
+    def create(self) -> IntermediateType:
         raise NotImplementedError
 
     @abstractmethod
-    def add(self, acc: Any, value: Any) -> Any:
+    def add(self, acc: IntermediateType, value: InputType) -> IntermediateType:
         raise NotImplementedError
 
     @abstractmethod
-    def get_output(self, acc: Any) -> Any:
+    def get_output(self, acc: IntermediateType) -> OutputType:
         raise NotImplementedError
 
     @abstractmethod
-    def merge(self, acc1: Any, acc2: Any) -> Any:
+    def merge(self, acc1: IntermediateType, acc2: IntermediateType) -> IntermediateType:
         raise NotImplementedError
 
 
