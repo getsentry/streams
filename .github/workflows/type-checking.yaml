@@ -16,5 +16,16 @@ jobs:
       - name: Make environment
         run: make install-dev
 
+      - name: Run bash script
+        run: |
+          echo "Running bash script"
+          echo "streams"
+          cd sentry_streams
+          ls
+          cd ..
+          echo "flink"
+          cd sentry_flink
+          ls
+
       - name: Run strict mypy
         run: make typecheck
