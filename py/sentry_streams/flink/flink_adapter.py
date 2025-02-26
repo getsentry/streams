@@ -1,5 +1,5 @@
 import os
-from typing import Any, Self
+from typing import Any, Callable, Self, TypeVar, cast
 
 from pyflink.common import Types
 from pyflink.common.serialization import SimpleStringSchema
@@ -14,7 +14,9 @@ from pyflink.datastream.connectors.kafka import (
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline import Map, Step
+from sentry_streams.pipeline import Filter, Map, Step, TransformStep
+
+T = TypeVar("T")
 
 
 class FlinkAdapter(StreamAdapter):
@@ -53,6 +55,29 @@ class FlinkAdapter(StreamAdapter):
 
         return cls(config, env)
 
+    def load_function(self, step: TransformStep[T]) -> Callable[..., T]:
+        """
+        Takes a transform step containing a function, and either returns
+        function (if it's a path to a module).
+        """
+        # TODO: break out the dynamic loading logic into a
+        # normalization layer before the flink adapter
+        if isinstance(step.function, str):
+            fn_path = step.function
+            mod, cls, fn = fn_path.rsplit(".", 2)
+
+            try:
+                module = get_module(mod)
+
+            except ImportError:
+                raise
+
+            imported_cls = getattr(module, cls)
+            imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
+            return imported_func
+        else:
+            return step.function
+
     def source(self, step: Step) -> Any:
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
@@ -90,23 +115,14 @@ class FlinkAdapter(StreamAdapter):
         return stream.sink_to(sink)
 
     def map(self, step: Map, stream: Any) -> Any:
-        if isinstance(step.function, str):
-            fn_path = step.function
-            mod, cls, fn = fn_path.rsplit(".", 2)
-
-            try:
-                module = get_module(mod)
-
-            except ImportError:
-                raise
-
-            imported_cls = getattr(module, cls)
-            imported_fn = getattr(imported_cls, fn)
-        else:
-            imported_fn = step.function
+        imported_fn = self.load_function(step)
 
         # TODO: Ensure output type is configurable like the schema above
         return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
+
+    def filter(self, step: Filter, stream: Any) -> Any:
+        imported_fn = self.load_function(step)
+        return stream.filter(func=lambda msg: imported_fn(msg))
 
     def run(self) -> None:
         self.env.execute()
