@@ -3,12 +3,12 @@ from typing import Any, Generator, MutableMapping
 
 import pytest
 from pyflink.datastream import StreamExecutionEnvironment
-
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
-from sentry_flink.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline
 from sentry_streams.runner import iterate_edges
 from sentry_streams.sample_function import EventsPipelineMapFunction
+
+from sentry_flink.flink.flink_adapter import FlinkAdapter
 
 
 @pytest.fixture(autouse=True)

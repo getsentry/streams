@@ -18,6 +18,9 @@ repos:
       - id: black
         files: ^sentry_streams/.+
         args: [--config=./sentry_streams/pyproject.toml]
+      - id: black
+        files: ^sentry_flink/.+
+        args: [--config=./sentry_flink/pyproject.toml]
   - repo: https://github.com/pycqa/flake8
     rev: 7.1.1
     hooks:
@@ -30,7 +33,6 @@ repos:
         args: [--config-file, sentry_streams/mypy.ini, --strict]
         additional_dependencies: [
           pytest==7.1.2,
-          apache-flink==1.20.0,
           types-requests,
           responses,
         ]
@@ -42,6 +44,10 @@ repos:
         name: isort (python)
         files: ^sentry_streams/.+
         args: [--settings-path=./sentry_streams/pyproject.toml]
+      - id: isort
+        name: isort (python)
+        files: ^sentry_flink/.+
+        args: [--settings-path=./sentry_flink/pyproject.toml]
 
 default_language_version:
   python: python3.11

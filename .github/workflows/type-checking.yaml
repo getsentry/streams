@@ -13,18 +13,6 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: Run bash script
-        run: |
-          echo "Running bash script"
-          echo "streams"
-          cd sentry_streams
-          ls
-          cd ..
-          echo "flink"
-          cd sentry_flink
-          ls
-
-
       - name: Make environment
         run: make install-dev
 
