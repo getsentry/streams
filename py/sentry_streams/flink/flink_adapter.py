@@ -1,6 +1,6 @@
 from typing import Any, MutableMapping, Union
 
-from pyflink.common import Types, WatermarkStrategy
+from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
@@ -19,13 +19,19 @@ from pyflink.datastream.data_stream import (
 
 from sentry_streams.adapters.stream_adapter import StreamAdapter
 from sentry_streams.flink.flink_fn_translator import (
-    FLINK_TYPE_MAP,
     FlinkAggregate,
     FlinkGroupBy,
     FlinkWindows,
+    convert_to_flink_type,
 )
 from sentry_streams.modules import get_module
 from sentry_streams.pipeline import Map, Reduce, Step
+from sentry_streams.user_functions.function_template import (
+    InputType,
+    IntermediateType,
+    OutputType,
+)
+from sentry_streams.window import MeasurementUnit
 
 
 class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
@@ -98,10 +104,14 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return_type = imported_fn.__annotations__["return"]
         # TODO: Ensure output type is configurable like the schema above
         return stream.map(
-            func=lambda msg: imported_fn(msg), output_type=FLINK_TYPE_MAP[return_type]
+            func=lambda msg: imported_fn(msg), output_type=convert_to_flink_type(return_type)
         )
 
-    def reduce(self, step: Reduce, stream: DataStream) -> DataStream:
+    def reduce(
+        self,
+        step: Reduce[MeasurementUnit, InputType, IntermediateType, OutputType],
+        stream: DataStream,
+    ) -> DataStream:
 
         agg = step.aggregate_fn
         windowing = step.windowing
@@ -130,11 +140,12 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         else:
             windowed_stream = time_stream.window_all(window_assigner)
 
+        acc_type = agg.create.__annotations__["return"]
         return_type = agg.get_output.__annotations__["return"]
 
         # TODO: Figure out a systematic way to convert types
         return windowed_stream.aggregate(
             FlinkAggregate(agg),
-            accumulator_type=Types.TUPLE([Types.STRING(), Types.INT()]),
-            output_type=FLINK_TYPE_MAP[return_type],
+            accumulator_type=convert_to_flink_type(acc_type),
+            output_type=convert_to_flink_type(return_type),
         )
