@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Generic, MutableMapping, Optional, Union
+from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Union
 
 from sentry_streams.user_functions.function_template import (
     Accumulator,
@@ -20,6 +20,7 @@ class StepType(Enum):
     SOURCE = "source"
     MAP = "map"
     REDUCE = "reduce"
+    FILTER = "filter"
 
 
 class StateBackend(Enum):
@@ -118,12 +119,22 @@ class KafkaSink(Sink):
     step_type: StepType = StepType.SINK
 
 
-# TODO: Define proper typing for messages
-MapFunction = Callable[[Any], Any]
+T = TypeVar("T")
 
 
 @dataclass
-class Map(WithInput):
+class TransformStep(WithInput, Generic[T]):
+    """
+    A generic step representing a step performing a transform operation
+    on input data.
+    """
+
+    function: Union[Callable[..., T], str]
+    step_type: StepType
+
+
+@dataclass
+class Map(TransformStep[Any]):
     """
     A simple 1:1 Map, taking a single input to single output.
     """
@@ -133,11 +144,21 @@ class Map(WithInput):
     # The direct reference to the symbol allows for strict type checking
     # The string is likely to be used in cross code base pipelines where
     # the symbol is just not present in the current code base.
-    function: Union[MapFunction, str]
+    function: Union[Callable[..., Any], str]
     step_type: StepType = StepType.MAP
 
     # TODO: Allow product to both enable and access
     # configuration (e.g. a DB that is used as part of Map)
+
+
+@dataclass
+class Filter(TransformStep[bool]):
+    """
+    A simple Filter, taking a single input and either returning it or None as output
+    """
+
+    function: Union[Callable[..., bool], str]
+    step_type: StepType = StepType.FILTER
 
 
 @dataclass

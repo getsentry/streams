@@ -1,4 +1,5 @@
-from typing import Any, MutableMapping, Union
+import os
+from typing import Callable, Self, TypeVar, Union, cast
 
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
@@ -17,7 +18,7 @@ from pyflink.datastream.data_stream import (
     WindowedStream,
 )
 
-from sentry_streams.adapters.stream_adapter import StreamAdapter
+from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.flink.flink_fn_translator import (
     FlinkAggregate,
     FlinkGroupBy,
@@ -25,13 +26,15 @@ from sentry_streams.flink.flink_fn_translator import (
     convert_to_flink_type,
 )
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline import Map, Reduce, Step
+from sentry_streams.pipeline import Filter, Map, Reduce, Step, TransformStep
 from sentry_streams.user_functions.function_template import (
     InputType,
     IntermediateType,
     OutputType,
 )
 from sentry_streams.window import MeasurementUnit
+
+T = TypeVar("T")
 
 
 class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
@@ -43,9 +46,55 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
     # that send data to a next step that
     # performs serialization (e.g. Map --> Sink)
 
-    def __init__(self, config: MutableMapping[str, Any], env: StreamExecutionEnvironment) -> None:
+    def __init__(self, config: PipelineConfig, env: StreamExecutionEnvironment) -> None:
         self.environment_config = config
         self.env = env
+
+    @classmethod
+    def build(cls, config: PipelineConfig) -> Self:
+        env = StreamExecutionEnvironment.get_execution_environment()
+
+        flink_config = config.get("flink", {})
+
+        libs_path = flink_config.get("kafka_connect_lib_path")
+        if libs_path is None:
+            libs_path = os.environ.get("FLINK_LIBS")
+
+        if libs_path:
+            jar_file = os.path.join(
+                os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
+            )
+            kafka_jar_file = os.path.join(
+                os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
+            )
+            env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
+
+        env.set_parallelism(flink_config.get("parallelism", 1))
+
+        return cls(config, env)
+
+    def load_function(self, step: TransformStep[T]) -> Callable[..., T]:
+        """
+        Takes a transform step containing a function, and either returns
+        function (if it's a path to a module).
+        """
+        # TODO: break out the dynamic loading logic into a
+        # normalization layer before the flink adapter
+        if isinstance(step.function, str):
+            fn_path = step.function
+            mod, cls, fn = fn_path.rsplit(".", 2)
+
+            try:
+                module = get_module(mod)
+
+            except ImportError:
+                raise
+
+            imported_cls = getattr(module, cls)
+            imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
+            return imported_func
+        else:
+            return step.function
 
     def source(self, step: Step) -> DataStream:
         assert hasattr(step, "logical_topic")
@@ -86,20 +135,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return stream.sink_to(sink)
 
     def map(self, step: Map, stream: DataStream) -> DataStream:
-        if isinstance(step.function, str):
-            fn_path = step.function
-            mod, cls, fn = fn_path.rsplit(".", 2)
-
-            try:
-                module = get_module(mod)
-
-            except ImportError:
-                raise
-
-            imported_cls = getattr(module, cls)
-            imported_fn = getattr(imported_cls, fn)
-        else:
-            imported_fn = step.function
+        imported_fn = self.load_function(step)
 
         return_type = imported_fn.__annotations__["return"]
         # TODO: Ensure output type is configurable like the schema above
@@ -149,3 +185,10 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             accumulator_type=convert_to_flink_type(acc_type),
             output_type=convert_to_flink_type(return_type),
         )
+
+    def filter(self, step: Filter, stream: DataStream) -> DataStream:
+        imported_fn = self.load_function(step)
+        return stream.filter(func=lambda msg: imported_fn(msg))
+
+    def run(self) -> None:
+        self.env.execute()

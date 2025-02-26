@@ -1,5 +1,15 @@
-from sentry_streams.pipeline import KafkaSink, KafkaSource, Map, Pipeline, Reduce
+from sentry_streams.pipeline import (
+    Filter,
+    KafkaSink,
+    KafkaSource,
+    Map,
+    Pipeline,
+    Reduce,
+)
 from sentry_streams.user_functions.sample_agg import WordCounter
+from sentry_streams.user_functions.sample_filter import (
+    EventsPipelineFilterFunctions,
+)
 from sentry_streams.user_functions.sample_group_by import GroupByWord
 from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
 from sentry_streams.window import TumblingCountWindow
@@ -11,6 +21,13 @@ source = KafkaSource(
     name="myinput",
     ctx=pipeline,
     logical_topic="logical-events",
+)
+
+filter = Filter(
+    name="myfilter",
+    ctx=pipeline,
+    inputs=[source],
+    function=EventsPipelineFilterFunctions.simple_filter,
 )
 
 map = Map(

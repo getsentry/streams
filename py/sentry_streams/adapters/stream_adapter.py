@@ -1,11 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import Generic, Optional, TypeVar, Union, assert_never
+from typing import Any, Generic, Mapping, Optional, Self, TypeVar, Union, assert_never
 
-from sentry_streams.pipeline import Map, Reduce, Sink, Source, Step, StepType
+from sentry_streams.pipeline import Filter, Map, Reduce, Sink, Source, Step, StepType
+from sentry_streams.user_functions.function_template import (
+    InputType,
+    IntermediateType,
+    OutputType,
+)
+from sentry_streams.window import MeasurementUnit
 
-# Generic types to define:
-# A generic Stream type (can be a DataStream, Dataflow)
-# A generic Message type
+PipelineConfig = Mapping[str, Any]
 
 
 Stream = TypeVar("Stream")
@@ -19,20 +23,63 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
     be extended to specific runtimes.
     """
 
+    @classmethod
+    @abstractmethod
+    def build(cls, config: PipelineConfig) -> Self:
+        """
+        Create an adapter and instantiate the runtime specific context.
+
+        This method exists so that we can define the type of the
+        Pipeline config.
+
+        Pipeline config contains the fields needed to instantiate the
+        pipeline.
+        #TODO: Provide a more structured way to represent config.
+        # currently we rely on the adapter to validate the content while
+        # there are a lot of configuration elements that can be adapter
+        # agnostic.
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def source(self, step: Source) -> Stream:
+        """
+        Builds a stream source for the platform the adapter supports.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def sink(self, step: Sink, stream: Stream) -> StreamSink:
+        """
+        Builds a stream sink for the platform the adapter supports.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def map(self, step: Map, stream: Stream) -> Stream:
+        """
+        Build a map operator for the platform the adapter supports.
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def reduce(self, step: Reduce, stream: Stream) -> Stream:
+    def reduce(
+        self, step: Reduce[MeasurementUnit, InputType, IntermediateType, OutputType], stream: Stream
+    ) -> Stream:
+        """
+        Build a map operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def filter(self, step: Filter, stream: Stream) -> Stream:
+        raise NotImplementedError
+
+    @abstractmethod
+    def run(self) -> None:
+        """
+        Starts the pipeline
+        """
         raise NotImplementedError
 
 
@@ -68,6 +115,10 @@ class RuntimeTranslator(Generic[Stream, StreamSink]):
         elif step_type is StepType.REDUCE:
             assert isinstance(step, Reduce) and stream is not None
             return self.adapter.reduce(step, stream)
+
+        elif step_type is StepType.FILTER:
+            assert isinstance(step, Filter) and stream is not None
+            return self.adapter.filter(step, stream)
 
         else:
             assert_never(step_type)
