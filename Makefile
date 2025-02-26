@@ -2,7 +2,7 @@ install-dev:
 	./scripts/flink-jar-download.sh
 	which uv || (curl -LsSf https://astral.sh/uv/install.sh | sh)
 	uv sync --project ./sentry_streams
-	uv sync --project ./sentry_flink
+	PROJECT_ROOT=`pwd`/sentry_flink uv sync --project ./sentry_flink
 .PHONY: install-dev
 
 install-pre-commit-hook:

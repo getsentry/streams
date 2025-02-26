@@ -706,6 +706,7 @@ source = { editable = "." }
 dependencies = [
     { name = "apache-flink" },
     { name = "requests" },
+    { name = "sentry-streams" },
     { name = "setuptools" },
 ]
 
@@ -715,7 +716,6 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "responses" },
-    { name = "sentry-streams" },
     { name = "types-requests" },
 ]
 
@@ -723,6 +723,7 @@ dev = [
 requires-dist = [
     { name = "apache-flink", specifier = "==1.20.0" },
     { name = "requests", specifier = ">=2.32.3" },
+    { name = "sentry-streams", directory = "../sentry_streams" },
     { name = "setuptools", specifier = "==75.8.0" },
 ]
 
@@ -732,7 +733,6 @@ dev = [
     { name = "pre-commit", specifier = ">=4.1.0" },
     { name = "pytest", specifier = ">=8.3.4" },
     { name = "responses", specifier = ">=0.25.6" },
-    { name = "sentry-streams", directory = "../sentry_streams" },
     { name = "types-requests", specifier = ">=2.32.0" },
 ]
 
