@@ -3,15 +3,17 @@ requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sentry-streams"
+name = "sentry-flink"
 version = "0.0.1"
-description = "The python Sentry Streaming API"
+description = "The streaming adapter for apache flink"
 readme = "README.md"
-
-requires-python = ">=3.11"
+# Cannot use 3.12 because of pyflink.
+requires-python = ">=3.11,<3.12"
 dependencies = [
+    "apache-flink==1.20.0",
     "setuptools==75.8.0",
     "requests>=2.32.3",
+    "sentry_streams @ file:///${PROJECT_ROOT}/../sentry_streams",
 ]
 
 [dependency-groups]
@@ -27,7 +29,7 @@ dev = [
 where = ["."]
 
 [tool.setuptools.package-data]
-sentry_streams = ["py.typed"]
+sentry_flink = ["py.typed"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"

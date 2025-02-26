@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-from sentry_streams.flink_runtime.flink_api import cancel_job
+from sentry_flink.flink_runtime.flink_api import cancel_job
 
 
 def main() -> int:

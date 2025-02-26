@@ -1,11 +1,13 @@
+import importlib.util as utils
+import sys
 from enum import Enum
-from typing import Union, assert_never
+from importlib import import_module
+from typing import Union, assert_never, cast
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 
 
 class AdapterType(Enum):
-    FLINK = "flink"
     DUMMY = "dummy"
 
 
@@ -29,15 +31,29 @@ def load_adapter(adapter_type: Union[AdapterType, str], config: PipelineConfig) 
     # no sense.
     """
     if isinstance(adapter_type, AdapterType):
-        if adapter_type == AdapterType.FLINK:
-            from sentry_streams.flink.flink_adapter import FlinkAdapter
-
-            return FlinkAdapter.build(config)
-        elif adapter_type == AdapterType.DUMMY:
+        if adapter_type == AdapterType.DUMMY:
             from sentry_streams.dummy.dummy_adapter import DummyAdapter
 
             return DummyAdapter.build(config)
         else:
             assert_never()
+    else:
+        mod, cls = adapter_type.rsplit(".", 1)
+
+        try:
+            if mod in sys.modules:
+                module = sys.modules[mod]
+
+            elif utils.find_spec(mod) is not None:
+                module = import_module(mod)
+
+            else:
+                raise ImportError(f"Can't find module {mod}")
+
+        except ImportError:
+            raise
+
+        imported_cls = getattr(module, cls)
+        return cast(StreamAdapter, imported_cls.build(config))
 
     raise ValueError("Dynamic adapter loader is not supported yet.")

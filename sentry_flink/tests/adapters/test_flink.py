@@ -1,7 +1,7 @@
 import pytest
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig
-from sentry_streams.flink.flink_adapter import FlinkAdapter
+from sentry_flink.flink.flink_adapter import FlinkAdapter
 
 
 @pytest.fixture

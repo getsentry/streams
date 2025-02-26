@@ -8,10 +8,15 @@ install-pre-commit-hook:
 	./sentry_streams/.venv/bin/pre-commit install --install-hooks
 .PHONY: install-pre-commit-hook
 
-tests:
+tests-streams:
 	./sentry_streams/.venv/bin/pytest -vv sentry_streams/tests
-.PHONY: tests
+.PHONY: tests-streams
+
+tests-flink:
+	./sentry_flink/.venv/bin/pytest -vv sentry_flink/tests
+.PHONY: tests-flink
 
 typecheck:
 	./sentry_streams/.venv/bin/mypy --config-file sentry_streams/mypy.ini --strict sentry_streams/
+	./sentry_flink/.venv/bin/mypy --config-file sentry_flink/mypy.ini --strict sentry_flink/
 .PHONY: typecheck
