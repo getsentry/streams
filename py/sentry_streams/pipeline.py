@@ -3,10 +3,16 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, MutableMapping, Optional, Union
+from typing import Any, Callable, Generic, MutableMapping, Optional, Union
 
-from sentry_streams.user_functions.function_template import Accumulator, GroupBy
-from sentry_streams.window import Window
+from sentry_streams.user_functions.function_template import (
+    Accumulator,
+    GroupBy,
+    InputType,
+    IntermediateType,
+    OutputType,
+)
+from sentry_streams.window import MeasurementUnit, Window
 
 
 class StepType(Enum):
@@ -135,9 +141,9 @@ class Map(WithInput):
 
 
 @dataclass
-class Reduce(WithInput):
-    windowing: Window
-    aggregate_fn: Accumulator
+class Reduce(WithInput, Generic[MeasurementUnit, InputType, IntermediateType, OutputType]):
+    windowing: Window[MeasurementUnit]
+    aggregate_fn: Accumulator[InputType, IntermediateType, OutputType]
     group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE
     storage: StateBackend = StateBackend.HASH_MAP  # WIP

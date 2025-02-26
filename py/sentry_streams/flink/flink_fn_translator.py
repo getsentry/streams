@@ -1,7 +1,7 @@
 from datetime import timedelta
-from typing import Any, Generic
+from typing import Any, Callable, Generic
 
-from pyflink.common import Time, Types
+from pyflink.common import Time, TypeInformation, Types
 from pyflink.datastream.functions import AggregateFunction, KeySelector
 from pyflink.datastream.window import (
     CountSlidingWindowAssigner,
@@ -11,7 +11,13 @@ from pyflink.datastream.window import (
     WindowAssigner,
 )
 
-from sentry_streams.user_functions.function_template import Accumulator, GroupBy
+from sentry_streams.user_functions.function_template import (
+    Accumulator,
+    GroupBy,
+    InputType,
+    IntermediateType,
+    OutputType,
+)
 from sentry_streams.window import (
     MeasurementUnit,
     SlidingCountWindow,
@@ -21,24 +27,40 @@ from sentry_streams.window import (
     Window,
 )
 
-FLINK_TYPE_MAP = {tuple[str, int]: Types.TUPLE([Types.STRING(), Types.INT()]), str: Types.STRING()}
+FLINK_TYPE_MAP: dict[Any, Any] = {
+    tuple[str, int]: (Types.TUPLE, [Types.STRING, Types.INT]),
+    str: (Types.STRING, []),
+}
 
 
-class FlinkAggregate(AggregateFunction):
+def convert_to_flink_type(type: Any) -> TypeInformation:
 
-    def __init__(self, acc: Accumulator) -> None:
+    fn: Callable[..., TypeInformation]
+    fn, args = FLINK_TYPE_MAP[type]
+    flink_type = fn([arg() for arg in args]) if args else fn()
+
+    return flink_type
+
+
+class FlinkAggregate(AggregateFunction, Generic[InputType, IntermediateType, OutputType]):
+
+    def __init__(self, acc: Accumulator[InputType, IntermediateType, OutputType]) -> None:
         self.acc = acc
 
-    def create_accumulator(self) -> Any:
+    def create_accumulator(self) -> IntermediateType:
         return self.acc.create()
 
-    def add(self, value: Any, accumulator: Any) -> Any:
+    def add(self, value: InputType, accumulator: IntermediateType) -> IntermediateType:
         return self.acc.add(accumulator, value)
 
-    def get_result(self, accumulator: Any) -> Any:
+    def get_result(self, accumulator: IntermediateType) -> OutputType:
         return self.acc.get_output(accumulator)
 
-    def merge(self, acc_a: Any, acc_b: Any) -> Any:
+    def merge(
+        self,
+        acc_a: IntermediateType,
+        acc_b: IntermediateType,
+    ) -> IntermediateType:
         return self.acc.merge(acc_a, acc_b)
 
 
