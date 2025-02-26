@@ -19,7 +19,8 @@ jobs:
           run: |
             make install-dev
 
-        - name: Run tests
-          run: make tests
-          env:
-            FLINK_LIBS: ./flink_libs
+        - name: Run streams test
+          run: make tests-streams
+
+        - name: Run streams test
+          run: make tests-flink
