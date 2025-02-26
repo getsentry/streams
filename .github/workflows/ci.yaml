@@ -22,5 +22,7 @@ jobs:
         - name: Run streams test
           run: make tests-streams
 
-        - name: Run streams test
+        - name: Run flink test
           run: make tests-flink
+          env:
+            FLINK_LIBS: ./flink_libs
