@@ -13,9 +13,6 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: Make environment
-        run: make install-dev
-
       - name: Run bash script
         run: |
           echo "Running bash script"
@@ -26,6 +23,10 @@ jobs:
           echo "flink"
           cd sentry_flink
           ls
+
+
+      - name: Make environment
+        run: make install-dev
 
       - name: Run strict mypy
         run: make typecheck
