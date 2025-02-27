@@ -1,5 +1,14 @@
 from abc import ABC, abstractmethod
-from typing import Any, Generic, Mapping, Optional, Self, TypeVar, Union, assert_never
+from typing import (
+    Any,
+    Generic,
+    Mapping,
+    Optional,
+    Self,
+    TypeVar,
+    Union,
+    assert_never,
+)
 
 from sentry_streams.pipeline import Filter, Map, Reduce, Sink, Source, Step, StepType
 from sentry_streams.user_functions.function_template import (
@@ -64,7 +73,9 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
 
     @abstractmethod
     def reduce(
-        self, step: Reduce[MeasurementUnit, InputType, IntermediateType, OutputType], stream: Stream
+        self,
+        step: Reduce[MeasurementUnit, InputType, IntermediateType, OutputType],
+        stream: Stream,
     ) -> Stream:
         """
         Build a map operator for the platform the adapter supports.

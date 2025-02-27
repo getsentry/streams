@@ -1,15 +1,21 @@
 import argparse
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from sentry_streams.adapters import AdapterType, load_adapter
-from sentry_streams.adapters.stream_adapter import RuntimeTranslator
+from sentry_streams.adapters.stream_adapter import (
+    RuntimeTranslator,
+)
+from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import (
     Pipeline,
     WithInput,
 )
 
+Stream = TypeVar("Stream")
+StreamSink = TypeVar("StreamSink")
 
-def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator) -> None:
+
+def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, StreamSink]) -> None:
     """
     Traverses over edges in a PipelineGraph, building the
     stream incrementally by applying steps and transformations
@@ -47,7 +53,7 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator) -> None:
                     else:
                         next_step: WithInput = cast(WithInput, p_graph.steps[output_step_name])
                         print(f"Apply step: {next_step.name}")
-                        next_step_stream = translator.translate_step(next_step, input_stream)
+                        next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
                         step_streams[next_step.name] = next_step_stream
 
 
@@ -92,7 +98,7 @@ def main() -> None:
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    runtime = load_adapter(AdapterType.FLINK, environment_config)
+    runtime: FlinkAdapter = load_adapter(AdapterType.FLINK, environment_config)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
