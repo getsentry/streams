@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Mapping, Optional, Self, assert_never
 
-from sentry_streams.pipeline import Map, Sink, Source, Step, StepType
+from sentry_streams.pipeline import Filter, Map, Sink, Source, Step, StepType
 
 PipelineConfig = Mapping[str, Any]
 
@@ -59,6 +59,10 @@ class StreamAdapter(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def filter(self, step: Filter, stream: Any) -> Any:
+        raise NotImplementedError
+
 
 class RuntimeTranslator:
     """
@@ -86,6 +90,10 @@ class RuntimeTranslator:
         elif step_type is StepType.MAP:
             assert isinstance(step, Map)
             return self.adapter.map(step, stream)
+
+        elif step_type is StepType.FILTER:
+            assert isinstance(step, Filter)
+            return self.adapter.filter(step, stream)
 
         else:
             assert_never(step_type)
