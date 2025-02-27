@@ -1,17 +1,12 @@
 import importlib.util as utils
 import sys
-from enum import Enum
 from importlib import import_module
-from typing import Union, assert_never, cast
+from typing import cast
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 
 
-class AdapterType(Enum):
-    DUMMY = "dummy"
-
-
-def load_adapter(adapter_type: Union[AdapterType, str], config: PipelineConfig) -> StreamAdapter:
+def load_adapter(adapter_type: str, config: PipelineConfig) -> StreamAdapter:
     """
     Loads a StreamAdapter to run a pipeline.
 
@@ -30,13 +25,10 @@ def load_adapter(adapter_type: Union[AdapterType, str], config: PipelineConfig) 
     #TODO: Actually move out Flink otherwise everything stated above makes
     # no sense.
     """
-    if isinstance(adapter_type, AdapterType):
-        if adapter_type == AdapterType.DUMMY:
-            from sentry_streams.dummy.dummy_adapter import DummyAdapter
+    if adapter_type == "dummy":
+        from sentry_streams.dummy.dummy_adapter import DummyAdapter
 
-            return DummyAdapter.build(config)
-        else:
-            assert_never()
+        return DummyAdapter.build(config)
     else:
         mod, cls = adapter_type.rsplit(".", 1)
 
@@ -55,5 +47,3 @@ def load_adapter(adapter_type: Union[AdapterType, str], config: PipelineConfig) 
 
         imported_cls = getattr(module, cls)
         return cast(StreamAdapter, imported_cls.build(config))
-
-    raise ValueError("Dynamic adapter loader is not supported yet.")

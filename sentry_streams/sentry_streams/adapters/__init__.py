@@ -1,3 +1,3 @@
-from sentry_streams.adapters.loader import AdapterType, load_adapter
+from sentry_streams.adapters.loader import load_adapter
 
-__all__ = ["AdapterType", "load_adapter"]
+__all__ = ["load_adapter"]

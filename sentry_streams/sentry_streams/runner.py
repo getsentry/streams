@@ -1,7 +1,7 @@
 import argparse
 from typing import Any, cast
 
-from sentry_streams.adapters import AdapterType, load_adapter
+from sentry_streams.adapters import load_adapter
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.pipeline import (
     Pipeline,
@@ -71,10 +71,13 @@ def main() -> None:
         "--adapter",
         "-a",
         type=str,
-        choices=[adapter.value for adapter in AdapterType],
+        # TODO: Remove the support for dynamically load the class.
+        # Add a runner CLI in the flink package instead that instantiates
+        # the Flink adapter.
         help=(
-            "The stream adapter to instantiate. Valid values are: "
-            f"{', '.join(adapter.name for adapter in AdapterType)}"
+            "The stream adapter to instantiate. It can be a value from "
+            "the AdapterType enum or a fully qualified class name to "
+            "load dynamically"
         ),
     )
     parser.add_argument(
@@ -103,7 +106,7 @@ def main() -> None:
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    runtime = load_adapter(AdapterType(args.adapter), environment_config)
+    runtime = load_adapter(args.adapter, environment_config)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
