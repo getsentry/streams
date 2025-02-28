@@ -272,7 +272,21 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
                 "pact": "Operator",
                 "contents": "Map",
                 "parallelism": 1,
-                "predecessors": [{"id": 7, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 21, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+            {
+                "contents": "Timestamps/Watermarks",
+                "id": 23,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 22,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Timestamps/Watermarks",
             },
             {
                 "contents": "_stream_key_by_map_operator",
@@ -281,7 +295,7 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 22,
+                        "id": 23,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
