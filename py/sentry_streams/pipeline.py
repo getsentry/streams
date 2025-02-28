@@ -167,4 +167,3 @@ class Reduce(WithInput, Generic[MeasurementUnit, InputType, IntermediateType, Ou
     aggregate_fn: Accumulator[InputType, IntermediateType, OutputType]
     group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE
-    storage: StateBackend = StateBackend.HASH_MAP  # WIP

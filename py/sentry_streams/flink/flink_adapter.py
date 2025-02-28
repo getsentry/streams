@@ -166,7 +166,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         flink_window = FlinkWindows(windowing)
         window_assigner = flink_window.build_window()
 
-        # The only optional parameter
+        # Optional parameters
         group_by = step.group_by_key
 
         # TODO: Configure WatermarkStrategy as part of KafkaSource

@@ -1,7 +1,27 @@
-from sentry_streams.user_functions.function_template import Accumulator
+from typing import MutableMapping
+
+from sentry_streams.user_functions.function_template import (
+    Accumulator,
+    AggregationBackend,
+)
 
 WordCountTuple = tuple[str, int]
 WordCountStr = str
+
+
+class WordCounterAggregationBackend(AggregationBackend[WordCountStr]):
+    """
+    Simple hash map backend for the WordCounter sample pipeline.
+    """
+
+    def __init__(self) -> None:
+        self.storage_map: MutableMapping[str, int] = {}
+
+    def flush_aggregate(self, aggregate: WordCountStr) -> None:
+
+        k, v = aggregate.split(" ")
+
+        self.storage_map[k] = int(v)
 
 
 class WordCounter(Accumulator[WordCountTuple, WordCountTuple, WordCountStr]):
