@@ -1,9 +1,7 @@
 from enum import Enum
 from typing import Union, assert_never
 
-from sentry_streams.adapters.stream_adapter import (
-    PipelineConfig,
-)
+from sentry_streams.adapters.stream_adapter import PipelineConfig
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 
 
@@ -34,11 +32,9 @@ def load_adapter(
     """
     if isinstance(adapter_type, AdapterType):
         if adapter_type == AdapterType.FLINK:
-            # from sentry_streams.flink.flink_adapter import FlinkAdapter
 
-            adapter = FlinkAdapter.build(config)
+            return FlinkAdapter.build(config)
 
-            return adapter
         else:
             assert_never()
 

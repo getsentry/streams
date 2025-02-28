@@ -154,7 +154,7 @@ class Map(TransformStep[Any]):
 @dataclass
 class Filter(TransformStep[bool]):
     """
-    A simple Filter, taking a single input and either returning it or None as output
+    A simple Filter, taking a single input and either returning it or None as output.
     """
 
     function: Union[Callable[..., bool], str]
@@ -163,6 +163,12 @@ class Filter(TransformStep[bool]):
 
 @dataclass
 class Reduce(WithInput, Generic[MeasurementUnit, InputType, IntermediateType, OutputType]):
+    """
+    A Reduce step which performs windowed aggregations. Can be keyed or non-keyed on the
+    input stream. Supports an Accumulator-style aggregation which can have a configurable
+    storage backend, for flushing intermediate aggregates.
+    """
+
     windowing: Window[MeasurementUnit]
     aggregate_fn: Accumulator[InputType, IntermediateType, OutputType]
     group_by_key: Optional[GroupBy] = None

@@ -34,7 +34,11 @@ FLINK_TYPE_MAP: dict[Any, Any] = {
 
 
 def convert_to_flink_type(type: Any) -> TypeInformation:
-
+    """
+    Convert Python types to Flink's Types class.
+    Recommended for use in explicitly defining the
+    output_type of a Flink operator.
+    """
     fn: Callable[..., TypeInformation]
     fn, args = FLINK_TYPE_MAP[type]
     flink_type = fn([arg() for arg in args]) if args else fn()
@@ -43,6 +47,13 @@ def convert_to_flink_type(type: Any) -> TypeInformation:
 
 
 class FlinkAggregate(AggregateFunction, Generic[InputType, IntermediateType, OutputType]):
+    """
+    Takes the Streams API's Accumulator and transforms it into Flink's
+    Aggregate Function. For a streaming pipeline runing on Flink,
+    this is the main mechanism for an Accumulator-based aggregation
+    on a window of data. Adds incoming data to an intermediate
+    aggregate and merges intermediate aggregates.
+    """
 
     def __init__(self, acc: Accumulator[InputType, IntermediateType, OutputType]) -> None:
         self.acc = acc
@@ -65,6 +76,10 @@ class FlinkAggregate(AggregateFunction, Generic[InputType, IntermediateType, Out
 
 
 class FlinkGroupBy(KeySelector):
+    """
+    Takes the Streams API's GroupBy and provides a thin
+    wrapper to convert to Flink's GroupBy mechanism.
+    """
 
     def __init__(self, group_by: GroupBy) -> None:
         self.group_by = group_by
@@ -85,6 +100,12 @@ def to_flink_time(timestamp: timedelta) -> Time:
 
 
 class FlinkWindows(Generic[MeasurementUnit]):
+    """
+    Takes the Streams API's Window building mechanism and
+    converts it into Flink's WindowAssigner.
+    WindowAssigners specify how windows are created,
+    how they're closed, and their configuration.
+    """
 
     def __init__(self, window: Window[MeasurementUnit]) -> None:
         self.window: Window[MeasurementUnit] = window
