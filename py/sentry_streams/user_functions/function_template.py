@@ -71,5 +71,9 @@ class GroupBy(ABC):
     """
 
     @abstractmethod
+    # TODO: The payload type here will be the output
+    # type from the prior Step.
+    # TODO: Represent the group by key type as a Generic
+    # which will be passed through to Accumulator.
     def get_group_by_key(self, payload: Any) -> Any:
         raise NotImplementedError
