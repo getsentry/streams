@@ -18,7 +18,6 @@ from sentry_streams.user_functions.sample_filter import (
 def setup_basic_flink_env() -> (
     Generator[tuple[StreamExecutionEnvironment, RuntimeTranslator], None, None]
 ):
-
     # TODO: read from yaml file
     environment_config = {
         "topics": {
@@ -253,3 +252,56 @@ def test_import(
 
     with pytest.raises(ImportError):
         iterate_edges(pipeline, translator)
+
+
+def broadcast_pipeline() -> Pipeline:
+    pipeline = Pipeline()
+
+    source = KafkaSource(
+        name="myinput",
+        ctx=pipeline,
+        logical_topic="logical-events",
+    )
+
+    map = Map(
+        name="mymap",
+        ctx=pipeline,
+        inputs=[source],
+        function="sentry_streams.unknown_module.EventsPipelineFunctions.simple_map",
+    )
+
+    branch_1 = Map(
+        name="mybranch1",
+        ctx=pipeline,
+        inputs=[map],
+        function=EventsPipelineMapFunctions.simple_map,
+    )
+
+    branch_2 = Map(
+        name="mybranch2",
+        ctx=pipeline,
+        inputs=[map],
+        function=EventsPipelineMapFunctions.simple_map,
+    )
+
+    _ = KafkaSink(
+        name="kafkasink1",
+        ctx=pipeline,
+        inputs=[branch_1],
+        logical_topic="transformed-events",
+    )
+
+    _ = KafkaSink(
+        name="kafkasink2",
+        ctx=pipeline,
+        inputs=[branch_2],
+        logical_topic="transformed-events-2s",
+    )
+
+    return pipeline
+
+
+def test_broadcast(
+    pipeline: Pipeline = broadcast_pipeline(),
+) -> None:
+    assert pipeline.outgoing_edges["mymap"] == ["mybranch1", "mybranch2"]
