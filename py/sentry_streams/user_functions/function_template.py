@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Optional, TypeVar
 
 InputType = TypeVar("InputType")
 OutputType = TypeVar("OutputType")
@@ -27,7 +27,7 @@ class Accumulator(ABC, Generic[InputType, IntermediateType, OutputType]):
     Accumulator for aggregation.
     """
 
-    def __init__(self, backend: AggregationBackend[OutputType]):
+    def __init__(self, backend: Optional[AggregationBackend[OutputType]] = None):
         self.backend = backend
 
     @abstractmethod
