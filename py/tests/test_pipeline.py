@@ -6,12 +6,25 @@ from pyflink.datastream import DataStream, DataStreamSink, StreamExecutionEnviro
 
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator, Stream, StreamSink
 from sentry_streams.flink.flink_adapter import FlinkAdapter
-from sentry_streams.pipeline import Filter, KafkaSink, KafkaSource, Map, Pipeline
+from sentry_streams.pipeline import (
+    Filter,
+    KafkaSink,
+    KafkaSource,
+    Map,
+    Pipeline,
+    Reduce,
+)
 from sentry_streams.runner import iterate_edges
+from sentry_streams.user_functions.sample_agg import (
+    WordCounter,
+    WordCounterAggregationBackend,
+)
 from sentry_streams.user_functions.sample_filter import (
     EventsPipelineFilterFunctions,
 )
+from sentry_streams.user_functions.sample_group_by import GroupByWord
 from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
+from sentry_streams.window import TumblingCountWindow
 
 
 @pytest.fixture(autouse=True)
@@ -155,7 +168,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
         logical_topic="logical-events",
     )
 
-    map = Filter(
+    filter = Filter(
         name="myfilter",
         ctx=pipeline,
         inputs=[source],
@@ -165,7 +178,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     _ = KafkaSink(
         name="kafkasink",
         ctx=pipeline,
-        inputs=[map],
+        inputs=[filter],
         logical_topic="transformed-events",
     )
 
@@ -208,7 +221,84 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     return (pipeline, expected)
 
 
-@pytest.mark.parametrize("pipeline,expected_plan", [basic(), basic_map(), basic_filter()])
+def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
+
+    pipeline = Pipeline()
+
+    source = KafkaSource(
+        name="myinput",
+        ctx=pipeline,
+        logical_topic="logical-events",
+    )
+
+    map = Map(
+        name="mymap",
+        ctx=pipeline,
+        inputs=[source],
+        function=EventsPipelineMapFunction.simple_map,
+    )
+
+    reduce_window = TumblingCountWindow(window_size=3)
+    agg_backend = WordCounterAggregationBackend()
+
+    reduce = Reduce(
+        name="myreduce",
+        ctx=pipeline,
+        inputs=[map],
+        windowing=reduce_window,
+        aggregate_fn=WordCounter(agg_backend),
+        group_by_key=GroupByWord(),
+    )
+
+    _ = KafkaSink(
+        name="kafkasink",
+        ctx=pipeline,
+        inputs=[reduce],
+        logical_topic="transformed-events",
+    )
+
+    expected = {
+        "nodes": [
+            {
+                "id": 14,
+                "type": "Source: Custom Source",
+                "pact": "Data Source",
+                "contents": "Source: Custom Source",
+                "parallelism": 1,
+            },
+            {
+                "id": 15,
+                "type": "Filter",
+                "pact": "Operator",
+                "contents": "Filter",
+                "parallelism": 1,
+                "predecessors": [{"id": 14, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+            {
+                "id": 17,
+                "type": "Sink: Writer",
+                "pact": "Operator",
+                "contents": "Sink: Writer",
+                "parallelism": 1,
+                "predecessors": [{"id": 15, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+            {
+                "id": 19,
+                "type": "Sink: Committer",
+                "pact": "Operator",
+                "contents": "Sink: Committer",
+                "parallelism": 1,
+                "predecessors": [{"id": 17, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+        ]
+    }
+
+    return (pipeline, expected)
+
+
+@pytest.mark.parametrize(
+    "pipeline,expected_plan", [basic(), basic_map(), basic_filter(), basic_map_reduce()]
+)
 def test_pipeline(
     setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator[Stream, StreamSink]],
     pipeline: Pipeline,
