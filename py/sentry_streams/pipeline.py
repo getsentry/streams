@@ -11,6 +11,7 @@ class StepType(Enum):
     SOURCE = "source"
     MAP = "map"
     FILTER = "filter"
+    BROADCAST = "broadcast"
 
 
 class Pipeline:
@@ -145,3 +146,12 @@ class Filter(TransformStep[bool]):
 
     function: Union[Callable[..., bool], str]
     step_type: StepType = StepType.FILTER
+
+
+@dataclass
+class Broadcast(WithInput):
+    """
+    Broadcast is used to send a message from one step to all connected downstream steps
+    """
+
+    step_type: StepType = StepType.BROADCAST

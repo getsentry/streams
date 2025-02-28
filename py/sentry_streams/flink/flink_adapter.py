@@ -14,7 +14,7 @@ from pyflink.datastream.connectors.kafka import (
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline import Filter, Map, Step, TransformStep
+from sentry_streams.pipeline import Broadcast, Filter, Map, Step, TransformStep
 
 T = TypeVar("T")
 
@@ -123,6 +123,9 @@ class FlinkAdapter(StreamAdapter):
     def filter(self, step: Filter, stream: Any) -> Any:
         imported_fn = self.load_function(step)
         return stream.filter(func=lambda msg: imported_fn(msg))
+
+    def broadcast(self, step: Broadcast, stream: Any) -> Any:
+        pass
 
     def run(self) -> None:
         self.env.execute()
