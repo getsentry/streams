@@ -260,35 +260,76 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
     expected = {
         "nodes": [
             {
-                "id": 14,
+                "id": 21,
                 "type": "Source: Custom Source",
                 "pact": "Data Source",
                 "contents": "Source: Custom Source",
                 "parallelism": 1,
             },
             {
-                "id": 15,
-                "type": "Filter",
+                "id": 22,
+                "type": "Map",
                 "pact": "Operator",
-                "contents": "Filter",
+                "contents": "Map",
                 "parallelism": 1,
-                "predecessors": [{"id": 14, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 7, "ship_strategy": "FORWARD", "side": "second"}],
             },
             {
-                "id": 17,
-                "type": "Sink: Writer",
+                "contents": "_stream_key_by_map_operator",
+                "id": 24,
                 "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 22,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "_stream_key_by_map_operator",
+            },
+            {
+                "contents": "Window(CountTumblingWindowAssigner(3), CountTrigger, "
+                "FlinkAggregate)",
+                "id": 26,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 24,
+                        "ship_strategy": "HASH",
+                        "side": "second",
+                    },
+                ],
+                "type": "CountTumblingWindowAssigner",
+            },
+            {
                 "contents": "Sink: Writer",
+                "id": 31,
+                "pact": "Operator",
                 "parallelism": 1,
-                "predecessors": [{"id": 15, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [
+                    {
+                        "id": 26,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
             },
             {
-                "id": 19,
-                "type": "Sink: Committer",
-                "pact": "Operator",
                 "contents": "Sink: Committer",
+                "id": 33,
+                "pact": "Operator",
                 "parallelism": 1,
-                "predecessors": [{"id": 17, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [
+                    {
+                        "id": 31,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
             },
         ]
     }
