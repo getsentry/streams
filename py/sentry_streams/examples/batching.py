@@ -23,7 +23,7 @@ class BatchBuilder(Accumulator[str, list[str], str]):
         return acc
 
     def get_output(self, acc: list[str]) -> str:
-        return "  ".join(acc)
+        return " ".join(acc)
 
     def merge(self, acc1: list[str], acc2: list[str]) -> list[str]:
         return acc1 + acc2

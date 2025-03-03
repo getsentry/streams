@@ -30,12 +30,20 @@ class OutcomesBackend(AggregationBackend[PendingBuffer]):
         self.storage_map: dict[str, int] = {"state": 0, "data_cat": 0}
 
     def flush_aggregate(self, aggregate: PendingBuffer) -> None:
-
+        """
+        Simply overrides the current values in the storage.
+        """
         self.storage_map["state"] = aggregate.get_key("state")
         self.storage_map["data_cat"] = aggregate.get_key("data_cat")
 
 
 class OutcomesBuffer(Accumulator[Outcome, PendingBuffer, PendingBuffer]):
+    """
+    An accumulator which adds outcomes data to a PendingBuffer.
+    Upon the closing of a window, the Buffer is flushed to a
+    sample backend (the OutcomesBackend). As of now this backend
+    is not a mocked DB, it is a simple hash map.
+    """
 
     def __init__(self, backend: Optional[OutcomesBackend] = None):
         self.backend = backend
@@ -88,7 +96,6 @@ map = Map(
 
 # A sample window.
 # Windows are assigned 3 elements.
-# But aggregation can be triggered as soon as 2 elements are seen.
 reduce_window = TumblingWindow(window_size=3)
 agg_backend = OutcomesBackend()
 

@@ -56,16 +56,16 @@ def translate_to_flink_type(type: Any) -> TypeInformation:
     args = FLINK_TYPE_MAP[type][1:]
 
     if len(args) == 1:
-        arg = args[0]
+        args = args[0]
 
-        if not arg:
+        if not args:
             return fn()
 
-        elif isinstance(arg, list):
+        elif isinstance(args, list):
             return fn([arg() for arg in args])
 
         else:
-            return fn(arg())
+            return fn(args())
 
     else:
         arg1, arg2 = args
