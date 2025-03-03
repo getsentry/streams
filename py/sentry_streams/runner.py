@@ -32,20 +32,12 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator) -> None:
                 if not output_steps:
                     continue
 
-                # check if the inputs are fanning out
-                if len(output_steps) > 1:
-                    pass
-
-                else:
-                    output_step_name = output_steps.pop()
-
+                for output in output_steps:
                     # check if the inputs are fanning in
-                    if len(p_graph.incoming_edges[output_step_name]) > 1:
-                        pass
-
-                    # 1:1 between input and output stream
+                    if len(p_graph.incoming_edges[output]) > 1:
+                        print(f"fan-in detected: {output}")
                     else:
-                        next_step: WithInput = cast(WithInput, p_graph.steps[output_step_name])
+                        next_step: WithInput = cast(WithInput, p_graph.steps[output])
                         print(f"Apply step: {next_step.name}")
                         next_step_stream = translator.translate_step(next_step, input_stream)
                         step_streams[next_step.name] = next_step_stream
@@ -87,6 +79,7 @@ def main() -> None:
         "topics": {
             "logical-events": "events",
             "transformed-events": "transformed-events",
+            "transformed-events-2": "transformed-events-2",
         },
         "broker": args.broker,
     }
