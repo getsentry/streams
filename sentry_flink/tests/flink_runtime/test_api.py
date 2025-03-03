@@ -1,7 +1,7 @@
 import pytest
 import responses
 
-from sentry_streams.flink_runtime.flink_api import cancel_job, list_jobs
+from sentry_flink.flink_runtime.flink_api import cancel_job, list_jobs
 
 JOBS = {
     "jobs": [

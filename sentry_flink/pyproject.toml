@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentry-flink"
+version = "0.0.1"
+description = "The streaming adapter for apache flink"
+readme = "README.md"
+# Cannot use 3.12 because of pyflink.
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "apache-flink==1.20.0",
+    "setuptools==75.8.0",
+    "requests>=2.32.3",
+    "sentry_streams @ file:///${PROJECT_ROOT}/../sentry_streams",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14.1",
+    "pre-commit>=4.1.0",
+    "pytest>=8.3.4",
+    "responses>=0.25.6",
+    "types-requests>=2.32.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+sentry_flink = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+
+[tool.black]
+# File filtering is taken care of in pre-commit.
+line-length = 100
+
+[tool.isort]
+profile = "black"
