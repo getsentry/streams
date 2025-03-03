@@ -14,11 +14,12 @@ class Window(Generic[MeasurementUnit]):
 
 
 @dataclass
-class SlidingCountWindow(Window[MeasurementUnit]):
+class SlidingWindow(Window[MeasurementUnit]):
     """
     A sliding window which is configured
-    by counts. Size and slide are both
-    in terms of number of elements.
+    by counts or by event time. Both size and slide can be
+    in terms of number of elements, or both can be
+    in terms of a duration in event time.
 
     The window slide determines how
     frequently a window is started. (e.g.
@@ -31,36 +32,11 @@ class SlidingCountWindow(Window[MeasurementUnit]):
 
 
 @dataclass
-class SlidingEventTimeWindow(Window[MeasurementUnit]):
-    """
-    A sliding window where size and slide
-    are both in terms of event time.
-
-    The window slide determines how
-    frequently a window is started. (
-    e.g. every 5 minutes). Windows
-    can overlap.
-    """
-
-    window_size: MeasurementUnit
-    window_slide: MeasurementUnit
-
-
-@dataclass
-class TumblingCountWindow(Window[MeasurementUnit]):
+class TumblingWindow(Window[MeasurementUnit]):
     """
     A fixed-size window with no overlap.
-    Size is in terms of number of elements.
-    """
-
-    window_size: MeasurementUnit
-
-
-@dataclass
-class TumblingEventTimeWindow(Window[MeasurementUnit]):
-    """
-    A fixed-size window with no overlap.
-    Size is in terms of event time passed.
+    Size is in terms of number of elements (an integer),
+    or in terms of event time (timedelta).
     """
 
     window_size: MeasurementUnit

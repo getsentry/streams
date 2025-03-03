@@ -15,7 +15,7 @@ from sentry_streams.user_functions.sample_filter import (
 )
 from sentry_streams.user_functions.sample_group_by import GroupByWord
 from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
-from sentry_streams.window import TumblingCountWindow
+from sentry_streams.window import TumblingWindow
 
 # pipeline: special name
 pipeline = Pipeline()
@@ -43,7 +43,7 @@ map = Map(
 # A sample window.
 # Windows are assigned 3 elements.
 # But aggregation can be triggered as soon as 2 elements are seen.
-reduce_window = TumblingCountWindow(window_size=3)
+reduce_window = TumblingWindow(window_size=3)
 agg_backend = WordCounterAggregationBackend()
 
 reduce = Reduce(

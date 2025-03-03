@@ -24,7 +24,7 @@ from sentry_streams.user_functions.sample_filter import (
 )
 from sentry_streams.user_functions.sample_group_by import GroupByWord
 from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
-from sentry_streams.window import TumblingCountWindow
+from sentry_streams.window import TumblingWindow
 
 
 @pytest.fixture(autouse=True)
@@ -238,7 +238,7 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
         function=EventsPipelineMapFunction.simple_map,
     )
 
-    reduce_window = TumblingCountWindow(window_size=3)
+    reduce_window = TumblingWindow(window_size=3)
     agg_backend = WordCounterAggregationBackend()
 
     reduce = Reduce(

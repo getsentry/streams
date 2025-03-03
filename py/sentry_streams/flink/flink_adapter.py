@@ -23,7 +23,9 @@ from sentry_streams.flink.flink_fn_translator import (
     FlinkAggregate,
     FlinkGroupBy,
     FlinkWindows,
-    convert_to_flink_type,
+    is_standard_type,
+    translate_custom_type,
+    translate_to_flink_type,
 )
 from sentry_streams.modules import get_module
 from sentry_streams.pipeline import (
@@ -150,9 +152,15 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         imported_fn = self.load_function(step)
 
         return_type = imported_fn.__annotations__["return"]
+
         # TODO: Ensure output type is configurable like the schema above
         return stream.map(
-            func=lambda msg: imported_fn(msg), output_type=convert_to_flink_type(return_type)
+            func=lambda msg: imported_fn(msg),
+            output_type=(
+                translate_to_flink_type(return_type)
+                if is_standard_type(return_type)
+                else translate_custom_type(return_type)
+            ),
         )
 
     def reduce(
@@ -188,14 +196,17 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         else:
             windowed_stream = time_stream.window_all(window_assigner)
 
-        acc_type = agg.create.__annotations__["return"]
+        # acc_type = agg.create.__annotations__["return"]
         return_type = agg.get_output.__annotations__["return"]
 
         # TODO: Figure out a systematic way to convert types
         return windowed_stream.aggregate(
             FlinkAggregate(agg),
-            accumulator_type=convert_to_flink_type(acc_type),
-            output_type=convert_to_flink_type(return_type),
+            output_type=(
+                translate_to_flink_type(return_type)
+                if is_standard_type(return_type)
+                else translate_custom_type(return_type)
+            ),
         )
 
     def run(self) -> None:

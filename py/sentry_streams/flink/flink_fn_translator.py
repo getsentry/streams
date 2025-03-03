@@ -20,30 +20,57 @@ from sentry_streams.user_functions.function_template import (
 )
 from sentry_streams.window import (
     MeasurementUnit,
-    SlidingCountWindow,
-    SlidingEventTimeWindow,
-    TumblingCountWindow,
-    TumblingEventTimeWindow,
+    SlidingWindow,
+    TumblingWindow,
     Window,
 )
 
 FLINK_TYPE_MAP: dict[Any, Any] = {
     tuple[str, int]: (Types.TUPLE, [Types.STRING, Types.INT]),
     str: (Types.STRING, []),
+    list[str]: (Types.BASIC_ARRAY, Types.STRING),
+    dict[str, str]: (Types.MAP, Types.STRING, Types.STRING),
 }
 
 
-def convert_to_flink_type(type: Any) -> TypeInformation:
+def is_standard_type(type: Any) -> bool:
+    if type in FLINK_TYPE_MAP:
+        return True
+
+    return False
+
+
+def translate_custom_type(type: Any) -> TypeInformation:
+    return Types.PICKLED_BYTE_ARRAY()
+
+
+def translate_to_flink_type(type: Any) -> TypeInformation:
     """
     Convert Python types to Flink's Types class.
     Recommended for use in explicitly defining the
-    output_type of a Flink operator.
+    output_type of a Flink operator. These types
+    specifically have to be instantiated.
     """
     fn: Callable[..., TypeInformation]
-    fn, args = FLINK_TYPE_MAP[type]
-    flink_type = fn([arg() for arg in args]) if args else fn()
+    fn = FLINK_TYPE_MAP[type][0]
+    args = FLINK_TYPE_MAP[type][1:]
 
-    return flink_type
+    if len(args) == 1:
+        arg = args[0]
+
+        if not arg:
+            return fn()
+
+        elif isinstance(arg, list):
+            return fn([arg() for arg in args])
+
+        else:
+            return fn(arg())
+
+    else:
+        arg1, arg2 = args
+
+        return fn(arg1(), arg2())
 
 
 class FlinkAggregate(AggregateFunction, Generic[InputType, IntermediateType, OutputType]):
@@ -115,19 +142,28 @@ class FlinkWindows(Generic[MeasurementUnit]):
         window: Window[MeasurementUnit] = self.window
 
         match window:
-            case SlidingEventTimeWindow(window_size, window_slide):
-                return SlidingEventTimeWindows.of(
-                    to_flink_time(window_size), to_flink_time(window_slide)
-                )
+            case SlidingWindow(window_size, window_slide):
+                match window_size:
+                    case timedelta():
+                        return SlidingEventTimeWindows.of(
+                            to_flink_time(window_size), to_flink_time(window_slide)
+                        )
+                    case int():
+                        return CountSlidingWindowAssigner.of(window_size, window_slide)
 
-            case SlidingCountWindow(window_size, window_slide):
-                return CountSlidingWindowAssigner.of(window_size, window_slide)
+                    case _:
+                        raise TypeError(f"{window_size} is not a supported MeasurementUnit type")
 
-            case TumblingEventTimeWindow(window_size):
-                return TumblingEventTimeWindows.of(to_flink_time(window_size))
+            case TumblingWindow(window_size):
+                match window_size:
+                    case timedelta():
+                        return TumblingEventTimeWindows.of(to_flink_time(window_size))
 
-            case TumblingCountWindow(window_size):
-                return CountTumblingWindowAssigner.of(window_size)
+                    case int():
+                        return CountTumblingWindowAssigner.of(window_size)
+
+                    case _:
+                        raise TypeError(f"{window_size} is not a supported MeasurementUnit type")
 
             case _:
                 raise TypeError(f"{window} is not a supported Window type")
