@@ -7,7 +7,6 @@ from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline import (
-    Broadcast,
     Filter,
     KafkaSink,
     KafkaSource,
@@ -15,10 +14,8 @@ from sentry_streams.pipeline import (
     Pipeline,
 )
 from sentry_streams.runner import iterate_edges
-from sentry_streams.user_functions.sample_filter import (
-    EventsPipelineFilterFunctions,
-    EventsPipelineMapFunctions,
-)
+from sentry_streams.user_functions.sample_filter import EventsPipelineFilterFunctions
+from sentry_streams.user_functions.sample_map import EventsPipelineMapFunctions
 
 
 @pytest.fixture(autouse=True)
@@ -277,23 +274,17 @@ def broadcast_pipeline() -> Pipeline:
         function="sentry_streams.unknown_module.EventsPipelineFunctions.simple_map",
     )
 
-    broadcast = Broadcast(
-        name="broadcast",
-        ctx=pipeline,
-        inputs=[map],
-    )
-
     branch_1 = Map(
         name="mybranch1",
         ctx=pipeline,
-        inputs=[broadcast],
+        inputs=[map],
         function=EventsPipelineMapFunctions.simple_map,
     )
 
     branch_2 = Map(
         name="mybranch2",
         ctx=pipeline,
-        inputs=[broadcast],
+        inputs=[map],
         function=EventsPipelineMapFunctions.simple_map,
     )
 
@@ -317,4 +308,5 @@ def broadcast_pipeline() -> Pipeline:
 def test_broadcast(
     pipeline: Pipeline = broadcast_pipeline(),
 ) -> None:
-    assert pipeline.outgoing_edges["broadcast"] == ["mybranch1", "mybranch2"]
+    print({f"{pipeline.outgoing_edges=}"})
+    assert pipeline.outgoing_edges["mymap"] == ["mybranch1", "mybranch2"]
