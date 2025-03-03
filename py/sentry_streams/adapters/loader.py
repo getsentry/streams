@@ -1,14 +1,17 @@
 from enum import Enum
 from typing import Union, assert_never
 
-from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
+from sentry_streams.adapters.stream_adapter import PipelineConfig
+from sentry_streams.flink.flink_adapter import FlinkAdapter
 
 
 class AdapterType(Enum):
     FLINK = "flink"
 
 
-def load_adapter(adapter_type: Union[AdapterType, str], config: PipelineConfig) -> StreamAdapter:
+def load_adapter(
+    adapter_type: Union[AdapterType, str], config: PipelineConfig
+) -> Union[FlinkAdapter]:
     """
     Loads a StreamAdapter to run a pipeline.
 
@@ -29,9 +32,9 @@ def load_adapter(adapter_type: Union[AdapterType, str], config: PipelineConfig) 
     """
     if isinstance(adapter_type, AdapterType):
         if adapter_type == AdapterType.FLINK:
-            from sentry_streams.flink.flink_adapter import FlinkAdapter
 
             return FlinkAdapter.build(config)
+
         else:
             assert_never()
 

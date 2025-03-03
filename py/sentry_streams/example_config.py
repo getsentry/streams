@@ -4,11 +4,18 @@ from sentry_streams.pipeline import (
     KafkaSource,
     Map,
     Pipeline,
+    Reduce,
+)
+from sentry_streams.user_functions.sample_agg import (
+    WordCounter,
+    WordCounterAggregationBackend,
 )
 from sentry_streams.user_functions.sample_filter import (
     EventsPipelineFilterFunctions,
-    EventsPipelineMapFunctions,
 )
+from sentry_streams.user_functions.sample_group_by import GroupByWord
+from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
+from sentry_streams.window import TumblingWindow
 
 # pipeline: special name
 pipeline = Pipeline()
@@ -30,12 +37,27 @@ map = Map(
     name="mymap",
     ctx=pipeline,
     inputs=[filter],
-    function=EventsPipelineMapFunctions.simple_map,
+    function=EventsPipelineMapFunction.simple_map,
+)
+
+# A sample window.
+# Windows are assigned 3 elements.
+# But aggregation can be triggered as soon as 2 elements are seen.
+reduce_window = TumblingWindow(window_size=3)
+agg_backend = WordCounterAggregationBackend()
+
+reduce = Reduce(
+    name="myreduce",
+    ctx=pipeline,
+    inputs=[map],
+    windowing=reduce_window,
+    aggregate_fn=WordCounter(agg_backend),
+    group_by_key=GroupByWord(),
 )
 
 sink = KafkaSink(
     name="kafkasink",
     ctx=pipeline,
-    inputs=[map],
+    inputs=[reduce],
     logical_topic="transformed-events",
 )
