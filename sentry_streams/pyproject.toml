@@ -10,7 +10,6 @@ readme = "README.md"
 
 requires-python = ">=3.11"
 dependencies = [
-    "setuptools==75.8.0",
     "requests>=2.32.3",
 ]
 
