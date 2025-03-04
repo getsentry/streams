@@ -23,7 +23,7 @@ typecheck:
 .PHONY: typecheck
 
 build-streams:
-	uv pip install wheel
-	uv pip install build
+	cd sentry_streams && uv pip install wheel
+	cd sentry_streams && uv pip install build
 	cd sentry_streams && .venv/bin/python -m build --wheel
 .PHONY: build-streams
