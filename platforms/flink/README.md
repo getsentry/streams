@@ -37,9 +37,9 @@ kafka
 
 ```
 python \
-     py/sentry_streams/flink_runtime/flink_deploy.py \
+     sentry_streams/flink_runtime/flink_deploy.py \
      -n "My Flink App" \
-     py/sentry_streams/example_config.py
+     sentry_streams/example_config.py
 ```
 
 `-n` is the name you are giving to the Flink application
