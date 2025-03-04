@@ -4,7 +4,7 @@ github:
   owner: getsentry
   repo: streams
 changelogPolicy: auto
-preReleaseCommand: bash ../sbin/bump-version.sh
+preReleaseCommand: bash ../scripts/bump-version.sh
 releaseBranchPrefix: release-sentry-streams
 targets:
   - name: pypi
