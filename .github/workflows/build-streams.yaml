@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - release-sentry-streams/**
+  pull_request:
 
 jobs:
   dist:
@@ -25,7 +26,7 @@ jobs:
           run: |
             make build-streams
 
-        - uses: actions/upload-artifact@v4
-          with:
-                name: ${{ github.sha }}
-                path: sentry_streams/dist/*
+        #- uses: actions/upload-artifact@v4
+        #  with:
+        #        name: ${{ github.sha }}
+        #        path: sentry_streams/dist/*
