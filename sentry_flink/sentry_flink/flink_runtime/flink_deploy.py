@@ -23,6 +23,12 @@ def main() -> int:
         help="The name of the Flink Job",
     )
     parser.add_argument(
+        "--adapter",
+        type=str,
+        default="sentry_flink.flink.flink_adapter.FlinkAdapter",
+        help="The name of the adapter to use",
+    )
+    parser.add_argument(
         "--jobmanager-address",
         "-a",
         type=str,
@@ -65,6 +71,8 @@ def main() -> int:
             "--name",
             args.name,
             f"/apps/{args.application}",
+            "--adapter",
+            args.adapter,
         ]
     )
 
