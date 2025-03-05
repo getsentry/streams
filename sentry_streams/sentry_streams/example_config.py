@@ -5,10 +5,8 @@ from sentry_streams.pipeline import (
     Map,
     Pipeline,
 )
-from sentry_streams.user_functions.sample_filter import (
-    EventsPipelineFilterFunctions,
-    EventsPipelineMapFunctions,
-)
+from sentry_streams.user_functions.sample_filter import EventsPipelineFilterFunctions
+from sentry_streams.user_functions.sample_map import EventsPipelineMapFunctions
 
 # pipeline: special name
 pipeline = Pipeline()
@@ -30,12 +28,33 @@ map = Map(
     name="mymap",
     ctx=pipeline,
     inputs=[filter],
+    function=EventsPipelineMapFunctions.no_op_map,
+)
+
+branch_1 = Map(
+    name="mybranch1",
+    ctx=pipeline,
+    inputs=[map],
     function=EventsPipelineMapFunctions.simple_map,
 )
 
-sink = KafkaSink(
-    name="kafkasink",
+branch_2 = Map(
+    name="mybranch2",
     ctx=pipeline,
     inputs=[map],
+    function=EventsPipelineMapFunctions.simple_map,
+)
+
+sink_1 = KafkaSink(
+    name="kafkasink1",
+    ctx=pipeline,
+    inputs=[branch_1],
     logical_topic="transformed-events",
+)
+
+sink_2 = KafkaSink(
+    name="kafkasink2",
+    ctx=pipeline,
+    inputs=[branch_2],
+    logical_topic="transformed-events-2",
 )

@@ -48,7 +48,14 @@ class StreamAdapter(ABC):
     @abstractmethod
     def map(self, step: Map, stream: Any) -> Any:
         """
-        Build a map operator for the platform the adapter supports.
+        Builds a map operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def filter(self, step: Filter, stream: Any) -> Any:
+        """
+        Builds a filter operator for the platform the adapter supports.
         """
         raise NotImplementedError
 
@@ -57,10 +64,6 @@ class StreamAdapter(ABC):
         """
         Starts the pipeline
         """
-        raise NotImplementedError
-
-    @abstractmethod
-    def filter(self, step: Filter, stream: Any) -> Any:
         raise NotImplementedError
 
 
