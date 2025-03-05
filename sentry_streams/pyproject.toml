@@ -24,6 +24,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["sentry_streams"]
 
 [tool.setuptools.package-data]
 sentry_streams = ["py.typed"]
