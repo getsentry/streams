@@ -87,6 +87,9 @@ def main() -> None:
     pipeline: Pipeline = pipeline_globals["pipeline"]
     runtime = load_adapter(AdapterType.FLINK, environment_config)
     translator = RuntimeTranslator(runtime)
+    from pprint import pprint
+
+    pprint(pipeline.__dict__)
 
     iterate_edges(pipeline, translator)
 
