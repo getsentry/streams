@@ -1,7 +1,7 @@
 import argparse
 import subprocess
 
-from sentry_streams.flink_runtime.flink_api import list_jobs
+from sentry_flink.flink_runtime.flink_api import list_jobs
 
 
 def main() -> int:

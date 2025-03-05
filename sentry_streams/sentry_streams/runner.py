@@ -1,7 +1,7 @@
 import argparse
 from typing import Any, cast
 
-from sentry_streams.adapters import AdapterType, load_adapter
+from sentry_streams.adapters import load_adapter
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.pipeline import (
     Pipeline,
@@ -60,6 +60,19 @@ def main() -> None:
         help="The broker the job should connect to",
     )
     parser.add_argument(
+        "--adapter",
+        "-a",
+        type=str,
+        # TODO: Remove the support for dynamically load the class.
+        # Add a runner CLI in the flink package instead that instantiates
+        # the Flink adapter.
+        help=(
+            "The stream adapter to instantiate. It can be a value from "
+            "the AdapterType enum or a fully qualified class name to "
+            "load dynamically"
+        ),
+    )
+    parser.add_argument(
         "application",
         type=str,
         help=(
@@ -67,6 +80,7 @@ def main() -> None:
             "to the path mounted in the job manager as the /apps directory."
         ),
     )
+
     pipeline_globals: dict[str, Any] = {}
 
     args = parser.parse_args()
@@ -85,7 +99,7 @@ def main() -> None:
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    runtime = load_adapter(AdapterType.FLINK, environment_config)
+    runtime = load_adapter(args.adapter, environment_config)
     translator = RuntimeTranslator(runtime)
     from pprint import pprint
 

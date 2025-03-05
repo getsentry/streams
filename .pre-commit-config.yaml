@@ -9,6 +9,10 @@ repos:
       - id: check-yaml
       - id: detect-private-key
       - id: end-of-file-fixer
+        # Exclude CHANGELOG.md from this hook as Craft generates updates
+        # that make pre-commit fail on the release branch.
+        # An extra new line is added at the end.
+        exclude: "^sentry_streams/CHANGELOG.md"
       - id: trailing-whitespace
       - id: fix-encoding-pragma
         args: ["--remove"]
@@ -16,8 +20,11 @@ repos:
     rev: 24.10.0
     hooks:
       - id: black
-        files: ^py/.+
-        args: [--config=./py/pyproject.toml]
+        files: ^sentry_streams/.+
+        args: [--config=./sentry_streams/pyproject.toml]
+      - id: black
+        files: ^sentry_flink/.+
+        args: [--config=./sentry_flink/pyproject.toml]
   - repo: https://github.com/pycqa/flake8
     rev: 7.1.1
     hooks:
@@ -27,21 +34,24 @@ repos:
     rev: 'v1.14.1'
     hooks:
     -   id: mypy
-        args: [--config-file, py/mypy.ini, --strict]
+        args: [--config-file, sentry_streams/mypy.ini, --strict]
         additional_dependencies: [
           pytest==7.1.2,
-          apache-flink==1.20.0,
           types-requests,
           responses,
         ]
-        files: ^py/.+
+        files: ^sentry_streams/.+
   - repo: https://github.com/pycqa/isort
     rev: 6.0.0
     hooks:
       - id: isort
         name: isort (python)
-        files: ^py/.+
-        args: [--settings-path=./py/pyproject.toml]
+        files: ^sentry_streams/.+
+        args: [--settings-path=./sentry_streams/pyproject.toml]
+      - id: isort
+        name: isort (python)
+        files: ^sentry_flink/.+
+        args: [--settings-path=./sentry_flink/pyproject.toml]
 
 default_language_version:
   python: python3.11
