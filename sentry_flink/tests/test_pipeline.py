@@ -1,10 +1,19 @@
 import json
+import unittest
 from typing import Any, Generator, MutableMapping
 
 import pytest
 from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
-from sentry_streams.pipeline import Filter, KafkaSink, KafkaSource, Map, Pipeline
+from sentry_streams.pipeline import (
+    Filter,
+    KafkaSink,
+    KafkaSource,
+    Map,
+    Pipeline,
+    Source,
+    Step,
+)
 from sentry_streams.runner import iterate_edges
 from sentry_streams.user_functions.sample_filter import (
     EventsPipelineFilterFunctions,
@@ -12,6 +21,34 @@ from sentry_streams.user_functions.sample_filter import (
 )
 
 from sentry_flink.flink.flink_adapter import FlinkAdapter
+
+
+class TestPipeline(unittest.TestCase):
+    def setUp(self):
+        """Setup a new pipeline before each test"""
+        self.pipeline = Pipeline()
+
+    def test_register_step(self):
+        step = Step("StepA")
+        self.pipeline.register(step)
+        self.assertIn("StepA", self.pipeline.steps)
+        self.assertEqual(self.pipeline.steps["StepA"], step)
+
+    def test_register_edge(self):
+        step_a = Step("StepA")
+        step_b = Step("StepB")
+
+        self.pipeline.register(step_a)
+        self.pipeline.register(step_b)
+        self.pipeline.register_edge(step_a, step_b)
+
+        self.assertEqual(self.pipeline.outgoing_edges["StepA"], ["StepB"])
+        self.assertEqual(self.pipeline.incoming_edges["StepB"], ["StepA"])
+
+    def test_register_source(self):
+        source_step = Source("SourceStep")
+        self.pipeline.register_source(source_step)
+        self.assertIn(source_step, self.pipeline.sources)
 
 
 @pytest.fixture(autouse=True)
