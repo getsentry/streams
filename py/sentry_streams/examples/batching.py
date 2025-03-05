@@ -1,3 +1,5 @@
+from typing import Self
+
 from sentry_streams.pipeline import (
     KafkaSink,
     KafkaSource,
@@ -8,25 +10,27 @@ from sentry_streams.user_functions.function_template import Accumulator
 from sentry_streams.window import TumblingWindow
 
 
-class BatchBuilder(Accumulator[str, list[str], str]):
+class BatchBuilder(Accumulator[str, str]):
     """
     Takes str input and accumulates them into a batch array.
     Joins back into a string to produce onto a Kafka topic.
     """
 
-    def create(self) -> list[str]:
-        return []
+    def __init__(self) -> None:
+        self.batch: list[str] = []
 
-    def add(self, acc: list[str], value: str) -> list[str]:
-        acc.append(value)
+    def add(self, value: str) -> Self:
+        self.batch.append(value)
 
-        return acc
+        return self
 
-    def get_output(self, acc: list[str]) -> str:
-        return " ".join(acc)
+    def get_value(self) -> str:
+        return " ".join(self.batch)
 
-    def merge(self, acc1: list[str], acc2: list[str]) -> list[str]:
-        return acc1 + acc2
+    def merge(self, other: Self) -> Self:
+        self.batch.extend(other.batch)
+
+        return self
 
 
 pipeline = Pipeline()
@@ -46,7 +50,7 @@ reduce = Reduce(
     ctx=pipeline,
     inputs=[source],
     windowing=reduce_window,
-    aggregate_fn=BatchBuilder(),
+    aggregate_fn=BatchBuilder,
 )
 
 # flush the batches to the Sink

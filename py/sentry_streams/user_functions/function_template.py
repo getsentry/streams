@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Generic, Self, TypeVar
 
 InputType = TypeVar("InputType")
 OutputType = TypeVar("OutputType")
@@ -20,25 +20,15 @@ class AggregationBackend(ABC, Generic[OutputType]):
         """
 
 
-class Accumulator(ABC, Generic[InputType, IntermediateType, OutputType]):
+class Accumulator(ABC, Generic[InputType, OutputType]):
     """
     The standard Accumulator template.
     Define these functions to build a custom
     Accumulator for aggregation.
     """
 
-    def __init__(self, backend: Optional[AggregationBackend[OutputType]] = None):
-        self.backend = backend
-
     @abstractmethod
-    def create(self) -> IntermediateType:
-        """
-        Initialize a new Accumulator with seed values.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def add(self, acc: IntermediateType, value: InputType) -> IntermediateType:
+    def add(self, value: InputType) -> Self:
         """
         Add values to the Accumulator. Can produce a new type which is different
         from the input type.
@@ -46,7 +36,7 @@ class Accumulator(ABC, Generic[InputType, IntermediateType, OutputType]):
         raise NotImplementedError
 
     @abstractmethod
-    def get_output(self, acc: IntermediateType) -> OutputType:
+    def get_value(self) -> OutputType:
         """
         Get the output value from the Accumulator. Can produce a new type
         which is different from the Accumulator type.
@@ -54,11 +44,25 @@ class Accumulator(ABC, Generic[InputType, IntermediateType, OutputType]):
         raise NotImplementedError
 
     @abstractmethod
-    def merge(self, acc1: IntermediateType, acc2: IntermediateType) -> IntermediateType:
+    def merge(self, other: Self) -> Self:
         """
         Merge 2 different Accumulators. Must produce the same type as Accumulator.
         Allows for merging of different intermediate values during
         distributed aggregations.
+        """
+        raise NotImplementedError
+
+
+class KVAccumulator(Accumulator[InputType, dict[Any, Any]]):
+    """
+    A KVAccumulator explicitly outputs a KV mapping.
+    """
+
+    @abstractmethod
+    def get_value(self) -> dict[Any, Any]:
+        """
+        Get the output value from the Accumulator. Can produce a new type
+        which is different from the Accumulator type.
         """
         raise NotImplementedError
 

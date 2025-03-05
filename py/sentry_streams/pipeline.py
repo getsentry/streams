@@ -9,7 +9,6 @@ from sentry_streams.user_functions.function_template import (
     Accumulator,
     GroupBy,
     InputType,
-    IntermediateType,
     OutputType,
 )
 from sentry_streams.window import MeasurementUnit, Window
@@ -162,7 +161,7 @@ class Filter(TransformStep[bool]):
 
 
 @dataclass
-class Reduce(WithInput, Generic[MeasurementUnit, InputType, IntermediateType, OutputType]):
+class Reduce(WithInput, Generic[MeasurementUnit, InputType, OutputType]):
     """
     A Reduce step which performs windowed aggregations. Can be keyed or non-keyed on the
     input stream. Supports an Accumulator-style aggregation which can have a configurable
@@ -170,6 +169,6 @@ class Reduce(WithInput, Generic[MeasurementUnit, InputType, IntermediateType, Ou
     """
 
     windowing: Window[MeasurementUnit]
-    aggregate_fn: Accumulator[InputType, IntermediateType, OutputType]
+    aggregate_fn: Callable[[], Accumulator[InputType, OutputType]]
     group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE

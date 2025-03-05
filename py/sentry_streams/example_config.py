@@ -8,7 +8,6 @@ from sentry_streams.pipeline import (
 )
 from sentry_streams.user_functions.sample_agg import (
     WordCounter,
-    WordCounterAggregationBackend,
 )
 from sentry_streams.user_functions.sample_filter import (
     EventsPipelineFilterFunctions,
@@ -42,16 +41,14 @@ map = Map(
 
 # A sample window.
 # Windows are assigned 3 elements.
-# But aggregation can be triggered as soon as 2 elements are seen.
 reduce_window = TumblingWindow(window_size=3)
-agg_backend = WordCounterAggregationBackend()
 
 reduce = Reduce(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
     windowing=reduce_window,
-    aggregate_fn=WordCounter(agg_backend),
+    aggregate_fn=WordCounter,
     group_by_key=GroupByWord(),
 )
 

@@ -15,7 +15,6 @@ from sentry_streams.user_functions.function_template import (
     Accumulator,
     GroupBy,
     InputType,
-    IntermediateType,
     OutputType,
 )
 from sentry_streams.window import (
@@ -73,7 +72,7 @@ def translate_to_flink_type(type: Any) -> TypeInformation:
         return fn(arg1(), arg2())
 
 
-class FlinkAggregate(AggregateFunction, Generic[InputType, IntermediateType, OutputType]):
+class FlinkAggregate(AggregateFunction, Generic[InputType, OutputType]):
     """
     Takes the Streams API's Accumulator and transforms it into Flink's
     Aggregate Function. For a streaming pipeline runing on Flink,
@@ -82,24 +81,40 @@ class FlinkAggregate(AggregateFunction, Generic[InputType, IntermediateType, Out
     aggregate and merges intermediate aggregates.
     """
 
-    def __init__(self, acc: Accumulator[InputType, IntermediateType, OutputType]) -> None:
+    def __init__(self, acc: Callable[[], Accumulator[InputType, OutputType]]) -> None:
         self.acc = acc
+        # self.backend = ...
 
-    def create_accumulator(self) -> IntermediateType:
-        return self.acc.create()
+    def create_accumulator(self) -> Accumulator[InputType, OutputType]:
+        """
+        Instantiates the Accumulator type for every window created.
+        """
+        return self.acc()
 
-    def add(self, value: InputType, accumulator: IntermediateType) -> IntermediateType:
-        return self.acc.add(accumulator, value)
+    def add(
+        self, value: InputType, accumulator: Accumulator[InputType, OutputType]
+    ) -> Accumulator[InputType, OutputType]:
+        assert isinstance(accumulator, Accumulator)
 
-    def get_result(self, accumulator: IntermediateType) -> OutputType:
-        return self.acc.get_output(accumulator)
+        return accumulator.add(value)
+
+    def get_result(self, accumulator: Accumulator[InputType, OutputType]) -> OutputType:
+        assert isinstance(accumulator, Accumulator)
+
+        accumulated = accumulator.get_value()
+
+        # self.backend.flush(accumulated)
+
+        return accumulated
 
     def merge(
         self,
-        acc_a: IntermediateType,
-        acc_b: IntermediateType,
-    ) -> IntermediateType:
-        return self.acc.merge(acc_a, acc_b)
+        acc_a: Accumulator[InputType, OutputType],
+        acc_b: Accumulator[InputType, OutputType],
+    ) -> Accumulator[InputType, OutputType]:
+        assert isinstance(acc_a, Accumulator)
+
+        return acc_a.merge(acc_b)
 
 
 class FlinkGroupBy(KeySelector):
@@ -126,44 +141,31 @@ def to_flink_time(timestamp: timedelta) -> Time:
     return flink_time
 
 
-class FlinkWindows(Generic[MeasurementUnit]):
-    """
-    Takes the Streams API's Window building mechanism and
-    converts it into Flink's WindowAssigner.
-    WindowAssigners specify how windows are created,
-    how they're closed, and their configuration.
-    """
+def build_flink_window(streams_window: Window[MeasurementUnit]) -> WindowAssigner[Any, Any]:
 
-    def __init__(self, window: Window[MeasurementUnit]) -> None:
-        self.window: Window[MeasurementUnit] = window
+    match streams_window:
+        case SlidingWindow(window_size, window_slide):
+            match window_size:
+                case timedelta():
+                    return SlidingEventTimeWindows.of(
+                        to_flink_time(window_size), to_flink_time(window_slide)
+                    )
+                case int():
+                    return CountSlidingWindowAssigner.of(window_size, window_slide)
 
-    def build_window(self) -> WindowAssigner[Any, Any]:
+                case _:
+                    raise TypeError(f"{window_size} is not a supported MeasurementUnit type")
 
-        window: Window[MeasurementUnit] = self.window
+        case TumblingWindow(window_size):
+            match window_size:
+                case timedelta():
+                    return TumblingEventTimeWindows.of(to_flink_time(window_size))
 
-        match window:
-            case SlidingWindow(window_size, window_slide):
-                match window_size:
-                    case timedelta():
-                        return SlidingEventTimeWindows.of(
-                            to_flink_time(window_size), to_flink_time(window_slide)
-                        )
-                    case int():
-                        return CountSlidingWindowAssigner.of(window_size, window_slide)
+                case int():
+                    return CountTumblingWindowAssigner.of(window_size)
 
-                    case _:
-                        raise TypeError(f"{window_size} is not a supported MeasurementUnit type")
+                case _:
+                    raise TypeError(f"{window_size} is not a supported MeasurementUnit type")
 
-            case TumblingWindow(window_size):
-                match window_size:
-                    case timedelta():
-                        return TumblingEventTimeWindows.of(to_flink_time(window_size))
-
-                    case int():
-                        return CountTumblingWindowAssigner.of(window_size)
-
-                    case _:
-                        raise TypeError(f"{window_size} is not a supported MeasurementUnit type")
-
-            case _:
-                raise TypeError(f"{window} is not a supported Window type")
+        case _:
+            raise TypeError(f"{streams_window} is not a supported Window type")

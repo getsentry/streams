@@ -22,7 +22,7 @@ from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.flink.flink_fn_translator import (
     FlinkAggregate,
     FlinkGroupBy,
-    FlinkWindows,
+    build_flink_window,
     is_standard_type,
     translate_custom_type,
     translate_to_flink_type,
@@ -38,7 +38,6 @@ from sentry_streams.pipeline import (
 )
 from sentry_streams.user_functions.function_template import (
     InputType,
-    IntermediateType,
     OutputType,
 )
 from sentry_streams.window import MeasurementUnit
@@ -165,14 +164,16 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def reduce(
         self,
-        step: Reduce[MeasurementUnit, InputType, IntermediateType, OutputType],
+        step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: DataStream,
     ) -> DataStream:
 
         agg = step.aggregate_fn
         windowing = step.windowing
-        flink_window = FlinkWindows(windowing)
-        window_assigner = flink_window.build_window()
+        # flink_window = FlinkWindows(windowing)
+        # window_assigner = flink_window.build_window()
+
+        flink_window = build_flink_window(windowing)
 
         # Optional parameters
         group_by = step.group_by_key
@@ -190,14 +191,13 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             keyed_stream = time_stream.key_by(FlinkGroupBy(group_by_key))
 
             windowed_stream: Union[WindowedStream, AllWindowedStream] = keyed_stream.window(
-                window_assigner
+                flink_window
             )
 
         else:
-            windowed_stream = time_stream.window_all(window_assigner)
+            windowed_stream = time_stream.window_all(flink_window)
 
-        # acc_type = agg.create.__annotations__["return"]
-        return_type = agg.get_output.__annotations__["return"]
+        return_type = agg().get_value.__annotations__["return"]
 
         # TODO: Figure out a systematic way to convert types
         return windowed_stream.aggregate(

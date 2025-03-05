@@ -1,4 +1,4 @@
-from typing import MutableMapping
+from typing import MutableMapping, Self
 
 from sentry_streams.user_functions.function_template import (
     Accumulator,
@@ -24,16 +24,23 @@ class WordCounterAggregationBackend(AggregationBackend[WordCountStr]):
         self.storage_map[k] = int(v)
 
 
-class WordCounter(Accumulator[WordCountTuple, WordCountTuple, WordCountStr]):
+class WordCounter(Accumulator[WordCountTuple, WordCountStr]):
 
-    def create(self) -> WordCountTuple:
-        return "", 0
+    def __init__(self) -> None:
+        self.tup = ("", 0)
 
-    def add(self, acc: WordCountTuple, value: WordCountTuple) -> WordCountTuple:
-        return value[0], acc[1] + value[1]
+    def add(self, value: WordCountTuple) -> Self:
+        self.tup = (self.tup[0] + value[0], self.tup[1] + value[1])
 
-    def get_output(self, acc: WordCountTuple) -> WordCountStr:
-        return f"{acc[0]} {acc[1]}"
+        return self
 
-    def merge(self, acc1: WordCountTuple, acc2: WordCountTuple) -> WordCountTuple:
-        return acc1[0], acc1[1] + acc2[1]
+    def get_output(self) -> WordCountStr:
+        return f"{self.tup[0]} {self.tup[1]}"
+
+    def merge(self, other: Self) -> Self:
+        first = self.tup[0] + other.tup[0]
+        second = self.tup[1] + other.tup[1]
+
+        self.tup = (first, second)
+
+        return self
