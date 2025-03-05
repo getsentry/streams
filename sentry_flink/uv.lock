@@ -742,14 +742,10 @@ version = "0.0.1"
 source = { directory = "../sentry_streams" }
 dependencies = [
     { name = "requests" },
-    { name = "setuptools" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "requests", specifier = ">=2.32.3" },
-    { name = "setuptools", specifier = "==75.8.0" },
-]
+requires-dist = [{ name = "requests", specifier = ">=2.32.3" }]
 
 [package.metadata.requires-dev]
 dev = [
