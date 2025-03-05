@@ -37,7 +37,7 @@ kafka
 
 ```
 python \
-     sentry_streams/flink_runtime/flink_deploy.py \
+     sentry_flink/flink_runtime/flink_deploy.py \
      -n "My Flink App" \
      sentry_streams/example_config.py
 ```

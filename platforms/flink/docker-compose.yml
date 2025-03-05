@@ -53,8 +53,11 @@ services:
     volumes:
       - flink_data:/tmp/
       - type: bind
-        source: ../../py/sentry_streams
+        source: ../../sentry_streams/sentry_streams
         target: /apps/sentry_streams
+      - type: bind
+        source: ../../sentry_flink/sentry_flink
+        target: /apps/sentry_flink
     ports:
       - "8081:8081"
     environment:
@@ -71,7 +74,7 @@ services:
     volumes:
       - flink_data:/tmp/
       - type: bind
-        source: ../../py/sentry_streams
+        source: ../../sentry_streams/sentry_streams
         target: /apps/sentry_streams
     environment:
       FLINK_PROPERTIES: *flink-config
