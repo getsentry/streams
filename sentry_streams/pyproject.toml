@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentry-streams"
-version = "0.0.4"
+version = "0.0.5"
 description = "The python Sentry Streaming API"
 readme = "README.md"
 
@@ -29,7 +29,7 @@ packages = ["sentry_streams"]
 sentry_streams = ["py.typed"]
 
 [tool.pytest.ini_options]
-minversion = "0.0.4"
+minversion = "0.0.5"
 addopts = "-ra -q"
 testpaths = ["tests"]
 
