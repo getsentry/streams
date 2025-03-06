@@ -5,10 +5,8 @@ from sentry_streams.pipeline import (
     Map,
     Pipeline,
 )
-from sentry_streams.user_functions.sample_filter import (
-    EventsPipelineFilterFunctions,
-    EventsPipelineMapFunctions,
-)
+from sentry_streams.user_functions.sample_filter import EventsPipelineFilterFunctions
+from sentry_streams.user_functions.sample_map import EventsPipelineMapFunctions
 
 # pipeline: special name
 pipeline = Pipeline()
