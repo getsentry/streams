@@ -41,6 +41,7 @@ map = Map(
 
 # A sample window.
 # Windows are assigned 3 elements.
+# TODO: Get the parameters for window in pipeline configuration.
 reduce_window = TumblingWindow(window_size=3)
 
 reduce = Reduce(

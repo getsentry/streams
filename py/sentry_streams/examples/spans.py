@@ -24,6 +24,10 @@ class Span:
 
 
 def build_span(value: str) -> Span:
+    """
+    Build a Span object from a JSON str
+    """
+
     d: dict[str, Any] = json.loads(value)
 
     return Span(d["span_id"], d["trace_id"], d["duration"], d["timestamp"])
@@ -36,6 +40,10 @@ class Segment:
 
 
 def build_segment_json(value: Segment) -> str:
+    """
+    Build a JSON str from a Segment
+    """
+
     d = {"segment": [], "total_duration": value.total_duration}
 
     for span in value.spans:
@@ -48,6 +56,11 @@ def build_segment_json(value: Segment) -> str:
 
 
 class SpansBuffer(Accumulator[Span, Segment]):
+    """
+    Ingests spans into a window. Builds a Segment from each
+    window, which contains the list of Spans seen as well
+    as the total duration across Spans.
+    """
 
     def __init__(self) -> None:
         self.spans_list: list[Span] = []
