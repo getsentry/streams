@@ -1,3 +1,9 @@
+from sentry_streams.examples.word_counter_fn import (
+    EventsPipelineFilterFunctions,
+    EventsPipelineMapFunction,
+    GroupByWord,
+    WordCounter,
+)
 from sentry_streams.pipeline import (
     Filter,
     KafkaSink,
@@ -6,14 +12,6 @@ from sentry_streams.pipeline import (
     Pipeline,
     Reduce,
 )
-from sentry_streams.user_functions.sample_agg import (
-    WordCounter,
-)
-from sentry_streams.user_functions.sample_filter import (
-    EventsPipelineFilterFunctions,
-)
-from sentry_streams.user_functions.sample_group_by import GroupByWord
-from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
 from sentry_streams.window import TumblingWindow
 
 # pipeline: special name
