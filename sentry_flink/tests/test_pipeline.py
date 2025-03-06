@@ -12,8 +12,10 @@ from sentry_streams.pipeline import (
     Pipeline,
 )
 from sentry_streams.runner import iterate_edges
-from sentry_streams.user_functions.sample_filter import EventsPipelineFilterFunctions
-from sentry_streams.user_functions.sample_map import EventsPipelineMapFunctions
+from sentry_streams.user_functions.sample_filter import (
+    EventsPipelineFilterFunctions,
+    EventsPipelineMapFunctions,
+)
 
 from sentry_flink.flink.flink_adapter import FlinkAdapter
 
