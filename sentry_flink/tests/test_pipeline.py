@@ -4,7 +4,13 @@ from typing import Any, Generator, MutableMapping
 import pytest
 from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
-from sentry_streams.pipeline import Filter, KafkaSink, KafkaSource, Map, Pipeline
+from sentry_streams.pipeline import (
+    Filter,
+    KafkaSink,
+    KafkaSource,
+    Map,
+    Pipeline,
+)
 from sentry_streams.runner import iterate_edges
 from sentry_streams.user_functions.sample_filter import (
     EventsPipelineFilterFunctions,
