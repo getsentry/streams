@@ -1,9 +1,6 @@
 from sentry_streams.example_config import pipeline, source
 from sentry_streams.pipeline import Step
 
-# def test_pipeline():
-#     assert pipeline.incoming_edges["StepB"] == ["StepA"]
-
 
 def test_register_step() -> None:
     step = Step("new_step", pipeline)
