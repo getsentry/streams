@@ -23,10 +23,6 @@ class StepType(Enum):
     FILTER = "filter"
 
 
-class StateBackend(Enum):
-    HASH_MAP = "hash_map"
-
-
 class Pipeline:
     """
     A graph representing the connections between

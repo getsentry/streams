@@ -12,9 +12,6 @@ class Event:
     timestamp: int
 
 
-# {"project_id": 1, "latency": 10, "timestamp": 1}
-
-
 @dataclass
 class AlertData:
     p95_latency: int
@@ -63,7 +60,7 @@ class AlertsBuffer(Accumulator[Event, AlertData]):
         return AlertData(p95_latency=fake_p95, event_count=self.count)
 
     def merge(self, other: Self) -> Self:
-        # Could use datasketches
+        # TODO: Use DataSketches
         self.latencies = self.latencies + other.latencies
         self.count = self.count + other.count
 

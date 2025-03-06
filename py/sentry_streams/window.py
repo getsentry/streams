@@ -18,13 +18,12 @@ class SlidingWindow(Window[MeasurementUnit]):
     """
     A sliding window which is configured
     by counts or by event time. Both size and slide can be
-    in terms of number of elements, or both can be
-    in terms of a duration in event time.
+    in terms of number of elements, or both can be in terms
+    of a duration in event time.
 
-    The window slide determines how
-    frequently a window is started. (e.g.
-    every 10 elements). Windows can
-    overlap.
+    The window slide determines how frequently
+    a window is started. (e.g.every 10 elements).
+    Windows can overlap.
     """
 
     window_size: MeasurementUnit

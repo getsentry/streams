@@ -28,9 +28,9 @@ map = Map(
 # Windows are set to be open for 5 seconds
 reduce_window = SlidingWindow(window_size=timedelta(seconds=5), window_slide=timedelta(seconds=2))
 
-# TODO: We want to produce two different
-# Reduce streams (a fan-out), one for the p95 latencies
-# and one for the counts
+# TODO: Use a flatMap (yet to be supported)
+# to emit both a p95 and count
+# for the reduce to be applied on
 
 reduce = Reduce(
     name="myreduce",
