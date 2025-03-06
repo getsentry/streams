@@ -3,7 +3,6 @@ from typing import Any, Generic, Self, TypeVar
 
 InputType = TypeVar("InputType")
 OutputType = TypeVar("OutputType")
-IntermediateType = TypeVar("IntermediateType")
 
 
 class AggregationBackend(ABC, Generic[OutputType]):
@@ -18,6 +17,26 @@ class AggregationBackend(ABC, Generic[OutputType]):
         Flush a windowed aggregate to storage. Takes in the output from
         the Accumulator.
         """
+
+
+class KVAggregationBackend(AggregationBackend[dict[Any, Any]]):
+    """
+    A storage backend that is meant to store windowed key-value pair aggregates.
+    This class supports basic in-memory mappings. Extend this class
+    for different storage configurations for storing K-Vs.
+    """
+
+    def __init__(self) -> None:
+        self.map: dict[Any, Any] = {}
+
+    def flush_aggregate(self, aggregate: dict[Any, Any]) -> None:
+        """
+        Flush a windowed aggregate to storage. Takes in the output from
+        the Accumulator.
+        """
+
+        for k, v in aggregate.items():
+            self.map[k] = v
 
 
 class Accumulator(ABC, Generic[InputType, OutputType]):

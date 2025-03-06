@@ -170,13 +170,12 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         agg = step.aggregate_fn
         windowing = step.windowing
-        # flink_window = FlinkWindows(windowing)
-        # window_assigner = flink_window.build_window()
 
         flink_window = build_flink_window(windowing)
 
         # Optional parameters
         group_by = step.group_by_key
+        agg_backend = step.aggregate_backend
 
         # TODO: Configure WatermarkStrategy as part of KafkaSource
         # Injecting strategy within a step like here produces
@@ -201,7 +200,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         # TODO: Figure out a systematic way to convert types
         return windowed_stream.aggregate(
-            FlinkAggregate(agg),
+            FlinkAggregate(agg, agg_backend),
             output_type=(
                 translate_to_flink_type(return_type)
                 if is_standard_type(return_type)

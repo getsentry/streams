@@ -7,6 +7,7 @@ from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Un
 
 from sentry_streams.user_functions.function_template import (
     Accumulator,
+    AggregationBackend,
     GroupBy,
     InputType,
     OutputType,
@@ -170,5 +171,6 @@ class Reduce(WithInput, Generic[MeasurementUnit, InputType, OutputType]):
 
     windowing: Window[MeasurementUnit]
     aggregate_fn: Callable[[], Accumulator[InputType, OutputType]]
+    aggregate_backend: Optional[AggregationBackend[OutputType]] = None
     group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE

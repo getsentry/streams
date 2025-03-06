@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Any, Callable, Generic
+from typing import Any, Callable, Generic, Union, cast
 
 from pyflink.common import Time, TypeInformation, Types
 from pyflink.datastream.functions import AggregateFunction, KeySelector
@@ -13,8 +13,11 @@ from pyflink.datastream.window import (
 
 from sentry_streams.user_functions.function_template import (
     Accumulator,
+    AggregationBackend,
     GroupBy,
     InputType,
+    KVAccumulator,
+    KVAggregationBackend,
     OutputType,
 )
 from sentry_streams.window import (
@@ -81,9 +84,13 @@ class FlinkAggregate(AggregateFunction, Generic[InputType, OutputType]):
     aggregate and merges intermediate aggregates.
     """
 
-    def __init__(self, acc: Callable[[], Accumulator[InputType, OutputType]]) -> None:
+    def __init__(
+        self,
+        acc: Callable[[], Accumulator[InputType, OutputType]],
+        backend: Union[AggregationBackend[OutputType], None],
+    ) -> None:
         self.acc = acc
-        # self.backend = ...
+        self.backend = backend
 
     def create_accumulator(self) -> Accumulator[InputType, OutputType]:
         """
@@ -103,7 +110,11 @@ class FlinkAggregate(AggregateFunction, Generic[InputType, OutputType]):
 
         accumulated = accumulator.get_value()
 
-        # self.backend.flush(accumulated)
+        if self.backend:
+            # TODO: Consider moving this check
+            if isinstance(accumulator, KVAccumulator):
+                cast(KVAggregationBackend, self.backend)
+                self.backend.flush_aggregate(accumulated)
 
         return accumulated
 

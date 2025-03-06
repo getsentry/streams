@@ -2,12 +2,12 @@ import json
 
 from sentry_streams.examples.billing_buffer import OutcomesBuffer
 from sentry_streams.pipeline import (
-    KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
     Reduce,
 )
+from sentry_streams.user_functions.function_template import KVAggregationBackend
 from sentry_streams.window import TumblingWindow
 
 Outcome = dict[str, str]
@@ -46,11 +46,5 @@ reduce = Reduce(
     inputs=[map],
     windowing=reduce_window,
     aggregate_fn=OutcomesBuffer,
-)
-
-sink = KafkaSink(
-    name="kafkasink",
-    ctx=pipeline,
-    inputs=[reduce],
-    logical_topic="transformed-events",
+    aggregate_backend=KVAggregationBackend(),  # NOTE: Provided by the platform
 )

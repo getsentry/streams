@@ -34,7 +34,7 @@ class WordCounter(Accumulator[WordCountTuple, WordCountStr]):
 
         return self
 
-    def get_output(self) -> WordCountStr:
+    def get_value(self) -> WordCountStr:
         return f"{self.tup[0]} {self.tup[1]}"
 
     def merge(self, other: Self) -> Self:

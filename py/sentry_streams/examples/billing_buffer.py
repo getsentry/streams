@@ -1,11 +1,11 @@
 from typing import Optional, Self
 
-from sentry_streams.user_functions.function_template import Accumulator
+from sentry_streams.user_functions.function_template import KVAccumulator
 
 Outcome = dict[str, str]
 
 
-class OutcomesBuffer(Accumulator[Outcome, str]):
+class OutcomesBuffer(KVAccumulator[Outcome]):
     """
     An accumulator which adds outcomes data to a PendingBuffer.
     Upon the closing of a window, the Buffer is flushed to a
@@ -37,13 +37,8 @@ class OutcomesBuffer(Accumulator[Outcome, str]):
 
         return self
 
-    def get_value(self) -> str:
-        random_str = ""
-
-        for key in self.map:
-            random_str += f"{key} {self.map[key]}"
-
-        return random_str
+    def get_value(self) -> dict[str, int]:
+        return self.map
 
     def merge(self, other: Self) -> Self:
 
