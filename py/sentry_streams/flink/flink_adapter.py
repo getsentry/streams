@@ -28,7 +28,11 @@ from sentry_streams.flink.flink_fn_translator import (
     translate_to_flink_type,
 )
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline import (
+from sentry_streams.pipeline.function_template import (
+    InputType,
+    OutputType,
+)
+from sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
     Reduce,
@@ -36,11 +40,7 @@ from sentry_streams.pipeline import (
     Source,
     TransformStep,
 )
-from sentry_streams.user_functions.function_template import (
-    InputType,
-    OutputType,
-)
-from sentry_streams.window import MeasurementUnit
+from sentry_streams.pipeline.window import MeasurementUnit
 
 T = TypeVar("T")
 

@@ -41,9 +41,12 @@ class KVAggregationBackend(AggregationBackend[dict[Any, Any]]):
 
 class Accumulator(ABC, Generic[InputType, OutputType]):
     """
-    The standard Accumulator template.
-    Define these functions to build a custom
-    Accumulator for aggregation.
+    The template for building Accumulators, which use windowed
+    aggregations. Extend this to build a custom Accumulator, defining the
+    data schema of the input type and the output type (the aggregate).
+
+    Specifically exposes a merge() API to implement. See examples/
+    for samples on how it should be used.
     """
 
     @abstractmethod

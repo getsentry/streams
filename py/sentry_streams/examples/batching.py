@@ -1,13 +1,13 @@
 from typing import Self
 
-from sentry_streams.pipeline import (
+from sentry_streams.pipeline.function_template import Accumulator
+from sentry_streams.pipeline.pipeline import (
     KafkaSink,
     KafkaSource,
     Pipeline,
     Reduce,
 )
-from sentry_streams.user_functions.function_template import Accumulator
-from sentry_streams.window import TumblingWindow
+from sentry_streams.pipeline.window import TumblingWindow
 
 
 # TODO: Build a generic BatchBuilder provided by the platform. Provides a JSON string output.

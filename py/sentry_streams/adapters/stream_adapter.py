@@ -10,12 +10,20 @@ from typing import (
     assert_never,
 )
 
-from sentry_streams.pipeline import Filter, Map, Reduce, Sink, Source, Step, StepType
-from sentry_streams.user_functions.function_template import (
+from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
-from sentry_streams.window import MeasurementUnit
+from sentry_streams.pipeline.pipeline import (
+    Filter,
+    Map,
+    Reduce,
+    Sink,
+    Source,
+    Step,
+    StepType,
+)
+from sentry_streams.pipeline.window import MeasurementUnit
 
 PipelineConfig = Mapping[str, Any]
 

@@ -1,14 +1,14 @@
 import json
 
 from sentry_streams.examples.billing_buffer import OutcomesBuffer
-from sentry_streams.pipeline import (
+from sentry_streams.pipeline.function_template import KVAggregationBackend
+from sentry_streams.pipeline.pipeline import (
     KafkaSource,
     Map,
     Pipeline,
     Reduce,
 )
-from sentry_streams.user_functions.function_template import KVAggregationBackend
-from sentry_streams.window import TumblingWindow
+from sentry_streams.pipeline.window import TumblingWindow
 
 Outcome = dict[str, str]
 

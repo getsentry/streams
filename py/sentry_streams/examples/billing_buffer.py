@@ -1,6 +1,6 @@
 from typing import Optional, Self
 
-from sentry_streams.user_functions.function_template import KVAccumulator
+from sentry_streams.pipeline.function_template import KVAccumulator
 
 Outcome = dict[str, str]
 

@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Self
 
-from sentry_streams.user_functions.function_template import Accumulator
+from sentry_streams.pipeline.function_template import Accumulator
 
 
 @dataclass

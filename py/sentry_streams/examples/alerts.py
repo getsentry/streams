@@ -1,14 +1,14 @@
 from datetime import timedelta
 
 from sentry_streams.examples.events import AlertsBuffer, build_alert_json, build_event
-from sentry_streams.pipeline import (
+from sentry_streams.pipeline.pipeline import (
     KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
     Reduce,
 )
-from sentry_streams.window import SlidingWindow
+from sentry_streams.pipeline.window import SlidingWindow
 
 pipeline = Pipeline()
 

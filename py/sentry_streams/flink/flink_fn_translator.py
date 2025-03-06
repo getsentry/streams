@@ -11,7 +11,7 @@ from pyflink.datastream.window import (
     WindowAssigner,
 )
 
-from sentry_streams.user_functions.function_template import (
+from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
     GroupBy,
@@ -20,7 +20,7 @@ from sentry_streams.user_functions.function_template import (
     KVAggregationBackend,
     OutputType,
 )
-from sentry_streams.window import (
+from sentry_streams.pipeline.window import (
     MeasurementUnit,
     SlidingWindow,
     TumblingWindow,

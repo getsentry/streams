@@ -5,14 +5,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Union
 
-from sentry_streams.user_functions.function_template import (
+from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
     GroupBy,
     InputType,
     OutputType,
 )
-from sentry_streams.window import MeasurementUnit, Window
+from sentry_streams.pipeline.window import MeasurementUnit, Window
 
 
 class StepType(Enum):

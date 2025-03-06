@@ -1,7 +1,7 @@
 import json
 from typing import Self
 
-from sentry_streams.user_functions.function_template import Accumulator, GroupBy
+from sentry_streams.pipeline.function_template import Accumulator, GroupBy
 
 
 class EventsPipelineMapFunction:

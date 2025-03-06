@@ -5,8 +5,14 @@ import pytest
 from pyflink.datastream import DataStream, DataStreamSink, StreamExecutionEnvironment
 
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator, Stream, StreamSink
+from sentry_streams.examples.word_counter_fn import (
+    EventsPipelineFilterFunctions,
+    EventsPipelineMapFunction,
+    GroupByWord,
+    WordCounter,
+)
 from sentry_streams.flink.flink_adapter import FlinkAdapter
-from sentry_streams.pipeline import (
+from sentry_streams.pipeline.pipeline import (
     Filter,
     KafkaSink,
     KafkaSource,
@@ -14,17 +20,8 @@ from sentry_streams.pipeline import (
     Pipeline,
     Reduce,
 )
+from sentry_streams.pipeline.window import TumblingWindow
 from sentry_streams.runner import iterate_edges
-from sentry_streams.user_functions.sample_agg import (
-    WordCounter,
-    WordCounterAggregationBackend,
-)
-from sentry_streams.user_functions.sample_filter import (
-    EventsPipelineFilterFunctions,
-)
-from sentry_streams.user_functions.sample_group_by import GroupByWord
-from sentry_streams.user_functions.sample_map import EventsPipelineMapFunction
-from sentry_streams.window import TumblingWindow
 
 
 @pytest.fixture(autouse=True)
@@ -239,14 +236,13 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
     )
 
     reduce_window = TumblingWindow(window_size=3)
-    agg_backend = WordCounterAggregationBackend()
 
     reduce = Reduce(
         name="myreduce",
         ctx=pipeline,
         inputs=[map],
         windowing=reduce_window,
-        aggregate_fn=WordCounter(agg_backend),
+        aggregate_fn=WordCounter,
         group_by_key=GroupByWord(),
     )
 

@@ -4,7 +4,7 @@ from sentry_streams.examples.word_counter_fn import (
     GroupByWord,
     WordCounter,
 )
-from sentry_streams.pipeline import (
+from sentry_streams.pipeline.pipeline import (
     Filter,
     KafkaSink,
     KafkaSource,
@@ -12,7 +12,7 @@ from sentry_streams.pipeline import (
     Pipeline,
     Reduce,
 )
-from sentry_streams.window import TumblingWindow
+from sentry_streams.pipeline.window import TumblingWindow
 
 # pipeline: special name
 pipeline = Pipeline()

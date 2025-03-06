@@ -6,7 +6,7 @@ from sentry_streams.adapters.stream_adapter import (
     RuntimeTranslator,
 )
 from sentry_streams.flink.flink_adapter import FlinkAdapter
-from sentry_streams.pipeline import (
+from sentry_streams.pipeline.pipeline import (
     Pipeline,
     WithInput,
 )

@@ -1,14 +1,14 @@
 from datetime import timedelta
 
 from sentry_streams.examples.spans import SpansBuffer, build_segment_json, build_span
-from sentry_streams.pipeline import (
+from sentry_streams.pipeline.pipeline import (
     KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
     Reduce,
 )
-from sentry_streams.window import TumblingWindow
+from sentry_streams.pipeline.window import TumblingWindow
 
 pipeline = Pipeline()
 
@@ -29,9 +29,11 @@ map = Map(
 # Windows are open for 5 seconds max
 reduce_window = TumblingWindow(window_size=timedelta(seconds=5))
 
-# TODO: This example should use a Custom Trigger.
+# TODO: This example effectively needs a Custom Trigger.
 # A Segment can be considered ready if a span named "end" arrives
-# Use that as a signal to close the window early
+# Use that as a signal to close the window
+# Make the trigger and closing windows synonymous, both
+# apparent in the API and as part of implementation
 
 reduce = Reduce(
     name="myreduce",
