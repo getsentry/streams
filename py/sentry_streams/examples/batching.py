@@ -10,6 +10,7 @@ from sentry_streams.user_functions.function_template import Accumulator
 from sentry_streams.window import TumblingWindow
 
 
+# TODO: Build a generic BatchBuilder provided by the platform. Provides a JSON string output.
 class BatchBuilder(Accumulator[str, str]):
     """
     Takes str input and accumulates them into a batch array.
