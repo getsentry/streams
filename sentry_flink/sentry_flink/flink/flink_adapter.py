@@ -17,16 +17,7 @@ from pyflink.datastream.data_stream import (
     DataStreamSink,
     WindowedStream,
 )
-
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
-from sentry_streams.flink.flink_fn_translator import (
-    FlinkAggregate,
-    FlinkGroupBy,
-    build_flink_window,
-    is_standard_type,
-    translate_custom_type,
-    translate_to_flink_type,
-)
 from sentry_streams.modules import get_module
 from sentry_streams.pipeline.function_template import (
     InputType,
@@ -41,6 +32,15 @@ from sentry_streams.pipeline.pipeline import (
     TransformStep,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
+
+from sentry_flink.flink.flink_fn_translator import (
+    FlinkAggregate,
+    FlinkGroupBy,
+    build_flink_window,
+    is_standard_type,
+    translate_custom_type,
+    translate_to_flink_type,
+)
 
 T = TypeVar("T")
 

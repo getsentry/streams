@@ -1,7 +1,7 @@
 import argparse
 import subprocess
 
-from sentry_streams.flink_runtime.flink_api import list_jobs
+from sentry_flink.flink_runtime.flink_api import list_jobs
 
 
 def main() -> int:
@@ -21,6 +21,12 @@ def main() -> int:
         type=str,
         default="name",
         help="The name of the Flink Job",
+    )
+    parser.add_argument(
+        "--adapter",
+        type=str,
+        default="sentry_flink.flink.flink_adapter.FlinkAdapter",
+        help="The name of the adapter to use",
     )
     parser.add_argument(
         "--jobmanager-address",
@@ -65,6 +71,8 @@ def main() -> int:
             "--name",
             args.name,
             f"/apps/{args.application}",
+            "--adapter",
+            args.adapter,
         ]
     )
 

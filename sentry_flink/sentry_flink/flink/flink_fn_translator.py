@@ -10,7 +10,6 @@ from pyflink.datastream.window import (
     TumblingEventTimeWindows,
     WindowAssigner,
 )
-
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,

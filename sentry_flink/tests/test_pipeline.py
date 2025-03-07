@@ -3,7 +3,6 @@ from typing import Any, Generator, MutableMapping
 
 import pytest
 from pyflink.datastream import DataStream, DataStreamSink, StreamExecutionEnvironment
-
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator, Stream, StreamSink
 from sentry_streams.examples.word_counter_fn import (
     EventsPipelineFilterFunctions,
@@ -11,7 +10,6 @@ from sentry_streams.examples.word_counter_fn import (
     GroupByWord,
     WordCounter,
 )
-from sentry_streams.flink.flink_adapter import FlinkAdapter
 from sentry_streams.pipeline.pipeline import (
     Filter,
     KafkaSink,
@@ -22,6 +20,8 @@ from sentry_streams.pipeline.pipeline import (
 )
 from sentry_streams.pipeline.window import TumblingWindow
 from sentry_streams.runner import iterate_edges
+
+from sentry_flink.flink.flink_adapter import FlinkAdapter
 
 
 @pytest.fixture(autouse=True)

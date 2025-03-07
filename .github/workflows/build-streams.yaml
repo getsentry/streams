@@ -1,0 +1,31 @@
+name: build sentry_streams
+
+on:
+  push:
+    branches:
+      - main
+      - release-sentry-streams/**
+
+jobs:
+  dist:
+    name: Create wheel and source distribution for sentry-streams
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+        - uses: actions/checkout@v3
+        - uses: actions/setup-python@v2
+          with:
+            python-version: 3.11
+
+        - name: Make environment
+          run: |
+            make install-dev
+
+        - name: "Prepare artifacts"
+          run: |
+            make build-streams
+
+        - uses: actions/upload-artifact@v4
+          with:
+                name: ${{ github.sha }}
+                path: sentry_streams/dist/*

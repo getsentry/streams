@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - release-sentry-streams/**
   pull_request:
 
 jobs:
@@ -19,7 +20,10 @@ jobs:
           run: |
             make install-dev
 
-        - name: Run tests
-          run: make tests
+        - name: Run streams test
+          run: make tests-streams
+
+        - name: Run flink test
+          run: make tests-flink
           env:
             FLINK_LIBS: ./flink_libs

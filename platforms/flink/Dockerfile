@@ -48,7 +48,7 @@ FROM build_base
 # that need to run streaming applications now that we are still testing
 # platforms.
 RUN python3.11 -m pip install yq
-ARG PY_PROJECT=py/pyproject.toml
+ARG PY_PROJECT=sentry_flink/pyproject.toml
 COPY ${PY_PROJECT} ./
 RUN tomlq -r '.project.dependencies' pyproject.toml | jq -r '.[]' > ./requirements.txt
 RUN cat ./requirements.txt
