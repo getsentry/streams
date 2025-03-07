@@ -18,7 +18,7 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
     Traverses over edges in a PipelineGraph, building the
     stream incrementally by applying steps and transformations
     It currently has the structure to deal with, but has no
-    real support for, fan-in and fan-out streams
+    real support for, fan-in streams
     """
 
     step_streams = {}
@@ -37,15 +37,11 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
                     continue
 
                 for output in output_steps:
-                    # check if the inputs are fanning in
-                    if len(p_graph.incoming_edges[output]) > 1:
-                        print(f"fan-in detected: {output}")
-                    else:
-                        next_step: WithInput = cast(WithInput, p_graph.steps[output])
-                        print(f"Apply step: {next_step.name}")
-                        # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
-                        next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
-                        step_streams[next_step.name] = next_step_stream
+                    next_step: WithInput = cast(WithInput, p_graph.steps[output])
+                    print(f"Apply step: {next_step.name}")
+                    # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
+                    next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
+                    step_streams[next_step.name] = next_step_stream
 
 
 def main() -> None:

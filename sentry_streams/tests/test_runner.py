@@ -9,28 +9,51 @@ from sentry_streams.runner import iterate_edges
 
 
 @pytest.fixture
-def pipeline() -> Pipeline:
-    pipeline = Pipeline()
-    source1 = KafkaSource(name="source1", ctx=pipeline, logical_topic="foo")
-    step1 = Map(name="step1", inputs=[source1], ctx=pipeline, function=lambda x: x)
-    step2 = Filter(name="step2", inputs=[step1], ctx=pipeline, function=lambda x: True)
-    _ = Map(name="step3", inputs=[step2], ctx=pipeline, function=lambda x: x)
-    _ = Map(name="step4", inputs=[step2], ctx=pipeline, function=lambda x: x)
+def create_pipeline() -> Pipeline:
+    test_pipeline = Pipeline()
+    source1 = KafkaSource(
+        name="source1",
+        ctx=test_pipeline,
+        logical_topic="foo",
+    )
+    step1 = Map(
+        name="step1",
+        inputs=[source1],
+        ctx=test_pipeline,
+        function=lambda x: x,
+    )
+    step2 = Filter(
+        name="step2",
+        inputs=[step1],
+        ctx=test_pipeline,
+        function=lambda x: True,
+    )
+    _ = Map(
+        name="step3",
+        inputs=[step2],
+        ctx=test_pipeline,
+        function=lambda x: x,
+    )
+    _ = Map(
+        name="step4",
+        inputs=[step2],
+        ctx=test_pipeline,
+        function=lambda x: x,
+    )
+    return test_pipeline
 
-    return pipeline
 
-
-def test_iterate_edges(pipeline: Pipeline) -> None:
+def test_iterate_edges(create_pipeline: Pipeline) -> None:
     runtime = MagicMock()
     translator: RuntimeTranslator[Any, Any] = RuntimeTranslator(runtime)
-    iterate_edges(pipeline, translator)
+    iterate_edges(create_pipeline, translator)
 
     runtime.assert_has_calls(
         [
-            call.source(pipeline.steps["source1"]),
-            call.map(pipeline.steps["step1"], runtime.source()),
-            call.filter(pipeline.steps["step2"], runtime.map()),
-            call.map(pipeline.steps["step3"], runtime.filter()),
-            call.map(pipeline.steps["step4"], runtime.filter()),
+            call.source(create_pipeline.steps["source1"]),
+            call.map(create_pipeline.steps["step1"], runtime.source()),
+            call.filter(create_pipeline.steps["step2"], runtime.map()),
+            call.map(create_pipeline.steps["step3"], runtime.filter()),
+            call.map(create_pipeline.steps["step4"], runtime.filter()),
         ]
     )
