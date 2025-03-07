@@ -1,7 +1,7 @@
 import os
-from typing import Callable, Self, TypeVar, Union, cast
+from typing import Any, Callable, Self, TypeVar, cast
 
-from pyflink.common import WatermarkStrategy
+from pyflink.common import Types
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
@@ -11,41 +11,14 @@ from pyflink.datastream.connectors.kafka import (
     KafkaRecordSerializationSchema,
     KafkaSink,
 )
-from pyflink.datastream.data_stream import (
-    AllWindowedStream,
-    DataStream,
-    DataStreamSink,
-    WindowedStream,
-)
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline.function_template import (
-    InputType,
-    OutputType,
-)
-from sentry_streams.pipeline.pipeline import (
-    Filter,
-    Map,
-    Reduce,
-    Sink,
-    Source,
-    TransformStep,
-)
-from sentry_streams.pipeline.window import MeasurementUnit
-
-from sentry_flink.flink.flink_fn_translator import (
-    FlinkAggregate,
-    FlinkGroupBy,
-    build_flink_window,
-    is_standard_type,
-    translate_custom_type,
-    translate_to_flink_type,
-)
+from sentry_streams.pipeline import Filter, Map, Step, TransformStep
 
 T = TypeVar("T")
 
 
-class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
+class FlinkAdapter(StreamAdapter):
     # TODO: make the (de)serialization schema configurable
     # TODO: infer the output type from steps which
     # perform transformations / maps.
@@ -104,13 +77,11 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         else:
             return step.function
 
-    def source(self, step: Source) -> DataStream:
+    def source(self, step: Step) -> Any:
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
         deserialization_schema = SimpleStringSchema()
-
-        # TODO: Look into using KafkaSource instead
         kafka_consumer = FlinkKafkaConsumer(
             topics=self.environment_config["topics"][topic],
             deserialization_schema=deserialization_schema,
@@ -122,7 +93,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         return self.env.add_source(kafka_consumer)
 
-    def sink(self, step: Sink, stream: DataStream) -> DataStreamSink:
+    def sink(self, step: Step, stream: Any) -> Any:
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
@@ -142,71 +113,15 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         return stream.sink_to(sink)
 
-    def filter(self, step: Filter, stream: DataStream) -> DataStream:
+    def map(self, step: Map, stream: Any) -> Any:
         imported_fn = self.load_function(step)
-
-        return stream.filter(func=lambda msg: imported_fn(msg))
-
-    def map(self, step: Map, stream: DataStream) -> DataStream:
-        imported_fn = self.load_function(step)
-
-        return_type = imported_fn.__annotations__["return"]
 
         # TODO: Ensure output type is configurable like the schema above
-        return stream.map(
-            func=lambda msg: imported_fn(msg),
-            output_type=(
-                translate_to_flink_type(return_type)
-                if is_standard_type(return_type)
-                else translate_custom_type(return_type)
-            ),
-        )
+        return stream.map(func=lambda msg: imported_fn(msg), output_type=Types.STRING())
 
-    def reduce(
-        self,
-        step: Reduce[MeasurementUnit, InputType, OutputType],
-        stream: DataStream,
-    ) -> DataStream:
-
-        agg = step.aggregate_fn
-        windowing = step.windowing
-
-        flink_window = build_flink_window(windowing)
-
-        # Optional parameters
-        group_by = step.group_by_key
-        agg_backend = step.aggregate_backend
-
-        # TODO: Configure WatermarkStrategy as part of KafkaSource
-        # Injecting strategy within a step like here produces
-        # a new, watermarked stream
-        watermark_strategy = WatermarkStrategy.for_monotonous_timestamps()
-        time_stream = stream.assign_timestamps_and_watermarks(watermark_strategy)
-
-        if group_by:
-            group_by_key = step.group_by_key
-            assert group_by_key is not None
-
-            keyed_stream = time_stream.key_by(FlinkGroupBy(group_by_key))
-
-            windowed_stream: Union[WindowedStream, AllWindowedStream] = keyed_stream.window(
-                flink_window
-            )
-
-        else:
-            windowed_stream = time_stream.window_all(flink_window)
-
-        return_type = agg().get_value.__annotations__["return"]
-
-        # TODO: Figure out a systematic way to convert types
-        return windowed_stream.aggregate(
-            FlinkAggregate(agg, agg_backend),
-            output_type=(
-                translate_to_flink_type(return_type)
-                if is_standard_type(return_type)
-                else translate_custom_type(return_type)
-            ),
-        )
+    def filter(self, step: Filter, stream: Any) -> Any:
+        imported_fn = self.load_function(step)
+        return stream.filter(func=lambda msg: imported_fn(msg))
 
     def run(self) -> None:
         self.env.execute()
