@@ -1,17 +1,16 @@
 import argparse
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
     RuntimeTranslator,
+    Stream,
+    StreamSink,
 )
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
     WithInput,
 )
-
-Stream = TypeVar("Stream")
-StreamSink = TypeVar("StreamSink")
 
 
 def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, StreamSink]) -> None:
@@ -111,7 +110,7 @@ def main() -> None:
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    runtime = load_adapter(args.adapter, environment_config)
+    runtime: Any = load_adapter(args.adapter, environment_config)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
