@@ -24,7 +24,6 @@ from sentry_flink.flink.flink_adapter import FlinkAdapter
 def setup_basic_flink_env() -> (
     Generator[tuple[StreamExecutionEnvironment, RuntimeTranslator], None, None]
 ):
-
     # TODO: read from yaml file
     environment_config = {
         "topics": {
