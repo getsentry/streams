@@ -22,9 +22,6 @@ dev = [
     "types-requests>=2.32.0",
 ]
 
-[tool.setuptools]
-packages = ["sentry_streams"]
-
 [tool.setuptools.package-data]
 sentry_streams = ["py.typed"]
 
