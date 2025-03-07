@@ -1,3 +1,4 @@
+from sentry_streams.examples.broadcast import pipeline as broadcast_pipeline
 from sentry_streams.examples.word_counter import pipeline, source
 from sentry_streams.pipeline.pipeline import Step
 
@@ -18,6 +19,6 @@ def test_register_source() -> None:
 
 
 def test_broadcast_branches() -> None:
-    assert pipeline.outgoing_edges["mymap"] == ["mybranch1", "mybranch2"]
-    assert pipeline.incoming_edges["mybranch1"] == ["mymap"]
-    assert pipeline.incoming_edges["mybranch2"] == ["mymap"]
+    assert broadcast_pipeline.outgoing_edges["mymap"] == ["hello_map", "goodbye_map"]
+    assert broadcast_pipeline.incoming_edges["hello_map"] == ["mymap"]
+    assert broadcast_pipeline.incoming_edges["goodbye_map"] == ["mymap"]
