@@ -1,9 +1,10 @@
+from typing import Any
 from unittest.mock import MagicMock, call
 
 import pytest
 
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
-from sentry_streams.pipeline import Filter, KafkaSource, Map, Pipeline
+from sentry_streams.pipeline.pipeline import Filter, KafkaSource, Map, Pipeline
 from sentry_streams.runner import iterate_edges
 
 
@@ -21,7 +22,7 @@ def pipeline() -> Pipeline:
 
 def test_iterate_edges(pipeline: Pipeline) -> None:
     runtime = MagicMock()
-    translator = RuntimeTranslator(runtime)
+    translator: RuntimeTranslator[Any, Any] = RuntimeTranslator(runtime)
     iterate_edges(pipeline, translator)
 
     runtime.assert_has_calls(
