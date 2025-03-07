@@ -12,7 +12,7 @@ requires-python = ">=3.11,<3.12"
 dependencies = [
     "apache-flink==1.20.0",
     "requests>=2.32.3",
-    "sentry-streams>=0.0.4",
+    "sentry-streams>=0.0.7",
     # Figure out a way to get Flink work without setuptools.
     "setuptools==75.8.0",
 ]
