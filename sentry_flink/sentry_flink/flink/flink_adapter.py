@@ -17,13 +17,16 @@ from pyflink.datastream.data_stream import (
     DataStreamSink,
     WindowedStream,
 )
-from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
-from sentry_streams.modules import get_module
-from sentry_streams.pipeline.function_template import (
+from sentry_streams.sentry_streams.adapters.stream_adapter import (
+    PipelineConfig,
+    StreamAdapter,
+)
+from sentry_streams.sentry_streams.modules import get_module
+from sentry_streams.sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
-from sentry_streams.pipeline.pipeline import (
+from sentry_streams.sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
     Reduce,
@@ -31,7 +34,7 @@ from sentry_streams.pipeline.pipeline import (
     Source,
     TransformStep,
 )
-from sentry_streams.pipeline.window import MeasurementUnit
+from sentry_streams.sentry_streams.pipeline.window import MeasurementUnit
 
 from sentry_flink.flink.flink_translator import (
     FlinkAggregate,
