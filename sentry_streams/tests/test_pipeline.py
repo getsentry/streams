@@ -1,5 +1,5 @@
-from sentry_streams.example_config import pipeline, source
-from sentry_streams.pipeline import Step
+from sentry_streams.examples.word_counter import pipeline, source
+from sentry_streams.pipeline.pipeline import Step
 
 
 def test_register_step() -> None:

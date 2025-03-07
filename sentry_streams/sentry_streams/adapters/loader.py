@@ -1,12 +1,15 @@
 import importlib.util as utils
 import sys
 from importlib import import_module
-from typing import cast
+from typing import TypeVar, cast
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 
+Stream = TypeVar("Stream")
+Sink = TypeVar("Sink")
 
-def load_adapter(adapter_type: str, config: PipelineConfig) -> StreamAdapter:
+
+def load_adapter(adapter_type: str, config: PipelineConfig) -> StreamAdapter[Stream, Sink]:
     """
     Loads a StreamAdapter to run a pipeline.
 
@@ -46,4 +49,4 @@ def load_adapter(adapter_type: str, config: PipelineConfig) -> StreamAdapter:
             raise
 
         imported_cls = getattr(module, cls)
-        return cast(StreamAdapter, imported_cls.build(config))
+        return cast(StreamAdapter[Stream, Sink], imported_cls.build(config))
