@@ -1,10 +1,13 @@
-from typing import Any, Self
+from typing import Any, Self, TypeVar
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
-from sentry_streams.pipeline import Filter, Map, Step
+from sentry_streams.pipeline.pipeline import Filter, Map, Step
+
+DummyInput = TypeVar("DummyInput")
+DummyOutput = TypeVar("DummyOutput")
 
 
-class DummyAdapter(StreamAdapter):
+class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
     """
     An infinitely scalable adapter that throws away all the data it gets.
     """

@@ -3,13 +3,23 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Generic, MutableMapping, TypeVar, Union
+from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Union
+
+from sentry_streams.pipeline.function_template import (
+    Accumulator,
+    AggregationBackend,
+    GroupBy,
+    InputType,
+    OutputType,
+)
+from sentry_streams.pipeline.window import MeasurementUnit, Window
 
 
 class StepType(Enum):
     SINK = "sink"
     SOURCE = "source"
     MAP = "map"
+    REDUCE = "reduce"
     FILTER = "filter"
 
 
@@ -125,9 +135,6 @@ class Map(TransformStep[Any]):
     A simple 1:1 Map, taking a single input to single output.
     """
 
-    # TODO: Allow product to both enable and access
-    # configuration (e.g. a DB that is used as part of Map)
-
     # We support both referencing map function via a direct reference
     # to the symbol and through a string.
     # The direct reference to the symbol allows for strict type checking
@@ -136,12 +143,30 @@ class Map(TransformStep[Any]):
     function: Union[Callable[..., Any], str]
     step_type: StepType = StepType.MAP
 
+    # TODO: Allow product to both enable and access
+    # configuration (e.g. a DB that is used as part of Map)
+
 
 @dataclass
 class Filter(TransformStep[bool]):
     """
-    A simple Filter, taking a single input and either returning it or None as output
+    A simple Filter, taking a single input and either returning it or None as output.
     """
 
     function: Union[Callable[..., bool], str]
     step_type: StepType = StepType.FILTER
+
+
+@dataclass
+class Reduce(WithInput, Generic[MeasurementUnit, InputType, OutputType]):
+    """
+    A Reduce step which performs windowed aggregations. Can be keyed or non-keyed on the
+    input stream. Supports an Accumulator-style aggregation which can have a configurable
+    storage backend, for flushing intermediate aggregates.
+    """
+
+    windowing: Window[MeasurementUnit]
+    aggregate_fn: Callable[[], Accumulator[InputType, OutputType]]
+    aggregate_backend: Optional[AggregationBackend[OutputType]] = None
+    group_by_key: Optional[GroupBy] = None
+    step_type: StepType = StepType.REDUCE
