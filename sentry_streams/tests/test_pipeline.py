@@ -15,3 +15,9 @@ def test_register_edge() -> None:
 
 def test_register_source() -> None:
     assert source in pipeline.sources
+
+
+def test_broadcast_branches() -> None:
+    assert pipeline.outgoing_edges["mymap"] == ["mybranch1", "mybranch2"]
+    assert pipeline.incoming_edges["mybranch1"] == ["mymap"]
+    assert pipeline.incoming_edges["mybranch2"] == ["mymap"]
