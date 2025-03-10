@@ -4,7 +4,6 @@ import pytest
 from pyflink.common import Time
 from pyflink.datastream.window import (
     CountSlidingWindowAssigner,
-    TumblingEventTimeWindows,
 )
 from sentry_streams.pipeline.window import (
     MeasurementUnit,
@@ -43,7 +42,7 @@ class TestWindow(Window[MeasurementUnit]):
     [
         (
             TumblingWindow(window_size=timedelta(seconds=45)),
-            TumblingEventTimeWindows.of(Time.milliseconds(45000)),
+            "TumblingEventTimeWindows(45000, 0)",
         ),
         (SlidingWindow(window_size=3, window_slide=4), CountSlidingWindowAssigner.of(3, 4)),
         (TestWindow(), pytest.raises(TypeError)),
@@ -55,6 +54,6 @@ class TestWindow(Window[MeasurementUnit]):
 )
 def test_build_windows(window, expected):
 
-    flink_window = build_flink_window(window)
+    flink_window = str(build_flink_window(window))
 
     assert flink_window == expected
