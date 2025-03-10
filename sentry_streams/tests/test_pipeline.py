@@ -81,9 +81,9 @@ def test_register_step(pipeline: Pipeline) -> None:
 def test_register_edge(pipeline: Pipeline) -> None:
     # when there is only one step going to the next step
     assert pipeline.incoming_edges["mymap"] == ["myfilter"]
-    # when one step goes out to multiple steps
+    # when one step fans out to multiple steps
     assert pipeline.outgoing_edges["myfilter"] == ["myfilter2", "mymap", "mymap2"]
-    # when multiple steps forks into one step
+    # when multiple steps fan into one step
     assert pipeline.incoming_edges["myfilter"] == ["myinput", "myinput2"]
 
 
