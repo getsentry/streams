@@ -99,7 +99,7 @@ class MockAccumulator(Accumulator[str, str]):
 def test_flink_aggregate():
 
     mock_acc = MockAccumulator
-    flink_agg = FlinkAggregate(mock_acc)
+    flink_agg = FlinkAggregate(mock_acc, None)
 
     mock_acc_instance = flink_agg.create_accumulator()
     assert isinstance(mock_acc_instance, MockAccumulator)
