@@ -3,8 +3,10 @@ from datetime import timedelta
 import pytest
 from pyflink.common import Time
 from sentry_streams.pipeline.window import (
+    MeasurementUnit,
     SlidingWindow,
     TumblingWindow,
+    Window,
 )
 
 from sentry_flink.flink.flink_translator import (
@@ -49,13 +51,21 @@ def test_build_windows(window, expected):
     assert flink_window == expected
 
 
+class RandomWindow(Window[MeasurementUnit]):
+    pass
+
+
 @pytest.mark.parametrize(
     "window, expected",
     [
         (
             SlidingWindow(window_size=timedelta(seconds=30), window_slide=2),
             pytest.raises(TypeError),
-        )
+        ),
+        (
+            RandomWindow(),
+            pytest.raises(TypeError),
+        ),
     ],
 )
 def test_bad_window(window, expected):
