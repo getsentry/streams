@@ -35,11 +35,12 @@ kafka
 
 5. Deploy an application with the `flink_deploy.py` script.
 
+From the `sentry_flink/` folder, run:
 ```
 python \
      sentry_flink/flink_runtime/flink_deploy.py \
      -n "My Flink App" \
-     sentry_streams/example_config.py
+     sentry_streams/examples/{example_name}.py
 ```
 
 `-n` is the name you are giving to the Flink application
