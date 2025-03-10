@@ -161,7 +161,9 @@ def build_flink_window(streams_window: Window[MeasurementUnit]) -> WindowAssigne
                     return CountSlidingWindowAssigner.of(window_size, window_slide)
 
                 case _:
-                    raise TypeError(f"{window_size} is not a supported MeasurementUnit type")
+                    raise TypeError(
+                        f"({type(window_size)}, {type(window_slide)}) is not a supported MeasurementUnit type combination for SlidingWindow"
+                    )
 
         case TumblingWindow(window_size):
             match window_size:
@@ -172,7 +174,9 @@ def build_flink_window(streams_window: Window[MeasurementUnit]) -> WindowAssigne
                     return CountTumblingWindowAssigner.of(window_size)
 
                 case _:
-                    raise TypeError(f"{window_size} is not a supported MeasurementUnit type")
+                    raise TypeError(
+                        f"{type(window_size)} is not a supported MeasurementUnit type for TumblingWindow"
+                    )
 
         case _:
             raise TypeError(f"{streams_window} is not a supported Window type")
