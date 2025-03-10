@@ -110,7 +110,7 @@ def test_flink_aggregate():
 
     assert mock_acc_instance.mock_batch == ["a", "b", "c"]
 
-    other_flink_agg = FlinkAggregate(mock_acc)
+    other_flink_agg = FlinkAggregate(mock_acc, None)
     other_acc_instance = other_flink_agg.create_accumulator()
 
     assert isinstance(other_acc_instance, MockAccumulator)
