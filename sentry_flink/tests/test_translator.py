@@ -108,7 +108,7 @@ def test_flink_aggregate():
     flink_agg.add("b", mock_acc_instance)
     flink_agg.add("c", mock_acc_instance)
 
-    assert flink_agg.acc.mock_batch == ["a", "b", "c"]
+    assert mock_acc_instance.mock_batch == ["a", "b", "c"]
 
     other_flink_agg = FlinkAggregate(mock_acc)
     other_acc_instance = other_flink_agg.create_accumulator()
@@ -121,6 +121,7 @@ def test_flink_aggregate():
     assert other_flink_agg.acc.mock_batch == ["d", "e"]
 
     merged_acc = flink_agg.merge(flink_agg.acc, other_flink_agg.acc)
+    assert isinstance(merged_acc, MockAccumulator)
 
     assert merged_acc.mock_batch == ["a", "b", "c", "d", "e"]
 
