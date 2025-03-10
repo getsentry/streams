@@ -39,6 +39,12 @@ def is_standard_type(type: Any) -> bool:
 
 
 def translate_custom_type(type: Any) -> TypeInformation:
+    """
+    For Python types which use Pickle for serialization/deserialization
+    and do not have a matching standard Flink Type. e.g. custom-defined
+    classes.
+    """
+
     assert not is_standard_type(type)
     return Types.PICKLED_BYTE_ARRAY()
 
