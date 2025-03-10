@@ -19,6 +19,6 @@ def test_register_source() -> None:
 
 
 def test_broadcast_branches() -> None:
-    assert broadcast_pipeline.outgoing_edges["mymap"] == ["hello_map", "goodbye_map"]
-    assert broadcast_pipeline.incoming_edges["hello_map"] == ["mymap"]
-    assert broadcast_pipeline.incoming_edges["goodbye_map"] == ["mymap"]
+    assert broadcast_pipeline.outgoing_edges["no_op_map"] == ["hello_map", "goodbye_map"]
+    assert broadcast_pipeline.incoming_edges["hello_map"] == ["no_op_map"]
+    assert broadcast_pipeline.incoming_edges["goodbye_map"] == ["no_op_map"]
