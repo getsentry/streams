@@ -6,7 +6,7 @@ from pyflink.datastream.window import (
     CountSlidingWindowAssigner,
     TumblingEventTimeWindows,
 )
-from sentry_streams.sentry_streams.pipeline.window import (
+from sentry_streams.pipeline.window import (
     MeasurementUnit,
     SlidingWindow,
     TumblingWindow,
