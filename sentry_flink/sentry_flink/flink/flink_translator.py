@@ -35,10 +35,7 @@ FLINK_TYPE_MAP: dict[Any, Any] = {
 
 
 def is_standard_type(type: Any) -> bool:
-    if type in FLINK_TYPE_MAP:
-        return True
-
-    return False
+    return type in FLINK_TYPE_MAP
 
 
 def translate_custom_type(type: Any) -> TypeInformation:
@@ -155,12 +152,12 @@ def build_flink_window(streams_window: Window[MeasurementUnit]) -> WindowAssigne
 
     match streams_window:
         case SlidingWindow(window_size, window_slide):
-            match window_size:
-                case timedelta():
+            match (window_size, window_slide):
+                case (timedelta(), timedelta()):
                     return SlidingEventTimeWindows.of(
                         to_flink_time(window_size), to_flink_time(window_slide)
                     )
-                case int():
+                case (int(), int()):
                     return CountSlidingWindowAssigner.of(window_size, window_slide)
 
                 case _:
