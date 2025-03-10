@@ -14,40 +14,40 @@ from sentry_streams.pipeline.pipeline import (
 def pipeline() -> Pipeline:
     pipeline = Pipeline()
     source = KafkaSource(
-        name="myinput",
+        name="source",
         ctx=pipeline,
         logical_topic="logical-events",
     )
 
-    source_2 = KafkaSource(
-        name="myinput2",
+    source2 = KafkaSource(
+        name="source2",
         ctx=pipeline,
         logical_topic="anotehr-logical-events",
     )
 
     filter = Filter(
-        name="myfilter",
+        name="filter",
         ctx=pipeline,
-        inputs=[source, source_2],
+        inputs=[source, source2],
         function=simple_filter,
     )
 
     _ = Filter(
-        name="myfilter2",
+        name="filter2",
         ctx=pipeline,
         inputs=[filter],
         function=simple_filter,
     )
 
     map = Map(
-        name="mymap",
+        name="map",
         ctx=pipeline,
         inputs=[filter],
         function=simple_map,
     )
 
-    map_2 = Map(
-        name="mymap2",
+    map2 = Map(
+        name="map2",
         ctx=pipeline,
         inputs=[filter, map],
         function=simple_map,
@@ -56,7 +56,7 @@ def pipeline() -> Pipeline:
     KafkaSink(
         name="kafkasink",
         ctx=pipeline,
-        inputs=[map, map_2],
+        inputs=[map, map2],
         logical_topic="transformed-events",
     )
     return pipeline
@@ -80,12 +80,12 @@ def test_register_step(pipeline: Pipeline) -> None:
 
 def test_register_edge(pipeline: Pipeline) -> None:
     # when there is only one step going to the next step
-    assert pipeline.incoming_edges["mymap"] == ["myfilter"]
+    assert pipeline.incoming_edges["map"] == ["filter"]
     # when one step fans out to multiple steps
-    assert pipeline.outgoing_edges["myfilter"] == ["myfilter2", "mymap", "mymap2"]
+    assert pipeline.outgoing_edges["filter"] == ["filter2", "map", "map2"]
     # when multiple steps fan into one step
-    assert pipeline.incoming_edges["myfilter"] == ["myinput", "myinput2"]
+    assert pipeline.incoming_edges["filter"] == ["source", "source2"]
 
 
 def test_register_source(pipeline: Pipeline) -> None:
-    assert {pipeline.sources[0].name, pipeline.sources[1].name} == {"myinput", "myinput2"}
+    assert {pipeline.sources[0].name, pipeline.sources[1].name} == {"source", "source2"}
