@@ -2,7 +2,7 @@ from datetime import timedelta
 from typing import Self
 
 import pytest
-from pyflink.common import Time
+from pyflink.common import Time, Types
 from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.window import (
     MeasurementUnit,
@@ -15,6 +15,7 @@ from sentry_flink.flink.flink_translator import (
     FlinkAggregate,
     build_flink_window,
     to_flink_time,
+    translate_to_flink_type,
 )
 
 
@@ -101,18 +102,17 @@ def test_flink_aggregate():
     mock_acc = MockAccumulator
     flink_agg = FlinkAggregate(mock_acc, None)
 
-    mock_acc_instance = flink_agg.create_accumulator()
-    assert isinstance(mock_acc_instance, MockAccumulator)
+    acc_instance = flink_agg.create_accumulator()
+    assert isinstance(acc_instance, MockAccumulator)
 
-    flink_agg.add("a", mock_acc_instance)
-    flink_agg.add("b", mock_acc_instance)
-    flink_agg.add("c", mock_acc_instance)
+    flink_agg.add("a", acc_instance)
+    flink_agg.add("b", acc_instance)
+    flink_agg.add("c", acc_instance)
 
-    assert mock_acc_instance.mock_batch == ["a", "b", "c"]
+    assert acc_instance.mock_batch == ["a", "b", "c"]
 
     other_flink_agg = FlinkAggregate(mock_acc, None)
     other_acc_instance = other_flink_agg.create_accumulator()
-
     assert isinstance(other_acc_instance, MockAccumulator)
 
     other_flink_agg.add("d", other_acc_instance)
@@ -120,9 +120,22 @@ def test_flink_aggregate():
 
     assert other_acc_instance.mock_batch == ["d", "e"]
 
-    merged_acc = flink_agg.merge(mock_acc_instance, other_acc_instance)
+    merged_acc = flink_agg.merge(acc_instance, other_acc_instance)
     assert isinstance(merged_acc, MockAccumulator)
 
     assert merged_acc.mock_batch == ["a", "b", "c", "d", "e"]
 
     assert flink_agg.get_result(merged_acc) == "a.b.c.d.e"
+
+
+@pytest.mark.parametrize(
+    "python_type, flink_type",
+    [
+        (str, Types.STRING()),
+        (tuple[str, int], Types.TUPLE([Types.STRING(), Types.INT()])),
+        (dict[str, str], Types.MAP(Types.STRING(), Types.STRING())),
+    ],
+)
+def test_type_conversion(python_type, flink_type):
+
+    assert translate_to_flink_type(python_type) == flink_type
