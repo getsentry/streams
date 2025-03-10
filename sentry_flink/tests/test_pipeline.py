@@ -4,6 +4,10 @@ from typing import Any, Generator, MutableMapping
 import pytest
 from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
+from sentry_streams.examples.word_counter_fn import (
+    EventsPipelineFilterFunctions,
+    EventsPipelineMapFunctions,
+)
 from sentry_streams.pipeline.pipeline import (
     Filter,
     KafkaSink,
@@ -12,10 +16,6 @@ from sentry_streams.pipeline.pipeline import (
     Pipeline,
 )
 from sentry_streams.runner import iterate_edges
-from sentry_streams.user_functions.sample_filter import (
-    EventsPipelineFilterFunctions,
-    EventsPipelineMapFunctions,
-)
 
 from sentry_flink.flink.flink_adapter import FlinkAdapter
 
