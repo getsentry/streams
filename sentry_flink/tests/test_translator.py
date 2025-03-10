@@ -54,7 +54,7 @@ def test_build_windows(window, expected):
     [
         (
             SlidingWindow(window_size=timedelta(seconds=30), window_slide=2),
-            pytest.raises(TypeError()),
+            pytest.raises(TypeError),
         )
     ],
 )
