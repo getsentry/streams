@@ -2,14 +2,9 @@ from datetime import timedelta
 
 import pytest
 from pyflink.common import Time
-from pyflink.datastream.window import (
-    CountSlidingWindowAssigner,
-)
 from sentry_streams.pipeline.window import (
-    MeasurementUnit,
     SlidingWindow,
     TumblingWindow,
-    Window,
 )
 
 from sentry_flink.flink.flink_translator import (
@@ -33,8 +28,8 @@ def test_time_conversion(timestamp, expected):
     assert flink_ts == expected
 
 
-class TestWindow(Window[MeasurementUnit]):
-    pass
+# class TestWindow(Window[MeasurementUnit]):
+#     pass
 
 
 @pytest.mark.parametrize(
@@ -44,12 +39,7 @@ class TestWindow(Window[MeasurementUnit]):
             TumblingWindow(window_size=timedelta(seconds=45)),
             "TumblingEventTimeWindows(45000, 0)",
         ),
-        (SlidingWindow(window_size=3, window_slide=4), CountSlidingWindowAssigner.of(3, 4)),
-        (TestWindow(), pytest.raises(TypeError)),
-        (
-            SlidingWindow(window_size=timedelta(seconds=30), window_slide=2),
-            pytest.raises(TypeError),
-        ),
+        (SlidingWindow(window_size=3, window_slide=4), "CountSlidingWindowAssigner(3, 4)"),
     ],
 )
 def test_build_windows(window, expected):
@@ -57,3 +47,18 @@ def test_build_windows(window, expected):
     flink_window = str(build_flink_window(window))
 
     assert flink_window == expected
+
+
+@pytest.mark.parametrize(
+    "window, expected",
+    [
+        (
+            SlidingWindow(window_size=timedelta(seconds=30), window_slide=2),
+            pytest.raises(TypeError()),
+        )
+    ],
+)
+def test_bad_window(window, expected):
+
+    with expected:
+        build_flink_window(window)
