@@ -140,7 +140,6 @@ class Map(TransformStep[Any]):
     # The direct reference to the symbol allows for strict type checking
     # The string is likely to be used in cross code base pipelines where
     # the symbol is just not present in the current code base.
-    function: Union[Callable[..., Any], str]
     step_type: StepType = StepType.MAP
 
     # TODO: Allow product to both enable and access
@@ -153,7 +152,6 @@ class Filter(TransformStep[bool]):
     A simple Filter, taking a single input and either returning it or None as output.
     """
 
-    function: Union[Callable[..., bool], str]
     step_type: StepType = StepType.FILTER
 
 
