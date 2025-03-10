@@ -13,7 +13,7 @@ from sentry_streams.pipeline.window import (
     Window,
 )
 
-from sentry_flink.sentry_flink.flink.flink_translator import (
+from sentry_flink.flink.flink_translator import (
     build_flink_window,
     to_flink_time,
 )
