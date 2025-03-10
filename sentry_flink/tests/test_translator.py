@@ -118,7 +118,7 @@ def test_flink_aggregate():
     other_flink_agg.add("d", other_acc_instance)
     other_flink_agg.add("e", other_acc_instance)
 
-    assert other_flink_agg.acc.mock_batch == ["d", "e"]
+    assert other_acc_instance.mock_batch == ["d", "e"]
 
     merged_acc = flink_agg.merge(flink_agg.acc, other_flink_agg.acc)
     assert isinstance(merged_acc, MockAccumulator)
