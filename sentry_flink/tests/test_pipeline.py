@@ -4,10 +4,6 @@ from typing import Any, Generator, MutableMapping
 import pytest
 from pyflink.datastream import StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
-from sentry_streams.examples.word_counter_fn import (
-    EventsPipelineFilterFunctions,
-    EventsPipelineMapFunctions,
-)
 from sentry_streams.pipeline.pipeline import (
     Filter,
     KafkaSink,
@@ -18,6 +14,18 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.runner import iterate_edges
 
 from sentry_flink.flink.flink_adapter import FlinkAdapter
+
+
+def simple_filter(value: str) -> bool:
+    # does nothing because it's not needed for tests
+    # TODO: have shared test functions for sentry_streams and sentry_flink
+    return True
+
+
+def simple_map(value: str) -> str:
+    # does nothing because it's not needed for tests
+    # TODO: have shared test functions for sentry_streams and sentry_flink
+    return "nothing"
 
 
 @pytest.fixture(autouse=True)
@@ -100,7 +108,7 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
         name="mymap",
         ctx=pipeline,
         inputs=[source],
-        function=EventsPipelineMapFunctions.simple_map,
+        function=simple_map,
     )
 
     _ = KafkaSink(
@@ -162,7 +170,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
         name="myfilter",
         ctx=pipeline,
         inputs=[source],
-        function=EventsPipelineFilterFunctions.simple_filter,
+        function=simple_filter,
     )
 
     _ = KafkaSink(
