@@ -15,6 +15,7 @@ from sentry_flink.flink.flink_translator import (
     FlinkAggregate,
     build_flink_window,
     to_flink_time,
+    translate_custom_type,
     translate_to_flink_type,
 )
 
@@ -136,6 +137,21 @@ def test_flink_aggregate():
         (dict[str, str], Types.MAP(Types.STRING(), Types.STRING())),
     ],
 )
-def test_type_conversion(python_type, flink_type):
+def test_flink_type_conversion(python_type, flink_type):
 
     assert translate_to_flink_type(python_type) == flink_type
+
+
+class RandomClass:
+    pass
+
+
+@pytest.mark.parametrize(
+    "python_type, flink_type",
+    [
+        (RandomClass(), Types.PICKLED_BYTE_ARRAY()),
+    ],
+)
+def test_flink_custom_type_conversion(python_type, flink_type):
+
+    assert translate_custom_type(python_type) == flink_type

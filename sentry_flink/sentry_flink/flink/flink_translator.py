@@ -39,6 +39,7 @@ def is_standard_type(type: Any) -> bool:
 
 
 def translate_custom_type(type: Any) -> TypeInformation:
+    assert not is_standard_type(type)
     return Types.PICKLED_BYTE_ARRAY()
 
 
