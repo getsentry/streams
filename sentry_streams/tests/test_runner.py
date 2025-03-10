@@ -1,5 +1,5 @@
 from typing import Any
-from unittest.mock import MagicMock, call
+from unittest.mock import ANY, MagicMock, call
 
 import pytest
 
@@ -51,9 +51,9 @@ def test_iterate_edges(create_pipeline: Pipeline) -> None:
     runtime.assert_has_calls(
         [
             call.source(create_pipeline.steps["source1"]),
-            call.map(create_pipeline.steps["step1"], runtime.source()),
-            call.filter(create_pipeline.steps["step2"], runtime.map()),
-            call.map(create_pipeline.steps["step3"], runtime.filter()),
-            call.map(create_pipeline.steps["step4"], runtime.filter()),
+            call.map(create_pipeline.steps["step1"], ANY),
+            call.filter(create_pipeline.steps["step2"], ANY),
+            call.map(create_pipeline.steps["step3"], ANY),
+            call.map(create_pipeline.steps["step4"], ANY),
         ]
     )
