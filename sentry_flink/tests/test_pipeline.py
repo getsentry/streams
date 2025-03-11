@@ -30,7 +30,6 @@ def setup_basic_flink_env() -> (
         tuple[StreamExecutionEnvironment, RuntimeTranslator[DataStream, DataStreamSink]], None, None
     ]
 ):
-
     # TODO: read from yaml file
     environment_config = {
         "topics": {
@@ -219,7 +218,6 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
 
 
 def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
-
     pipeline = Pipeline()
 
     source = KafkaSource(
@@ -299,8 +297,7 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
                 "type": "_stream_key_by_map_operator",
             },
             {
-                "contents": "Window(CountTumblingWindowAssigner(3), CountTrigger, "
-                "FlinkAggregate)",
+                "contents": "Window(CountTumblingWindowAssigner(3), CountTrigger, FlinkAggregate)",
                 "id": 26,
                 "pact": "Operator",
                 "parallelism": 1,
