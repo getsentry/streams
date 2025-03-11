@@ -167,7 +167,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: DataStream,
     ) -> DataStream:
-
         agg = step.aggregate_fn
         windowing = step.windowing
 
