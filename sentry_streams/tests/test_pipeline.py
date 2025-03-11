@@ -1,5 +1,6 @@
 import pytest
 
+from sentry_streams.examples.broadcast import pipeline as broadcast_pipeline
 from sentry_streams.pipeline.pipeline import (
     Filter,
     KafkaSink,
@@ -88,6 +89,12 @@ def test_register_edge(pipeline: Pipeline) -> None:
     # when multiple steps fan into one step
     assert pipeline.incoming_edges["filter"] == ["source", "source2"]
     assert pipeline.outgoing_edges["filter"] == ["filter2", "map", "map2"]
+
+
+def test_broadcast_branches() -> None:
+    assert broadcast_pipeline.outgoing_edges["no_op_map"] == ["hello_map", "goodbye_map"]
+    assert broadcast_pipeline.incoming_edges["hello_map"] == ["no_op_map"]
+    assert broadcast_pipeline.incoming_edges["goodbye_map"] == ["no_op_map"]
 
 
 def test_register_source(pipeline: Pipeline) -> None:

@@ -18,7 +18,7 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
     Traverses over edges in a PipelineGraph, building the
     stream incrementally by applying steps and transformations
     It currently has the structure to deal with, but has no
-    real support for, fan-in and fan-out streams
+    real support for, fan-in streams
     """
 
     step_streams = {}
@@ -36,24 +36,12 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
                 if not output_steps:
                     continue
 
-                # check if the inputs are fanning out
-                if len(output_steps) > 1:
-                    pass
-
-                else:
-                    output_step_name = output_steps.pop()
-
-                    # check if the inputs are fanning in
-                    if len(p_graph.incoming_edges[output_step_name]) > 1:
-                        pass
-
-                    # 1:1 between input and output stream
-                    else:
-                        next_step: WithInput = cast(WithInput, p_graph.steps[output_step_name])
-                        print(f"Apply step: {next_step.name}")
-                        # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
-                        next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
-                        step_streams[next_step.name] = next_step_stream
+                for output in output_steps:
+                    next_step: WithInput = cast(WithInput, p_graph.steps[output])
+                    print(f"Apply step: {next_step.name}")
+                    # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
+                    next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
+                    step_streams[next_step.name] = next_step_stream
 
 
 def main() -> None:
@@ -106,6 +94,7 @@ def main() -> None:
         "topics": {
             "logical-events": "events",
             "transformed-events": "transformed-events",
+            "transformed-events-2": "transformed-events-2",
         },
         "broker": args.broker,
     }
