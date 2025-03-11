@@ -159,7 +159,7 @@ class Filter(TransformStep[bool]):
 @dataclass
 class Reduce(WithInput):
     """
-    A generic type for reduce/fold operation
+    A generic Step for a Reduce (or Accumulator-based) operation
     """
 
 
