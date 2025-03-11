@@ -19,6 +19,10 @@ from pyflink.datastream.data_stream import (
 )
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.modules import get_module
+from sentry_streams.pipeline.function_template import (
+    InputType,
+    OutputType,
+)
 from sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
@@ -27,6 +31,7 @@ from sentry_streams.pipeline.pipeline import (
     Source,
     TransformStep,
 )
+from sentry_streams.pipeline.window import MeasurementUnit
 
 from sentry_flink.flink.flink_translator import (
     FlinkAggregate,
@@ -159,7 +164,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def reduce(
         self,
-        step: Reduce,
+        step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: DataStream,
     ) -> DataStream:
         agg = step.aggregate_fn
@@ -168,8 +173,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         flink_window = build_flink_window(windowing)
 
         # Optional parameters
-        group_by = step.group_by_key if hasattr(step, "group_by_key") else None
-        agg_backend = step.aggregate_backend if hasattr(step, "aggregate_backend") else None
+        group_by = step.group_by_key
+        agg_backend = step.aggregate_backend
 
         # TODO: Configure WatermarkStrategy as part of KafkaSource
         # Injecting strategy within a step like here produces
