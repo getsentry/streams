@@ -3,7 +3,16 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    MutableMapping,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from sentry_streams.pipeline.function_template import (
     Accumulator,
@@ -13,6 +22,8 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.window import MeasurementUnit, Window
+
+from ..modules import get_module
 
 
 class StepType(Enum):
@@ -123,10 +134,35 @@ class TransformStep(WithInput, Generic[T]):
     """
     A generic step representing a step performing a transform operation
     on input data.
+    function: supports relative path using dot notation, or a Callable
+    TODO: add support for absolute path
     """
 
     function: Union[Callable[..., T], str]
     step_type: StepType
+
+    @property
+    def resolved_function(self) -> Callable[..., T]:
+        """
+        Returns a callable of the transform function defined, or referenced in the
+        this class
+        """
+        if isinstance(self.function, str):
+            fn_path = self.function
+            mod, cls, fn = fn_path.rsplit(".", 2)
+
+            try:
+                module = get_module(mod)
+
+            except ImportError:
+                raise
+
+            imported_cls = getattr(module, cls)
+            imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
+            function_callable = imported_func
+        else:
+            function_callable = self.function
+        return function_callable
 
 
 @dataclass
