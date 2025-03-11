@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Union
 
+from sentry_streams.pipeline.batch import BatchBuilder
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -12,7 +13,7 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
-from sentry_streams.pipeline.window import MeasurementUnit, Window
+from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
 
 
 class StepType(Enum):
@@ -158,7 +159,14 @@ class Filter(TransformStep[bool]):
 
 
 @dataclass
-class Reduce(WithInput, Generic[MeasurementUnit, InputType, OutputType]):
+class Reduce(WithInput):
+    """
+    A generic type for reduce/fold operation
+    """
+
+
+@dataclass
+class Aggregate(Reduce, Generic[MeasurementUnit, InputType, OutputType]):
     """
     A Reduce step which performs windowed aggregations. Can be keyed or non-keyed on the
     input stream. Supports an Accumulator-style aggregation which can have a configurable
@@ -170,3 +178,14 @@ class Reduce(WithInput, Generic[MeasurementUnit, InputType, OutputType]):
     aggregate_backend: Optional[AggregationBackend[OutputType]] = None
     group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE
+
+
+@dataclass
+class Batch(Reduce, Generic[MeasurementUnit, InputType]):
+    batch_size: MeasurementUnit
+    step_type: StepType = StepType.REDUCE
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.windowing: TumblingWindow[MeasurementUnit] = TumblingWindow(self.batch_size)
+        self.aggregate_fn = BatchBuilder[InputType]

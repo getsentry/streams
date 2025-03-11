@@ -10,10 +10,6 @@ from typing import (
     assert_never,
 )
 
-from sentry_streams.pipeline.function_template import (
-    InputType,
-    OutputType,
-)
 from sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
@@ -23,7 +19,6 @@ from sentry_streams.pipeline.pipeline import (
     Step,
     StepType,
 )
-from sentry_streams.pipeline.window import MeasurementUnit
 
 PipelineConfig = Mapping[str, Any]
 
@@ -81,7 +76,7 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
     @abstractmethod
     def reduce(
         self,
-        step: Reduce[MeasurementUnit, InputType, OutputType],
+        step: Reduce,
         stream: Stream,
     ) -> Stream:
         """

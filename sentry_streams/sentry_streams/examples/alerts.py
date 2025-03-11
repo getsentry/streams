@@ -2,11 +2,11 @@ from datetime import timedelta
 
 from sentry_streams.examples.events import AlertsBuffer, build_alert_json, build_event
 from sentry_streams.pipeline.pipeline import (
+    Aggregate,
     KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
-    Reduce,
 )
 from sentry_streams.pipeline.window import SlidingWindow
 
@@ -32,7 +32,7 @@ reduce_window = SlidingWindow(window_size=timedelta(seconds=5), window_slide=tim
 # to emit both a p95 and count
 # for the reduce to be applied on
 
-reduce = Reduce(
+reduce = Aggregate(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],

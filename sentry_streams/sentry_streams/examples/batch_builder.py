@@ -1,27 +1,10 @@
-# TODO: Build a generic BatchBuilder provided by the platform. Provides a JSON string output.
-from typing import Self
+import json
 
-from sentry_streams.pipeline.function_template import Accumulator
+from sentry_streams.pipeline.function_template import InputType
 
 
-class BatchBuilder(Accumulator[str, str]):
-    """
-    Takes str input and accumulates them into a batch array.
-    Joins back into a string to produce onto a Kafka topic.
-    """
+def build_batch_str(batch: list[InputType]) -> str:
 
-    def __init__(self) -> None:
-        self.batch: list[str] = []
+    d = {"batch": batch}
 
-    def add(self, value: str) -> Self:
-        self.batch.append(value)
-
-        return self
-
-    def get_value(self) -> str:
-        return " ".join(self.batch)
-
-    def merge(self, other: Self) -> Self:
-        self.batch.extend(other.batch)
-
-        return self
+    return json.dumps(d)
