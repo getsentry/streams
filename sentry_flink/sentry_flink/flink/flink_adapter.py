@@ -1,5 +1,5 @@
 import os
-from typing import Callable, Self, TypeVar, Union, cast
+from typing import Self, TypeVar, Union
 
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
@@ -18,7 +18,6 @@ from pyflink.datastream.data_stream import (
     WindowedStream,
 )
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
-from sentry_streams.modules import get_module
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
@@ -29,7 +28,6 @@ from sentry_streams.pipeline.pipeline import (
     Reduce,
     Sink,
     Source,
-    TransformStep,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
 
@@ -38,8 +36,6 @@ from sentry_flink.flink.flink_translator import (
     FlinkGroupBy,
     build_flink_window,
     is_standard_type,
-    translate_custom_type,
-    translate_to_flink_type,
 )
 
 T = TypeVar("T")
@@ -81,28 +77,28 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         return cls(config, env)
 
-    def load_function(self, step: TransformStep[T]) -> Callable[..., T]:
-        """
-        Takes a transform step containing a function, and either returns
-        function (if it's a path to a module).
-        """
-        # TODO: break out the dynamic loading logic into a
-        # normalization layer before the flink adapter
-        if isinstance(step.function, str):
-            fn_path = step.function
-            mod, cls, fn = fn_path.rsplit(".", 2)
+    # def load_function(self, step: TransformStep[T]) -> Callable[..., T]:
+    #     """
+    #     Takes a transform step containing a function, and either returns
+    #     function (if it's a path to a module).
+    #     """
+    #     # TODO: break out the dynamic loading logic into a
+    #     # normalization layer before the flink adapter
+    #     if isinstance(step.function, str):
+    #         fn_path = step.function
+    #         mod, cls, fn = fn_path.rsplit(".", 2)
 
-            try:
-                module = get_module(mod)
+    #         try:
+    #             module = get_module(mod)
 
-            except ImportError:
-                raise
+    #         except ImportError:
+    #             raise
 
-            imported_cls = getattr(module, cls)
-            imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
-            return imported_func
-        else:
-            return step.function
+    #         imported_cls = getattr(module, cls)
+    #         imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
+    #         return imported_func
+    #     else:
+    #         return step.function
 
     def source(self, step: Source) -> DataStream:
         assert hasattr(step, "logical_topic")
@@ -143,12 +139,10 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return stream.sink_to(sink)
 
     def filter(self, step: Filter, stream: DataStream) -> DataStream:
-        imported_fn = self.load_function(step)
-
-        return stream.filter(func=lambda msg: imported_fn(msg))
+        return stream.filter(func=lambda msg: step.get_function(msg))
 
     def map(self, step: Map, stream: DataStream) -> DataStream:
-        imported_fn = self.load_function(step)
+        imported_fn = step.get_function(step)
 
         return_type = imported_fn.__annotations__["return"]
 
