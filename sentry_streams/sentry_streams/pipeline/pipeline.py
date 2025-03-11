@@ -3,7 +3,16 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    MutableMapping,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from sentry_streams.pipeline.function_template import (
     Accumulator,
@@ -13,6 +22,8 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.window import MeasurementUnit, Window
+
+from ..modules import get_module
 
 
 class StepType(Enum):
@@ -127,6 +138,28 @@ class TransformStep(WithInput, Generic[T]):
 
     function: Union[Callable[..., T], str]
     step_type: StepType
+
+    def get_function(self) -> Callable[..., T]:
+        """
+        Takes a transform step containing a function, and either returns
+        function (if it's a path to a module).
+        """
+        if isinstance(self.function, str):
+            fn_path = self.function
+            mod, cls, fn = fn_path.rsplit(".", 2)
+
+            try:
+                module = get_module(mod)
+
+            except ImportError:
+                raise
+
+            imported_cls = getattr(module, cls)
+            imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
+            function_callable = imported_func
+        else:
+            function_callable = self.function
+        return function_callable
 
 
 @dataclass
