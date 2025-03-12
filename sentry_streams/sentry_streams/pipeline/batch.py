@@ -5,8 +5,10 @@ from sentry_streams.pipeline.function_template import Accumulator, InputType
 
 class BatchBuilder(Accumulator[InputType, MutableSequence[InputType]]):
     """
-    Takes str input and accumulates them into a batch array.
-    Joins back into a string to produce onto a Kafka topic.
+    Takes a generic input format, and batches into a generic batch representation
+    with the same input type. Returns this batch representation.
+
+    The data type of the elements remains the same through this operation.
     """
 
     def __init__(self) -> None:
@@ -27,5 +29,12 @@ class BatchBuilder(Accumulator[InputType, MutableSequence[InputType]]):
 
 
 def unbatch(batch: MutableSequence[InputType]) -> Generator[InputType, None, None]:
+    """
+    Takes in a generic batch representation, outputs a Generator type for iterating over
+    individual elements which compose the batch.
+
+    The data type of the elements remains the same through this operation. This operation
+    may need to be followed by a Map or other transformation if a new output type is expected.
+    """
     for message in batch:
         yield message
