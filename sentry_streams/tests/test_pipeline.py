@@ -110,15 +110,6 @@ class ExampleClass:
         return "nothing"
 
 
-# def _get_current_module_path() -> str:
-#     current_file_absolute = Path(__file__).resolve()
-
-#     script_dir = Path.cwd()
-#     path_relative = current_file_absolute.relative_to(script_dir)
-#     path_relative_str = str(path_relative).replace("/", ".").rstrip(".py")
-#     return path_relative_str
-
-
 @pytest.mark.parametrize(
     "function, expected",
     [
