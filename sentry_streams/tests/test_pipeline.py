@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, Callable, Union
 
 import pytest
@@ -111,25 +110,25 @@ class ExampleClass:
         return "nothing"
 
 
-def _get_current_module_path() -> str:
-    current_file_absolute = Path(__file__).resolve()
+# def _get_current_module_path() -> str:
+#     current_file_absolute = Path(__file__).resolve()
 
-    script_dir = Path.cwd()
-    path_relative = current_file_absolute.relative_to(script_dir)
-    path_relative_str = str(path_relative).replace("/", ".").rstrip(".py")
-    return path_relative_str
+#     script_dir = Path.cwd()
+#     path_relative = current_file_absolute.relative_to(script_dir)
+#     path_relative_str = str(path_relative).replace("/", ".").rstrip(".py")
+#     return path_relative_str
 
 
 @pytest.mark.parametrize(
     "function, expected",
     [
         pytest.param(
-            f"{_get_current_module_path()}.ExampleClass.example_func",
+            "tests.test_pipeline.ExampleClass.example_func",
             ExampleClass.example_func,
             id="Function is a string of an relative path, referring to a function inside a class",
         ),
         pytest.param(
-            f"{_get_current_module_path()}.simple_map",
+            "tests.test_pipeline.simple_map",
             simple_map,
             id="Function is a string of an relative path, referring to a function outside of a class",
         ),
