@@ -192,13 +192,13 @@ class Aggregate(Reduce, Generic[MeasurementUnit, InputType, OutputType]):
 @dataclass
 class Batch(Reduce, Generic[MeasurementUnit, InputType]):
     """
-    A step batch up the results of the prior step.
+    A step to Batch up the results of the prior step.
 
     Batch can be configured via batch size, which can be
     an event time duration or a count of events.
     """
 
-    # TODO: Use the idea of custom triggers to close window
+    # TODO: Use concept of custom triggers to close window
     # by either size or time
     batch_size: MeasurementUnit
     step_type: StepType = StepType.REDUCE
@@ -212,7 +212,8 @@ class Batch(Reduce, Generic[MeasurementUnit, InputType]):
 @dataclass
 class FlatMapStep(WithInput):
     """
-    A generic Step to Flatten. Takes a single input to 0...N outputs.
+    A generic step for mapping and flattening (and therefore alerting the shape of) inputs to
+    get outputs. Takes a single input to 0...N outputs.
     """
 
     step_type: StepType = StepType.FLAT_MAP
@@ -227,4 +228,8 @@ class FlatMap(FlatMapStep, TransformStep[Any]):
 
 @dataclass
 class Unbatch(FlatMapStep, Generic[InputType]):
+    """
+    A step to flatten a batch representation to output its individual elements.
+    """
+
     function: Callable[[MutableSequence[InputType]], Generator[InputType, None, None]] = unbatch
