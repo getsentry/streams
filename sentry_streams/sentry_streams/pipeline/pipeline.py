@@ -3,16 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Mapping,
-    MutableMapping,
-    Optional,
-    TypeVar,
-    Union,
-)
+from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Union
 
 from sentry_streams.pipeline.function_template import (
     Accumulator,
@@ -25,13 +16,11 @@ from sentry_streams.pipeline.window import MeasurementUnit, Window
 
 
 class StepType(Enum):
-    BRANCH = "branch"
-    FILTER = "filter"
-    MAP = "map"
-    REDUCE = "reduce"
-    ROUTER = "router"
     SINK = "sink"
     SOURCE = "source"
+    MAP = "map"
+    REDUCE = "reduce"
+    FILTER = "filter"
 
 
 class Pipeline:
@@ -164,37 +153,6 @@ class Filter(TransformStep[bool]):
     """
 
     step_type: StepType = StepType.FILTER
-
-
-@dataclass
-class Branch(Step):
-    """
-    A Branch represents one branch in a pipeline, which is routed to
-    by a Router.
-    The name of the Branch step must match the key of the step in
-    its Router's routing table.
-    """
-
-    step_type: StepType = StepType.BRANCH
-
-
-@dataclass
-class Router(WithInput):
-    """
-    A step which takes a routing table of Branches and sends messages
-    to those branches based on a routing function.
-    Routing functions must only return a single output branch, routing
-    to multiple branches simultaneously is not currently supported.
-    """
-
-    routing_function: Callable[..., str]
-    routing_table: Mapping[str, Branch]
-    step_type: StepType = StepType.ROUTER
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        for branch in self.routing_table.values():
-            self.ctx.register_edge(self, branch)
 
 
 @dataclass
