@@ -3,9 +3,18 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Generic,
+    MutableMapping,
+    Optional,
+    TypeVar,
+    Union,
+)
 
-from sentry_streams.pipeline.batch import BatchBuilder
+from sentry_streams.pipeline.batch import BatchBuilder, unbatch
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -22,6 +31,7 @@ class StepType(Enum):
     MAP = "map"
     REDUCE = "reduce"
     FILTER = "filter"
+    FLAT_MAP = "flat_map"
 
 
 class Pipeline:
@@ -159,7 +169,7 @@ class Filter(TransformStep[bool]):
 @dataclass
 class Reduce(WithInput):
     """
-    A generic type for reduce/fold operation
+    A generic Step for a Reduce (or Accumulator-based) operation
     """
 
 
@@ -187,3 +197,24 @@ class Batch(Reduce, Generic[MeasurementUnit, InputType]):
         super().__post_init__()
         self.windowing: TumblingWindow[MeasurementUnit] = TumblingWindow(self.batch_size)
         self.aggregate_fn = BatchBuilder[InputType]
+
+
+@dataclass
+class FlatMapStep(WithInput):
+    """
+    A generic Step to Flatten. Takes a single input to 0...N outputs.
+    """
+
+    step_type: StepType = StepType.FLAT_MAP
+
+
+@dataclass
+class FlatMap(FlatMapStep, TransformStep[Any]):
+    """
+    A FlatMap with a user-defined function.
+    """
+
+
+@dataclass
+class Unbatch(FlatMapStep, Generic[InputType]):
+    function: Callable[[list[InputType]], Generator[InputType, None, None]] = unbatch
