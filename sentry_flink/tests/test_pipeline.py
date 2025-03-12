@@ -11,12 +11,14 @@ from sentry_streams.examples.word_counter_fn import (
     WordCounter,
 )
 from sentry_streams.pipeline.pipeline import (
+    Branch,
     Filter,
     KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
     Reduce,
+    Router,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 from sentry_streams.runner import iterate_edges
@@ -337,6 +339,86 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
                     },
                 ],
                 "type": "Sink: Committer",
+            },
+        ]
+    }
+
+    return (pipeline, expected)
+
+
+def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
+    pipeline = Pipeline()
+
+    source = KafkaSource(
+        name="myinput",
+        ctx=pipeline,
+        logical_topic="logical-events",
+    )
+
+    map = Map(
+        name="mymap",
+        ctx=pipeline,
+        inputs=[source],
+        function=EventsPipelineMapFunction.simple_map,
+    )
+
+    router = Router(
+        name="myrouter",
+        ctx=pipeline,
+        inputs=[map],
+        routing_table={
+            "branch_1": Branch(name="branch_1", ctx=pipeline),
+            "branch_2": Branch(name="branch_2", ctx=pipeline),
+        },
+        routing_function=lambda x: "branch_1" if int(x) % 2 == 0 else "branch_2",
+    )
+
+    _ = KafkaSink(
+        name="kafkasink_1",
+        ctx=pipeline,
+        inputs=[router.routing_table["branch_1"]],
+        logical_topic="transformed-events",
+    )
+
+    _ = KafkaSink(
+        name="kafkasink_2",
+        ctx=pipeline,
+        inputs=[router.routing_table["branch_2"]],
+        logical_topic="transformed-events-2",
+    )
+
+    expected = {
+        "nodes": [
+            {
+                "id": 7,
+                "type": "Source: Custom Source",
+                "pact": "Data Source",
+                "contents": "Source: Custom Source",
+                "parallelism": 1,
+            },
+            {
+                "id": 8,
+                "type": "Map",
+                "pact": "Operator",
+                "contents": "Map",
+                "parallelism": 1,
+                "predecessors": [{"id": 7, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+            {
+                "id": 10,
+                "type": "Sink: Writer",
+                "pact": "Operator",
+                "contents": "Sink: Writer",
+                "parallelism": 1,
+                "predecessors": [{"id": 8, "ship_strategy": "FORWARD", "side": "second"}],
+            },
+            {
+                "id": 12,
+                "type": "Sink: Committer",
+                "pact": "Operator",
+                "contents": "Sink: Committer",
+                "parallelism": 1,
+                "predecessors": [{"id": 10, "ship_strategy": "FORWARD", "side": "second"}],
             },
         ]
     }
