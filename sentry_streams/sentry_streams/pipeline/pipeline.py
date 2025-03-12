@@ -193,8 +193,13 @@ class Router(WithInput):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        for branch in self.routing_table.values():
-            self.ctx.register_edge(self, branch)
+        for branch_name in self.routing_table:
+            # ensure name of branch step matches key of routing table
+            branch_step = self.routing_table[branch_name]
+            assert (
+                branch_name == branch_step.name
+            ), f'Branch name must match its routing table key - please change "{branch_name}" to "{branch_step.name}".'
+            self.ctx.register_edge(self, branch_step)
 
 
 @dataclass
