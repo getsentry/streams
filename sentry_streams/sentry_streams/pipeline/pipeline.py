@@ -133,8 +133,7 @@ class TransformStep(WithInput, Generic[T]):
     """
     A generic step representing a step performing a transform operation
     on input data.
-    function: supports relative path using dot notation, or a Callable
-    TODO: add support for absolute path
+    function: supports reference to a function using dot notation, or a Callable
     """
 
     function: Union[Callable[..., T], str]
