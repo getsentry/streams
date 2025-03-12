@@ -12,7 +12,7 @@ from typing import (
 
 from sentry_streams.pipeline.pipeline import (
     Filter,
-    FlatMap,
+    FlatMapStep,
     Map,
     Reduce,
     Sink,
@@ -75,7 +75,7 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
         raise NotImplementedError
 
     @abstractmethod
-    def flat_map(self, step: FlatMap, stream: Stream) -> Stream:
+    def flat_map(self, step: FlatMapStep, stream: Stream) -> Stream:
         """
         Builds a flat-map operator for the platform the adapter supports.
         """
@@ -137,7 +137,7 @@ class RuntimeTranslator(Generic[Stream, StreamSink]):
             return self.adapter.map(step, stream)
 
         elif step_type is StepType.FLAT_MAP:
-            assert isinstance(step, FlatMap) and stream is not None
+            assert isinstance(step, FlatMapStep) and stream is not None
             return self.adapter.flat_map(step, stream)
 
         elif step_type is StepType.REDUCE:
