@@ -1,4 +1,6 @@
-from sentry_streams.examples.batch_builder import build_message_str
+import json
+
+from sentry_streams.pipeline.function_template import InputType
 from sentry_streams.pipeline.pipeline import (
     Batch,
     KafkaSink,
@@ -7,6 +9,21 @@ from sentry_streams.pipeline.pipeline import (
     Pipeline,
     Unbatch,
 )
+
+
+def build_batch_str(batch: list[InputType]) -> str:
+
+    d = {"batch": batch}
+
+    return json.dumps(d)
+
+
+def build_message_str(message: str) -> str:
+
+    d = {"message": message}
+
+    return json.dumps(d)
+
 
 pipeline = Pipeline()
 
