@@ -14,19 +14,10 @@ source = KafkaSource(
     logical_topic="logical-events",
 )
 
-# A sample window.
-# Windows are assigned 4 elements.
-# reduce_window = TumblingWindow(window_size=4)
-
+# User simply provides the batch size
 reduce: Batch[int, str] = Batch(name="mybatch", ctx=pipeline, inputs=[source], batch_size=5)
 
 unbatch: Unbatch[str] = Unbatch(name="myunbatch", ctx=pipeline, inputs=[reduce])
-
-# map = Map(name="mymap",
-#     ctx=pipeline,
-#     inputs=[unbatch],
-#     function=build_batch_str
-# )
 
 # flush the batches to the Sink
 sink = KafkaSink(
