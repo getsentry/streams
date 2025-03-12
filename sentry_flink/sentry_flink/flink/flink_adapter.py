@@ -21,6 +21,7 @@ from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.modules import get_module
 from sentry_streams.pipeline.pipeline import (
     Filter,
+    FlatMap,
     Map,
     Reduce,
     Sink,
@@ -149,6 +150,21 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         # TODO: Ensure output type is configurable like the schema above
         return stream.map(
+            func=lambda msg: imported_fn(msg),
+            output_type=(
+                translate_to_flink_type(return_type)
+                if is_standard_type(return_type)
+                else translate_custom_type(return_type)
+            ),
+        )
+
+    def flat_map(self, step: FlatMap, stream: DataStream) -> DataStream:
+        imported_fn = self.load_function(step)
+
+        return_type = imported_fn.__annotations__["return"]
+
+        # TODO: Ensure output type is configurable like the schema above
+        return stream.flat_map(
             func=lambda msg: imported_fn(msg),
             output_type=(
                 translate_to_flink_type(return_type)
