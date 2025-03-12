@@ -1,7 +1,9 @@
+from sentry_streams.examples.batch_builder import build_message_str
 from sentry_streams.pipeline.pipeline import (
     Batch,
     KafkaSink,
     KafkaSource,
+    Map,
     Pipeline,
     Unbatch,
 )
@@ -22,16 +24,12 @@ reduce: Batch[int, str] = Batch(name="mybatch", ctx=pipeline, inputs=[source], b
 
 unbatch: Unbatch[str] = Unbatch(name="myunbatch", ctx=pipeline, inputs=[reduce])
 
-# map = Map(name="mymap",
-#     ctx=pipeline,
-#     inputs=[unbatch],
-#     function=build_batch_str
-# )
+map = Map(name="mymap", ctx=pipeline, inputs=[unbatch], function=build_message_str)
 
 # flush the batches to the Sink
 sink = KafkaSink(
     name="kafkasink",
     ctx=pipeline,
-    inputs=[unbatch],
+    inputs=[map],
     logical_topic="transformed-events",
 )

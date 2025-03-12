@@ -1,5 +1,5 @@
 import os
-from typing import Callable, Self, TypeVar, Union, cast
+from typing import Callable, Self, TypeVar, Union, cast, get_type_hints
 
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
@@ -21,7 +21,7 @@ from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.modules import get_module
 from sentry_streams.pipeline.pipeline import (
     Filter,
-    FlatMap,
+    FlatMapStep,
     Map,
     Reduce,
     Sink,
@@ -158,10 +158,12 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
-    def flat_map(self, step: FlatMap, stream: DataStream) -> DataStream:
+    def flat_map(self, step: FlatMapStep, stream: DataStream) -> DataStream:
+        assert hasattr(step, "function")
+
         imported_fn = self.load_function(step)
 
-        return_type = imported_fn.__annotations__["return"]
+        return_type = get_type_hints(imported_fn)["return"]
 
         # TODO: Ensure output type is configurable like the schema above
         return stream.flat_map(
