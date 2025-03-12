@@ -14,6 +14,7 @@ from typing import (
     cast,
 )
 
+from sentry_streams.modules import get_module
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -22,8 +23,6 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.window import MeasurementUnit, Window
-
-from ..modules import get_module
 
 
 class StepType(Enum):
