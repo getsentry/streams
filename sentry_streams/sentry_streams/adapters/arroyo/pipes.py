@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, MutableMapping, Sequence
+from typing import MutableMapping, Sequence
 
+from sentry_streams.adapters.arroyo.routes import Route, RoutedStep
 from sentry_streams.pipeline.pipeline import Step
 
 
@@ -32,4 +33,4 @@ class Pipes:
         """
         Append a pipeline step from
         """
-        self.pipelines.setdefault(route.source, []).append(RoutedStep(route, step))
+        pass

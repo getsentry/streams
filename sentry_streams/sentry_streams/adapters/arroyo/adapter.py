@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from sentry_streams.adapters.arroyo.pipes import Route
+from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
-from sentry_streams.pipeline.pipeline import Filter, Map, Reduce, Sink, Source, Step
+from sentry_streams.pipeline.pipeline import Filter, Map, Reduce, Sink, Source
 from sentry_streams.pipeline.window import MeasurementUnit
 
 
@@ -14,7 +14,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
     @classmethod
     def build(cls, config: PipelineConfig) -> ArroyoAdapter:
-        return None
+        raise NotImplementedError
 
     def source(self, step: Source) -> Route:
         """
