@@ -32,8 +32,6 @@ map = Map(
 
 flat_map = FlatMap(name="myflatmap", ctx=pipeline, inputs=[map], function=materialize_alerts)
 
-# Windows are set to be open for 5 seconds
-# reduce_window = SlidingWindow(window_size=timedelta(seconds=5), window_slide=timedelta(seconds=2))
 reduce_window = TumblingWindow(window_size=3)
 
 reduce = Aggregate(
