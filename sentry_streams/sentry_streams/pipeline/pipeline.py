@@ -145,21 +145,17 @@ class TransformStep(WithInput, Generic[T]):
         Returns a callable of the transform function defined, or referenced in the
         this class
         """
-        if isinstance(self.function, str):
-            fn_path = self.function
-            mod, cls, fn = fn_path.rsplit(".", 2)
+        if callable(self.function):
+            return self.function
 
-            try:
-                module = get_module(mod)
+        fn_path = self.function
+        mod, cls, fn = fn_path.rsplit(".", 2)
 
-            except ImportError:
-                raise
+        module = get_module(mod)
 
-            imported_cls = getattr(module, cls)
-            imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
-            function_callable = imported_func
-        else:
-            function_callable = self.function
+        imported_cls = getattr(module, cls)
+        imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
+        function_callable = imported_func
         return function_callable
 
 
