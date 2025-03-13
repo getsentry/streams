@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Union
+from typing import Any, Callable, Union
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies import Produce
@@ -19,9 +19,14 @@ from sentry_streams.pipeline.pipeline import Filter, Map
 @dataclass
 class ArroyoStep(ABC):
     """
-    Represent a primitive in Arroyo. This is the intermediate representation
+    Represents a primitive in Arroyo. This is the intermediate representation
     the Arroyo adapter uses to build the application in reverse order with
     respect to how the steps are wired up in the pipeline.
+
+    Arroyo consumers have to be built wiring up strategies from the end to
+    the beginning. The streaming pipeline is defined from the beginning to
+    the end, so when building the Arroyo application we need to reverse the
+    order of the steps.
     """
 
     route: Route
@@ -33,9 +38,31 @@ class ArroyoStep(ABC):
         raise NotImplementedError
 
 
+def process_message(
+    route: Route,
+    message: Message[Union[FilteredPayload, RoutedValue]],
+    process_routed_payload: Callable[[RoutedValue], Union[FilteredPayload, RoutedValue]],
+) -> Union[FilteredPayload, RoutedValue]:
+    """
+    General logic to manage a routed message in RunTask steps.
+    If forwards FilteredMessages and messages for a different route as they are.
+    It sends the messages that match the `route` parameter to the
+    `process_routed_payload` function.
+    """
+    payload = message.value.payload
+    if isinstance(payload, FilteredPayload):
+        return payload
+
+    if payload.route != route:
+        return payload
+
+    return process_routed_payload(payload)
+
+
+@dataclass
 class MapStep(ArroyoStep):
     """
-    Represent a Map transformation in the streaming pipeline.
+    Represents a Map transformation in the streaming pipeline.
     This translates to a RunTask step in arroyo where a function
     is provided to transform the message payload into a different
     one.
@@ -49,15 +76,13 @@ class MapStep(ArroyoStep):
         def transformer(
             message: Message[Union[FilteredPayload, RoutedValue]],
         ) -> Union[FilteredPayload, RoutedValue]:
-            payload = message.value.payload
-            if isinstance(payload, FilteredPayload):
-                return payload
-
-            if payload.route != self.route:
-                return payload
-
-            return RoutedValue(
-                route=payload.route, payload=self.pipeline_step.resolved_function(message.payload)
+            return process_message(
+                self.route,
+                message,
+                lambda payload: RoutedValue(
+                    route=payload.route,
+                    payload=self.pipeline_step.resolved_function(payload.payload),
+                ),
             )
 
         return RunTask(
@@ -66,6 +91,7 @@ class MapStep(ArroyoStep):
         )
 
 
+@dataclass
 class FilterStep(ArroyoStep):
     """
     Represent a Map transformation in the streaming pipeline.
@@ -82,18 +108,15 @@ class FilterStep(ArroyoStep):
         def transformer(
             message: Message[Union[FilteredPayload, RoutedValue]],
         ) -> Union[FilteredPayload, RoutedValue]:
-            payload = message.value.payload
-            if isinstance(payload, FilteredPayload):
-                return payload
-
-            if payload.route != self.route:
-                return payload
-
-            should_forward = self.pipeline_step.resolved_function(payload)
-            if should_forward:
-                return payload
-            else:
-                return FilteredPayload()
+            return process_message(
+                self.route,
+                message,
+                lambda payload: (
+                    payload
+                    if self.pipeline_step.resolved_function(payload.payload)
+                    else FilteredPayload()
+                ),
+            )
 
         return RunTask(
             transformer,
@@ -101,19 +124,29 @@ class FilterStep(ArroyoStep):
         )
 
 
-class KafkaSink(ArroyoStep):
+@dataclass
+class KafkaSinkStep(ArroyoStep):
     """
     Represents an Arroyo producer. This is mapped from a KafkaSink in the pipeline.
+
+    It filters out messages for the route not specified on this step and unpacks
+    the routed message into the original Arroyo payload.
     """
 
     producer: Producer[Any]
-    topic: Topic
+    topic_name: str
 
     def build(
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
-        return Produce(
-            self.producer,
-            self.topic,
-            next,
+        def extract_value(message: Message[Union[FilteredPayload, RoutedValue]]) -> Any:
+            message_payload = message.value.payload
+            if isinstance(message_payload, RoutedValue) and message_payload.route != self.route:
+                return message_payload.payload
+            else:
+                return FilteredPayload()
+
+        return RunTask(
+            extract_value,
+            Produce(self.producer, Topic(self.topic_name), next),
         )
