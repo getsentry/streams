@@ -15,11 +15,11 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
-    Branch,
     Filter,
     Map,
     Reduce,
     Router,
+    RoutingFuncReturnType,
     Sink,
     Source,
     Step,
@@ -101,22 +101,11 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
     @abstractmethod
     def router(
         self,
-        step: Router,
+        step: Router[RoutingFuncReturnType],
         stream: Stream,
     ) -> Stream:
         """
         Build a router operator for the platform the adapter supports.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def branch(
-        self,
-        step: Branch,
-        stream: Stream,
-    ) -> Stream:
-        """
-        Branch represents a possible branch downstream from a router.
         """
         raise NotImplementedError
 
@@ -168,10 +157,6 @@ class RuntimeTranslator(Generic[Stream, StreamSink]):
         elif step_type is StepType.ROUTER:
             assert isinstance(step, Router) and stream is not None
             return self.adapter.router(step, stream)
-
-        elif step_type is StepType.BRANCH:
-            assert isinstance(step, Branch) and stream is not None
-            return self.adapter.branch(step, stream)
 
         else:
             assert_never(step_type)
