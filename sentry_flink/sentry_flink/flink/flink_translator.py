@@ -72,7 +72,7 @@ def translate_custom_type(type: Any) -> TypeInformation:
     """
     For Python types which use Pickle for serialization/deserialization
     and do not have a matching standard Flink Type. e.g. custom-defined
-    classes.
+    classes. Also handles Generator type.
     """
 
     assert not is_standard_type(type)
