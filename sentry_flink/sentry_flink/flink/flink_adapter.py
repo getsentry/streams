@@ -79,29 +79,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         return cls(config, env)
 
-    # def load_function(self, step: TransformStep[T]) -> Callable[..., T]:
-    #     """
-    #     Takes a transform step containing a function, and either returns
-    #     function (if it's a path to a module).
-    #     """
-    #     # TODO: break out the dynamic loading logic into a
-    #     # normalization layer before the flink adapter
-    #     if isinstance(step.function, str):
-    #         fn_path = step.function
-    #         mod, cls, fn = fn_path.rsplit(".", 2)
-
-    #         try:
-    #             module = get_module(mod)
-
-    #         except ImportError:
-    #             raise
-
-    #         imported_cls = getattr(module, cls)
-    #         imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
-    #         return imported_func
-    #     else:
-    #         return step.function
-
     def source(self, step: Source) -> DataStream:
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
