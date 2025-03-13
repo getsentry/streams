@@ -42,8 +42,8 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
                     next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
                     # if next_step_stream is a map of downstream routes
                     if isinstance(next_step_stream, MutableMapping):
-                        for stream in next_step_stream:
-                            step_streams[stream] = next_step_stream[stream]
+                        for branch_name in next_step_stream:
+                            step_streams[branch_name] = next_step_stream[branch_name]
                     else:
                         # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                         step_streams[next_step.name] = next_step_stream

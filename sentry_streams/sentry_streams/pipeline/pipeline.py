@@ -126,17 +126,18 @@ class KafkaSink(Sink):
     step_type: StepType = StepType.SINK
 
 
-T = TypeVar("T")
+RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
+TransformFuncReturnType = TypeVar("TransformFuncReturnType")
 
 
 @dataclass
-class TransformStep(WithInput, Generic[T]):
+class TransformStep(WithInput, Generic[TransformFuncReturnType]):
     """
     A generic step representing a step performing a transform operation
     on input data.
     """
 
-    function: Union[Callable[..., T], str]
+    function: Union[Callable[..., TransformFuncReturnType], str]
     step_type: StepType
 
 
@@ -179,7 +180,7 @@ class Branch(Step):
 
 
 @dataclass
-class Router(WithInput):
+class Router(WithInput, Generic[RoutingFuncReturnType]):
     """
     A step which takes a routing table of Branches and sends messages
     to those branches based on a routing function.
@@ -187,18 +188,13 @@ class Router(WithInput):
     to multiple branches simultaneously is not currently supported.
     """
 
-    routing_function: Callable[..., str]
+    routing_function: Callable[..., RoutingFuncReturnType]
     routing_table: Mapping[str, Branch]
     step_type: StepType = StepType.ROUTER
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        for branch_name in self.routing_table:
-            # ensure name of branch step matches key of routing table
-            branch_step = self.routing_table[branch_name]
-            assert (
-                branch_name == branch_step.name
-            ), f'Branch name must match its routing table key - please change "{branch_name}" to "{branch_step.name}".'
+        for branch_step in self.routing_table.values():
             self.ctx.register_edge(self, branch_step)
 
 
