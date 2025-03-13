@@ -1,14 +1,19 @@
-from datetime import timedelta
-
-from sentry_streams.examples.events import AlertsBuffer, build_alert_json, build_event
+from sentry_streams.examples.events import (
+    AlertsBuffer,
+    GroupByAlertID,
+    build_alert_json,
+    build_event,
+    materialize_alerts,
+)
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
+    FlatMap,
     KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
 )
-from sentry_streams.pipeline.window import SlidingWindow
+from sentry_streams.pipeline.window import TumblingWindow
 
 pipeline = Pipeline()
 
@@ -25,19 +30,17 @@ map = Map(
     function=build_event,
 )
 
-# Windows are set to be open for 5 seconds
-reduce_window = SlidingWindow(window_size=timedelta(seconds=5), window_slide=timedelta(seconds=2))
+flat_map = FlatMap(name="myflatmap", ctx=pipeline, inputs=[map], function=materialize_alerts)
 
-# TODO: Use a flatMap (yet to be supported)
-# to emit both a p95 and count
-# for the reduce to be applied on
+reduce_window = TumblingWindow(window_size=3)
 
 reduce = Aggregate(
     name="myreduce",
     ctx=pipeline,
-    inputs=[map],
+    inputs=[flat_map],
     windowing=reduce_window,
     aggregate_fn=AlertsBuffer,
+    group_by_key=GroupByAlertID(),
 )
 
 map_str = Map(
