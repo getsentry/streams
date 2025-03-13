@@ -113,15 +113,13 @@ def test_register_edge(pipeline: Pipeline) -> None:
     # when multiple steps fan into one step
     assert pipeline.incoming_edges["filter"] == ["source", "source2"]
     assert pipeline.outgoing_edges["filter"] == ["filter2", "map", "map2"]
-
-
-def test_register_source(pipeline: Pipeline) -> None:
-    assert {pipeline.sources[0].name, pipeline.sources[1].name} == {"source", "source2"}
-
-
-def test_register_branch(pipeline: Pipeline) -> None:
+    # when a router splits the stream into multiple branches
     assert pipeline.outgoing_edges["router"] == ["branch1", "branch2"]
     assert pipeline.outgoing_edges["branch1"] == ["kafkasink1"]
     assert pipeline.outgoing_edges["branch2"] == ["kafkasink2"]
     assert pipeline.incoming_edges["branch1"] == ["router"]
     assert pipeline.incoming_edges["branch2"] == ["router"]
+
+
+def test_register_source(pipeline: Pipeline) -> None:
+    assert {pipeline.sources[0].name, pipeline.sources[1].name} == {"source", "source2"}
