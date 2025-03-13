@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from sentry_streams.pipeline.pipeline import Step
-
 
 @dataclass(frozen=True)
 class Route:
@@ -26,9 +24,3 @@ class Route:
 class RoutedValue:
     route: Route
     payload: Any
-
-
-@dataclass(frozen=True)
-class RoutedStep:
-    route: Route
-    step: Step

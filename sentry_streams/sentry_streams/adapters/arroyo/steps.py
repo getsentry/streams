@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Union
 
 from arroyo.backends.abstract import Producer
+from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies import Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTask
@@ -49,7 +50,7 @@ def process_message(
     It sends the messages that match the `route` parameter to the
     `process_routed_payload` function.
     """
-    payload = message.value.payload
+    payload = message.payload
     if isinstance(payload, FilteredPayload):
         return payload
 
@@ -141,8 +142,8 @@ class KafkaSinkStep(ArroyoStep):
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         def extract_value(message: Message[Union[FilteredPayload, RoutedValue]]) -> Any:
             message_payload = message.value.payload
-            if isinstance(message_payload, RoutedValue) and message_payload.route != self.route:
-                return message_payload.payload
+            if isinstance(message_payload, RoutedValue) and message_payload.route == self.route:
+                return KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
             else:
                 return FilteredPayload()
 
