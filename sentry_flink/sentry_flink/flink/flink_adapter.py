@@ -11,7 +11,7 @@ from typing import (
     cast,
 )
 
-from pyflink.common import Types, WatermarkStrategy
+from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import OutputTag, ProcessFunction, StreamExecutionEnvironment
 from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
@@ -241,11 +241,25 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> MutableMapping[str, Any]:
         routing_table = step.routing_table
+        routing_func = cast(Callable[..., RoutingFuncReturnType], step.routing_function)
+
+        # routing functions should only have a single parameter since we're using
+        # Flink's ProcessFunction which only takes a single value as input
+        routing_func_attr = routing_func.__annotations__
+        del routing_func_attr["return"]
+        message_type = list(routing_func_attr.values())[0]
+
         output_tags = {
-            key: OutputTag(tag_id=routing_table[key].name, type_info=Types.STRING())
+            key: OutputTag(
+                tag_id=routing_table[key].name,
+                type_info=(
+                    translate_to_flink_type(message_type)
+                    if is_standard_type(message_type)
+                    else translate_custom_type(message_type)
+                ),
+            )
             for key in routing_table
         }
-        routing_func = cast(Callable[..., RoutingFuncReturnType], step.routing_function)
         routing_process_func = RoutingFunction(routing_func, output_tags)
         routing_stream = stream.process(routing_process_func)
 
