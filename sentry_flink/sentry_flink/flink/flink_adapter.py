@@ -134,9 +134,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         )
 
     def flat_map(self, step: FlatMapStep, stream: DataStream) -> DataStream:
-        assert hasattr(step, "function")
-
-        imported_fn = step.function
+        imported_fn = step.resolved_function
 
         return_type = get_type_hints(imported_fn)["return"]
 
