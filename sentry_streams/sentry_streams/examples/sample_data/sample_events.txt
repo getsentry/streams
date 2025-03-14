@@ -1,0 +1,9 @@
+{"project_id": 1, "latency": 102, "timestamp": 1, "tags": ["no"], "value": 2}
+{"project_id": 2, "latency": 6, "timestamp": 1, "tags": ["tag_a"], "value": 2}
+{"project_id": 2, "latency": 6, "timestamp": 1, "tags": ["tag_a"], "value": 2}
+{"project_id": 1, "latency": 202, "timestamp": 1, "tags": ["no"], "value": 2}
+{"project_id": 2, "latency": 1, "timestamp": 1, "tags": ["tag_b"], "value": 2}
+{"project_id": 2, "latency": 6, "timestamp": 1, "tags": ["tag_a"], "value": 2}
+{"project_id": 2, "latency": 6, "timestamp": 1, "tags": ["tag_b"], "value": 2}
+{"project_id": 1, "latency": 102, "timestamp": 1, "tags": ["no"], "value": 2}
+{"project_id": 2, "latency": 400, "timestamp": 1, "tags": ["tag_b"], "value": 2}

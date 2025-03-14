@@ -5,12 +5,12 @@ from sentry_streams.examples.word_counter_fn import (
     WordCounter,
 )
 from sentry_streams.pipeline.pipeline import (
+    Aggregate,
     Filter,
     KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
-    Reduce,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
@@ -42,7 +42,7 @@ map = Map(
 # TODO: Get the parameters for window in pipeline configuration.
 reduce_window = TumblingWindow(window_size=3)
 
-reduce = Reduce(
+reduce = Aggregate(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
