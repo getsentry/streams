@@ -152,6 +152,7 @@ class TransformStep(WithInput, TransformFunction, Generic[T]):
     function: Union[Callable[..., T], str]
     step_type: StepType
 
+    @property
     def resolved_function(self) -> Callable[..., T]:
         """
         Returns a callable of the transform function defined, or referenced in the
@@ -262,6 +263,7 @@ class Unbatch(FlatMapStep, TransformFunction, Generic[InputType]):
     A step to flatten a batch representation to output its individual elements.
     """
 
+    @property
     def resolved_function(
         self,
     ) -> Callable[[MutableSequence[InputType]], Generator[InputType, None, None]]:
