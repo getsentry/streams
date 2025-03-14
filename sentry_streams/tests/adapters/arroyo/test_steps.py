@@ -4,6 +4,7 @@ from unittest import mock
 from unittest.mock import call
 
 from arroyo.backends.abstract import Producer
+from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import BrokerValue, FilteredPayload, Message, Partition, Topic
 
@@ -19,7 +20,7 @@ def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
                 payload=payload,
                 partition=Partition(Topic("test_topic"), 0),
                 offset=offset,
-                timestamp=datetime.now(),
+                timestamp=datetime(2025, 1, 1, 12, 0),
             )
         )
     else:
@@ -28,7 +29,7 @@ def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
                 payload=RoutedValue(route=route, payload=payload),
                 partition=Partition(Topic("test_topic"), 0),
                 offset=offset,
-                timestamp=datetime.now(),
+                timestamp=datetime(2025, 1, 1, 12, 0),
             )
         )
 
@@ -147,8 +148,6 @@ def test_sink() -> None:
         strategy.submit(message)
         strategy.poll()
 
-    expected_calls = [
-        call.produce(Topic("test_topic"), "test_val"),
-    ]
-
-    producer.assert_has_calls(expected_calls)
+    producer.produce.assert_called_with(
+        Topic("test_topic"), KafkaPayload(None, "test_val".encode("utf-8"), [])
+    )
