@@ -12,8 +12,10 @@ from typing import (
     Optional,
     TypeVar,
     Union,
+    cast,
 )
 
+from sentry_streams.modules import get_module
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -135,10 +137,30 @@ class TransformStep(WithInput, Generic[TransformFuncReturnType]):
     """
     A generic step representing a step performing a transform operation
     on input data.
+    function: supports reference to a function using dot notation, or a Callable
     """
 
     function: Union[Callable[..., TransformFuncReturnType], str]
     step_type: StepType
+
+    @property
+    def resolved_function(self) -> Callable[..., TransformFuncReturnType]:
+        """
+        Returns a callable of the transform function defined, or referenced in the
+        this class
+        """
+        if callable(self.function):
+            return self.function
+
+        fn_path = self.function
+        mod, cls, fn = fn_path.rsplit(".", 2)
+
+        module = get_module(mod)
+
+        imported_cls = getattr(module, cls)
+        imported_func = cast(Callable[..., TransformFuncReturnType], getattr(imported_cls, fn))
+        function_callable = imported_func
+        return function_callable
 
 
 @dataclass

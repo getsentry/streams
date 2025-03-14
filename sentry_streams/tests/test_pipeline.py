@@ -1,3 +1,5 @@
+from typing import Any, Callable, Union
+
 import pytest
 
 from sentry_streams.pipeline.pipeline import (
@@ -9,6 +11,8 @@ from sentry_streams.pipeline.pipeline import (
     Pipeline,
     Router,
     Step,
+    StepType,
+    TransformStep,
 )
 
 
@@ -123,3 +127,42 @@ def test_register_edge(pipeline: Pipeline) -> None:
 
 def test_register_source(pipeline: Pipeline) -> None:
     assert {pipeline.sources[0].name, pipeline.sources[1].name} == {"source", "source2"}
+
+
+class ExampleClass:
+    def example_func(self, value: str) -> str:
+        return "nothing"
+
+
+@pytest.mark.parametrize(
+    "function, expected",
+    [
+        pytest.param(
+            "tests.test_pipeline.ExampleClass.example_func",
+            ExampleClass.example_func,
+            id="Function is a string of an relative path, referring to a function inside a class",
+        ),
+        pytest.param(
+            "tests.test_pipeline.simple_map",
+            simple_map,
+            id="Function is a string of an relative path, referring to a function outside of a class",
+        ),
+        pytest.param(
+            ExampleClass.example_func,
+            ExampleClass.example_func,
+            id="Function is a callable",
+        ),
+    ],
+)
+def test_resolve_function(
+    function: Union[Callable[..., str], str], expected: Callable[..., str]
+) -> None:
+    pipeline = Pipeline()
+    step: TransformStep[Any] = TransformStep(
+        name="test_resolve_function",
+        ctx=pipeline,
+        inputs=[],
+        function=function,
+        step_type=StepType.MAP,
+    )
+    assert step.resolved_function == expected
