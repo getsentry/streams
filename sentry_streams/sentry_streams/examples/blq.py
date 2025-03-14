@@ -1,7 +1,7 @@
 from sentry_streams.examples.blq_fn import (
     DownstreamBranch,
-    KafkaMessage,
     should_send_to_blq,
+    unpack_kafka_message,
 )
 from sentry_streams.pipeline.pipeline import (
     Branch,
@@ -25,7 +25,7 @@ unpack_msg = Map(
     name="unpack_message",
     ctx=pipeline,
     inputs=[source],
-    function=KafkaMessage.unpack,
+    function=unpack_kafka_message,
 )
 
 router = Router(

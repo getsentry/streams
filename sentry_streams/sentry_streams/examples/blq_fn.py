@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 
 
@@ -16,20 +16,20 @@ class KafkaMessage:
     value: str
     timestamp: datetime
 
-    @classmethod
-    def unpack(cls, msg: str) -> "KafkaMessage":
-        d = json.loads(msg)
-        return cls(
-            key=d["key"],
-            headers=d["headers"],
-            value=d["value"],
-            timestamp=datetime.fromisoformat(d["timestamp"]),
-        )
+
+def unpack_kafka_message(msg: str) -> KafkaMessage:
+    d = json.loads(msg)
+    return KafkaMessage(
+        key=d["key"],
+        headers=d["headers"],
+        value=d["value"],
+        timestamp=datetime.fromisoformat(d["timestamp"]),
+    )
 
 
 def should_send_to_blq(msg: KafkaMessage) -> DownstreamBranch:
     timestamp = msg.timestamp
-    if timestamp < datetime.now() - timedelta(minutes=10):
+    if timestamp < datetime.now(timezone.utc) - timedelta(minutes=10):
         return DownstreamBranch.DELAYED
     else:
         return DownstreamBranch.RECENT
