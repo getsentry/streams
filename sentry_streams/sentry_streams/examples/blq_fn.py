@@ -1,7 +1,10 @@
 import json
+import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from enum import Enum
+
+# 10 minutes
+MAX_MESSAGE_DELAY = 600000
 
 
 class DownstreamBranch(Enum):
@@ -10,26 +13,22 @@ class DownstreamBranch(Enum):
 
 
 @dataclass
-class KafkaMessage:
-    key: str
-    headers: dict[str, str]
+class Message:
     value: str
-    timestamp: datetime
+    timestamp: float
 
 
-def unpack_kafka_message(msg: str) -> KafkaMessage:
+def unpack_kafka_message(msg: str) -> Message:
     d = json.loads(msg)
-    return KafkaMessage(
-        key=d["key"],
-        headers=d["headers"],
+    return Message(
         value=d["value"],
-        timestamp=datetime.fromisoformat(d["timestamp"]),
+        timestamp=d["timestamp"],
     )
 
 
-def should_send_to_blq(msg: KafkaMessage) -> DownstreamBranch:
+def should_send_to_blq(msg: Message) -> DownstreamBranch:
     timestamp = msg.timestamp
-    if timestamp < datetime.now(timezone.utc) - timedelta(minutes=10):
+    if timestamp < time.time() - MAX_MESSAGE_DELAY:
         return DownstreamBranch.DELAYED
     else:
         return DownstreamBranch.RECENT
