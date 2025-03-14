@@ -1,5 +1,5 @@
 import argparse
-from typing import Any, MutableMapping, cast
+from typing import Any, Mapping, cast
 
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
@@ -39,13 +39,13 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
                 for output in output_steps:
                     next_step: WithInput = cast(WithInput, p_graph.steps[output])
                     print(f"Apply step: {next_step.name}")
+                    # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                     next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
                     # if next_step_stream is a map of downstream routes
-                    if isinstance(next_step_stream, MutableMapping):
+                    if isinstance(next_step_stream, Mapping):
                         for branch_name in next_step_stream:
                             step_streams[branch_name] = next_step_stream[branch_name]
                     else:
-                        # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                         step_streams[next_step.name] = next_step_stream
 
 

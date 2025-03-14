@@ -24,7 +24,7 @@ DummyOutput = TypeVar("DummyOutput")
 class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
     """
     An infinitely scalable adapter that throws away all the data it gets.
-    The adapter tracks the 'streams' that each step returns in the form of
+    The adapter tracks the 'streams' that each step of iterate_edges() returns in the form of
     lists of previous step names.
     """
 
@@ -34,6 +34,9 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
     def add_step_input_streams(self, step: Any) -> None:
         # TODO: update to support multiple inputs to a step
         # once we implement Union
+        assert (
+            len(step.inputs) == 1
+        ), "Only steps with a single input are supported for DummyAdapter."
 
         input_step = step.inputs[0]
         input_step_name = input_step.name
@@ -43,8 +46,6 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         if step.step_type == StepType.ROUTER:
             for branch in step.routing_table.values():
                 self.input_streams[branch.name] = self.input_streams[step.name] + [step.name]
-        print(f"{step.name=}")
-        print(self.input_streams, "\n")
 
     @classmethod
     def build(cls, config: PipelineConfig) -> Self:

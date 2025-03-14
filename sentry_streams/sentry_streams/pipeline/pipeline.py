@@ -172,8 +172,6 @@ class Branch(Step):
     """
     A Branch represents one branch in a pipeline, which is routed to
     by a Router.
-    The name of the Branch step must match the key of the step in
-    its Router's routing table.
     """
 
     step_type: StepType = StepType.BRANCH
@@ -189,7 +187,7 @@ class Router(WithInput, Generic[RoutingFuncReturnType]):
     """
 
     routing_function: Callable[..., RoutingFuncReturnType]
-    routing_table: Mapping[str, Branch]
+    routing_table: Mapping[RoutingFuncReturnType, Branch]
     step_type: StepType = StepType.ROUTER
 
     def __post_init__(self) -> None:
