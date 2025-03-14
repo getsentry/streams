@@ -7,10 +7,8 @@ from enum import Enum
 from typing import (
     Any,
     Callable,
-    Generator,
     Generic,
     MutableMapping,
-    MutableSequence,
     Optional,
     TypeVar,
     Union,
@@ -133,16 +131,16 @@ class KafkaSink(Sink):
 T = TypeVar("T")
 
 
-class TransformFunction(ABC):
+class TransformFunction(ABC, Generic[T]):
 
     @property
     @abstractmethod
-    def resolved_function(self) -> Any:
+    def resolved_function(self) -> Callable[..., T]:
         raise NotImplementedError()
 
 
 @dataclass
-class TransformStep(WithInput, TransformFunction, Generic[T]):
+class TransformStep(WithInput, TransformFunction[T]):
     """
     A generic step representing a step performing a transform operation
     on input data.
@@ -258,7 +256,7 @@ class FlatMap(FlatMapStep, TransformStep[Any]):
 
 
 @dataclass
-class Unbatch(FlatMapStep, TransformFunction, Generic[InputType]):
+class Unbatch(FlatMapStep, TransformFunction[T]):
     """
     A step to flatten a batch representation to output its individual elements.
     """
@@ -266,7 +264,5 @@ class Unbatch(FlatMapStep, TransformFunction, Generic[InputType]):
     @property
     def resolved_function(
         self,
-    ) -> Callable[[MutableSequence[InputType]], Generator[InputType, None, None]]:
-        return unbatch
-
-    # function: Callable[[MutableSequence[InputType]], Generator[InputType, None, None]] = unbatch
+    ) -> Callable[..., T]:
+        return cast(Callable[..., T], unbatch)
