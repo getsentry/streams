@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
@@ -132,8 +133,15 @@ class KafkaSink(Sink):
 T = TypeVar("T")
 
 
+class TransformFunction(ABC):
+
+    @abstractmethod
+    def resolved_function(self) -> Any:
+        raise NotImplementedError()
+
+
 @dataclass
-class TransformStep(WithInput, Generic[T]):
+class TransformStep(WithInput, TransformFunction, Generic[T]):
     """
     A generic step representing a step performing a transform operation
     on input data.
@@ -143,7 +151,6 @@ class TransformStep(WithInput, Generic[T]):
     function: Union[Callable[..., T], str]
     step_type: StepType
 
-    @property
     def resolved_function(self) -> Callable[..., T]:
         """
         Returns a callable of the transform function defined, or referenced in the
@@ -249,9 +256,14 @@ class FlatMap(FlatMapStep, TransformStep[Any]):
 
 
 @dataclass
-class Unbatch(FlatMapStep, Generic[InputType]):
+class Unbatch(FlatMapStep, TransformFunction, Generic[InputType]):
     """
     A step to flatten a batch representation to output its individual elements.
     """
 
-    function: Callable[[MutableSequence[InputType]], Generator[InputType, None, None]] = unbatch
+    def resolved_function(
+        self,
+    ) -> Callable[[MutableSequence[InputType]], Generator[InputType, None, None]]:
+        return unbatch
+
+    # function: Callable[[MutableSequence[InputType]], Generator[InputType, None, None]] = unbatch
