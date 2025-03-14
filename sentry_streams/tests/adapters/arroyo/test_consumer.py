@@ -1,14 +1,11 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 from unittest.mock import call
 
-import pytest
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.backends.local.backend import LocalBroker
-from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.types import BrokerValue, Commit, Message, Partition, Topic
-from arroyo.utils.clock import MockedClock
 
 from sentry_streams.adapters.arroyo.consumer import (
     ArroyoConsumer,
@@ -18,20 +15,9 @@ from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import FilterStep, KafkaSinkStep, MapStep
 from sentry_streams.pipeline.pipeline import (
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
 )
-
-
-@pytest.fixture
-def broker() -> LocalBroker[KafkaPayload]:
-    storage: MemoryMessageStorage[KafkaPayload] = MemoryMessageStorage()
-    broker = LocalBroker(storage, MockedClock())
-    broker.create_topic(Topic("logical-events"), 1)
-    broker.create_topic(Topic("transformed-events"), 1)
-    return broker
 
 
 def make_msg(
@@ -49,48 +35,36 @@ def make_msg(
     )
 
 
-def test_single_route(broker: LocalBroker[KafkaPayload]) -> None:
+def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
     """
     Test the creation of an Arroyo Consumer from a number of
     pipeline steps.
     """
-    pipeline = Pipeline()
-    source = KafkaSource(
-        name="myinput",
-        ctx=pipeline,
-        logical_topic="logical-events",
-    )
-    decoder = Map(
-        name="decoder",
-        ctx=pipeline,
-        inputs=[source],
-        function=lambda msg: msg.decode("utf-8"),
-    )
-    filter = Filter(
-        name="myfilter", ctx=pipeline, inputs=[decoder], function=lambda msg: msg == "go_ahead"
-    )
-    map = Map(
-        name="mymap",
-        ctx=pipeline,
-        inputs=[filter],
-        function=lambda msg: msg + "_mapped",
-    )
-    sink = KafkaSink(
-        name="kafkasink",
-        ctx=pipeline,
-        inputs=[map],
-        logical_topic="transformed-events",
-    )
 
     consumer = ArroyoConsumer(source="source1")
-    consumer.add_step(MapStep(route=Route(source="source1", waypoints=[]), pipeline_step=decoder))
-    consumer.add_step(FilterStep(route=Route(source="source1", waypoints=[]), pipeline_step=filter))
-    consumer.add_step(MapStep(route=Route(source="source1", waypoints=[]), pipeline_step=map))
+    consumer.add_step(
+        MapStep(
+            route=Route(source="source1", waypoints=[]),
+            pipeline_step=cast(Map, pipeline.steps["decoder"]),
+        )
+    )
+    consumer.add_step(
+        FilterStep(
+            route=Route(source="source1", waypoints=[]),
+            pipeline_step=cast(Filter, pipeline.steps["myfilter"]),
+        )
+    )
+    consumer.add_step(
+        MapStep(
+            route=Route(source="source1", waypoints=[]),
+            pipeline_step=cast(Map, pipeline.steps["mymap"]),
+        )
+    )
     consumer.add_step(
         KafkaSinkStep(
             route=Route(source="source1", waypoints=[]),
             producer=broker.get_producer(),
-            topic_name=sink.logical_topic,
+            topic_name="transformed-events",
         )
     )
 
