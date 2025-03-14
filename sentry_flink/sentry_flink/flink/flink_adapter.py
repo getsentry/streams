@@ -1,19 +1,9 @@
 import os
-from typing import (
-    Any,
-    Callable,
-    Generator,
-    Mapping,
-    MutableMapping,
-    Self,
-    TypeVar,
-    Union,
-    cast,
-)
+from typing import Callable, Self, TypeVar, Union, cast
 
-from pyflink.common import Types, WatermarkStrategy
+from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
-from pyflink.datastream import OutputTag, ProcessFunction, StreamExecutionEnvironment
+from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
     FlinkKafkaConsumer,
 )
@@ -37,7 +27,6 @@ from sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
     Reduce,
-    Router,
     Sink,
     Source,
     TransformStep,
@@ -53,26 +42,7 @@ from sentry_flink.flink.flink_translator import (
     translate_to_flink_type,
 )
 
-RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
-TransformFuncReturnType = TypeVar("TransformFuncReturnType")
-
-
-class RoutingFunction(ProcessFunction):
-    def __init__(
-        self,
-        routing_func: Callable[..., RoutingFuncReturnType],
-        output_tags: Mapping[RoutingFuncReturnType, OutputTag],
-    ) -> None:
-        super().__init__()
-        self.routing_func = routing_func
-        self.output_tags = output_tags
-
-    def process_element(
-        self, value: Any, ctx: "ProcessFunction.Context"
-    ) -> Generator[tuple[OutputTag, Any], None, None]:
-        output_stream = self.routing_func(value)
-        output_label = self.output_tags[output_stream]
-        yield output_label, value
+T = TypeVar("T")
 
 
 class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
@@ -111,9 +81,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         return cls(config, env)
 
-    def load_function(
-        self, step: TransformStep[TransformFuncReturnType]
-    ) -> Callable[..., TransformFuncReturnType]:
+    def load_function(self, step: TransformStep[T]) -> Callable[..., T]:
         """
         Takes a transform step containing a function, and either returns
         function (if it's a path to a module).
@@ -131,7 +99,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
                 raise
 
             imported_cls = getattr(module, cls)
-            imported_func = cast(Callable[..., TransformFuncReturnType], getattr(imported_cls, fn))
+            imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
             return imported_func
         else:
             return step.function
@@ -238,21 +206,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
                 else translate_custom_type(return_type)
             ),
         )
-
-    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> MutableMapping[str, Any]:
-        routing_table = step.routing_table
-        output_tags = {
-            key: OutputTag(tag_id=routing_table[key].name, type_info=Types.STRING())
-            for key in routing_table
-        }
-        routing_func = cast(Callable[..., RoutingFuncReturnType], step.routing_function)
-        routing_process_func = RoutingFunction(routing_func, output_tags)
-        routing_stream = stream.process(routing_process_func)
-
-        routes_map: MutableMapping[str, Any] = {}
-        for key in output_tags:
-            routes_map[output_tags[key].tag_id] = routing_stream.get_side_output(output_tags[key])
-        return routes_map
 
     def run(self) -> None:
         self.env.execute()
