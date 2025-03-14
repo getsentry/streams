@@ -1,5 +1,6 @@
 from sentry_streams.examples.blq_fn import (
     DownstreamBranch,
+    json_dump_message,
     should_send_to_blq,
     unpack_kafka_message,
 )
@@ -39,23 +40,37 @@ router = Router(
     routing_function=should_send_to_blq,
 )
 
+dump_msg_recent = Map(
+    name="dump_msg_recent",
+    ctx=pipeline,
+    inputs=[router.routing_table[DownstreamBranch.RECENT]],
+    function=json_dump_message,
+)
+
+dump_msg_delayed = Map(
+    name="dump_msg_delayed",
+    ctx=pipeline,
+    inputs=[router.routing_table[DownstreamBranch.DELAYED]],
+    function=json_dump_message,
+)
+
 sbc_sink = KafkaSink(
     name="sbc_sink",
     ctx=pipeline,
-    inputs=[router.routing_table[DownstreamBranch.RECENT]],
+    inputs=[dump_msg_recent],
     logical_topic="transformed-events",
 )
 
 clickhouse_sink = KafkaSink(
     name="clickhouse_sink",
     ctx=pipeline,
-    inputs=[router.routing_table[DownstreamBranch.RECENT]],
+    inputs=[dump_msg_recent],
     logical_topic="transformed-events-2",
 )
 
 delayed_msg_sink = KafkaSink(
     name="delayed_msg_sink",
     ctx=pipeline,
-    inputs=[router.routing_table[DownstreamBranch.DELAYED]],
+    inputs=[dump_msg_delayed],
     logical_topic="transformed-events-3",
 )
