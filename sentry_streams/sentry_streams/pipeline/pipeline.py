@@ -135,6 +135,7 @@ T = TypeVar("T")
 
 class TransformFunction(ABC):
 
+    @property
     @abstractmethod
     def resolved_function(self) -> Any:
         raise NotImplementedError()
