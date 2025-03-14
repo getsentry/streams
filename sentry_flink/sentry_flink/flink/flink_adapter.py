@@ -1,5 +1,5 @@
 import os
-from typing import Self, TypeVar, Union
+from typing import Self, TypeVar, Union, get_type_hints
 
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
@@ -18,18 +18,14 @@ from pyflink.datastream.data_stream import (
     WindowedStream,
 )
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
-from sentry_streams.pipeline.function_template import (
-    InputType,
-    OutputType,
-)
 from sentry_streams.pipeline.pipeline import (
     Filter,
+    FlatMapStep,
     Map,
     Reduce,
     Sink,
     Source,
 )
-from sentry_streams.pipeline.window import MeasurementUnit
 
 from sentry_flink.flink.flink_translator import (
     FlinkAggregate,
@@ -137,9 +133,24 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
+    def flat_map(self, step: FlatMapStep, stream: DataStream) -> DataStream:
+        imported_fn = step.resolved_function
+
+        return_type = get_type_hints(imported_fn)["return"]
+
+        # TODO: Ensure output type is configurable like the schema above
+        return stream.flat_map(
+            func=lambda msg: imported_fn(msg),
+            output_type=(
+                translate_to_flink_type(return_type)
+                if is_standard_type(return_type)
+                else translate_custom_type(return_type)
+            ),
+        )
+
     def reduce(
         self,
-        step: Reduce[MeasurementUnit, InputType, OutputType],
+        step: Reduce,
         stream: DataStream,
     ) -> DataStream:
         agg = step.aggregate_fn
@@ -148,8 +159,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         flink_window = build_flink_window(windowing)
 
         # Optional parameters
-        group_by = step.group_by_key
-        agg_backend = step.aggregate_backend
+        group_by = step.group_by_key if hasattr(step, "group_by_key") else None
+        agg_backend = step.aggregate_backend if hasattr(step, "aggregate_backend") else None
 
         # TODO: Configure WatermarkStrategy as part of KafkaSource
         # Injecting strategy within a step like here produces
