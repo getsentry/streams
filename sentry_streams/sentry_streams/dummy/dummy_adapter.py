@@ -13,7 +13,7 @@ from sentry_streams.pipeline.pipeline import (
     RoutingFuncReturnType,
     Sink,
     Step,
-    StepType,
+    WithInput,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
 
@@ -31,7 +31,21 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
     def __init__(self, _: PipelineConfig) -> None:
         self.input_streams: MutableMapping[str, List[str]] = {}
 
-    def add_step_input_streams(self, step: Any) -> None:
+    def track_input_streams(self, step: WithInput) -> None:
+        """
+        Tracks the streams that each step receives as input.
+        This can be used in tests to verify that steps downstream from a split in
+        the stream (such as a Router) are being applied to the correct stream.
+
+        For example, if we have:
+        Source --> Router --> Branch1 --> Map1
+                        |
+                        --> Branch2 --> Map2
+
+        We can verify that:
+        input_streams["Map1"] == ["Source", "Router", "Branch1"]
+        input_streams["Map2"] == ["Source", "Router", "Branch2"]
+        """
         # TODO: update to support multiple inputs to a step
         # once we implement Union
         assert (
@@ -43,7 +57,7 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         input_step_stream = self.input_streams[input_step_name]
         self.input_streams[step.name] = input_step_stream + [input_step_name]
         # if step is a Router, also add its Branch nodes to input_streams
-        if step.step_type == StepType.ROUTER:
+        if isinstance(step, Router):
             for branch in step.routing_table.values():
                 self.input_streams[branch.name] = self.input_streams[step.name] + [step.name]
 
@@ -56,23 +70,23 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         return self
 
     def sink(self, step: Sink, stream: Any) -> Any:
-        self.add_step_input_streams(step)
+        self.track_input_streams(step)
         return self
 
     def map(self, step: Map, stream: Any) -> Any:
-        self.add_step_input_streams(step)
+        self.track_input_streams(step)
         return self
 
     def filter(self, step: Filter, stream: Any) -> Any:
-        self.add_step_input_streams(step)
+        self.track_input_streams(step)
         return self
 
     def reduce(self, step: Reduce[MeasurementUnit, InputType, OutputType], stream: Any) -> Any:
-        self.add_step_input_streams(step)
+        self.track_input_streams(step)
         return self
 
     def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> Any:
-        self.add_step_input_streams(step)
+        self.track_input_streams(step)
         return {branch.name: branch for branch in step.routing_table.values()}
 
     def run(self) -> None:
