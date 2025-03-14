@@ -18,6 +18,8 @@ from sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
     Reduce,
+    Router,
+    RoutingFuncReturnType,
     Sink,
     Source,
     Step,
@@ -97,6 +99,17 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
         raise NotImplementedError
 
     @abstractmethod
+    def router(
+        self,
+        step: Router[RoutingFuncReturnType],
+        stream: Stream,
+    ) -> Mapping[RoutingFuncReturnType, Stream]:
+        """
+        Build a router operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def run(self) -> None:
         """
         Starts the pipeline
@@ -117,29 +130,34 @@ class RuntimeTranslator(Generic[Stream, StreamSink]):
 
     def translate_step(
         self, step: Step, stream: Optional[Stream] = None
-    ) -> Union[Stream, StreamSink]:
+    ) -> Mapping[str, Union[Stream, StreamSink]]:
         assert hasattr(step, "step_type")
         step_type = step.step_type
+        step_name = step.name
 
         if step_type is StepType.SOURCE:
             assert isinstance(step, Source)
-            return self.adapter.source(step)
+            return {step_name: self.adapter.source(step)}
 
         elif step_type is StepType.SINK:
             assert isinstance(step, Sink) and stream is not None
-            return self.adapter.sink(step, stream)
+            return {step_name: self.adapter.sink(step, stream)}
 
         elif step_type is StepType.MAP:
             assert isinstance(step, Map) and stream is not None
-            return self.adapter.map(step, stream)
+            return {step_name: self.adapter.map(step, stream)}
 
         elif step_type is StepType.REDUCE:
             assert isinstance(step, Reduce) and stream is not None
-            return self.adapter.reduce(step, stream)
+            return {step_name: self.adapter.reduce(step, stream)}
 
         elif step_type is StepType.FILTER:
             assert isinstance(step, Filter) and stream is not None
-            return self.adapter.filter(step, stream)
+            return {step_name: self.adapter.filter(step, stream)}
+
+        elif step_type is StepType.ROUTER:
+            assert isinstance(step, Router) and stream is not None
+            return self.adapter.router(step, stream)
 
         else:
             assert_never(step_type)

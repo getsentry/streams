@@ -7,6 +7,7 @@ from typing import (
     Any,
     Callable,
     Generic,
+    Mapping,
     MutableMapping,
     Optional,
     TypeVar,
@@ -26,11 +27,13 @@ from sentry_streams.pipeline.window import MeasurementUnit, Window
 
 
 class StepType(Enum):
-    SINK = "sink"
-    SOURCE = "source"
+    BRANCH = "branch"
+    FILTER = "filter"
     MAP = "map"
     REDUCE = "reduce"
-    FILTER = "filter"
+    ROUTER = "router"
+    SINK = "sink"
+    SOURCE = "source"
 
 
 class Pipeline:
@@ -125,22 +128,23 @@ class KafkaSink(Sink):
     step_type: StepType = StepType.SINK
 
 
-T = TypeVar("T")
+RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
+TransformFuncReturnType = TypeVar("TransformFuncReturnType")
 
 
 @dataclass
-class TransformStep(WithInput, Generic[T]):
+class TransformStep(WithInput, Generic[TransformFuncReturnType]):
     """
     A generic step representing a step performing a transform operation
     on input data.
     function: supports reference to a function using dot notation, or a Callable
     """
 
-    function: Union[Callable[..., T], str]
+    function: Union[Callable[..., TransformFuncReturnType], str]
     step_type: StepType
 
     @property
-    def resolved_function(self) -> Callable[..., T]:
+    def resolved_function(self) -> Callable[..., TransformFuncReturnType]:
         """
         Returns a callable of the transform function defined, or referenced in the
         this class
@@ -154,7 +158,7 @@ class TransformStep(WithInput, Generic[T]):
         module = get_module(mod)
 
         imported_cls = getattr(module, cls)
-        imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
+        imported_func = cast(Callable[..., TransformFuncReturnType], getattr(imported_cls, fn))
         function_callable = imported_func
         return function_callable
 
@@ -183,6 +187,35 @@ class Filter(TransformStep[bool]):
     """
 
     step_type: StepType = StepType.FILTER
+
+
+@dataclass
+class Branch(Step):
+    """
+    A Branch represents one branch in a pipeline, which is routed to
+    by a Router.
+    """
+
+    step_type: StepType = StepType.BRANCH
+
+
+@dataclass
+class Router(WithInput, Generic[RoutingFuncReturnType]):
+    """
+    A step which takes a routing table of Branches and sends messages
+    to those branches based on a routing function.
+    Routing functions must only return a single output branch, routing
+    to multiple branches simultaneously is not currently supported.
+    """
+
+    routing_function: Callable[..., RoutingFuncReturnType]
+    routing_table: Mapping[RoutingFuncReturnType, Branch]
+    step_type: StepType = StepType.ROUTER
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        for branch_step in self.routing_table.values():
+            self.ctx.register_edge(self, branch_step)
 
 
 @dataclass
