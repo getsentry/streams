@@ -39,6 +39,7 @@ repos:
           pytest==7.1.2,
           types-requests,
           responses,
+          "sentry-arroyo>=2.18.2",
         ]
         files: ^sentry_streams/.+
   - repo: https://github.com/pycqa/isort
