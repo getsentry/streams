@@ -34,7 +34,6 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
-    Branch,
     Filter,
     Map,
     Reduce,
@@ -54,12 +53,15 @@ from sentry_flink.flink.flink_translator import (
     translate_to_flink_type,
 )
 
-T = TypeVar("T")
+RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
+TransformFuncReturnType = TypeVar("TransformFuncReturnType")
 
 
 class RoutingFunction(ProcessFunction):
     def __init__(
-        self, routing_func: Callable[..., str], output_tags: Mapping[str, OutputTag]
+        self,
+        routing_func: Callable[..., RoutingFuncReturnType],
+        output_tags: Mapping[RoutingFuncReturnType, OutputTag],
     ) -> None:
         super().__init__()
         self.routing_func = routing_func
@@ -109,7 +111,9 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         return cls(config, env)
 
-    def load_function(self, step: TransformStep[T]) -> Callable[..., T]:
+    def load_function(
+        self, step: TransformStep[TransformFuncReturnType]
+    ) -> Callable[..., TransformFuncReturnType]:
         """
         Takes a transform step containing a function, and either returns
         function (if it's a path to a module).
@@ -127,7 +131,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
                 raise
 
             imported_cls = getattr(module, cls)
-            imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
+            imported_func = cast(Callable[..., TransformFuncReturnType], getattr(imported_cls, fn))
             return imported_func
         else:
             return step.function
@@ -235,22 +239,20 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
-    def router(self, step: Router, stream: Any) -> MutableMapping[str, Any]:
+    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> MutableMapping[str, Any]:
         routing_table = step.routing_table
         output_tags = {
-            tag: OutputTag(tag_id=tag, type_info=Types.STRING()) for tag in routing_table.keys()
+            key: OutputTag(tag_id=routing_table[key].name, type_info=Types.STRING())
+            for key in routing_table
         }
-        routing_func = RoutingFunction(step.routing_function, output_tags)
-        routing_stream = stream.process(routing_func)
+        routing_func = cast(Callable[..., RoutingFuncReturnType], step.routing_function)
+        routing_process_func = RoutingFunction(routing_func, output_tags)
+        routing_stream = stream.process(routing_process_func)
 
         routes_map: MutableMapping[str, Any] = {}
-        for tag in output_tags:
-            routes_map[tag] = routing_stream.get_side_output(output_tags[tag])
+        for key in output_tags:
+            routes_map[output_tags[key].tag_id] = routing_stream.get_side_output(output_tags[key])
         return routes_map
-
-    def branch(self, step: Branch, stream: Any) -> Any:
-        # output_tag = self.output_tags[step.name]
-        return stream
 
     def run(self) -> None:
         self.env.execute()
