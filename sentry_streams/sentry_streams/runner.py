@@ -100,6 +100,7 @@ def main() -> None:
             "logical-events": "events",
             "transformed-events": "transformed-events",
             "transformed-events-2": "transformed-events-2",
+            "transformed-events-3": "transformed-events-3",
         },
         "broker": args.broker,
     }

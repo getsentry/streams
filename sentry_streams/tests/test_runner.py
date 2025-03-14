@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Any
 
 import pytest
@@ -14,6 +15,11 @@ from sentry_streams.pipeline.pipeline import (
     Router,
 )
 from sentry_streams.runner import iterate_edges
+
+
+class RouterBranch(Enum):
+    BRANCH1 = "branch1"
+    BRANCH2 = "branch2"
 
 
 @pytest.fixture
@@ -53,21 +59,21 @@ def create_pipeline() -> Pipeline:
         ctx=test_pipeline,
         inputs=[map],
         routing_table={
-            "branch1": Branch(name="branch1", ctx=test_pipeline),
-            "branch2": Branch(name="branch2", ctx=test_pipeline),
+            RouterBranch.BRANCH1: Branch(name="branch1", ctx=test_pipeline),
+            RouterBranch.BRANCH2: Branch(name="branch2", ctx=test_pipeline),
         },
-        routing_function=lambda x: "branch1",
+        routing_function=lambda x: RouterBranch.BRANCH1,
     )
     _ = Map(
         name="map4",
         ctx=test_pipeline,
-        inputs=[router.routing_table["branch1"]],
+        inputs=[router.routing_table[RouterBranch.BRANCH1]],
         function=lambda x: x,
     )
     _ = Map(
         name="map5",
         ctx=test_pipeline,
-        inputs=[router.routing_table["branch2"]],
+        inputs=[router.routing_table[RouterBranch.BRANCH2]],
         function=lambda x: x,
     )
 
