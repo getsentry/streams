@@ -10,12 +10,9 @@ from typing import (
     assert_never,
 )
 
-from sentry_streams.pipeline.function_template import (
-    InputType,
-    OutputType,
-)
 from sentry_streams.pipeline.pipeline import (
     Filter,
+    FlatMapStep,
     Map,
     Reduce,
     Sink,
@@ -23,7 +20,6 @@ from sentry_streams.pipeline.pipeline import (
     Step,
     StepType,
 )
-from sentry_streams.pipeline.window import MeasurementUnit
 
 PipelineConfig = Mapping[str, Any]
 
@@ -79,6 +75,13 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
         raise NotImplementedError
 
     @abstractmethod
+    def flat_map(self, step: FlatMapStep, stream: Stream) -> Stream:
+        """
+        Builds a flat-map operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def filter(self, step: Filter, stream: Stream) -> Stream:
         """
         Builds a filter operator for the platform the adapter supports.
@@ -88,7 +91,7 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
     @abstractmethod
     def reduce(
         self,
-        step: Reduce[MeasurementUnit, InputType, OutputType],
+        step: Reduce,
         stream: Stream,
     ) -> Stream:
         """
@@ -132,6 +135,10 @@ class RuntimeTranslator(Generic[Stream, StreamSink]):
         elif step_type is StepType.MAP:
             assert isinstance(step, Map) and stream is not None
             return self.adapter.map(step, stream)
+
+        elif step_type is StepType.FLAT_MAP:
+            assert isinstance(step, FlatMapStep) and stream is not None
+            return self.adapter.flat_map(step, stream)
 
         elif step_type is StepType.REDUCE:
             assert isinstance(step, Reduce) and stream is not None
