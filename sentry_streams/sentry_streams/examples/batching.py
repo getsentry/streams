@@ -1,11 +1,29 @@
-from sentry_streams.examples.batch_builder import BatchBuilder
+import json
+
+from sentry_streams.pipeline.function_template import InputType
 from sentry_streams.pipeline.pipeline import (
+    Batch,
     KafkaSink,
     KafkaSource,
+    Map,
     Pipeline,
-    Reduce,
+    Unbatch,
 )
-from sentry_streams.pipeline.window import TumblingWindow
+
+
+def build_batch_str(batch: list[InputType]) -> str:
+
+    d = {"batch": batch}
+
+    return json.dumps(d)
+
+
+def build_message_str(message: str) -> str:
+
+    d = {"message": message}
+
+    return json.dumps(d)
+
 
 pipeline = Pipeline()
 
@@ -15,22 +33,17 @@ source = KafkaSource(
     logical_topic="logical-events",
 )
 
-# A sample window.
-# Windows are assigned 4 elements.
-reduce_window = TumblingWindow(window_size=4)
+# User simply provides the batch size
+reduce: Batch[int, str] = Batch(name="mybatch", ctx=pipeline, inputs=[source], batch_size=5)
 
-reduce = Reduce(
-    name="myreduce",
-    ctx=pipeline,
-    inputs=[source],
-    windowing=reduce_window,
-    aggregate_fn=BatchBuilder,
-)
+unbatch: Unbatch[str] = Unbatch(name="myunbatch", ctx=pipeline, inputs=[reduce])
+
+map = Map(name="mymap", ctx=pipeline, inputs=[unbatch], function=build_message_str)
 
 # flush the batches to the Sink
 sink = KafkaSink(
     name="kafkasink",
     ctx=pipeline,
-    inputs=[reduce],
+    inputs=[map],
     logical_topic="transformed-events",
 )
