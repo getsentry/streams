@@ -202,6 +202,11 @@ class Reduce(WithInput):
     A generic Step for a Reduce (or Accumulator-based) operation
     """
 
+    @property
+    @abstractmethod
+    def group_by(self) -> Optional[GroupBy]:
+        raise NotImplementedError()
+
 
 @dataclass
 class Aggregate(Reduce, Generic[MeasurementUnit, InputType, OutputType]):
@@ -216,6 +221,10 @@ class Aggregate(Reduce, Generic[MeasurementUnit, InputType, OutputType]):
     aggregate_backend: Optional[AggregationBackend[OutputType]] = None
     group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE
+
+    @property
+    def group_by(self) -> Optional[GroupBy]:
+        return self.group_by_key
 
 
 @dataclass
@@ -236,6 +245,10 @@ class Batch(Reduce, Generic[MeasurementUnit, InputType]):
         super().__post_init__()
         self.windowing: TumblingWindow[MeasurementUnit] = TumblingWindow(self.batch_size)
         self.aggregate_fn = BatchBuilder[InputType]
+
+    @property
+    def group_by(self) -> Optional[GroupBy]:
+        return None
 
 
 @dataclass
