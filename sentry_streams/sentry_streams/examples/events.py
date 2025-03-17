@@ -15,7 +15,7 @@ class Event:
 
 
 @dataclass
-class AlertingEvent:
+class TimeSeriesDataPoint:
     alert_id: int
     latency: int
     alert_type: str
@@ -66,7 +66,11 @@ def build_alert_json(alert: Union[p95AlertData, CountAlertData]) -> str:
     return json.dumps(d)
 
 
-class AlertsBuffer(Accumulator[AlertingEvent, Union[p95AlertData, CountAlertData]]):
+class AlertsBuffer(Accumulator[TimeSeriesDataPoint, Union[p95AlertData, CountAlertData]]):
+    """
+    An AlertsBuffer, which is created per-alert ID. Manages the aggregation of event data
+    that pertains to each particular registered alert ID.
+    """
 
     def __init__(self) -> None:
         self.latencies: list[int] = []
@@ -74,7 +78,7 @@ class AlertsBuffer(Accumulator[AlertingEvent, Union[p95AlertData, CountAlertData
         self.alert_type: str
         self.alert_id: int
 
-    def add(self, value: AlertingEvent) -> Self:
+    def add(self, value: TimeSeriesDataPoint) -> Self:
         if value.alert_type == "count":
             self.count += 1
             self.alert_type = value.alert_type
@@ -103,15 +107,23 @@ class AlertsBuffer(Accumulator[AlertingEvent, Union[p95AlertData, CountAlertData
         return self
 
 
+# alert rules for our app
 REGISTERED_ALERTS = {
     4: {"type": "count", "threshold": 4},
     5: {"type": "count", "threshold": 2},
     6: {"type": "p95", "threshold": 4},
 }
+# maps project_id to alert rules
 REGISTERED_PROJECT_ALERTS = {2: {"tag_a": 4, "tag_b": 6}, 1: 6}
 
 
-def materialize_alerts(event: Event) -> Generator[AlertingEvent, None, None]:
+def materialize_alerts(event: Event) -> Generator[TimeSeriesDataPoint, None, None]:
+    """
+    Generates (potentially multiple) time series data points per event data point.
+    Looks up attributes of the event data point (in this case, project_id) to determine
+    which registered alert(s) correspond to the current event. One event may be registered
+    with multiple alert rules.
+    """
 
     project_id = event.project_id
     alerts_for_project = REGISTERED_PROJECT_ALERTS[project_id]
@@ -124,7 +136,7 @@ def materialize_alerts(event: Event) -> Generator[AlertingEvent, None, None]:
             alert_type = alert_rule["type"]
             assert isinstance(alert_type, str)
 
-            alerting_event = AlertingEvent(
+            alerting_event = TimeSeriesDataPoint(
                 alert_id=alert_id,
                 latency=event.latency,
                 alert_type=alert_type,
@@ -137,7 +149,7 @@ def materialize_alerts(event: Event) -> Generator[AlertingEvent, None, None]:
         alert_type = alert_rule["type"]
         assert isinstance(alert_type, str)
 
-        alerting_event = AlertingEvent(
+        alerting_event = TimeSeriesDataPoint(
             alert_id=alerts_for_project,
             latency=event.latency,
             alert_type=alert_type,
@@ -147,5 +159,5 @@ def materialize_alerts(event: Event) -> Generator[AlertingEvent, None, None]:
 
 class GroupByAlertID(GroupBy):
 
-    def get_group_by_key(self, alerting_event: AlertingEvent) -> int:
+    def get_group_by_key(self, alerting_event: TimeSeriesDataPoint) -> int:
         return alerting_event.alert_id

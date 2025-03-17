@@ -30,10 +30,18 @@ map = Map(
     function=build_event,
 )
 
+# We add a FlatMap so that we can take a stream of events (as above)
+# And then materialize (potentially multiple) time series data points per
+# event. A time series point is materialized per alert rule that the event
+# matches to. For example, if event A has 3 different alerts configured for it,
+# this will materialize 3 times series points for A.
 flat_map = FlatMap(name="myflatmap", ctx=pipeline, inputs=[map], function=materialize_alerts)
 
 reduce_window = TumblingWindow(window_size=3)
 
+# Actually aggregates all the time series data points for each
+# alert rule registered (alert ID). Returns an aggregate value
+# for each window.
 reduce = Aggregate(
     name="myreduce",
     ctx=pipeline,
