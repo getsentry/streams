@@ -159,7 +159,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         flink_window = build_flink_window(windowing)
 
         # Optional parameters
-        group_by = step.group_by_key if hasattr(step, "group_by_key") else None
+        group_by = step.group_by
         agg_backend = step.aggregate_backend if hasattr(step, "aggregate_backend") else None
 
         # TODO: Configure WatermarkStrategy as part of KafkaSource
@@ -169,10 +169,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         time_stream = stream.assign_timestamps_and_watermarks(watermark_strategy)
 
         if group_by:
-            group_by_key = step.group_by_key
-            assert group_by_key is not None
-
-            keyed_stream = time_stream.key_by(FlinkGroupBy(group_by_key))
+            keyed_stream = time_stream.key_by(FlinkGroupBy(group_by))
 
             windowed_stream: Union[WindowedStream, AllWindowedStream] = keyed_stream.window(
                 flink_window
