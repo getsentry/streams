@@ -239,8 +239,8 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
         name="myreduce",
         ctx=pipeline,
         inputs=[map],
-        windowing=reduce_window,
-        aggregate_fn=WordCounter,
+        window=reduce_window,
+        aggregate_func=WordCounter,
         group_by_key=GroupByWord(),
     )
 
