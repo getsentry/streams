@@ -1,5 +1,5 @@
 import os
-from typing import Self, TypeVar, Union
+from typing import Self, TypeVar, Union, get_type_hints
 
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
@@ -24,6 +24,7 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.pipeline import (
     Filter,
+    FlatMap,
     Map,
     Reduce,
     Sink,
@@ -137,6 +138,21 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
+    def flat_map(self, step: FlatMap, stream: DataStream) -> DataStream:
+        imported_fn = step.resolved_function
+
+        return_type = get_type_hints(imported_fn)["return"]
+
+        # TODO: Ensure output type is configurable like the schema above
+        return stream.flat_map(
+            func=lambda msg: imported_fn(msg),
+            output_type=(
+                translate_to_flink_type(return_type)
+                if is_standard_type(return_type)
+                else translate_custom_type(return_type)
+            ),
+        )
+
     def reduce(
         self,
         step: Reduce[MeasurementUnit, InputType, OutputType],
@@ -148,8 +164,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         flink_window = build_flink_window(windowing)
 
         # Optional parameters
-        group_by = step.group_by_key
-        agg_backend = step.aggregate_backend
+        group_by = step.group_by
+        agg_backend = step.aggregate_backend if hasattr(step, "aggregate_backend") else None
 
         # TODO: Configure WatermarkStrategy as part of KafkaSource
         # Injecting strategy within a step like here produces
@@ -158,10 +174,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         time_stream = stream.assign_timestamps_and_watermarks(watermark_strategy)
 
         if group_by:
-            group_by_key = step.group_by_key
-            assert group_by_key is not None
-
-            keyed_stream = time_stream.key_by(FlinkGroupBy(group_by_key))
+            keyed_stream = time_stream.key_by(FlinkGroupBy(group_by))
 
             windowed_stream: Union[WindowedStream, AllWindowedStream] = keyed_stream.window(
                 flink_window
