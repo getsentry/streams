@@ -9,6 +9,7 @@ from typing import (
     Callable,
     Generic,
     MutableMapping,
+    MutableSequence,
     Optional,
     TypeVar,
     Union,
@@ -249,7 +250,7 @@ BatchInput = TypeVar("BatchInput")
 
 
 @dataclass
-class Batch(Reduce[MeasurementUnit, InputType, OutputType]):
+class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
     """
     A step to Batch up the results of the prior step.
 

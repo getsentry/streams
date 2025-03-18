@@ -42,12 +42,12 @@ map = Map(
 # TODO: Get the parameters for window in pipeline configuration.
 reduce_window = TumblingWindow(window_size=3)
 
-reduce = Aggregate(
+reduce: Aggregate[int, tuple[str, int], str] = Aggregate(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
-    windowing=reduce_window,
-    aggregate_fn=WordCounter,
+    window=reduce_window,
+    aggregate_func=WordCounter,
     group_by_key=GroupByWord(),
 )
 
