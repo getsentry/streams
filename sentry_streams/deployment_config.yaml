@@ -1,2 +1,10 @@
-hi:
-  bye: 1
+ environment_config:
+  topics:
+    logical-events: events
+    transformed-events: transformed-events
+    transformed-events-2: transformed-events-2
+
+  broker: kafka:9093
+
+  flink:
+    parallelism: 2

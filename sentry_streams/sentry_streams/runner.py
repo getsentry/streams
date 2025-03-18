@@ -92,18 +92,17 @@ def main() -> None:
         exec(f.read(), pipeline_globals)
 
     # TODO: read from yaml file
-    environment_config = {
-        "topics": {
-            "logical-events": "events",
-            "transformed-events": "transformed-events",
-            "transformed-events-2": "transformed-events-2",
-        },
-        "broker": args.broker,
-    }
+    # environment_config = {
+    #     "topics": {
+    #         "logical-events": "events",
+    #         "transformed-events": "transformed-events",
+    #         "transformed-events-2": "transformed-events-2",
+    #     },
+    #     "broker": args.broker,
+    # }
 
     with open("deployment_config.yaml", "r") as config_file:
-        config = yaml.safe_load(config_file)
-        print(config)
+        environment_config = yaml.safe_load(config_file)
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
     runtime: Any = load_adapter(args.adapter, environment_config)
