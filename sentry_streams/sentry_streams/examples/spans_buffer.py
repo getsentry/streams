@@ -39,8 +39,8 @@ reduce = Aggregate(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
-    windowing=reduce_window,
-    aggregate_fn=SpansBuffer,
+    window=reduce_window,
+    aggregate_func=SpansBuffer,
 )
 
 map_str = Map(

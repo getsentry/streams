@@ -1,9 +1,12 @@
 from sentry_streams.examples.events import (
     AlertsBuffer,
+    CountAlertData,
     GroupByAlertID,
+    TimeSeriesDataPoint,
     build_alert_json,
     build_event,
     materialize_alerts,
+    p95AlertData,
 )
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
@@ -42,12 +45,12 @@ reduce_window = TumblingWindow(window_size=3)
 # Actually aggregates all the time series data points for each
 # alert rule registered (alert ID). Returns an aggregate value
 # for each window.
-reduce = Aggregate(
+reduce: Aggregate[int, TimeSeriesDataPoint, p95AlertData | CountAlertData] = Aggregate(
     name="myreduce",
     ctx=pipeline,
     inputs=[flat_map],
-    windowing=reduce_window,
-    aggregate_fn=AlertsBuffer,
+    window=reduce_window,
+    aggregate_func=AlertsBuffer,
     group_by_key=GroupByAlertID(),
 )
 
