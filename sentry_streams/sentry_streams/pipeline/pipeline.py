@@ -197,7 +197,7 @@ class Filter(TransformStep[bool]):
 
 
 @dataclass
-class Reduce(WithInput):
+class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
     """
     A generic Step for a Reduce (or Accumulator-based) operation
     """
@@ -207,17 +207,27 @@ class Reduce(WithInput):
     def group_by(self) -> Optional[GroupBy]:
         raise NotImplementedError()
 
+    @property
+    @abstractmethod
+    def windowing(self) -> Window[MeasurementUnit]:
+        raise NotImplementedError()
+
+    @property
+    @abstractmethod
+    def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
+        raise NotImplementedError()
+
 
 @dataclass
-class Aggregate(Reduce, Generic[MeasurementUnit, InputType, OutputType]):
+class Aggregate(Reduce[MeasurementUnit, InputType, OutputType]):
     """
     A Reduce step which performs windowed aggregations. Can be keyed or non-keyed on the
     input stream. Supports an Accumulator-style aggregation which can have a configurable
     storage backend, for flushing intermediate aggregates.
     """
 
-    windowing: Window[MeasurementUnit]
-    aggregate_fn: Callable[[], Accumulator[InputType, OutputType]]
+    window: Window[MeasurementUnit]
+    aggregate_func: Callable[[], Accumulator[InputType, OutputType]]
     aggregate_backend: Optional[AggregationBackend[OutputType]] = None
     group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE
@@ -226,9 +236,20 @@ class Aggregate(Reduce, Generic[MeasurementUnit, InputType, OutputType]):
     def group_by(self) -> Optional[GroupBy]:
         return self.group_by_key
 
+    @property
+    def windowing(self) -> Window[MeasurementUnit]:
+        return self.window
+
+    @property
+    def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
+        return self.aggregate_func
+
+
+BatchInput = TypeVar("BatchInput")
+
 
 @dataclass
-class Batch(Reduce, Generic[MeasurementUnit, InputType]):
+class Batch(Reduce[MeasurementUnit, InputType, OutputType]):
     """
     A step to Batch up the results of the prior step.
 
@@ -241,14 +262,18 @@ class Batch(Reduce, Generic[MeasurementUnit, InputType]):
     batch_size: MeasurementUnit
     step_type: StepType = StepType.REDUCE
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.windowing: TumblingWindow[MeasurementUnit] = TumblingWindow(self.batch_size)
-        self.aggregate_fn = BatchBuilder[InputType]
-
     @property
     def group_by(self) -> Optional[GroupBy]:
         return None
+
+    @property
+    def windowing(self) -> Window[MeasurementUnit]:
+        return TumblingWindow(self.batch_size)
+
+    @property
+    def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
+        batch_acc = BatchBuilder[BatchInput]
+        return cast(Callable[[], Accumulator[InputType, OutputType]], batch_acc)
 
 
 @dataclass
