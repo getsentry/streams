@@ -1,6 +1,8 @@
 import argparse
 from typing import Any, cast
 
+import yaml
+
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
     RuntimeTranslator,
@@ -98,6 +100,10 @@ def main() -> None:
         },
         "broker": args.broker,
     }
+
+    with open("deployment_config.yaml", "r") as config_file:
+        config = yaml.safe_load(config_file)
+        print(config)
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
     runtime: Any = load_adapter(args.adapter, environment_config)
