@@ -18,14 +18,19 @@ from pyflink.datastream.data_stream import (
     WindowedStream,
 )
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
+from sentry_streams.pipeline.function_template import (
+    InputType,
+    OutputType,
+)
 from sentry_streams.pipeline.pipeline import (
     Filter,
-    FlatMapStep,
+    FlatMap,
     Map,
     Reduce,
     Sink,
     Source,
 )
+from sentry_streams.pipeline.window import MeasurementUnit
 
 from sentry_flink.flink.flink_translator import (
     FlinkAggregate,
@@ -133,7 +138,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
-    def flat_map(self, step: FlatMapStep, stream: DataStream) -> DataStream:
+    def flat_map(self, step: FlatMap, stream: DataStream) -> DataStream:
         imported_fn = step.resolved_function
 
         return_type = get_type_hints(imported_fn)["return"]
@@ -150,7 +155,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def reduce(
         self,
-        step: Reduce,
+        step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: DataStream,
     ) -> DataStream:
         agg = step.aggregate_fn
