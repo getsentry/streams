@@ -16,7 +16,7 @@ from typing import (
 )
 
 from sentry_streams.modules import get_module
-from sentry_streams.pipeline.batch import BatchBuilder, unbatch
+from sentry_streams.pipeline.batch import BatchBuilder
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -252,30 +252,10 @@ class Batch(Reduce, Generic[MeasurementUnit, InputType]):
 
 
 @dataclass
-class FlatMapStep(WithInput):
+class FlatMap(TransformStep[Any]):
     """
     A generic step for mapping and flattening (and therefore alerting the shape of) inputs to
     get outputs. Takes a single input to 0...N outputs.
     """
 
     step_type: StepType = StepType.FLAT_MAP
-
-
-@dataclass
-class FlatMap(FlatMapStep, TransformStep[Any]):
-    """
-    A FlatMap with a user-defined function.
-    """
-
-
-@dataclass
-class Unbatch(FlatMapStep, TransformFunction[T]):
-    """
-    A step to flatten a batch representation to output its individual elements.
-    """
-
-    @property
-    def resolved_function(
-        self,
-    ) -> Callable[..., T]:
-        return cast(Callable[..., T], unbatch)
