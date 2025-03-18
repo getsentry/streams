@@ -27,3 +27,8 @@ build-streams:
 	cd sentry_streams && uv pip install build
 	cd sentry_streams && .venv/bin/python -m build --wheel
 .PHONY: build-streams
+
+docs:
+	pip install -U -r ./docs-requirements.txt
+	sphinx-build -M html docs/source/ docs/build/
+.PHONY: docs
