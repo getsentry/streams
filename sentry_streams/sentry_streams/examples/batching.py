@@ -1,13 +1,14 @@
 import json
 
+from sentry_streams.pipeline.batch import unbatch
 from sentry_streams.pipeline.function_template import InputType
 from sentry_streams.pipeline.pipeline import (
     Batch,
+    FlatMap,
     KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
-    Unbatch,
 )
 
 
@@ -36,9 +37,9 @@ source = KafkaSource(
 # User simply provides the batch size
 reduce: Batch[int, str] = Batch(name="mybatch", ctx=pipeline, inputs=[source], batch_size=5)
 
-unbatch: Unbatch[str] = Unbatch(name="myunbatch", ctx=pipeline, inputs=[reduce])
+flat_map = FlatMap(name="myunbatch", ctx=pipeline, inputs=[reduce], function=unbatch)
 
-map = Map(name="mymap", ctx=pipeline, inputs=[unbatch], function=build_message_str)
+map = Map(name="mymap", ctx=pipeline, inputs=[flat_map], function=build_message_str)
 
 # flush the batches to the Sink
 sink = KafkaSink(
