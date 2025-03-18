@@ -17,9 +17,13 @@ from sentry_streams.adapters.arroyo.consumer import (
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import FilterStep, KafkaSinkStep, MapStep
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
+from sentry_streams.pipeline.function_template import (
+    InputType,
+    OutputType,
+)
 from sentry_streams.pipeline.pipeline import (
     Filter,
-    FlatMapStep,
+    FlatMap,
     KafkaSink,
     KafkaSource,
     Map,
@@ -27,6 +31,7 @@ from sentry_streams.pipeline.pipeline import (
     Sink,
     Source,
 )
+from sentry_streams.pipeline.window import MeasurementUnit
 
 
 class KafkaConsumerConfig(TypedDict):
@@ -176,7 +181,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers[stream.source].add_step(MapStep(route=stream, pipeline_step=step))
         return stream
 
-    def flat_map(self, step: FlatMapStep, stream: Route) -> Route:
+    def flat_map(self, step: FlatMap, stream: Route) -> Route:
         """
         Builds a flat-map operator for the platform the adapter supports.
         """
@@ -195,7 +200,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
     def reduce(
         self,
-        step: Reduce,
+        step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: Route,
     ) -> Route:
         """
