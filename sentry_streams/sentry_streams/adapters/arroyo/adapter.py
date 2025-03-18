@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, MutableMapping, TypedDict
+from typing import Any, Mapping, MutableMapping, Self, TypedDict
 
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
@@ -113,7 +113,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
 
     @classmethod
-    def build(cls, config: PipelineConfig) -> ArroyoAdapter:
+    def build(cls, config: PipelineConfig) -> Self:
         return cls(
             config["sources_config"],
             config["sinks_config"],
