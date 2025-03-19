@@ -16,6 +16,7 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.pipeline import (
     Filter,
+    FlatMap,
     Map,
     Reduce,
     Router,
@@ -77,6 +78,13 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
     def map(self, step: Map, stream: Stream) -> Stream:
         """
         Builds a map operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def flat_map(self, step: FlatMap, stream: Stream) -> Stream:
+        """
+        Builds a flat-map operator for the platform the adapter supports.
         """
         raise NotImplementedError
 
@@ -146,6 +154,10 @@ class RuntimeTranslator(Generic[Stream, StreamSink]):
         elif step_type is StepType.MAP:
             assert isinstance(step, Map) and stream is not None
             return {step_name: self.adapter.map(step, stream)}
+
+        elif step_type is StepType.FLAT_MAP:
+            assert isinstance(step, FlatMap) and stream is not None
+            return {step_name: self.adapter.flat_map(step, stream)}
 
         elif step_type is StepType.REDUCE:
             assert isinstance(step, Reduce) and stream is not None

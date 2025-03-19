@@ -1,5 +1,6 @@
 from datetime import timedelta
-from typing import Any, Callable, Generic, Union, cast
+from types import GeneratorType
+from typing import Any, Callable, Generic, Union, cast, get_args
 
 from pyflink.common import Time, TypeInformation, Types
 from pyflink.datastream.functions import AggregateFunction, KeySelector
@@ -38,17 +39,6 @@ def is_standard_type(type: Any) -> bool:
     return type in FLINK_TYPE_MAP
 
 
-def translate_custom_type(type: Any) -> TypeInformation:
-    """
-    For Python types which use Pickle for serialization/deserialization
-    and do not have a matching standard Flink Type. e.g. custom-defined
-    classes.
-    """
-
-    assert not is_standard_type(type)
-    return Types.PICKLED_BYTE_ARRAY()
-
-
 def translate_to_flink_type(type: Any) -> TypeInformation:
     """
     Convert Python types to Flink's Types class.
@@ -76,6 +66,22 @@ def translate_to_flink_type(type: Any) -> TypeInformation:
         arg1, arg2 = args
 
         return fn(arg1(), arg2())
+
+
+def translate_custom_type(type: Any) -> TypeInformation:
+    """
+    For Python types which use Pickle for serialization/deserialization
+    and do not have a matching standard Flink Type. e.g. custom-defined
+    classes. Also handles Generator type.
+    """
+
+    assert not is_standard_type(type)
+
+    if isinstance(type, GeneratorType):
+        return translate_to_flink_type(get_args(type)[0])
+
+    else:
+        return Types.PICKLED_BYTE_ARRAY()
 
 
 class FlinkAggregate(AggregateFunction, Generic[InputType, OutputType]):
