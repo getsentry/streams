@@ -1,4 +1,6 @@
 import argparse
+import logging
+import signal
 from typing import Any, cast
 
 from sentry_streams.adapters.loader import load_adapter
@@ -12,6 +14,8 @@ from sentry_streams.pipeline.pipeline import (
     WithInput,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, StreamSink]) -> None:
     """
@@ -24,7 +28,7 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
     step_streams = {}
 
     for source in p_graph.sources:
-        print(f"Apply source: {source.name}")
+        logger.info(f"Apply source: {source.name}")
         source_stream = translator.translate_step(source)
         step_streams[source.name] = source_stream
 
@@ -38,7 +42,7 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
 
                 for output in output_steps:
                     next_step: WithInput = cast(WithInput, p_graph.steps[output])
-                    print(f"Apply step: {next_step.name}")
+                    logger.info(f"Apply step: {next_step.name}")
                     # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                     next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
                     step_streams[next_step.name] = next_step_stream
@@ -59,6 +63,14 @@ def main() -> None:
         type=str,
         default="kafka:9093",
         help="The broker the job should connect to",
+    )
+    parser.add_argument(
+        "--log-level",
+        "-l",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default="INFO",
+        help="Set the logging level",
     )
     parser.add_argument(
         "--adapter",
@@ -86,6 +98,12 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    logging.basicConfig(
+        level=args.log_level,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     with open(args.application) as f:
         exec(f.read(), pipeline_globals)
 
@@ -97,6 +115,20 @@ def main() -> None:
             "transformed-events-2": "transformed-events-2",
         },
         "broker": args.broker,
+        "sources_config": {
+            "myinput": {
+                "bootstrap_servers": [args.broker],
+                "auto_offset_reset": "latest",
+                "consumer_group": "test",
+                "additional_settings": {},
+            }
+        },
+        "sinks_config": {
+            "kafkasink": {
+                "bootstrap_servers": [args.broker],
+                "additional_settings": {},
+            }
+        },
     }
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
@@ -104,6 +136,13 @@ def main() -> None:
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
+
+    def signal_handler(sig: int, frame: Any) -> None:
+        logger.info("Signal received, terminating the runner...")
+        runtime.shutdown()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     runtime.run()
 
