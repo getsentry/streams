@@ -7,6 +7,7 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.pipeline import (
     Filter,
+    FlatMap,
     Map,
     Reduce,
     Router,
@@ -82,6 +83,10 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         return self
 
     def reduce(self, step: Reduce[MeasurementUnit, InputType, OutputType], stream: Any) -> Any:
+        self.track_input_streams(step)
+        return self
+
+    def flat_map(self, step: FlatMap, stream: Any) -> Any:
         self.track_input_streams(step)
         return self
 
