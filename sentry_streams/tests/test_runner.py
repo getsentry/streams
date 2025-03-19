@@ -4,17 +4,17 @@ from unittest.mock import ANY, MagicMock, call
 import pytest
 
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
-from sentry_streams.pipeline.pipeline import Filter, KafkaSource, Map, Pipeline
+from sentry_streams.pipeline.pipeline import Filter, Map, Pipeline, StreamSource
 from sentry_streams.runner import iterate_edges
 
 
 @pytest.fixture
 def create_pipeline() -> Pipeline:
     test_pipeline = Pipeline()
-    source1 = KafkaSource(
+    source1 = StreamSource(
         name="source1",
         ctx=test_pipeline,
-        logical_topic="foo",
+        stream="foo",
     )
     step1 = Map(
         name="step1",

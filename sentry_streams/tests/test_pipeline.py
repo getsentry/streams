@@ -5,12 +5,12 @@ import pytest
 from sentry_streams.examples.broadcast import pipeline as broadcast_pipeline
 from sentry_streams.pipeline.pipeline import (
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
     Step,
     StepType,
+    StreamSink,
+    StreamSource,
     TransformStep,
 )
 
@@ -18,16 +18,16 @@ from sentry_streams.pipeline.pipeline import (
 @pytest.fixture
 def pipeline() -> Pipeline:
     pipeline = Pipeline()
-    source = KafkaSource(
+    source = StreamSource(
         name="source",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream="logical-events",
     )
 
-    source2 = KafkaSource(
+    source2 = StreamSource(
         name="source2",
         ctx=pipeline,
-        logical_topic="anotehr-logical-events",
+        stream="anotehr-logical-events",
     )
 
     filter = Filter(
@@ -58,11 +58,11 @@ def pipeline() -> Pipeline:
         function=simple_map,
     )
 
-    KafkaSink(
+    StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[map, map2],
-        logical_topic="transformed-events",
+        stream="transformed-events",
     )
     return pipeline
 

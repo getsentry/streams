@@ -7,10 +7,10 @@ from arroyo.utils.clock import MockedClock
 
 from sentry_streams.pipeline.pipeline import (
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
+    StreamSink,
+    StreamSource,
 )
 
 
@@ -26,10 +26,10 @@ def broker() -> LocalBroker[KafkaPayload]:
 @pytest.fixture
 def pipeline() -> Pipeline:
     pipeline = Pipeline()
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream="logical-events",
     )
     decoder = Map(
         name="decoder",
@@ -46,11 +46,11 @@ def pipeline() -> Pipeline:
         inputs=[filter],
         function=lambda msg: msg + "_mapped",
     )
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[map],
-        logical_topic="transformed-events",
+        stream="transformed-events",
     )
 
     return pipeline

@@ -11,19 +11,19 @@ from sentry_streams.examples.events import (
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     FlatMap,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
+    StreamSink,
+    StreamSource,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    logical_topic="logical-events",
+    stream="logical-events",
 )
 
 map = Map(
@@ -61,9 +61,9 @@ map_str = Map(
     function=build_alert_json,
 )
 
-sink = KafkaSink(
+sink = StreamSink(
     name="kafkasink",
     ctx=pipeline,
     inputs=[map_str],
-    logical_topic="transformed-events",
+    stream="transformed-events",
 )

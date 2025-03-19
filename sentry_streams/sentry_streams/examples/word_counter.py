@@ -7,20 +7,20 @@ from sentry_streams.examples.word_counter_fn import (
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
+    StreamSink,
+    StreamSource,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
 # pipeline: special name
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    logical_topic="logical-events",
+    stream="logical-events",
 )
 
 filter = Filter(
@@ -51,9 +51,9 @@ reduce: Aggregate[int, tuple[str, int], str] = Aggregate(
     group_by_key=GroupByWord(),
 )
 
-sink = KafkaSink(
+sink = StreamSink(
     name="kafkasink",
     ctx=pipeline,
     inputs=[reduce],
-    logical_topic="transformed-events",
+    stream="transformed-events",
 )
