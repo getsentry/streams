@@ -62,6 +62,7 @@ def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
     )
     iterate_edges(pipeline, RuntimeTranslator(adapter))
 
+    adapter.create_processors()
     processor = adapter.get_processor("myinput")
 
     broker.produce(

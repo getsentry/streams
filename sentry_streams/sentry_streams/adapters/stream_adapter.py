@@ -113,6 +113,13 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def shutdown(self) -> None:
+        """
+        Cleanly shutdown the application.
+        """
+        raise NotImplementedError
+
 
 class RuntimeTranslator(Generic[Stream, StreamSink]):
     """

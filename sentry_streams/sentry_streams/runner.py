@@ -1,5 +1,6 @@
 import argparse
 import logging
+import signal
 from typing import Any, cast
 
 from sentry_streams.adapters.loader import load_adapter
@@ -135,6 +136,13 @@ def main() -> None:
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
+
+    def signal_handler(sig: int, frame: Any) -> None:
+        logger.info("Signal received, terminating the runner...")
+        runtime.shutdown()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     runtime.run()
 

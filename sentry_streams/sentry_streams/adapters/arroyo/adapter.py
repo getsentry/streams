@@ -111,6 +111,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self.__sinks: MutableMapping[str, Any] = {**sinks_override}
 
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
+        self.__processors: Mapping[str, StreamProcessor[KafkaPayload]] = {}
 
     @classmethod
     def build(cls, config: PipelineConfig) -> Self:
@@ -212,21 +213,36 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Returns the stream processor for the given source.
         """
-        factory = ArroyoStreamingFactory(self.__consumers[source])
+        return self.__processors[source]
 
-        return StreamProcessor(
-            consumer=self.__sources.get_consumer(source),
-            topic=self.__sources.get_topic(source),
-            processor_factory=factory,
-        )
+    def create_processors(self) -> None:
+        self.__processors = {
+            source: StreamProcessor(
+                consumer=self.__sources.get_consumer(source),
+                topic=self.__sources.get_topic(source),
+                processor_factory=ArroyoStreamingFactory(consumer),
+            )
+            for source, consumer in self.__consumers.items()
+        }
 
     def run(self) -> None:
         """
         Starts the pipeline
         """
         # TODO: Support multiple consumers
+        self.create_processors()
         assert len(self.__consumers) == 1, "Only one consumer is supported"
         source = next(iter(self.__consumers))
 
-        processor = self.get_processor(source)
+        processor = self.__processors[source]
         processor.run()
+
+    def shutdown(self) -> None:
+        """
+        Shutdown the arroyo processors allowing them to terminate the inflight
+        work.
+        """
+        assert len(self.__consumers) == 1, "Only one consumer is supported"
+        source = next(iter(self.__consumers))
+        processor = self.__processors[source]
+        processor.signal_shutdown()
