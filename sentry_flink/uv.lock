@@ -1,5 +1,4 @@
 version = 1
-revision = 1
 requires-python = "==3.11.*"
 
 [[package]]
@@ -160,6 +159,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335 },
+]
+
+[[package]]
+name = "confluent-kafka"
+version = "2.8.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/4d/4ba3dcb54a1f84d2fc3abde259da568cfd398137c1c30f44ac9aede2b3ab/confluent_kafka-2.8.2.tar.gz", hash = "sha256:e8cac2a00968c587d7e7a8fbb6b2d3c2eb0d342d42fdf1fdc36c10036b944bf3", size = 191793 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/a8/8ac263f8a640bcc8faa48c3cd66964547a0953ba00e73811f0f4958a248e/confluent_kafka-2.8.2-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:958be78c89e25f2506ef39ee0251c171b9cd3f771ad7687ab56165e8e32b7df1", size = 3508458 },
+    { url = "https://files.pythonhosted.org/packages/ce/f0/781dd72c4eea2d74b5e7bac5957aacf33d2517ce9fbae11db3f2723419bc/confluent_kafka-2.8.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:38e0c4809670d9a6a3e268b82793db90fe408a569f7215266abd27b52b7ecf3d", size = 3038791 },
+    { url = "https://files.pythonhosted.org/packages/e6/d1/1a9e2402eccaf65aed478aa82aaa12de92be3b20517c7001252df0554148/confluent_kafka-2.8.2-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:882b67c076661be252dca962fe7f26c92e8da23b6607618e6512e462750e7f83", size = 15157939 },
+    { url = "https://files.pythonhosted.org/packages/eb/ba/6ea067c10c1177b88e15b3b4798c869917114b7de974fefca49a54c8f5f2/confluent_kafka-2.8.2-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:fd10d521873e7d2f64c7d1bc0ee1fc27434d7bc45e50e8a8abf7e8366e38002a", size = 3825107 },
+    { url = "https://files.pythonhosted.org/packages/a8/7d/3fcf018c59bdb3d686af84ed42409681cec9a51028ef484a4862e017d887/confluent_kafka-2.8.2-cp311-cp311-win_amd64.whl", hash = "sha256:1969bfb672a7c55d1bcacd54d3c2cf90f45dbef29a5934828d439cafded31dc9", size = 3959393 },
 ]
 
 [[package]]
@@ -398,7 +410,7 @@ wheels = [
 
 [[package]]
 name = "pandas"
-version = "2.2.3"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -406,15 +418,14 @@ dependencies = [
     { name = "pytz" },
     { name = "tzdata" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/d6/9f8431bacc2e19dca897724cd097b1bb224a6ad5433784a44b587c7c13af/pandas-2.2.3.tar.gz", hash = "sha256:4f18ba62b61d7e192368b84517265a99b4d7ee8912f8708660fb4a366cc82667", size = 4399213 }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/31/a4a8e7367856d9584d0332793edfe631182a9cca885f12dbe2dd77c10c4a/pandas-2.1.0.tar.gz", hash = "sha256:62c24c7fc59e42b775ce0679cfa7b14a5f9bfb7643cfbe708c960699e05fb918", size = 4263970 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/44/d9502bf0ed197ba9bf1103c9867d5904ddcaf869e52329787fc54ed70cc8/pandas-2.2.3-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:66108071e1b935240e74525006034333f98bcdb87ea116de573a6a0dccb6c039", size = 12602222 },
-    { url = "https://files.pythonhosted.org/packages/52/11/9eac327a38834f162b8250aab32a6781339c69afe7574368fffe46387edf/pandas-2.2.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:7c2875855b0ff77b2a64a0365e24455d9990730d6431b9e0ee18ad8acee13dbd", size = 11321274 },
-    { url = "https://files.pythonhosted.org/packages/45/fb/c4beeb084718598ba19aa9f5abbc8aed8b42f90930da861fcb1acdb54c3a/pandas-2.2.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:cd8d0c3be0515c12fed0bdbae072551c8b54b7192c7b1fda0ba56059a0179698", size = 15579836 },
-    { url = "https://files.pythonhosted.org/packages/cd/5f/4dba1d39bb9c38d574a9a22548c540177f78ea47b32f99c0ff2ec499fac5/pandas-2.2.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c124333816c3a9b03fbeef3a9f230ba9a737e9e5bb4060aa2107a86cc0a497fc", size = 13058505 },
-    { url = "https://files.pythonhosted.org/packages/b9/57/708135b90391995361636634df1f1130d03ba456e95bcf576fada459115a/pandas-2.2.3-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:63cc132e40a2e084cf01adf0775b15ac515ba905d7dcca47e9a251819c575ef3", size = 16744420 },
-    { url = "https://files.pythonhosted.org/packages/86/4a/03ed6b7ee323cf30404265c284cee9c65c56a212e0a08d9ee06984ba2240/pandas-2.2.3-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:29401dbfa9ad77319367d36940cd8a0b3a11aba16063e39632d98b0e931ddf32", size = 14440457 },
-    { url = "https://files.pythonhosted.org/packages/ed/8c/87ddf1fcb55d11f9f847e3c69bb1c6f8e46e2f40ab1a2d2abadb2401b007/pandas-2.2.3-cp311-cp311-win_amd64.whl", hash = "sha256:3fc6873a41186404dad67245896a6e440baacc92f5b716ccd1bc9ed2995ab2c5", size = 11617166 },
+    { url = "https://files.pythonhosted.org/packages/c3/05/c5c73d54ceb7d5e4b8c046d39a1bb7f38ee76ea556a002cf3317514f0196/pandas-2.1.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:cda72cc8c4761c8f1d97b169661f23a86b16fdb240bdc341173aee17e4d6cedd", size = 12015015 },
+    { url = "https://files.pythonhosted.org/packages/e5/cd/c941b51e95992968e3e8abc7180f33b952478abd6943062051517a808db7/pandas-2.1.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:d97daeac0db8c993420b10da4f5f5b39b01fc9ca689a17844e07c0a35ac96b4b", size = 11173830 },
+    { url = "https://files.pythonhosted.org/packages/e2/25/bfb5c7573e2b884b18e5ea993ee7aeb5a6915ea687174349fdc5f979ceec/pandas-2.1.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d8c58b1113892e0c8078f006a167cc210a92bdae23322bb4614f2f0b7a4b510f", size = 15176284 },
+    { url = "https://files.pythonhosted.org/packages/d9/26/895a49ebddb4211f2d777150f38ef9e538deff6df7e179a3624c663efc98/pandas-2.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:629124923bcf798965b054a540f9ccdfd60f71361255c81fa1ecd94a904b9dd3", size = 12630840 },
+    { url = "https://files.pythonhosted.org/packages/bc/ad/d1f0a867064f62ffde917876cc09cfd53352af2b1f147c140fd1943a0c7a/pandas-2.1.0-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:70cf866af3ab346a10debba8ea78077cf3a8cd14bd5e4bed3d41555a3280041c", size = 13463414 },
+    { url = "https://files.pythonhosted.org/packages/b7/f8/32d6b5aa4c4bc045fa2c4c58f88c325facc54721956c6313f0afea8ea853/pandas-2.1.0-cp311-cp311-win_amd64.whl", hash = "sha256:d53c8c1001f6a192ff1de1efe03b31a423d0eee2e9e855e69d004308e046e694", size = 11043589 },
 ]
 
 [[package]]
@@ -701,6 +712,18 @@ wheels = [
 ]
 
 [[package]]
+name = "sentry-arroyo"
+version = "2.20.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "confluent-kafka" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/57/d1/18f2d324ee8b8743cc77a9c699c44d057523566bd973a8db4ca6fb633627/sentry_arroyo-2.20.0.tar.gz", hash = "sha256:d86eac74e690e0f0b0448d3e1b3f50e92e3fa07f5c0204abeaea709561c1ff12", size = 83037 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/2d/4200cd8848059f6ec367fb69442c658775d27410db5000ad961f68b4746c/sentry_arroyo-2.20.0-py3-none-any.whl", hash = "sha256:8d2c38a6648bfdf856509b7cc726ce68d0793a8b3894f7a8c1e0ad9b75964d49", size = 108990 },
+]
+
+[[package]]
 name = "sentry-flink"
 version = "0.0.1"
 source = { editable = "." }
@@ -724,7 +747,7 @@ dev = [
 requires-dist = [
     { name = "apache-flink", specifier = "==1.20.0" },
     { name = "requests", specifier = ">=2.32.3" },
-    { name = "sentry-streams", specifier = ">=0.0.4" },
+    { name = "sentry-streams", specifier = ">=0.0.11" },
     { name = "setuptools", specifier = "==75.8.0" },
 ]
 
@@ -739,13 +762,14 @@ dev = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.4"
+version = "0.0.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
+    { name = "sentry-arroyo" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/27/9228bce5935e2f3abdab7d11ec3221dff59956bba6ecdd2b05212604f4fb/sentry_streams-0.0.4-py3-none-any.whl", hash = "sha256:90ffdef546f3b4aa95ae60bd9feb8f2c59fe6aeba3c8c65cdf8de428d44d4fc4", size = 16690 },
+    { url = "https://files.pythonhosted.org/packages/39/35/3db89daf21d784565962fb1eed1bd8f3123130e4d7e10bb00c1c04cc7f8d/sentry_streams-0.0.11-py3-none-any.whl", hash = "sha256:c718e164b9770aa65ca922ffb53cae6780ed6e6a3e12b9affe4fd265559c698c", size = 25641 },
 ]
 
 [[package]]

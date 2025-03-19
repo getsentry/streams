@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Generic, MutableMapping, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+)
 
+from sentry_streams.modules import get_module
+from sentry_streams.pipeline.batch import BatchBuilder
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -12,7 +25,7 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
-from sentry_streams.pipeline.window import MeasurementUnit, Window
+from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
 
 
 class StepType(Enum):
@@ -21,6 +34,7 @@ class StepType(Enum):
     MAP = "map"
     REDUCE = "reduce"
     FILTER = "filter"
+    FLAT_MAP = "flat_map"
 
 
 class Pipeline:
@@ -118,15 +132,43 @@ class KafkaSink(Sink):
 T = TypeVar("T")
 
 
+class TransformFunction(ABC, Generic[T]):
+
+    @property
+    @abstractmethod
+    def resolved_function(self) -> Callable[..., T]:
+        raise NotImplementedError()
+
+
 @dataclass
-class TransformStep(WithInput, Generic[T]):
+class TransformStep(WithInput, TransformFunction[T]):
     """
     A generic step representing a step performing a transform operation
     on input data.
+    function: supports reference to a function using dot notation, or a Callable
     """
 
     function: Union[Callable[..., T], str]
     step_type: StepType
+
+    @property
+    def resolved_function(self) -> Callable[..., T]:
+        """
+        Returns a callable of the transform function defined, or referenced in the
+        this class
+        """
+        if callable(self.function):
+            return self.function
+
+        fn_path = self.function
+        mod, cls, fn = fn_path.rsplit(".", 2)
+
+        module = get_module(mod)
+
+        imported_cls = getattr(module, cls)
+        imported_func = cast(Callable[..., T], getattr(imported_cls, fn))
+        function_callable = imported_func
+        return function_callable
 
 
 @dataclass
@@ -156,15 +198,90 @@ class Filter(TransformStep[bool]):
 
 
 @dataclass
-class Reduce(WithInput, Generic[MeasurementUnit, InputType, OutputType]):
+class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
+    """
+    A generic Step for a Reduce (or Accumulator-based) operation
+    """
+
+    @property
+    @abstractmethod
+    def group_by(self) -> Optional[GroupBy]:
+        raise NotImplementedError()
+
+    @property
+    @abstractmethod
+    def windowing(self) -> Window[MeasurementUnit]:
+        raise NotImplementedError()
+
+    @property
+    @abstractmethod
+    def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
+        raise NotImplementedError()
+
+
+@dataclass
+class Aggregate(Reduce[MeasurementUnit, InputType, OutputType]):
     """
     A Reduce step which performs windowed aggregations. Can be keyed or non-keyed on the
     input stream. Supports an Accumulator-style aggregation which can have a configurable
     storage backend, for flushing intermediate aggregates.
     """
 
-    windowing: Window[MeasurementUnit]
-    aggregate_fn: Callable[[], Accumulator[InputType, OutputType]]
+    window: Window[MeasurementUnit]
+    aggregate_func: Callable[[], Accumulator[InputType, OutputType]]
     aggregate_backend: Optional[AggregationBackend[OutputType]] = None
     group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE
+
+    @property
+    def group_by(self) -> Optional[GroupBy]:
+        return self.group_by_key
+
+    @property
+    def windowing(self) -> Window[MeasurementUnit]:
+        return self.window
+
+    @property
+    def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
+        return self.aggregate_func
+
+
+BatchInput = TypeVar("BatchInput")
+
+
+@dataclass
+class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
+    """
+    A step to Batch up the results of the prior step.
+
+    Batch can be configured via batch size, which can be
+    an event time duration or a count of events.
+    """
+
+    # TODO: Use concept of custom triggers to close window
+    # by either size or time
+    batch_size: MeasurementUnit
+    step_type: StepType = StepType.REDUCE
+
+    @property
+    def group_by(self) -> Optional[GroupBy]:
+        return None
+
+    @property
+    def windowing(self) -> Window[MeasurementUnit]:
+        return TumblingWindow(self.batch_size)
+
+    @property
+    def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
+        batch_acc = BatchBuilder[BatchInput]
+        return cast(Callable[[], Accumulator[InputType, OutputType]], batch_acc)
+
+
+@dataclass
+class FlatMap(TransformStep[Any]):
+    """
+    A generic step for mapping and flattening (and therefore alerting the shape of) inputs to
+    get outputs. Takes a single input to 0...N outputs.
+    """
+
+    step_type: StepType = StepType.FLAT_MAP

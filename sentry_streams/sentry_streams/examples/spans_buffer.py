@@ -2,11 +2,11 @@ from datetime import timedelta
 
 from sentry_streams.examples.spans import SpansBuffer, build_segment_json, build_span
 from sentry_streams.pipeline.pipeline import (
+    Aggregate,
     KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
-    Reduce,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
@@ -35,12 +35,12 @@ reduce_window = TumblingWindow(window_size=timedelta(seconds=5))
 # Make the trigger and closing windows synonymous, both
 # apparent in the API and as part of implementation
 
-reduce = Reduce(
+reduce = Aggregate(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
-    windowing=reduce_window,
-    aggregate_fn=SpansBuffer,
+    window=reduce_window,
+    aggregate_func=SpansBuffer,
 )
 
 map_str = Map(

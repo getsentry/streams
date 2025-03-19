@@ -11,13 +11,13 @@ from sentry_streams.examples.word_counter_fn import (
     WordCounter,
 )
 from sentry_streams.pipeline.pipeline import (
+    Aggregate,
     Branch,
     Filter,
     KafkaSink,
     KafkaSource,
     Map,
     Pipeline,
-    Reduce,
     Router,
 )
 from sentry_streams.pipeline.window import TumblingWindow
@@ -237,12 +237,12 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
 
     reduce_window = TumblingWindow(window_size=3)
 
-    reduce = Reduce(
+    reduce = Aggregate(
         name="myreduce",
         ctx=pipeline,
         inputs=[map],
-        windowing=reduce_window,
-        aggregate_fn=WordCounter,
+        window=reduce_window,
+        aggregate_func=WordCounter,
         group_by_key=GroupByWord(),
     )
 
