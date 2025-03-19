@@ -28,6 +28,8 @@ from sentry_streams.pipeline.pipeline import (
     KafkaSource,
     Map,
     Reduce,
+    Router,
+    RoutingFuncReturnType,
     Sink,
     Source,
 )
@@ -94,7 +96,6 @@ class KafkaSources:
 
 
 class ArroyoAdapter(StreamAdapter[Route, Route]):
-
     def __init__(
         self,
         sources_config: Mapping[str, KafkaConsumerConfig],
@@ -204,7 +205,17 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         stream: Route,
     ) -> Route:
         """
-        Build a map operator for the platform the adapter supports.
+        Build a reduce operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    def router(
+        self,
+        step: Router[RoutingFuncReturnType],
+        stream: Route,
+    ) -> Mapping[str, Route]:
+        """
+        Build a router operator for the platform the adapter supports.
         """
         raise NotImplementedError
 

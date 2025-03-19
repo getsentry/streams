@@ -111,7 +111,7 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
         self,
         step: Router[RoutingFuncReturnType],
         stream: Stream,
-    ) -> Mapping[RoutingFuncReturnType, Stream]:
+    ) -> Mapping[str, Stream]:
         """
         Build a router operator for the platform the adapter supports.
         """
