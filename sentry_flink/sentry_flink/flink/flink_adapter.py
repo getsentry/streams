@@ -2,11 +2,8 @@ import os
 from typing import (
     Any,
     Callable,
-    Generator,
-    Mapping,
     MutableMapping,
     Self,
-    TypeVar,
     Union,
     cast,
     get_type_hints,
@@ -14,7 +11,7 @@ from typing import (
 
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
-from pyflink.datastream import OutputTag, ProcessFunction, StreamExecutionEnvironment
+from pyflink.datastream import OutputTag, StreamExecutionEnvironment
 from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
     FlinkKafkaConsumer,
 )
@@ -47,32 +44,13 @@ from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_flink.flink.flink_translator import (
     FlinkAggregate,
     FlinkGroupBy,
+    FlinkRoutingFunction,
+    RoutingFuncReturnType,
     build_flink_window,
     is_standard_type,
     translate_custom_type,
     translate_to_flink_type,
 )
-
-RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
-TransformFuncReturnType = TypeVar("TransformFuncReturnType")
-
-
-class RoutingFunction(ProcessFunction):
-    def __init__(
-        self,
-        routing_func: Callable[..., RoutingFuncReturnType],
-        output_tags: Mapping[RoutingFuncReturnType, OutputTag],
-    ) -> None:
-        super().__init__()
-        self.routing_func = routing_func
-        self.output_tags = output_tags
-
-    def process_element(
-        self, value: Any, ctx: "ProcessFunction.Context"
-    ) -> Generator[tuple[OutputTag, Any], None, None]:
-        output_stream = self.routing_func(value)
-        output_label = self.output_tags[output_stream]
-        yield output_label, value
 
 
 class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
@@ -247,7 +225,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             )
             for key in routing_table
         }
-        routing_process_func = RoutingFunction(routing_func, output_tags)
+        routing_process_func = FlinkRoutingFunction(routing_func, output_tags)
         routing_stream = stream.process(routing_process_func)
 
         routes_map: MutableMapping[str, Any] = {}

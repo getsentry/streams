@@ -1,8 +1,19 @@
 from datetime import timedelta
 from types import GeneratorType
-from typing import Any, Callable, Generic, Union, cast, get_args
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Generic,
+    Mapping,
+    TypeVar,
+    Union,
+    cast,
+    get_args,
+)
 
 from pyflink.common import Time, TypeInformation, Types
+from pyflink.datastream import OutputTag, ProcessFunction
 from pyflink.datastream.functions import AggregateFunction, KeySelector
 from pyflink.datastream.window import (
     CountSlidingWindowAssigner,
@@ -26,6 +37,8 @@ from sentry_streams.pipeline.window import (
     TumblingWindow,
     Window,
 )
+
+RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
 
 FLINK_TYPE_MAP: dict[Any, Any] = {
     tuple[str, int]: (Types.TUPLE, [Types.STRING, Types.INT]),
@@ -162,7 +175,6 @@ def to_flink_time(timestamp: timedelta) -> Time:
 
 
 def build_flink_window(streams_window: Window[MeasurementUnit]) -> WindowAssigner[Any, Any]:
-
     match streams_window:
         case SlidingWindow(window_size, window_slide):
             match (window_size, window_slide):
@@ -193,3 +205,21 @@ def build_flink_window(streams_window: Window[MeasurementUnit]) -> WindowAssigne
 
         case _:
             raise TypeError(f"{streams_window} is not a supported Window type")
+
+
+class FlinkRoutingFunction(ProcessFunction):
+    def __init__(
+        self,
+        routing_func: Callable[..., RoutingFuncReturnType],
+        output_tags: Mapping[RoutingFuncReturnType, OutputTag],
+    ) -> None:
+        super().__init__()
+        self.routing_func = routing_func
+        self.output_tags = output_tags
+
+    def process_element(
+        self, value: Any, ctx: "ProcessFunction.Context"
+    ) -> Generator[tuple[OutputTag, Any], None, None]:
+        output_stream = self.routing_func(value)
+        output_label = self.output_tags[output_stream]
+        yield output_label, value
