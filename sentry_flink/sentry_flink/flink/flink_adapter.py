@@ -158,6 +158,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: DataStream,
     ) -> DataStream:
+        parallelism = self.environment_config["steps"][step.name]["parallelism"]
         agg = step.aggregate_fn
         windowing = step.windowing
 
@@ -193,7 +194,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
                 if is_standard_type(return_type)
                 else translate_custom_type(return_type)
             ),
-        )
+        ).set_parallelism(parallelism)
 
     def run(self) -> None:
         self.env.execute()

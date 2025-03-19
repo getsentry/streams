@@ -43,6 +43,11 @@ def main() -> int:
             "to the path mounted in the job manager as the /apps directory."
         ),
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        help=("The config file",),
+    )
 
     args = parser.parse_args()
 
@@ -73,6 +78,8 @@ def main() -> int:
             f"/apps/{args.application}",
             "--adapter",
             args.adapter,
+            "--config",
+            f"/apps/{args.config}",
         ]
     )
 

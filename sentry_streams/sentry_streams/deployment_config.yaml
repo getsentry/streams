@@ -1,0 +1,13 @@
+topics:
+  logical-events: events
+  transformed-events: transformed-events
+  transformed-events-2: transformed-events-2
+
+broker: kafka:9093
+
+pipeline:
+  parallelism: 2
+
+steps:
+  myreduce:
+    parallelism: 3

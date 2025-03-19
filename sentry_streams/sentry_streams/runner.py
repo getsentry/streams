@@ -83,6 +83,11 @@ def main() -> None:
             "to the path mounted in the job manager as the /apps directory."
         ),
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        help=("The config file path"),
+    )
 
     pipeline_globals: dict[str, Any] = {}
 
@@ -91,17 +96,7 @@ def main() -> None:
     with open(args.application) as f:
         exec(f.read(), pipeline_globals)
 
-    # TODO: read from yaml file
-    # environment_config = {
-    #     "topics": {
-    #         "logical-events": "events",
-    #         "transformed-events": "transformed-events",
-    #         "transformed-events-2": "transformed-events-2",
-    #     },
-    #     "broker": args.broker,
-    # }
-
-    with open("deployment_config.yaml", "r") as config_file:
+    with open(args.config, "r") as config_file:
         environment_config = yaml.safe_load(config_file)
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
