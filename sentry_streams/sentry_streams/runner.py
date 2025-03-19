@@ -1,11 +1,12 @@
 import argparse
-from typing import Any, cast
+from typing import Any, Mapping, Never, cast
 
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
     RuntimeTranslator,
     Stream,
     StreamSink,
+    TaggedStream,
 )
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
@@ -25,9 +26,11 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
 
     for source in p_graph.sources:
         print(f"Apply source: {source.name}")
-        source_streams = translator.translate_step(source)
+        source_streams: Mapping[str, TaggedStream[Never, Stream, StreamSink]] = (
+            translator.translate_step(source)
+        )
         for source_name in source_streams:
-            step_streams[source_name] = source_streams[source_name]
+            step_streams[source_name] = source_streams[source_name].stream
 
         while step_streams:
             for input_name in list(step_streams):
@@ -43,7 +46,7 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
                     # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                     next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
                     for branch_name in next_step_stream:
-                        step_streams[branch_name] = next_step_stream[branch_name]
+                        step_streams[branch_name] = next_step_stream[branch_name].stream
 
 
 def main() -> None:

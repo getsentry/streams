@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import (
     Any,
     Generic,
@@ -33,6 +34,12 @@ PipelineConfig = Mapping[str, Any]
 
 Stream = TypeVar("Stream")
 StreamSink = TypeVar("StreamSink")
+
+
+@dataclass
+class TaggedStream(Generic[RoutingFuncReturnType, Stream, StreamSink]):
+    tag: Optional[RoutingFuncReturnType]
+    stream: Union[Stream, StreamSink]
 
 
 class StreamAdapter(ABC, Generic[Stream, StreamSink]):
@@ -111,7 +118,7 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
         self,
         step: Router[RoutingFuncReturnType],
         stream: Stream,
-    ) -> Mapping[RoutingFuncReturnType, Stream]:
+    ) -> Mapping[str, TaggedStream[RoutingFuncReturnType, Stream, StreamSink]]:
         """
         Build a router operator for the platform the adapter supports.
         """
@@ -138,34 +145,34 @@ class RuntimeTranslator(Generic[Stream, StreamSink]):
 
     def translate_step(
         self, step: Step, stream: Optional[Stream] = None
-    ) -> Mapping[str, Union[Stream, StreamSink]]:
+    ) -> Mapping[str, TaggedStream[RoutingFuncReturnType, Stream, StreamSink]]:
         assert hasattr(step, "step_type")
         step_type = step.step_type
         step_name = step.name
 
         if step_type is StepType.SOURCE:
             assert isinstance(step, Source)
-            return {step_name: self.adapter.source(step)}
+            return {step_name: TaggedStream(tag=None, stream=self.adapter.source(step))}
 
         elif step_type is StepType.SINK:
             assert isinstance(step, Sink) and stream is not None
-            return {step_name: self.adapter.sink(step, stream)}
+            return {step_name: TaggedStream(tag=None, stream=self.adapter.sink(step, stream))}
 
         elif step_type is StepType.MAP:
             assert isinstance(step, Map) and stream is not None
-            return {step_name: self.adapter.map(step, stream)}
+            return {step_name: TaggedStream(tag=None, stream=self.adapter.map(step, stream))}
 
         elif step_type is StepType.FLAT_MAP:
             assert isinstance(step, FlatMap) and stream is not None
-            return {step_name: self.adapter.flat_map(step, stream)}
+            return {step_name: TaggedStream(tag=None, stream=self.adapter.flat_map(step, stream))}
 
         elif step_type is StepType.REDUCE:
             assert isinstance(step, Reduce) and stream is not None
-            return {step_name: self.adapter.reduce(step, stream)}
+            return {step_name: TaggedStream(tag=None, stream=self.adapter.reduce(step, stream))}
 
         elif step_type is StepType.FILTER:
             assert isinstance(step, Filter) and stream is not None
-            return {step_name: self.adapter.filter(step, stream)}
+            return {step_name: TaggedStream(tag=None, stream=self.adapter.filter(step, stream))}
 
         elif step_type is StepType.ROUTER:
             assert isinstance(step, Router) and stream is not None
