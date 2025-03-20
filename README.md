@@ -2,27 +2,37 @@
 
 The Sentry Streaming Platform
 
-# Run pyFlink application locally.
+This repo contains two libraries: `sentry_streams` and `sentry_flink`.
 
-PyFlink application can run with an embedded flink without having to run
-the Flink Server in a stand alone way. Just run the application in the
-Python interpreter.
+The first contain all the streaming api and an Arroyo based adapter to run
+the streaming applications on top of Arroyo.
 
-Run `direnv allow`.
+The second contains the Flink adapter to run streaming applications on
+Apache Flink. This part is in a separate library because, until we will not
+be able to make it run on python 3.13 and produce wheels for python 3.13,
+it will require Java to run even in the dev environment.
 
-See [here](./platforms/flink/README.md) for the steps to run Flink in a container.
+## Quickstart
 
-Run
+We are going to run a streaming application on top of Arroyo.
+
+1. Run `make install-dev`
+
+2. Go to the sentry_streams directory
+
+3. Activate the virtual environment: `source .venv/bin/activate`
+
+4. Run one of the examples
 
 ```
-docker exec -it kafka \
-    kafka-topics \
-    --bootstrap-server localhost:29092 \
-    --topic events \
-    --create
+python sentry_streams/runner.py \
+    -n test \
+    -b localhost:9092 \
+    -a arroyo \
+    sentry_streams/examples/transfomer.py
 ```
 
-Run `echo '{"test": "hello world"}' | kcat -P -b 127.0.0.1:9092 -t events` to send some events and see them printed.
+This will start an Arroyo consumer that runs the streaming application defined
+in `sentry_streams/examples/transfomer.py`.
 
-If you have Java installed you can skip the container and just run the
-application python file directly. That will start Flink.
+there is a number of examples in the `sentry_streams/examples` directory.
