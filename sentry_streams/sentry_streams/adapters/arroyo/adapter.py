@@ -72,7 +72,7 @@ class StreamSources:
         """
         # TODO: Provide a better way to get the logical stream name from
         # the Sink step. We should not have to assert it is a Kafka sink
-        assert isinstance(step, StreamSource), "Only Kafka Sources are supported"
+        assert isinstance(step, StreamSource), "Only Stream Sources are supported"
         source_name = step.name
         if source_name not in self.__sources:
             config = self.__sources_config.get(source_name)
