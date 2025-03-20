@@ -732,7 +732,6 @@ dependencies = [
     { name = "requests" },
     { name = "sentry-streams" },
     { name = "setuptools" },
-    { name = "typing-extensions" },
 ]
 
 [package.dev-dependencies]
@@ -750,7 +749,6 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.3" },
     { name = "sentry-streams", specifier = ">=0.0.11" },
     { name = "setuptools", specifier = "==75.8.0" },
-    { name = "typing-extensions", specifier = ">=4.12.2" },
 ]
 
 [package.metadata.requires-dev]
