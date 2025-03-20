@@ -9,7 +9,7 @@ from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import BrokerValue, FilteredPayload, Message, Partition, Topic
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.adapters.arroyo.steps import FilterStep, KafkaSinkStep, MapStep
+from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
 from sentry_streams.pipeline.pipeline import Filter, Map, Pipeline
 
 
@@ -136,7 +136,7 @@ def test_sink() -> None:
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
     producer = mock.Mock(spec=Producer)
-    strategy = KafkaSinkStep(mapped_route, producer, "test_topic").build(next_strategy)
+    strategy = StreamSinkStep(mapped_route, producer, "test_topic").build(next_strategy)
 
     messages = [
         make_msg("test_val", mapped_route, 0),

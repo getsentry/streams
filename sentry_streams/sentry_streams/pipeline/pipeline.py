@@ -87,12 +87,12 @@ class Source(Step):
 
 
 @dataclass
-class KafkaSource(Source):
+class StreamSource(Source):
     """
     A Source which reads from Kafka.
     """
 
-    logical_topic: str
+    stream_name: str
     step_type: StepType = StepType.SOURCE
 
     def __post_init__(self) -> None:
@@ -123,12 +123,12 @@ class Sink(WithInput):
 
 
 @dataclass
-class KafkaSink(Sink):
+class StreamSink(Sink):
     """
     A Sink which specifically writes to Kafka.
     """
 
-    logical_topic: str
+    stream_name: str
     step_type: StepType = StepType.SINK
 
 
