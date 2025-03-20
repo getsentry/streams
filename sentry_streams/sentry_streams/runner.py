@@ -3,6 +3,8 @@ import logging
 import signal
 from typing import Any, cast
 
+import yaml
+
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
     RuntimeTranslator,
@@ -58,13 +60,6 @@ def main() -> None:
         help="The name of the Flink Job",
     )
     parser.add_argument(
-        "--broker",
-        "-b",
-        type=str,
-        default="kafka:9093",
-        help="The broker the job should connect to",
-    )
-    parser.add_argument(
         "--log-level",
         "-l",
         type=str,
@@ -83,6 +78,20 @@ def main() -> None:
             "The stream adapter to instantiate. It can be a value from "
             "the AdapterType enum or a fully qualified class name to "
             "load dynamically"
+        ),
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        help=(
+            "The deployment config file path. Each config file currently corresponds to a specific pipeline."
+        ),
+    )
+    parser.add_argument(
+        "-c",
+        action="store_true",
+        help=(
+            "Run the application in container mode (i.e non-dev/locally). Right now this is only supported by Flink."
         ),
     )
     parser.add_argument(
@@ -107,29 +116,13 @@ def main() -> None:
     with open(args.application) as f:
         exec(f.read(), pipeline_globals)
 
-    # TODO: read from yaml file
-    environment_config = {
-        "topics": {
-            "logical-events": "events",
-            "transformed-events": "transformed-events",
-            "transformed-events-2": "transformed-events-2",
-        },
-        "broker": args.broker,
-        "sources_config": {
-            "myinput": {
-                "bootstrap_servers": [args.broker],
-                "auto_offset_reset": "latest",
-                "consumer_group": "test",
-                "additional_settings": {},
-            }
-        },
-        "sinks_config": {
-            "kafkasink": {
-                "bootstrap_servers": [args.broker],
-                "additional_settings": {},
-            }
-        },
-    }
+    with open(args.config, "r") as config_file:
+        environment_config = yaml.safe_load(config_file)
+
+    if args.c:
+        # TODO: Make this configurable by runtime eventually
+        flink_config = environment_config["flink"]
+        environment_config["pipeline"].update(flink_config)
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
     runtime: Any = load_adapter(args.adapter, environment_config)

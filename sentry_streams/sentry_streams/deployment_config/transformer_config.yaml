@@ -1,0 +1,29 @@
+env:
+  topics:
+    events: events
+    transformed-events: transformed-events
+    transformed-events-2: transformed-events-2
+
+pipeline:
+  parallelism: 1
+  sources_config:
+    myinput:
+      bootstrap_servers: localhost:9092
+      consumer_group: python-test
+      auto_offset_reset: latest
+
+  sinks_config:
+    kafkasink:
+      bootstrap_servers: localhost:9092
+
+flink:
+  parallelism: 2
+  sources_config:
+    myinput:
+      bootstrap_servers: kafka:9093
+      consumer_group: python-test
+      auto_offset_reset: latest
+
+  sinks_config:
+    kafkasink:
+      bootstrap_servers: kafka:9093
