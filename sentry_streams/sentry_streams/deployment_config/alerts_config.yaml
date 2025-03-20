@@ -1,0 +1,25 @@
+env:
+  topics:
+    logical-events: events
+    transformed-events: transformed-events
+    transformed-events-2: transformed-events-2
+
+  adapters:
+    flink:
+      parallelism: 2
+
+pipeline:
+  sources_config:
+    myinput:
+      deserialization_schema: String
+      bootstrap_servers: kafka:9093
+      consumer_group: python-test
+
+  sinks_config:
+    kafkasink:
+      bootstrap_servers: kafka:9093
+
+  steps_config:
+    reduce_config:
+      myreduce:
+        parallelism: 3

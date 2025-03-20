@@ -54,14 +54,15 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
     # performs serialization (e.g. Map --> Sink)
 
     def __init__(self, config: PipelineConfig, env: StreamExecutionEnvironment) -> None:
-        self.environment_config = config
+        self.environment_config = config["env"]
+        self.pipeline_config = config["pipeline"]
         self.env = env
 
     @classmethod
     def build(cls, config: PipelineConfig) -> Self:
         env = StreamExecutionEnvironment.get_execution_environment()
 
-        flink_config = config.get("flink", {})
+        flink_config = config["env"]["adapters"].get("flink", {})
 
         libs_path = flink_config.get("kafka_connect_lib_path")
         if libs_path is None:
@@ -81,6 +82,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return cls(config, env)
 
     def source(self, step: Source) -> DataStream:
+        source_config = self.pipeline_config["sources_config"][step.name]
+
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
@@ -91,20 +94,22 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             topics=self.environment_config["topics"][topic],
             deserialization_schema=deserialization_schema,
             properties={
-                "bootstrap.servers": self.environment_config["broker"],
-                "group.id": "python-flink-consumer",
+                "bootstrap.servers": source_config["bootstrap_servers"],
+                "group.id": source_config["consumer_group"],
             },
         )
 
         return self.env.add_source(kafka_consumer)
 
     def sink(self, step: Sink, stream: DataStream) -> DataStreamSink:
+        sink_config = self.pipeline_config["sinks_config"][step.name]
+
         assert hasattr(step, "logical_topic")
         topic = step.logical_topic
 
         sink = (
             KafkaSink.builder()
-            .set_bootstrap_servers(self.environment_config["broker"])
+            .set_bootstrap_servers(sink_config["bootstrap_servers"])
             .set_record_serializer(
                 KafkaRecordSerializationSchema.builder()
                 .set_topic(
@@ -158,7 +163,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: DataStream,
     ) -> DataStream:
-        parallelism = self.environment_config["steps"][step.name]["parallelism"]
+        reduce_config = self.pipeline_config["steps_config"]["reduce_config"][step.name]
         agg = step.aggregate_fn
         windowing = step.windowing
 
@@ -194,7 +199,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
                 if is_standard_type(return_type)
                 else translate_custom_type(return_type)
             ),
-        ).set_parallelism(parallelism)
+        ).set_parallelism(reduce_config["parallelism"])
 
     def run(self) -> None:
         self.env.execute()

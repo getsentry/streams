@@ -56,13 +56,6 @@ def main() -> None:
         help="The name of the Flink Job",
     )
     parser.add_argument(
-        "--broker",
-        "-b",
-        type=str,
-        default="kafka:9093",
-        help="The broker the job should connect to",
-    )
-    parser.add_argument(
         "--adapter",
         "-a",
         type=str,
@@ -76,17 +69,19 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--config",
+        type=str,
+        help=(
+            "The deployment config file path. Each config file currently corresponds to a specific pipeline."
+        ),
+    )
+    parser.add_argument(
         "application",
         type=str,
         help=(
             "The Sentry Stream application file. This has to be relative "
             "to the path mounted in the job manager as the /apps directory."
         ),
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        help=("The config file path"),
     )
 
     pipeline_globals: dict[str, Any] = {}
