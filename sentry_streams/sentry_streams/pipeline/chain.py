@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from sentry_streams.pipeline.pipeline import Pipeline, KafkaSource, Step, Map
-from typing import Union, Callable, TypeVar, Any, Sequence, Mapping, Iterable
+from typing import Any, Callable, Iterable, Mapping, Sequence, TypeVar, Union
+
+from sentry_streams.pipeline.pipeline import KafkaSource, Map, Pipeline, Step
 
 T = TypeVar("T")
 function_ref = Union[Callable[..., T], str]
