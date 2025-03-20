@@ -87,7 +87,13 @@ def main() -> None:
             "The deployment config file path. Each config file currently corresponds to a specific pipeline."
         ),
     )
-    parser.add_argument("-c", action="store_true")
+    parser.add_argument(
+        "-c",
+        action="store_true",
+        help=(
+            "Run the application in container mode (i.e non-dev/locally). Right now this is only supported by Flink."
+        ),
+    )
     parser.add_argument(
         "application",
         type=str,
@@ -114,10 +120,9 @@ def main() -> None:
         environment_config = yaml.safe_load(config_file)
 
     if args.c:
+        # TODO: Make this configurable by runtime eventually
         flink_config = environment_config["flink"]
         environment_config["pipeline"].update(flink_config)
-
-    print(environment_config)
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
     runtime: Any = load_adapter(args.adapter, environment_config)

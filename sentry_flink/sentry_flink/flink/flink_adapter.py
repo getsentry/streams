@@ -62,8 +62,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
     def build(cls, config: PipelineConfig) -> Self:
         env = StreamExecutionEnvironment.get_execution_environment()
 
-        # flink_config = config.get("flink", {})
-
         libs_path = config.get("kafka_connect_lib_path")
         if libs_path is None:
             libs_path = os.environ.get("FLINK_LIBS")
