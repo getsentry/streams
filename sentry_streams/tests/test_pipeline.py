@@ -2,15 +2,16 @@ from typing import Any, Callable, Union
 
 import pytest
 
-from sentry_streams.examples.broadcast import pipeline as broadcast_pipeline
 from sentry_streams.pipeline.pipeline import (
+    Branch,
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
+    Router,
     Step,
     StepType,
+    StreamSink,
+    StreamSource,
     TransformStep,
 )
 
@@ -18,16 +19,16 @@ from sentry_streams.pipeline.pipeline import (
 @pytest.fixture
 def pipeline() -> Pipeline:
     pipeline = Pipeline()
-    source = KafkaSource(
+    source = StreamSource(
         name="source",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
-    source2 = KafkaSource(
+    source2 = StreamSource(
         name="source2",
         ctx=pipeline,
-        logical_topic="anotehr-logical-events",
+        stream_name="anotehr-logical-events",
     )
 
     filter = Filter(
@@ -58,11 +59,29 @@ def pipeline() -> Pipeline:
         function=simple_map,
     )
 
-    KafkaSink(
-        name="kafkasink",
+    router = Router(
+        name="router",
         ctx=pipeline,
-        inputs=[map, map2],
-        logical_topic="transformed-events",
+        inputs=[map2],
+        routing_table={
+            "branch1": Branch(name="branch1", ctx=pipeline),
+            "branch2": Branch(name="branch2", ctx=pipeline),
+        },
+        routing_function=simple_router,
+    )
+
+    StreamSink(
+        name="kafkasink1",
+        ctx=pipeline,
+        inputs=[router.routing_table["branch1"]],
+        stream_name="transformed-events",
+    )
+
+    StreamSink(
+        name="kafkasink2",
+        ctx=pipeline,
+        inputs=[router.routing_table["branch2"]],
+        stream_name="transformed-events-2",
     )
     return pipeline
 
@@ -77,6 +96,11 @@ def simple_map(value: str) -> str:
     return "nothing"
 
 
+def simple_router(value: str) -> str:
+    # does nothing because it's not needed for tests
+    return "branch1"
+
+
 def test_register_step(pipeline: Pipeline) -> None:
     step = Step("new_step", pipeline)
     assert "new_step" in pipeline.steps
@@ -86,19 +110,19 @@ def test_register_step(pipeline: Pipeline) -> None:
 def test_register_edge(pipeline: Pipeline) -> None:
     # when there is only one step going to the next step
     assert pipeline.incoming_edges["map"] == ["filter"]
-    assert pipeline.outgoing_edges["map2"] == ["kafkasink"]
+    assert pipeline.outgoing_edges["branch2"] == ["kafkasink2"]
     # when one step fans out to multiple steps
     assert pipeline.incoming_edges["map2"] == ["filter", "map"]
     assert pipeline.outgoing_edges["filter"] == ["filter2", "map", "map2"]
     # when multiple steps fan into one step
     assert pipeline.incoming_edges["filter"] == ["source", "source2"]
     assert pipeline.outgoing_edges["filter"] == ["filter2", "map", "map2"]
-
-
-def test_broadcast_branches() -> None:
-    assert broadcast_pipeline.outgoing_edges["no_op_map"] == ["hello_map", "goodbye_map"]
-    assert broadcast_pipeline.incoming_edges["hello_map"] == ["no_op_map"]
-    assert broadcast_pipeline.incoming_edges["goodbye_map"] == ["no_op_map"]
+    # when a router splits the stream into multiple branches
+    assert pipeline.outgoing_edges["router"] == ["branch1", "branch2"]
+    assert pipeline.outgoing_edges["branch1"] == ["kafkasink1"]
+    assert pipeline.outgoing_edges["branch2"] == ["kafkasink2"]
+    assert pipeline.incoming_edges["branch1"] == ["router"]
+    assert pipeline.incoming_edges["branch2"] == ["router"]
 
 
 def test_register_source(pipeline: Pipeline) -> None:

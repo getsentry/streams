@@ -12,7 +12,7 @@ from sentry_streams.adapters.arroyo.consumer import (
     ArroyoStreamingFactory,
 )
 from sentry_streams.adapters.arroyo.routes import Route
-from sentry_streams.adapters.arroyo.steps import FilterStep, KafkaSinkStep, MapStep
+from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
 from sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
@@ -61,7 +61,7 @@ def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> 
         )
     )
     consumer.add_step(
-        KafkaSinkStep(
+        StreamSinkStep(
             route=Route(source="source1", waypoints=[]),
             producer=broker.get_producer(),
             topic_name="transformed-events",
