@@ -1,3 +1,34 @@
+## 0.0.12
+
+### Various fixes & improvements
+
+- Make streams less Kafkaesque (#79) by @fpacifici
+- feat: add router primitive to sentry_streams (#61) by @bmckerry
+- Adapte the runner to run the Arroyo adapter (#78) by @fpacifici
+- feat: Add Batching, FlatMap support in Flink (#63) by @ayirr7
+- release: 0.0.11 (10938dc8) by @getsentry-bot
+- ref: Remove Unbatch, flesh out Reduce ABC (#70) by @ayirr7
+- Add an Arroyo Adapter (#68) by @fpacifici
+- release: 0.0.10 (223d4b5c) by @getsentry-bot
+- feat: Add a Batch, Unbatch, FlatMap primitive (#62) by @ayirr7
+- release: 0.0.9 (f4063d22) by @getsentry-bot
+- ref(sentry_streams): add function to TransformStep class (#60) by @victoria-yining-huang
+- fix(env): Fix global envrc, one envrc per subproject (#66) by @untitaker
+- feat(api): add broadcast functionality (#32) by @bmckerry
+- add more unittests for Pipeline class (#56) by @victoria-yining-huang
+- fix: Remove extra function declarations (#58) by @ayirr7
+- release: 0.0.8 (42a87850) by @getsentry-bot
+- fix: sentry_streams lib structure (#57) by @ayirr7
+- release: 0.0.7 (06db3f7e) by @getsentry-bot
+- feat: Add windowing and aggregation (#18) by @ayirr7
+- release: 0.0.6 (4493198e) by @getsentry-bot
+- ref: split user_functions (#53) by @bmckerry
+- add unittest to Pipeline class (#52) by @victoria-yining-huang
+- release: 0.0.5 (781d1a93) by @getsentry-bot
+- Fix the package lookup (#50) by @fpacifici
+
+_Plus 5 more_
+
 ## 0.0.11
 
 ### Various fixes & improvements

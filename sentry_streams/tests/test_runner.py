@@ -9,10 +9,10 @@ from sentry_streams.dummy.dummy_adapter import DummyAdapter
 from sentry_streams.pipeline.pipeline import (
     Branch,
     Filter,
-    KafkaSource,
     Map,
     Pipeline,
     Router,
+    StreamSource,
 )
 from sentry_streams.runner import iterate_edges
 
@@ -25,10 +25,10 @@ class RouterBranch(Enum):
 @pytest.fixture
 def create_pipeline() -> Pipeline:
     test_pipeline = Pipeline()
-    source1 = KafkaSource(
+    source1 = StreamSource(
         name="source1",
         ctx=test_pipeline,
-        logical_topic="foo",
+        stream_name="foo",
     )
     map1 = Map(
         name="map1",

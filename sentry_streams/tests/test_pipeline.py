@@ -5,13 +5,13 @@ import pytest
 from sentry_streams.pipeline.pipeline import (
     Branch,
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
     Router,
     Step,
     StepType,
+    StreamSink,
+    StreamSource,
     TransformStep,
 )
 
@@ -19,16 +19,16 @@ from sentry_streams.pipeline.pipeline import (
 @pytest.fixture
 def pipeline() -> Pipeline:
     pipeline = Pipeline()
-    source = KafkaSource(
+    source = StreamSource(
         name="source",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
-    source2 = KafkaSource(
+    source2 = StreamSource(
         name="source2",
         ctx=pipeline,
-        logical_topic="another-logical-events",
+        stream_name="anotehr-logical-events",
     )
 
     filter = Filter(
@@ -70,18 +70,18 @@ def pipeline() -> Pipeline:
         routing_function=simple_router,
     )
 
-    KafkaSink(
+    StreamSink(
         name="kafkasink1",
         ctx=pipeline,
         inputs=[router.routing_table["branch1"]],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
-    KafkaSink(
+    StreamSink(
         name="kafkasink2",
         ctx=pipeline,
         inputs=[router.routing_table["branch2"]],
-        logical_topic="transformed-events-2",
+        stream_name="transformed-events-2",
     )
     return pipeline
 
