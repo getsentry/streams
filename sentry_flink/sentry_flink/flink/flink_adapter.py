@@ -62,9 +62,9 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
     def build(cls, config: PipelineConfig) -> Self:
         env = StreamExecutionEnvironment.get_execution_environment()
 
-        flink_config = config["env"]["adapters"].get("flink", {})
+        # flink_config = config.get("flink", {})
 
-        libs_path = flink_config.get("kafka_connect_lib_path")
+        libs_path = config.get("kafka_connect_lib_path")
         if libs_path is None:
             libs_path = os.environ.get("FLINK_LIBS")
 
@@ -77,7 +77,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             )
             env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
 
-        env.set_parallelism(flink_config.get("parallelism", 1))
+        env.set_parallelism(config["pipeline"].get("parallelism", 1))
 
         return cls(config, env)
 
@@ -163,7 +163,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: DataStream,
     ) -> DataStream:
-        reduce_config = self.pipeline_config["steps_config"]["reduce_config"][step.name]
+        reduce_config = self.pipeline_config["reduce_config"][step.name]
         agg = step.aggregate_fn
         windowing = step.windowing
 
@@ -203,3 +203,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def run(self) -> None:
         self.env.execute()
+
+    def shutdown(self) -> None:
+        raise NotImplementedError

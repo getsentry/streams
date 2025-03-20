@@ -26,6 +26,10 @@ def parse(msg: str) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], parsed)
 
 
+def jsonify_msg(msg: Mapping[str, Any]) -> str:
+    return dumps(msg)
+
+
 pipeline = Pipeline()
 
 source = KafkaSource(
@@ -40,7 +44,7 @@ filter = Filter(
     name="myfilter", ctx=pipeline, inputs=[parser], function=lambda msg: msg["type"] == "event"
 )
 
-jsonify = Map(name="serializer", ctx=pipeline, inputs=[filter], function=lambda msg: dumps(msg))
+jsonify = Map(name="serializer", ctx=pipeline, inputs=[filter], function=jsonify_msg)
 
 sink = KafkaSink(
     name="kafkasink",

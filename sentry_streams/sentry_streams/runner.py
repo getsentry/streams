@@ -87,6 +87,7 @@ def main() -> None:
             "The deployment config file path. Each config file currently corresponds to a specific pipeline."
         ),
     )
+    parser.add_argument("-c", action="store_true")
     parser.add_argument(
         "application",
         type=str,
@@ -111,6 +112,12 @@ def main() -> None:
 
     with open(args.config, "r") as config_file:
         environment_config = yaml.safe_load(config_file)
+
+    if args.c:
+        flink_config = environment_config["flink"]
+        environment_config["pipeline"].update(flink_config)
+
+    print(environment_config)
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
     runtime: Any = load_adapter(args.adapter, environment_config)

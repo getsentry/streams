@@ -1,11 +1,11 @@
 env:
   topics:
-    logical-events: events
+    events: events
     transformed-events: transformed-events
     transformed-events-2: transformed-events-2
 
-# These are intended to be runtime-agnostic config
 pipeline:
+  parallelism: 1
   sources_config:
     myinput:
       bootstrap_servers: localhost:9092
@@ -15,10 +15,6 @@ pipeline:
   sinks_config:
     kafkasink:
       bootstrap_servers: localhost:9092
-
-  reduce_config:
-    myreduce:
-      parallelism: 3
 
 flink:
   parallelism: 2
@@ -31,7 +27,3 @@ flink:
   sinks_config:
     kafkasink:
       bootstrap_servers: kafka:9093
-
-  reduce_config:
-    myreduce:
-      parallelism: 3

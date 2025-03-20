@@ -80,6 +80,7 @@ def main() -> int:
             args.adapter,
             "--config",
             f"/apps/{args.config}",
+            "-c",
         ]
     )
 

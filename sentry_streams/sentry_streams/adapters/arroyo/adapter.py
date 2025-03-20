@@ -116,10 +116,10 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
     @classmethod
     def build(cls, config: PipelineConfig) -> Self:
         return cls(
-            config["sources_config"],
-            config["sinks_config"],
-            config.get("sources_override", {}),
-            config.get("sinks_override", {}),
+            config["pipeline"]["sources_config"],
+            config["pipeline"]["sinks_config"],
+            config["pipeline"].get("sources_override", {}),
+            config["pipeline"].get("sinks_override", {}),
         )
 
     def source(self, step: Source) -> Route:
