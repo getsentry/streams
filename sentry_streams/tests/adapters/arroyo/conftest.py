@@ -29,7 +29,7 @@ def pipeline() -> Pipeline:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream="logical-events",
+        stream_name="logical-events",
     )
     decoder = Map(
         name="decoder",
@@ -50,7 +50,7 @@ def pipeline() -> Pipeline:
         name="kafkasink",
         ctx=pipeline,
         inputs=[map],
-        stream="transformed-events",
+        stream_name="transformed-events",
     )
 
     return pipeline

@@ -28,7 +28,7 @@ def create_pipeline() -> Pipeline:
     source1 = StreamSource(
         name="source1",
         ctx=test_pipeline,
-        stream="foo",
+        stream_name="foo",
     )
     map1 = Map(
         name="map1",

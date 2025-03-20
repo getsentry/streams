@@ -19,7 +19,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="ingest",
     ctx=pipeline,
-    stream="logical-events",
+    stream_name="logical-events",
 )
 
 unpack_msg = Map(
@@ -58,19 +58,19 @@ sbc_sink = StreamSink(
     name="sbc_sinkStreamSource",
     ctx=pipeline,
     inputs=[dump_msg_recent],
-    stream="transformed-events",
+    stream_name="transformed-events",
 )
 
 clickhouse_sink = StreamSink(
     name="clickhouse_sinkStreamSource",
     ctx=pipeline,
     inputs=[dump_msg_recent],
-    stream="transformed-eventStreamSource-2",
+    stream_name="transformed-eventStreamSource-2",
 )
 
 delayed_msg_sink = StreamSink(
     name="delayed_msg_sinkStreamSource",
     ctx=pipeline,
     inputs=[dump_msg_delayed],
-    stream="transformed-eventStreamSourceStreamSource",
+    stream_name="transformed-eventStreamSourceStreamSource",
 )

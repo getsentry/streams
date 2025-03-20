@@ -20,7 +20,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    stream="logical-events",
+    stream_name="logical-events",
 )
 
 filter = Filter(
@@ -55,5 +55,5 @@ sink = StreamSink(
     name="kafkasink",
     ctx=pipeline,
     inputs=[reduce],
-    stream="transformed-events",
+    stream_name="transformed-events",
 )

@@ -22,13 +22,13 @@ def pipeline() -> Pipeline:
     source = StreamSource(
         name="source",
         ctx=pipeline,
-        stream="logical-events",
+        stream_name="logical-events",
     )
 
     source2 = StreamSource(
         name="source2",
         ctx=pipeline,
-        stream="anotehr-logical-events",
+        stream_name="anotehr-logical-events",
     )
 
     filter = Filter(
@@ -74,14 +74,14 @@ def pipeline() -> Pipeline:
         name="kafkasink1",
         ctx=pipeline,
         inputs=[router.routing_table["branch1"]],
-        stream="transformed-events",
+        stream_name="transformed-events",
     )
 
     StreamSink(
         name="kafkasink2",
         ctx=pipeline,
         inputs=[router.routing_table["branch2"]],
-        stream="transformed-events-2",
+        stream_name="transformed-events-2",
     )
     return pipeline
 

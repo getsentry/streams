@@ -31,7 +31,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    stream="logical-events",
+    stream_name="logical-events",
 )
 
 # User simply provides the batch size
@@ -46,5 +46,5 @@ sink = StreamSink(
     name="kafkasink",
     ctx=pipeline,
     inputs=[map],
-    stream="transformed-events",
+    stream_name="transformed-events",
 )

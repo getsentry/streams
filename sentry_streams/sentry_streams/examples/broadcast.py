@@ -11,7 +11,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    stream="logical-events",
+    stream_name="logical-events",
 )
 
 map = Map(
@@ -39,12 +39,12 @@ hello_sink = StreamSink(
     name="hello_sink",
     ctx=pipeline,
     inputs=[hello_map],
-    stream="transformed-events",
+    stream_name="transformed-events",
 )
 
 goodbye_sink = StreamSink(
     name="goodbye_sink",
     ctx=pipeline,
     inputs=[goodbye_map],
-    stream="transformed-events-2",
+    stream_name="transformed-events-2",
 )

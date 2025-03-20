@@ -92,7 +92,7 @@ class StreamSource(Source):
     A Source which reads from Kafka.
     """
 
-    stream: str
+    stream_name: str
     step_type: StepType = StepType.SOURCE
 
     def __post_init__(self) -> None:
@@ -128,7 +128,7 @@ class StreamSink(Sink):
     A Sink which specifically writes to Kafka.
     """
 
-    stream: str
+    stream_name: str
     step_type: StepType = StepType.SINK
 
 

@@ -86,7 +86,7 @@ class StreamSources:
                 )
             )
 
-        self.__source_topics[source_name] = Topic(step.stream)
+        self.__source_topics[source_name] = Topic(step.stream_name)
 
     def get_topic(self, source: str) -> Topic:
         return self.__source_topics[source]
@@ -167,7 +167,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         ), f"Stream starting at source {stream.source} not found when adding a producer"
 
         self.__consumers[stream.source].add_step(
-            StreamSinkStep(route=stream, producer=producer, topic_name=step.stream)
+            StreamSinkStep(route=stream, producer=producer, topic_name=step.stream_name)
         )
 
         return stream

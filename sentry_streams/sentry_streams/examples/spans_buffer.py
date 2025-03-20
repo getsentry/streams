@@ -15,7 +15,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    stream="logical-events",
+    stream_name="logical-events",
 )
 
 map = Map(
@@ -54,5 +54,5 @@ sink = StreamSink(
     name="kafkasink",
     ctx=pipeline,
     inputs=[map_str],
-    stream="transformed-events",
+    stream_name="transformed-events",
 )
