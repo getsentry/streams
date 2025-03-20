@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, MutableMapping, TypedDict
+from typing import Any, Mapping, MutableMapping, Self, TypedDict
 
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
@@ -28,6 +28,8 @@ from sentry_streams.pipeline.pipeline import (
     KafkaSource,
     Map,
     Reduce,
+    Router,
+    RoutingFuncReturnType,
     Sink,
     Source,
 )
@@ -94,7 +96,6 @@ class KafkaSources:
 
 
 class ArroyoAdapter(StreamAdapter[Route, Route]):
-
     def __init__(
         self,
         sources_config: Mapping[str, KafkaConsumerConfig],
@@ -111,9 +112,10 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self.__sinks: MutableMapping[str, Any] = {**sinks_override}
 
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
+        self.__processors: Mapping[str, StreamProcessor[KafkaPayload]] = {}
 
     @classmethod
-    def build(cls, config: PipelineConfig) -> ArroyoAdapter:
+    def build(cls, config: PipelineConfig) -> Self:
         return cls(
             config["sources_config"],
             config["sinks_config"],
@@ -204,7 +206,17 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         stream: Route,
     ) -> Route:
         """
-        Build a map operator for the platform the adapter supports.
+        Build a reduce operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    def router(
+        self,
+        step: Router[RoutingFuncReturnType],
+        stream: Route,
+    ) -> Mapping[str, Route]:
+        """
+        Build a router operator for the platform the adapter supports.
         """
         raise NotImplementedError
 
@@ -212,21 +224,36 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Returns the stream processor for the given source.
         """
-        factory = ArroyoStreamingFactory(self.__consumers[source])
+        return self.__processors[source]
 
-        return StreamProcessor(
-            consumer=self.__sources.get_consumer(source),
-            topic=self.__sources.get_topic(source),
-            processor_factory=factory,
-        )
+    def create_processors(self) -> None:
+        self.__processors = {
+            source: StreamProcessor(
+                consumer=self.__sources.get_consumer(source),
+                topic=self.__sources.get_topic(source),
+                processor_factory=ArroyoStreamingFactory(consumer),
+            )
+            for source, consumer in self.__consumers.items()
+        }
 
     def run(self) -> None:
         """
         Starts the pipeline
         """
         # TODO: Support multiple consumers
+        self.create_processors()
         assert len(self.__consumers) == 1, "Only one consumer is supported"
         source = next(iter(self.__consumers))
 
-        processor = self.get_processor(source)
+        processor = self.__processors[source]
         processor.run()
+
+    def shutdown(self) -> None:
+        """
+        Shutdown the arroyo processors allowing them to terminate the inflight
+        work.
+        """
+        assert len(self.__consumers) == 1, "Only one consumer is supported"
+        source = next(iter(self.__consumers))
+        processor = self.__processors[source]
+        processor.signal_shutdown()

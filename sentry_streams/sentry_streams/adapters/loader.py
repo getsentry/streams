@@ -32,6 +32,17 @@ def load_adapter(adapter_type: str, config: PipelineConfig) -> StreamAdapter[Str
         from sentry_streams.dummy.dummy_adapter import DummyAdapter
 
         return DummyAdapter.build(config)
+    if adapter_type == "arroyo":
+        from sentry_streams.adapters.arroyo import ArroyoAdapter
+
+        # TODO: The runner deserves a refactoring. The way it is designed
+        # it is impossible to create adapters that materialize the type of
+        # the `Stream` generic and be able to return a generic here. In order
+        # to make it possible the generic would have to be covariant. But we
+        # use the generic attribute both as a parameter and return value.
+        # So we need to move responsibilities from iterate_edges to the adapter
+        # to have a sane type structure.
+        return cast(StreamAdapter[Stream, Sink], ArroyoAdapter.build(config))
     else:
         mod, cls = adapter_type.rsplit(".", 1)
 
