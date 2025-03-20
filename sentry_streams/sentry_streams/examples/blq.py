@@ -6,20 +6,20 @@ from sentry_streams.examples.blq_fn import (
 )
 from sentry_streams.pipeline.pipeline import (
     Branch,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
     Router,
+    StreamSink,
+    StreamSource,
 )
 
 # pipeline: special name
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="ingest",
     ctx=pipeline,
-    logical_topic="logical-events",
+    stream="logical-events",
 )
 
 unpack_msg = Map(
@@ -54,23 +54,23 @@ dump_msg_delayed = Map(
     function=json_dump_message,
 )
 
-sbc_sink = KafkaSink(
-    name="sbc_sink",
+sbc_sink = StreamSink(
+    name="sbc_sinkStreamSource",
     ctx=pipeline,
     inputs=[dump_msg_recent],
-    logical_topic="transformed-events",
+    stream="transformed-events",
 )
 
-clickhouse_sink = KafkaSink(
-    name="clickhouse_sink",
+clickhouse_sink = StreamSink(
+    name="clickhouse_sinkStreamSource",
     ctx=pipeline,
     inputs=[dump_msg_recent],
-    logical_topic="transformed-events-2",
+    stream="transformed-eventStreamSource-2",
 )
 
-delayed_msg_sink = KafkaSink(
-    name="delayed_msg_sink",
+delayed_msg_sink = StreamSink(
+    name="delayed_msg_sinkStreamSource",
     ctx=pipeline,
     inputs=[dump_msg_delayed],
-    logical_topic="transformed-events-3",
+    stream="transformed-eventStreamSourceStreamSource",
 )
