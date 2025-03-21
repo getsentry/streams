@@ -222,9 +222,10 @@ def get_router_message_type(routing_func: Callable[..., RoutingFuncReturnType]) 
         assert (
             len(routing_func_attr) == 1
         ), f"Routing functions should only have a single parameter, got multiple: {routing_func_attr}"
-        return list(routing_func_attr.values())[0]
+        message_type: type = list(routing_func_attr.values())[0]
     else:
-        return Any
+        message_type = object
+    return message_type
 
 
 class FlinkRoutingFunction(ProcessFunction):
