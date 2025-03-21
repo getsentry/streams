@@ -356,7 +356,7 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -381,14 +381,14 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
         name="kafkasink_1",
         ctx=pipeline,
         inputs=[router.routing_table["branch_1"]],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     _ = StreamSink(
         name="kafkasink_2",
         ctx=pipeline,
         inputs=[router.routing_table["branch_2"]],
-        logical_topic="transformed-events-2",
+        stream_name="transformed-events-2",
     )
 
     expected = {
@@ -431,7 +431,8 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
 
 
 @pytest.mark.parametrize(
-    "pipeline,expected_plan", [basic(), basic_map(), basic_filter(), basic_map_reduce()]
+    "pipeline,expected_plan",
+    [basic(), basic_map(), basic_filter(), basic_map_reduce(), basic_router()],
 )
 def test_pipeline(
     setup_basic_flink_env: tuple[

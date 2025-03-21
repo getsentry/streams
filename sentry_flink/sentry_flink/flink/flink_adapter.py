@@ -1,11 +1,9 @@
 import os
 from typing import (
     Any,
-    Callable,
     MutableMapping,
     Self,
     Union,
-    cast,
     get_type_hints,
 )
 
@@ -206,12 +204,15 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> MutableMapping[str, Any]:
         routing_table = step.routing_table
-        routing_func = cast(Callable[..., RoutingFuncReturnType], step.routing_function)
+        routing_func = step.routing_function
 
         # routing functions should only have a single parameter since we're using
         # Flink's ProcessFunction which only takes a single value as input
         routing_func_attr = routing_func.__annotations__
         del routing_func_attr["return"]
+        assert (
+            len(routing_func_attr) == 1
+        ), f"Routing functions should only have a single parameter, got multiple: {routing_func_attr}"
         message_type = list(routing_func_attr.values())[0]
 
         output_tags = {
