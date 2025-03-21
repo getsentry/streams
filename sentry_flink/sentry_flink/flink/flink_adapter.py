@@ -213,22 +213,21 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         output_tags = {
             key: OutputTag(
-                tag_id=routing_table[key].name,
+                tag_id=route.name,
                 type_info=(
                     translate_to_flink_type(message_type)
                     if is_standard_type(message_type)
                     else translate_custom_type(message_type)
                 ),
             )
-            for key in routing_table
+            for key, route in routing_table.items()
         }
         routing_process_func = FlinkRoutingFunction(routing_func, output_tags)
-        routing_stream = stream.process(routing_process_func)
+        routed_stream = stream.process(routing_process_func)
 
-        routes_map: MutableMapping[str, Any] = {}
-        for key in output_tags:
-            routes_map[output_tags[key].tag_id] = routing_stream.get_side_output(output_tags[key])
-        return routes_map
+        return {
+            route.tag_id: routed_stream.get_side_output(route) for route in output_tags.values()
+        }
 
     def shutdown(self) -> None:
         raise NotImplementedError

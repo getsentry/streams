@@ -216,13 +216,13 @@ def get_router_message_type(routing_func: Callable[..., RoutingFuncReturnType]) 
     so we assume the type of the message can be anything.
     """
     routing_func_attr = routing_func.__annotations__
-    if routing_func_attr:
-        if "return" in routing_func_attr:
-            del routing_func_attr["return"]
+    routing_func_params = [key for key in routing_func_attr if key != "return"]
+    if routing_func_params:
         assert (
-            len(routing_func_attr) == 1
-        ), f"Routing functions should only have a single parameter, got multiple: {routing_func_attr}"
-        message_type: type = list(routing_func_attr.values())[0]
+            len(routing_func_params) == 1
+        ), f"Routing functions should only have a single parameter, got multiple: {routing_func_params}"
+        input_param_name = routing_func_params[0]
+        message_type: type = routing_func_attr[input_param_name]
     else:
         message_type = object
     return message_type
@@ -239,7 +239,7 @@ class FlinkRoutingFunction(ProcessFunction):
         self.output_tags = output_tags
 
     def process_element(
-        self, value: Any, ctx: "ProcessFunction.Context"
+        self, value: Any, ctx: ProcessFunction.Context
     ) -> Generator[tuple[OutputTag, Any], None, None]:
         output_stream = self.routing_func(value)
         output_label = self.output_tags[output_stream]
