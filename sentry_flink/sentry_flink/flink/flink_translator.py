@@ -1,6 +1,6 @@
 from datetime import timedelta
 from types import GeneratorType
-from typing import Any, Callable, Generic, Union, cast, get_args
+from typing import Any, Callable, Generic, TypeVar, Union, cast, get_args
 
 from pyflink.common import Time, TypeInformation, Types
 from pyflink.datastream.functions import AggregateFunction, KeySelector
@@ -26,6 +26,8 @@ from sentry_streams.pipeline.window import (
     TumblingWindow,
     Window,
 )
+
+RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
 
 FLINK_TYPE_MAP: dict[Any, Any] = {
     tuple[str, int]: (Types.TUPLE, [Types.STRING, Types.INT]),
@@ -162,7 +164,6 @@ def to_flink_time(timestamp: timedelta) -> Time:
 
 
 def build_flink_window(streams_window: Window[MeasurementUnit]) -> WindowAssigner[Any, Any]:
-
     match streams_window:
         case SlidingWindow(window_size, window_slide):
             match (window_size, window_slide):

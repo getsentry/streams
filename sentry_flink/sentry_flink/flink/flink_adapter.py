@@ -1,5 +1,5 @@
 import os
-from typing import Self, TypeVar, Union, get_type_hints
+from typing import Mapping, Self, TypeVar, Union, get_type_hints
 
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
@@ -27,6 +27,7 @@ from sentry_streams.pipeline.pipeline import (
     FlatMap,
     Map,
     Reduce,
+    Router,
     Sink,
     Source,
 )
@@ -35,6 +36,7 @@ from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_flink.flink.flink_translator import (
     FlinkAggregate,
     FlinkGroupBy,
+    RoutingFuncReturnType,
     build_flink_window,
     is_standard_type,
     translate_custom_type,
@@ -194,6 +196,16 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
                 else translate_custom_type(return_type)
             ),
         )
+
+    def router(
+        self,
+        step: Router[RoutingFuncReturnType],
+        stream: DataStream,
+    ) -> Mapping[str, DataStream]:
+        raise NotImplementedError
+
+    def shutdown(self) -> None:
+        raise NotImplementedError
 
     def run(self) -> None:
         self.env.execute()
