@@ -212,7 +212,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         if "return" in routing_func_attr:
             del routing_func_attr["return"]
         assert (
-            len(routing_func_attr) == 1
+            len(routing_func_attr) <= 1
         ), f"Routing functions should only have a single parameter, got multiple: {routing_func_attr}"
         message_type = list(routing_func_attr.values())[0]
 
