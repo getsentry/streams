@@ -3,7 +3,11 @@ from typing import Any, Generator, MutableMapping
 
 import pytest
 from pyflink.datastream import DataStream, DataStreamSink, StreamExecutionEnvironment
-from sentry_streams.adapters.stream_adapter import RuntimeTranslator, Stream, StreamSink
+from sentry_streams.adapters.stream_adapter import (
+    RuntimeTranslator,
+    StreamSinkT,
+    StreamT,
+)
 from sentry_streams.examples.word_counter_fn import (
     EventsPipelineFilterFunctions,
     EventsPipelineMapFunction,
@@ -13,10 +17,10 @@ from sentry_streams.examples.word_counter_fn import (
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
+    StreamSink,
+    StreamSource,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 from sentry_streams.runner import iterate_edges
@@ -49,17 +53,17 @@ def setup_basic_flink_env() -> (
 def basic() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[source],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -96,10 +100,10 @@ def basic() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
 def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -109,11 +113,11 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
         function=EventsPipelineMapFunction.simple_map,
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[map],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -158,10 +162,10 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
 def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     filter = Filter(
@@ -171,11 +175,11 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
         function=EventsPipelineFilterFunctions.simple_filter,
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[filter],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -220,10 +224,10 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
 def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -244,11 +248,11 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
         group_by_key=GroupByWord(),
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[reduce],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -348,7 +352,9 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
     "pipeline,expected_plan", [basic(), basic_map(), basic_filter(), basic_map_reduce()]
 )
 def test_pipeline(
-    setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator[Stream, StreamSink]],
+    setup_basic_flink_env: tuple[
+        StreamExecutionEnvironment, RuntimeTranslator[StreamT, StreamSinkT]
+    ],
     pipeline: Pipeline,
     expected_plan: MutableMapping[str, list[dict[str, Any]]],
 ) -> None:
@@ -362,10 +368,10 @@ def test_pipeline(
 def bad_import_map() -> Pipeline:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -375,18 +381,20 @@ def bad_import_map() -> Pipeline:
         function="sentry_streams.unknown_module.EventsPipelineFunctions.simple_map",
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[map],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     return pipeline
 
 
 def test_import(
-    setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator[Stream, StreamSink]],
+    setup_basic_flink_env: tuple[
+        StreamExecutionEnvironment, RuntimeTranslator[StreamT, StreamSinkT]
+    ],
     pipeline: Pipeline = bad_import_map(),
 ) -> None:
     _, translator = setup_basic_flink_env
