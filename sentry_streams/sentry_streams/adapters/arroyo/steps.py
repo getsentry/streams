@@ -14,7 +14,7 @@ from arroyo.types import (
 )
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.pipeline.pipeline import Filter, Map
+from sentry_streams.pipeline.pipeline import Filter, Map, Router, RoutingFuncReturnType
 
 
 @dataclass
@@ -95,10 +95,9 @@ class MapStep(ArroyoStep):
 @dataclass
 class FilterStep(ArroyoStep):
     """
-    Represent a Map transformation in the streaming pipeline.
-    This translates to a RunTask step in arroyo where a function
-    is provided to transform the message payload into a different
-    one.
+    Represents a Filter transformation in the streaming pipeline.
+    This translates to a RunTask step in arroyo where a message is filtered
+    based on the result of a filter function.
     """
 
     pipeline_step: Filter
@@ -117,6 +116,47 @@ class FilterStep(ArroyoStep):
                     if self.pipeline_step.resolved_function(payload.payload)
                     else FilteredPayload()
                 ),
+            )
+
+        return RunTask(
+            transformer,
+            next,
+        )
+
+
+@dataclass
+class RouterStep(ArroyoStep):
+    """
+    Represents a Router which can direct a message to one of multiple
+    downstream branches based on the output of a routing function.
+
+    Since Arroyo has no concept of 'branches', this updates the `waypoints` list within
+    a message's `Route` object based on the result of the routing function.
+    """
+
+    # TODO: fix generic typing here
+    pipeline_step: Router[RoutingFuncReturnType]  # type: ignore
+
+    def build(
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
+    ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
+        def append_branch_to_waypoints(
+            payload: RoutedValue,
+        ) -> RoutedValue:
+            routing_func = self.pipeline_step.routing_function
+            routing_table = self.pipeline_step.routing_table
+            branch = routing_func(payload.payload)
+            branch_name = routing_table[branch].name
+            payload.route.waypoints.append(branch_name)
+            return payload
+
+        def transformer(
+            message: Message[Union[FilteredPayload, RoutedValue]],
+        ) -> Union[FilteredPayload, RoutedValue]:
+            return process_message(
+                self.route,
+                message,
+                append_branch_to_waypoints,
             )
 
         return RunTask(
