@@ -15,7 +15,12 @@ from sentry_streams.adapters.arroyo.consumer import (
     ArroyoStreamingFactory,
 )
 from sentry_streams.adapters.arroyo.routes import Route
-from sentry_streams.adapters.arroyo.steps import FilterStep, KafkaSinkStep, MapStep
+from sentry_streams.adapters.arroyo.steps import (
+    FilterStep,
+    KafkaSinkStep,
+    MapStep,
+    RouterStep,
+)
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import (
     InputType,
@@ -217,6 +222,10 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a router operator for the platform the adapter supports.
         """
+        assert (
+            stream.source in self.__consumers
+        ), f"Stream starting at source {stream.source} not found when adding a filter"
+        self.__consumers[stream.source].add_step(RouterStep(route=stream, pipeline_step=step))
         raise NotImplementedError
 
     def get_processor(self, source: str) -> StreamProcessor[KafkaPayload]:

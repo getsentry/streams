@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, List
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,7 @@ class Route:
     """
 
     source: str
-    waypoints: Sequence[str]
+    waypoints: List[str]
 
 
 @dataclass(frozen=True)
