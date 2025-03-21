@@ -56,14 +56,14 @@ def basic() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[source],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -103,7 +103,7 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -117,7 +117,7 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
         name="kafkasink",
         ctx=pipeline,
         inputs=[map],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -165,7 +165,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     filter = Filter(
@@ -179,7 +179,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
         name="kafkasink",
         ctx=pipeline,
         inputs=[filter],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -227,7 +227,7 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -252,7 +252,7 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
         name="kafkasink",
         ctx=pipeline,
         inputs=[reduce],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -371,7 +371,7 @@ def bad_import_map() -> Pipeline:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -385,7 +385,7 @@ def bad_import_map() -> Pipeline:
         name="kafkasink",
         ctx=pipeline,
         inputs=[map],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     return pipeline

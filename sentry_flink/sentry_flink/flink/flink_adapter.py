@@ -81,8 +81,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return cls(config, env)
 
     def source(self, step: Source) -> DataStream:
-        assert hasattr(step, "logical_topic")
-        topic = step.logical_topic
+        assert hasattr(step, "stream_name")
+        topic = step.stream_name
 
         deserialization_schema = SimpleStringSchema()
 
@@ -99,8 +99,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return self.env.add_source(kafka_consumer)
 
     def sink(self, step: Sink, stream: DataStream) -> DataStreamSink:
-        assert hasattr(step, "logical_topic")
-        topic = step.logical_topic
+        assert hasattr(step, "stream_name")
+        topic = step.stream_name
 
         sink = (
             KafkaSink.builder()
