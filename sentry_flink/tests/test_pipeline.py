@@ -41,6 +41,7 @@ def setup_basic_flink_env() -> (
         "topics": {
             "logical-events": "events",
             "transformed-events": "transformed-events",
+            "transformed-events-2": "transformed-events-2",
         },
         "broker": "localhost:9092",
     }

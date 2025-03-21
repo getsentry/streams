@@ -207,6 +207,26 @@ def build_flink_window(streams_window: Window[MeasurementUnit]) -> WindowAssigne
             raise TypeError(f"{streams_window} is not a supported Window type")
 
 
+def get_router_message_type(routing_func: Callable[..., RoutingFuncReturnType]) -> type:
+    """
+    We have to derive the type of the messages being passed through a Router
+    by looking at the type of the routing function's input parameter.
+
+    If the routing function is a lambda, it doen't have `__annotations__`,
+    so we assume the type of the message can be anything.
+    """
+    routing_func_attr = routing_func.__annotations__
+    if routing_func_attr:
+        if "return" in routing_func_attr:
+            del routing_func_attr["return"]
+        assert (
+            len(routing_func_attr) == 1
+        ), f"Routing functions should only have a single parameter, got multiple: {routing_func_attr}"
+        return list(routing_func_attr.values())[0]
+    else:
+        return Any
+
+
 class FlinkRoutingFunction(ProcessFunction):
     def __init__(
         self,

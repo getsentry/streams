@@ -45,6 +45,7 @@ from sentry_flink.flink.flink_translator import (
     FlinkRoutingFunction,
     RoutingFuncReturnType,
     build_flink_window,
+    get_router_message_type,
     is_standard_type,
     translate_custom_type,
     translate_to_flink_type,
@@ -208,13 +209,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         # routing functions should only have a single parameter since we're using
         # Flink's ProcessFunction which only takes a single value as input
-        routing_func_attr = routing_func.__annotations__
-        if "return" in routing_func_attr:
-            del routing_func_attr["return"]
-        assert (
-            len(routing_func_attr) <= 1
-        ), f"Routing functions should only have a single parameter, got multiple: {routing_func_attr}"
-        message_type = list(routing_func_attr.values())[0]
+        message_type = get_router_message_type(routing_func)
 
         output_tags = {
             key: OutputTag(
