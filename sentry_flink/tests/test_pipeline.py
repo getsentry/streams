@@ -395,37 +395,111 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     expected = {
         "nodes": [
             {
-                "id": 7,
-                "type": "Source: Custom Source",
-                "pact": "Data Source",
                 "contents": "Source: Custom Source",
+                "id": 35,
+                "pact": "Data Source",
                 "parallelism": 1,
+                "type": "Source: Custom Source",
             },
             {
-                "id": 8,
-                "type": "Map",
-                "pact": "Operator",
                 "contents": "Map",
+                "id": 39,
+                "pact": "Operator",
                 "parallelism": 1,
-                "predecessors": [{"id": 7, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [
+                    {
+                        "id": 44,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Map",
             },
             {
-                "id": 10,
-                "type": "Sink: Writer",
+                "contents": "Map",
+                "id": 41,
                 "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 44,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Map",
+            },
+            {
+                "contents": "Map, PROCESS",
+                "id": 44,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 35,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Map, PROCESS",
+            },
+            {
                 "contents": "Sink: Writer",
+                "id": 47,
+                "pact": "Operator",
                 "parallelism": 1,
-                "predecessors": [{"id": 8, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [
+                    {
+                        "id": 39,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
             },
             {
-                "id": 12,
-                "type": "Sink: Committer",
-                "pact": "Operator",
                 "contents": "Sink: Committer",
+                "id": 49,
+                "pact": "Operator",
                 "parallelism": 1,
-                "predecessors": [{"id": 10, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [
+                    {
+                        "id": 47,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
             },
-        ]
+            {
+                "contents": "Sink: Writer",
+                "id": 51,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 41,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
+            },
+            {
+                "contents": "Sink: Committer",
+                "id": 53,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 51,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
+            },
+        ],
     }
 
     return (pipeline, expected)
