@@ -4,73 +4,43 @@ from sentry_streams.examples.blq_fn import (
     should_send_to_blq,
     unpack_kafka_message,
 )
-from sentry_streams.pipeline.pipeline import (
-    Branch,
-    Map,
-    Pipeline,
-    Router,
-    StreamSink,
-    StreamSource,
+from sentry_streams.pipeline import Map, segment, streaming_source
+
+storage_branch = (
+    segment(name="recent")
+    .apply("dump_msg_recent", Map(json_dump_message))
+    .broadcast(
+        "Send message to DBs",
+        routes=[
+            segment("sbc").sink("sbc_sinkStreamSource", stream_name="transformed-events"),
+            segment("clickhouse").sink(
+                "clickhouse_sinkStreamSource", stream_name="transformed-eventStreamSource-2"
+            ),
+        ],
+    )
 )
 
-# pipeline: special name
-pipeline = Pipeline()
-
-source = StreamSource(
-    name="ingest",
-    ctx=pipeline,
-    stream_name="logical-events",
+save_delayed_message = (
+    segment(name="delayed")
+    .apply("dump_msg_delayed", Map(json_dump_message))
+    .sink(
+        "delayed_msg_sinkStreamSource",
+        stream_name="transformed-eventStreamSourceStreamSource",
+    )
 )
 
-unpack_msg = Map(
-    name="unpack_message",
-    ctx=pipeline,
-    inputs=[source],
-    function=unpack_kafka_message,
-)
-
-router = Router(
-    name="blq_router",
-    ctx=pipeline,
-    inputs=[unpack_msg],
-    routing_table={
-        DownstreamBranch.RECENT: Branch(name="recent", ctx=pipeline),
-        DownstreamBranch.DELAYED: Branch(name="delayed", ctx=pipeline),
-    },
-    routing_function=should_send_to_blq,
-)
-
-dump_msg_recent = Map(
-    name="dump_msg_recent",
-    ctx=pipeline,
-    inputs=[router.routing_table[DownstreamBranch.RECENT]],
-    function=json_dump_message,
-)
-
-dump_msg_delayed = Map(
-    name="dump_msg_delayed",
-    ctx=pipeline,
-    inputs=[router.routing_table[DownstreamBranch.DELAYED]],
-    function=json_dump_message,
-)
-
-sbc_sink = StreamSink(
-    name="sbc_sinkStreamSource",
-    ctx=pipeline,
-    inputs=[dump_msg_recent],
-    stream_name="transformed-events",
-)
-
-clickhouse_sink = StreamSink(
-    name="clickhouse_sinkStreamSource",
-    ctx=pipeline,
-    inputs=[dump_msg_recent],
-    stream_name="transformed-eventStreamSource-2",
-)
-
-delayed_msg_sink = StreamSink(
-    name="delayed_msg_sinkStreamSource",
-    ctx=pipeline,
-    inputs=[dump_msg_delayed],
-    stream_name="transformed-eventStreamSourceStreamSource",
+pipeline = (
+    streaming_source(
+        name="ingest",
+        stream_name="logical-events",
+    )
+    .apply("unpack_message", Map(unpack_kafka_message))
+    .route(
+        "blq_router",
+        routing_function=should_send_to_blq,
+        routes={
+            DownstreamBranch.RECENT: storage_branch,
+            DownstreamBranch.DELAYED: save_delayed_message,
+        },
+    )
 )
