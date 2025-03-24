@@ -40,30 +40,3 @@ pipeline:
               type: sink
               bootstrap_servers: kafka:9093
             flink_overrides:
-
-
-
-# to deploy individual primitives in separate workers
-# and to control the scale and parallelism of individual primitives
-# Use case to support. Allow the config to specify parallelism of a specific step
-# in the pipeline and the adapter will figure out how to deploy in parallel (in flink it is a reshuffle)
-
-
-# a way for the adapter to access the config of a step. You are right, it is organized by segment,
-# but remember that each step is still uniquely identifiable by name.
-# a way for the runner to run a specific segment only.
-# a way for the adapter to know when a segment is over and it has to communciate to the next segment (in flink you have to reshuffle/repartition)
-# a way for the adapter to load segment specific config when processing a step inside a segment
-
-# Imagine an Arroyo adapter. The runner should know which segment to run, right ?
-# In Flink the runner runs the whole application as it is flink that decides who runs what
-# So I guess there are some arguments (or envvars) to provide to the runner that are still adapter specific
-
-# Arroyo
-# We can support segments, runner gets which segment to run specifically
-# We don't support parallelism of individual steps, but do for segments
-
-# Flink
-# Chaining operators = no data serialization/deserialization
-# Chains can have a parallelism set
-# rebalance or reshuffle between chains
