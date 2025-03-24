@@ -31,7 +31,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    stream_name="events",
+    stream_name="logical-events",
 )
 
 parser = Map(name="parser", ctx=pipeline, inputs=[source], function=parse)
@@ -47,4 +47,11 @@ sink = StreamSink(
     ctx=pipeline,
     inputs=[jsonify],
     stream_name="transformed-events",
+)
+
+sink2 = StreamSink(
+    name="kafkasink2",
+    ctx=pipeline,
+    inputs=[sink],
+    stream_name="transformed-events-2",
 )

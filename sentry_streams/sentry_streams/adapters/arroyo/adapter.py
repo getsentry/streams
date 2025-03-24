@@ -57,11 +57,13 @@ class StreamSources:
     def __init__(
         self,
         sources_config: Mapping[str, KafkaConsumerConfig],
+        topics_config: Mapping[str, str],
         sources_override: Mapping[str, KafkaConsumer] = {},
     ) -> None:
         super().__init__()
 
         self.__sources_config = sources_config
+        self.__topics_config = topics_config
 
         # Overrides are for unit testing purposes
         self.__source_topics: MutableMapping[str, Topic] = {}
@@ -91,7 +93,7 @@ class StreamSources:
                 )
             )
 
-        self.__source_topics[source_name] = Topic(step.stream_name)
+        self.__source_topics[source_name] = Topic(self.__topics_config[step.stream_name])
 
     def get_topic(self, source: str) -> Topic:
         return self.__source_topics[source]
@@ -105,13 +107,14 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self,
         sources_config: Mapping[str, KafkaConsumerConfig],
         sinks_config: Mapping[str, KafkaProducerConfig],
+        topics_config: Mapping[str, str],
         sources_override: Mapping[str, KafkaConsumer] = {},
         sinks_override: Mapping[str, KafkaProducer] = {},
     ) -> None:
         super().__init__()
-
-        self.__sources = StreamSources(sources_config, sources_override)
+        self.__sources = StreamSources(sources_config, topics_config, sources_override)
         self.__sinks_config = sinks_config
+        self.topics_config = topics_config
 
         # Overrides are for unit testing purposes
         self.__sinks: MutableMapping[str, Any] = {**sinks_override}
@@ -124,6 +127,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         return cls(
             config["sources_config"],
             config["sinks_config"],
+            config["topics"],
             config.get("sources_override", {}),
             config.get("sinks_override", {}),
         )
@@ -227,7 +231,13 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a filter"
         self.__consumers[stream.source].add_step(RouterStep(route=stream, pipeline_step=step))
-        raise NotImplementedError
+
+        routes_map: MutableMapping[str, Route] = {}
+        for branch in step.routing_table.values():
+            branch_stream = Route(source=stream.source, waypoints=stream.waypoints + [branch.name])
+            routes_map[branch.name] = branch_stream
+
+        return routes_map
 
     def get_processor(self, source: str) -> StreamProcessor[KafkaPayload]:
         """

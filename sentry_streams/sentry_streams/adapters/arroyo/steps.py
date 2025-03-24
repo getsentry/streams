@@ -7,11 +7,7 @@ from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies import Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import (
-    FilteredPayload,
-    Message,
-    Topic,
-)
+from arroyo.types import Commit, FilteredPayload, Message, Topic
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.pipeline.pipeline import Filter, Map, Router, RoutingFuncReturnType
@@ -28,13 +24,16 @@ class ArroyoStep(ABC):
     the beginning. The streaming pipeline is defined from the beginning to
     the end, so when building the Arroyo application we need to reverse the
     order of the steps.
+
+    We pass the `commit` param as SinkStep requires that to build the CommitOffsets step
+    for its Producers.
     """
 
     route: Route
 
     @abstractmethod
     def build(
-        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         raise NotImplementedError
 
@@ -51,6 +50,8 @@ def process_message(
     `process_routed_payload` function.
     """
     payload = message.payload
+    if isinstance(payload, KafkaPayload):
+        return FilteredPayload()
     if isinstance(payload, FilteredPayload):
         return payload
 
@@ -72,7 +73,7 @@ class MapStep(ArroyoStep):
     pipeline_step: Map
 
     def build(
-        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         def transformer(
             message: Message[Union[FilteredPayload, RoutedValue]],
@@ -103,7 +104,7 @@ class FilterStep(ArroyoStep):
     pipeline_step: Filter
 
     def build(
-        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         def transformer(
             message: Message[Union[FilteredPayload, RoutedValue]],
@@ -138,16 +139,16 @@ class RouterStep(ArroyoStep):
     pipeline_step: Router[RoutingFuncReturnType]  # type: ignore
 
     def build(
-        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         def append_branch_to_waypoints(
             payload: RoutedValue,
         ) -> RoutedValue:
             routing_func = self.pipeline_step.routing_function
             routing_table = self.pipeline_step.routing_table
-            branch = routing_func(payload.payload)
-            branch_name = routing_table[branch].name
-            payload.route.waypoints.append(branch_name)
+            result_branch = routing_func(payload.payload)
+            result_branch_name = routing_table[result_branch].name
+            payload.route.waypoints.append(result_branch_name)
             return payload
 
         def transformer(
@@ -178,12 +179,15 @@ class StreamSinkStep(ArroyoStep):
     topic_name: str
 
     def build(
-        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         def extract_value(message: Message[Union[FilteredPayload, RoutedValue]]) -> Any:
             message_payload = message.value.payload
-            if isinstance(message_payload, RoutedValue) and message_payload.route == self.route:
-                return KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
+            if isinstance(message_payload, RoutedValue):
+                if message_payload.route == self.route:
+                    return KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
+                else:
+                    return message_payload
             else:
                 return FilteredPayload()
 
