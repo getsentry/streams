@@ -15,7 +15,7 @@ from sentry_streams.adapters.arroyo.consumer import (
     ArroyoStreamingFactory,
 )
 from sentry_streams.adapters.arroyo.routes import Route
-from sentry_streams.adapters.arroyo.steps import FilterStep, KafkaSinkStep, MapStep
+from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import (
     InputType,
@@ -24,12 +24,14 @@ from sentry_streams.pipeline.function_template import (
 from sentry_streams.pipeline.pipeline import (
     Filter,
     FlatMap,
-    KafkaSink,
-    KafkaSource,
     Map,
     Reduce,
+    Router,
+    RoutingFuncReturnType,
     Sink,
     Source,
+    StreamSink,
+    StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
 
@@ -58,7 +60,7 @@ class SegmentConfig(TypedDict):
     steps_config: Mapping[str, Any]
 
 
-class KafkaSources:
+class StreamSources:
     def __init__(
         self,
         sources_config: Mapping[str, KafkaConsumerConfig],
@@ -82,7 +84,7 @@ class KafkaSources:
         """
         # TODO: Provide a better way to get the logical stream name from
         # the Sink step. We should not have to assert it is a Kafka sink
-        assert isinstance(step, KafkaSource), "Only Kafka Sources are supported"
+        assert isinstance(step, StreamSource), "Only Stream Sources are supported"
         source_name = step.name
 
         if source_name not in self.__sources:
@@ -97,7 +99,7 @@ class KafkaSources:
                 )
             )
 
-        self.__source_topics[source_name] = Topic(step.logical_topic)
+        self.__source_topics[source_name] = Topic(step.stream_name)
 
     def get_topic(self, source: str) -> Topic:
         return self.__source_topics[source]
@@ -107,7 +109,6 @@ class KafkaSources:
 
 
 class ArroyoAdapter(StreamAdapter[Route, Route]):
-
     def __init__(
         self,
         sources_config: Mapping[str, KafkaConsumerConfig],
@@ -117,7 +118,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
     ) -> None:
         super().__init__()
 
-        self.__sources = KafkaSources(sources_config, sources_override)
+        self.__sources = StreamSources(sources_config, sources_override)
         self.__sinks_config = sinks_config
 
         # Overrides are for unit testing purposes
@@ -167,7 +168,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         # TODO: Provide a better way to get the logical stream name from
         # the Sink step. We should not have to assert it is a Kafka sink
-        assert isinstance(step, KafkaSink), "Only Kafka Sinks are supported"
+        assert isinstance(step, StreamSink), "Only Stream Sinks are supported"
 
         sink_name = step.name
         if sink_name not in self.__sinks:
@@ -187,7 +188,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         ), f"Stream starting at source {stream.source} not found when adding a producer"
 
         self.__consumers[stream.source].add_step(
-            KafkaSinkStep(route=stream, producer=producer, topic_name=step.logical_topic)
+            StreamSinkStep(route=stream, producer=producer, topic_name=step.stream_name)
         )
 
         return stream
@@ -226,7 +227,17 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         stream: Route,
     ) -> Route:
         """
-        Build a map operator for the platform the adapter supports.
+        Build a reduce operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    def router(
+        self,
+        step: Router[RoutingFuncReturnType],
+        stream: Route,
+    ) -> Mapping[str, Route]:
+        """
+        Build a router operator for the platform the adapter supports.
         """
         raise NotImplementedError
 

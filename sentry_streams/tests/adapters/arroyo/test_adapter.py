@@ -8,12 +8,12 @@ from arroyo.types import Partition, Topic
 from sentry_streams.adapters.arroyo.adapter import (
     ArroyoAdapter,
     KafkaConsumerConfig,
-    KafkaSources,
+    StreamSources,
 )
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.pipeline.pipeline import (
-    KafkaSource,
     Pipeline,
+    StreamSource,
 )
 from sentry_streams.runner import iterate_edges
 
@@ -30,7 +30,7 @@ def test_kafka_sources() -> None:
     consumers = {
         "source2": mock.Mock(),
     }
-    sources = KafkaSources(sources_config, consumers)
+    sources = StreamSources(sources_config, consumers)
 
     with pytest.raises(KeyError):
         sources.get_consumer("source1")
@@ -40,7 +40,7 @@ def test_kafka_sources() -> None:
         sources.get_topic("source2")
 
     pipeline = Pipeline()
-    sources.add_source(KafkaSource("source1", pipeline, "test_topic"))
+    sources.add_source(StreamSource("source1", pipeline, "test_topic"))
 
     assert sources.get_topic("source1") == Topic("test_topic")
     assert sources.get_consumer("source1") is not None

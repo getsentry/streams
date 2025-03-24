@@ -1,14 +1,15 @@
 import os
 from typing import (
+    Any,
+    MutableMapping,
     Self,
-    TypeVar,
     Union,
     get_type_hints,
 )
 
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
-from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.datastream import OutputTag, StreamExecutionEnvironment
 from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
     FlinkKafkaConsumer,
 )
@@ -38,6 +39,7 @@ from sentry_streams.pipeline.pipeline import (
     FlatMap,
     Map,
     Reduce,
+    Router,
     Sink,
     Source,
     Step,
@@ -47,13 +49,14 @@ from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_flink.flink.flink_translator import (
     FlinkAggregate,
     FlinkGroupBy,
+    FlinkRoutingFunction,
+    RoutingFuncReturnType,
     build_flink_window,
+    get_router_message_type,
     is_standard_type,
     translate_custom_type,
     translate_to_flink_type,
 )
-
-T = TypeVar("T")
 
 
 class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
@@ -136,8 +139,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         step_config: StepConfig = config["steps_config"][step.name]
         consumer_config: KafkaConsumerConfig = step_config["common"]
 
-        assert hasattr(step, "logical_topic")
-        topic = step.logical_topic
+        assert hasattr(step, "stream_name")
+        topic = step.stream_name
 
         deserialization_schema = SimpleStringSchema()
 
@@ -159,8 +162,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         step_config: StepConfig = config["steps_config"][step.name]
         producer_config: KafkaProducerConfig = step_config["common"]
 
-        assert hasattr(step, "logical_topic")
-        topic = step.logical_topic
+        assert hasattr(step, "stream_name")
+        topic = step.stream_name
 
         sink = (
             KafkaSink.builder()
@@ -272,8 +275,34 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         return self.resolve_outoing_chain(step, aggregate_stream, config)
 
-    def run(self) -> None:
-        self.env.execute()
+    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> MutableMapping[str, Any]:
+        routing_table = step.routing_table
+        routing_func = step.routing_function
+
+        # routing functions should only have a single parameter since we're using
+        # Flink's ProcessFunction which only takes a single value as input
+        message_type = get_router_message_type(routing_func)
+
+        output_tags = {
+            key: OutputTag(
+                tag_id=route.name,
+                type_info=(
+                    translate_to_flink_type(message_type)
+                    if is_standard_type(message_type)
+                    else translate_custom_type(message_type)
+                ),
+            )
+            for key, route in routing_table.items()
+        }
+        routing_process_func = FlinkRoutingFunction(routing_func, output_tags)
+        routed_stream = stream.process(routing_process_func)
+
+        return {
+            route.tag_id: routed_stream.get_side_output(route) for route in output_tags.values()
+        }
 
     def shutdown(self) -> None:
         raise NotImplementedError
+
+    def run(self) -> None:
+        self.env.execute()

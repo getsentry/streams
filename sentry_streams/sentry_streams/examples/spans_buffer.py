@@ -3,19 +3,19 @@ from datetime import timedelta
 from sentry_streams.examples.spans import SpansBuffer, build_segment_json, build_span
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
+    StreamSink,
+    StreamSource,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    logical_topic="logical-events",
+    stream_name="logical-events",
 )
 
 map = Map(
@@ -50,9 +50,9 @@ map_str = Map(
     function=build_segment_json,
 )
 
-sink = KafkaSink(
+sink = StreamSink(
     name="kafkasink",
     ctx=pipeline,
     inputs=[map_str],
-    logical_topic="transformed-events",
+    stream_name="transformed-events",
 )

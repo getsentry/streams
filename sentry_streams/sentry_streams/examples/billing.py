@@ -5,9 +5,9 @@ from sentry_streams.examples.billing_buffer import OutcomesBuffer
 from sentry_streams.pipeline.function_template import KVAggregationBackend
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
-    KafkaSource,
     Map,
     Pipeline,
+    StreamSource,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
@@ -24,10 +24,10 @@ def build_outcome(value: str) -> Outcome:
 # pipeline: special name
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    logical_topic="logical-events",
+    stream_name="logical-events",
 )
 
 map = Map(

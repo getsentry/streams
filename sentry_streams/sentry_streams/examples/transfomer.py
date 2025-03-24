@@ -3,10 +3,10 @@ from typing import Any, Mapping, cast
 
 from sentry_streams.pipeline.pipeline import (
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
+    StreamSink,
+    StreamSource,
 )
 
 # The simplest possible pipeline.
@@ -32,10 +32,10 @@ def jsonify_msg(msg: Mapping[str, Any]) -> str:
 
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    logical_topic="events",
+    stream_name="events",
 )
 
 parser = Map(name="parser", ctx=pipeline, inputs=[source], function=parse)
@@ -46,9 +46,9 @@ filter = Filter(
 
 jsonify = Map(name="serializer", ctx=pipeline, inputs=[filter], function=jsonify_msg)
 
-sink = KafkaSink(
+sink = StreamSink(
     name="kafkasink",
     ctx=pipeline,
     inputs=[jsonify],
-    logical_topic="transformed-events",
+    stream_name="transformed-events",
 )

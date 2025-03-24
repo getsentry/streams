@@ -10,8 +10,8 @@ import yaml
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
     RuntimeTranslator,
-    Stream,
-    StreamSink,
+    StreamSinkT,
+    StreamT,
 )
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
@@ -21,7 +21,7 @@ from sentry_streams.pipeline.pipeline import (
 logger = logging.getLogger(__name__)
 
 
-def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, StreamSink]) -> None:
+def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[StreamT, StreamSinkT]) -> None:
     """
     Traverses over edges in a PipelineGraph, building the
     stream incrementally by applying steps and transformations
@@ -33,8 +33,9 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
 
     for source in p_graph.sources:
         logger.info(f"Apply source: {source.name}")
-        source_stream = translator.translate_step(source)
-        step_streams[source.name] = source_stream
+        source_streams = translator.translate_step(source)
+        for source_name in source_streams:
+            step_streams[source_name] = source_streams[source_name]
 
         while step_streams:
             for input_name in list(step_streams):
@@ -49,7 +50,8 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[Stream, Strea
                     logger.info(f"Apply step: {next_step.name}")
                     # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                     next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
-                    step_streams[next_step.name] = next_step_stream
+                    for branch_name in next_step_stream:
+                        step_streams[branch_name] = next_step_stream[branch_name]
 
 
 def main() -> None:

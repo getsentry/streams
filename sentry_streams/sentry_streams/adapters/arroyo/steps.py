@@ -126,9 +126,9 @@ class FilterStep(ArroyoStep):
 
 
 @dataclass
-class KafkaSinkStep(ArroyoStep):
+class StreamSinkStep(ArroyoStep):
     """
-    Represents an Arroyo producer. This is mapped from a KafkaSink in the pipeline.
+    Represents an Arroyo producer. This is mapped from a StreamSink in the pipeline.
 
     It filters out messages for the route not specified on this step and unpacks
     the routed message into the original Arroyo payload.
