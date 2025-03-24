@@ -26,9 +26,10 @@ class Forwarder(ProcessingStrategy[Any]):
         next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]],
         produce_step_override: Optional[Produce[Any]] = None,
     ) -> None:
-        self.__produce_step = Produce(producer, Topic(topic_name), CommitOffsets(commit))
         if produce_step_override:
             self.__produce_step = produce_step_override
+        else:
+            self.__produce_step = Produce(producer, Topic(topic_name), CommitOffsets(commit))
         self.__next_step = next
         self.__route = route
 
