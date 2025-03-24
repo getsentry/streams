@@ -6,7 +6,7 @@ from unittest.mock import call
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import BrokerValue, FilteredPayload, Message, Partition, Topic
+from arroyo.types import BrokerValue, Commit, FilteredPayload, Message, Partition, Topic
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
@@ -48,7 +48,7 @@ def test_map_step() -> None:
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
 
-    strategy = arroyo_map.build(next_strategy)
+    strategy = arroyo_map.build(next_strategy, commit=mock.Mock(spec=Commit))
 
     messages = [
         make_msg("test_val", mapped_route, 0),
@@ -93,7 +93,7 @@ def test_filter_step() -> None:
     arroyo_filter = FilterStep(mapped_route, pipeline_filter)
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
-    strategy = arroyo_filter.build(next_strategy)
+    strategy = arroyo_filter.build(next_strategy, commit=mock.Mock(spec=Commit))
 
     messages = [
         make_msg("test_val", mapped_route, 0),
@@ -136,7 +136,9 @@ def test_sink() -> None:
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
     producer = mock.Mock(spec=Producer)
-    strategy = StreamSinkStep(mapped_route, producer, "test_topic").build(next_strategy)
+    strategy = StreamSinkStep(mapped_route, producer, "test_topic").build(
+        next_strategy, commit=mock.Mock(spec=Commit)
+    )
 
     messages = [
         make_msg("test_val", mapped_route, 0),

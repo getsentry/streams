@@ -10,10 +10,8 @@ from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 
 class Forwarder(ProcessingStrategy[Any]):
     """
-    Either produces an incoming message to a given Producer if the Route of the message
+    Either produces an incoming message via a given Producer if the Route of the message
     matches this strategy's Route, or forwards the message to the next strategy provided.
-
-    `producer_override` is used in tests to pass a mock producer.
     """
 
     def __init__(

@@ -30,7 +30,14 @@ def test_kafka_sources() -> None:
     consumers = {
         "source2": mock.Mock(),
     }
-    sources = StreamSources(sources_config, consumers)
+    topics = {
+        "test_topic": "test_topic",
+    }
+    sources = StreamSources(
+        sources_config=sources_config,
+        topics_config=topics,
+        sources_override=consumers,
+    )
 
     with pytest.raises(KeyError):
         sources.get_consumer("source1")
@@ -47,11 +54,11 @@ def test_kafka_sources() -> None:
 
 
 def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
-
     adapter = ArroyoAdapter.build(
         {
             "sources_config": {},
             "sinks_config": {},
+            "topics": {"logical-events": "logical-events"},
             "sources_override": {
                 "myinput": broker.get_consumer("logical-events"),
             },
