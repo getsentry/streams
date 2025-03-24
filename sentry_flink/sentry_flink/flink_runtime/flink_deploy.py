@@ -43,6 +43,17 @@ def main() -> int:
             "to the path mounted in the job manager as the /apps directory."
         ),
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        help=("The config file"),
+    )
+    parser.add_argument(
+        "--config-template",
+        type=str,
+        default="sentry_streams/deployment_config/config.json",
+        help=("The deployment configuration file template"),
+    )
 
     args = parser.parse_args()
 
@@ -73,6 +84,10 @@ def main() -> int:
             f"/apps/{args.application}",
             "--adapter",
             args.adapter,
+            "--config",
+            f"/apps/{args.config}",
+            "--config-template",
+            f"/apps/{args.config_template}",
         ]
     )
 
