@@ -4,11 +4,12 @@ from typing import Any, Callable, Union
 
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka.consumer import KafkaPayload
-from arroyo.processing.strategies import Produce
+from arroyo.processing.strategies import CommitOffsets, Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import Commit, FilteredPayload, Message, Topic
 
+from sentry_streams.adapters.arroyo.custom_strategies import Forwarder
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.pipeline.pipeline import Filter, Map, Router, RoutingFuncReturnType
 
@@ -169,10 +170,10 @@ class RouterStep(ArroyoStep):
 @dataclass
 class StreamSinkStep(ArroyoStep):
     """
-    Represents an Arroyo producer. This is mapped from a StreamSink in the pipeline.
-
-    It filters out messages for the route not specified on this step and unpacks
-    the routed message into the original Arroyo payload.
+    StreamSinkStep is backed by the Forwarder custom strategy, which either produces
+    messages to a topic via an arroyo Producer or forwards messages to the next downstream
+    step.
+    This allows the use of multiple sinks, each at the end of a different branch of a Router step.
     """
 
     producer: Producer[Any]
@@ -180,18 +181,9 @@ class StreamSinkStep(ArroyoStep):
 
     def build(
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
-    ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
-        def extract_value(message: Message[Union[FilteredPayload, RoutedValue]]) -> Any:
-            message_payload = message.value.payload
-            if isinstance(message_payload, RoutedValue):
-                if message_payload.route == self.route:
-                    return KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
-                else:
-                    return message_payload
-            else:
-                return FilteredPayload()
-
-        return RunTask(
-            extract_value,
-            Produce(self.producer, Topic(self.topic_name), next),
+    ) -> Forwarder:
+        return Forwarder(
+            route=self.route,
+            produce_step=Produce(self.producer, Topic(self.topic_name), CommitOffsets(commit)),
+            next_step=next,
         )
