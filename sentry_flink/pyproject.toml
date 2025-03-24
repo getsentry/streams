@@ -11,8 +11,9 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "apache-flink==1.20.0",
+    "jsonschema>=4.23.0",
     "requests>=2.32.3",
-    "sentry-streams>=0.0.11",
+    "sentry-streams",
     # Figure out a way to get Flink work without setuptools.
     "setuptools==75.8.0",
 ]
@@ -43,3 +44,9 @@ line-length = 100
 
 [tool.isort]
 profile = "black"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.uv.sources]
+sentry-streams = { path = "../sentry_streams" }

@@ -41,6 +41,7 @@ repos:
           responses,
           "sentry-arroyo>=2.18.2",
           types-pyYAML,
+          types-jsonschema
         ]
         files: ^sentry_streams/.+
   - repo: https://github.com/pycqa/isort

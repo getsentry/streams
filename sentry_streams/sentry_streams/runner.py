@@ -1,8 +1,10 @@
 import argparse
+import json
 import logging
 import signal
 from typing import Any, cast
 
+import jsonschema
 import yaml
 
 from sentry_streams.adapters.loader import load_adapter
@@ -88,11 +90,18 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "-c",
-        action="store_true",
+        "--config-template",
+        type=str,
+        default="sentry_streams/deployment_config/config.json",
         help=(
-            "Run the application in container mode (i.e non-dev/locally). Right now this is only supported by Flink."
+            "The deployment config template. Configuration file will be validated against this template."
         ),
+    )
+    parser.add_argument(
+        "--segment",
+        type=str,
+        default=None,
+        help=("The segment to deploy. Must be a valid segment defined in the config file."),
     )
     parser.add_argument(
         "application",
@@ -119,13 +128,16 @@ def main() -> None:
     with open(args.config, "r") as config_file:
         environment_config = yaml.safe_load(config_file)
 
-    if args.c:
-        # TODO: Make this configurable by runtime eventually
-        flink_config = environment_config["flink"]
-        environment_config["pipeline"].update(flink_config)
+    with open(args.config_template, "r") as f:
+        schema = json.load(f)
+
+        try:
+            jsonschema.validate(environment_config, schema)
+        except Exception:
+            raise
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    runtime: Any = load_adapter(args.adapter, environment_config)
+    runtime: Any = load_adapter(args.adapter, environment_config, args.segment)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)

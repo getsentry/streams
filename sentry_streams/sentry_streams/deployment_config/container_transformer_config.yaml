@@ -7,13 +7,13 @@ env:
 pipeline:
   segments:
     my_segment:
-      parallelism: 1 # This is runtime-agnostic
+      parallelism: 2 # This is runtime-agnostic
       steps_config:
         myinput:
           starts_segment: True
           common:
             type: source
-            bootstrap_servers: localhost:9092
+            bootstrap_servers: kafka:9093
             consumer_group: python-test
             auto_offset_reset: latest
           flink_overrides:
@@ -30,11 +30,16 @@ pipeline:
           common:
             type: map
 
-        kafkasink:
-          common:
-            type: sink
-            bootstrap_servers: localhost:9092
-          flink_overrides:
+    # If a segment is of length 1, we do not need to specify which steps
+    # start the segment
+    second_segment:
+        parallelism: 3
+        steps_config:
+          kafkasink:
+            common:
+              type: sink
+              bootstrap_servers: kafka:9093
+            flink_overrides:
 
 
 

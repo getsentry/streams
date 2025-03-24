@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, MutableMapping, Self, TypedDict
+from typing import Any, Mapping, MutableMapping, Optional, Self, TypedDict, cast
 
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
@@ -34,6 +34,13 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.window import MeasurementUnit
 
 
+class StepConfig(TypedDict):
+    starts_segment: Optional[bool]
+    ends_segment: Optional[bool]
+    common: Mapping[str, Any]
+    flink_overrides: Mapping[str, Any]
+
+
 class KafkaConsumerConfig(TypedDict):
     bootstrap_servers: str
     auto_offset_reset: str
@@ -44,6 +51,11 @@ class KafkaConsumerConfig(TypedDict):
 class KafkaProducerConfig(TypedDict):
     bootstrap_servers: str
     additional_settings: Mapping[str, Any]
+
+
+class SegmentConfig(TypedDict):
+    parallelism: int
+    steps_config: Mapping[str, Any]
 
 
 class KafkaSources:
@@ -72,12 +84,13 @@ class KafkaSources:
         # the Sink step. We should not have to assert it is a Kafka sink
         assert isinstance(step, KafkaSource), "Only Kafka Sources are supported"
         source_name = step.name
+
         if source_name not in self.__sources:
             config = self.__sources_config.get(source_name)
             assert config, f"Config not provided for source {source_name}"
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
-                    default_config=config["additional_settings"],
+                    default_config={},
                     bootstrap_servers=config["bootstrap_servers"],
                     auto_offset_reset=config["auto_offset_reset"],
                     group_id=config["consumer_group"],
@@ -115,12 +128,20 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
     @classmethod
     def build(cls, config: PipelineConfig) -> Self:
-        return cls(
-            config["pipeline"]["sources_config"],
-            config["pipeline"]["sinks_config"],
-            config["pipeline"].get("sources_override", {}),
-            config["pipeline"].get("sinks_override", {}),
-        )
+        steps_config = config["steps_config"]
+
+        sources_config: MutableMapping[str, KafkaConsumerConfig] = {}
+        sinks_config: MutableMapping[str, KafkaProducerConfig] = {}
+        for step in steps_config:
+            step_config: StepConfig = steps_config[step]
+
+            if step_config["common"]["type"] == "source":
+                sources_config[step] = cast(KafkaConsumerConfig, step_config["common"])
+
+            if step_config["common"]["type"] == "sink":
+                sinks_config[step] = cast(KafkaProducerConfig, step_config["common"])
+
+        return cls(sources_config, sinks_config)
 
     def source(self, step: Source) -> Route:
         """
@@ -154,7 +175,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
             assert config, f"Config not provided for sink {sink_name}"
             producer = KafkaProducer(
                 build_kafka_configuration(
-                    default_config=config["additional_settings"],
+                    default_config={},
                     bootstrap_servers=config["bootstrap_servers"],
                 )
             )

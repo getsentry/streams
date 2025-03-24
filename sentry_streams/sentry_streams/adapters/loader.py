@@ -1,7 +1,7 @@
 import importlib.util as utils
 import sys
 from importlib import import_module
-from typing import TypeVar, cast
+from typing import Optional, TypeVar, cast
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 
@@ -9,7 +9,9 @@ Stream = TypeVar("Stream")
 Sink = TypeVar("Sink")
 
 
-def load_adapter(adapter_type: str, config: PipelineConfig) -> StreamAdapter[Stream, Sink]:
+def load_adapter(
+    adapter_type: str, config: PipelineConfig, segment: Optional[str]
+) -> StreamAdapter[Stream, Sink]:
     """
     Loads a StreamAdapter to run a pipeline.
 
@@ -28,6 +30,9 @@ def load_adapter(adapter_type: str, config: PipelineConfig) -> StreamAdapter[Str
     #TODO: Actually move out Flink otherwise everything stated above makes
     # no sense.
     """
+    if segment:
+        config = {"env": config["env"], **config["pipeline"]["segments"][segment]}
+
     if adapter_type == "dummy":
         from sentry_streams.dummy.dummy_adapter import DummyAdapter
 
@@ -60,4 +65,5 @@ def load_adapter(adapter_type: str, config: PipelineConfig) -> StreamAdapter[Str
             raise
 
         imported_cls = getattr(module, cls)
+
         return cast(StreamAdapter[Stream, Sink], imported_cls.build(config))
