@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Union
 
 from arroyo.backends.abstract import Producer
-from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies import CommitOffsets, Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTask
@@ -51,8 +50,6 @@ def process_message(
     `process_routed_payload` function.
     """
     payload = message.payload
-    if isinstance(payload, KafkaPayload):
-        return FilteredPayload()
     if isinstance(payload, FilteredPayload):
         return payload
 

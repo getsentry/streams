@@ -61,12 +61,12 @@ sbc_sink = StreamSink(
     stream_name="transformed-events",
 )
 
-# clickhouse_sink = StreamSink(
-#     name="kafkasink2",
-#     ctx=pipeline,
-#     inputs=[dump_msg_recent],
-#     stream_name="transformed-events-2",
-# )
+clickhouse_sink = StreamSink(
+    name="kafkasink2",
+    ctx=pipeline,
+    inputs=[dump_msg_recent],
+    stream_name="transformed-events-2",
+)
 
 delayed_msg_sink = StreamSink(
     name="kafkasink3",
