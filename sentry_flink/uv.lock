@@ -748,7 +748,7 @@ dev = [
 requires-dist = [
     { name = "apache-flink", specifier = "==1.20.0" },
     { name = "requests", specifier = ">=2.32.3" },
-    { name = "sentry-streams", specifier = ">=0.0.11" },
+    { name = "sentry-streams", specifier = ">=0.0.13" },
     { name = "setuptools", specifier = "==75.8.0" },
 ]
 
@@ -763,14 +763,14 @@ dev = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.11"
+version = "0.0.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "sentry-arroyo" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/35/3db89daf21d784565962fb1eed1bd8f3123130e4d7e10bb00c1c04cc7f8d/sentry_streams-0.0.11-py3-none-any.whl", hash = "sha256:c718e164b9770aa65ca922ffb53cae6780ed6e6a3e12b9affe4fd265559c698c", size = 25641 },
+    { url = "https://files.pythonhosted.org/packages/55/c2/36aac9148239e0fedc17cb194ed73084d26a43cbc48e0c2b23e21734fc77/sentry_streams-0.0.13-py3-none-any.whl", hash = "sha256:cfc79529c227680b3c9b0388295d2ec459603763fc9c8b14c86fc487a410b48f", size = 29464 },
 ]
 
 [[package]]

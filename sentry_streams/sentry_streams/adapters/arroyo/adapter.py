@@ -147,7 +147,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         # TODO: Provide a better way to get the logical stream name from
         # the Sink step. We should not have to assert it is a Kafka sink
-        assert isinstance(step, StreamSink), "Only Kafka Sinks are supported"
+        assert isinstance(step, StreamSink), "Only Stream Sinks are supported"
 
         sink_name = step.name
         if sink_name not in self.__sinks:

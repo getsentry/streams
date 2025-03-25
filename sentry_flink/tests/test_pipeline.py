@@ -3,7 +3,11 @@ from typing import Any, Generator, MutableMapping
 
 import pytest
 from pyflink.datastream import DataStream, DataStreamSink, StreamExecutionEnvironment
-from sentry_streams.adapters.stream_adapter import RuntimeTranslator, Stream, StreamSink
+from sentry_streams.adapters.stream_adapter import (
+    RuntimeTranslator,
+    StreamSinkT,
+    StreamT,
+)
 from sentry_streams.examples.word_counter_fn import (
     EventsPipelineFilterFunctions,
     EventsPipelineMapFunction,
@@ -12,11 +16,13 @@ from sentry_streams.examples.word_counter_fn import (
 )
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
+    Branch,
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
+    Router,
+    StreamSink,
+    StreamSource,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 from sentry_streams.runner import iterate_edges
@@ -35,6 +41,7 @@ def setup_basic_flink_env() -> (
         "topics": {
             "logical-events": "events",
             "transformed-events": "transformed-events",
+            "transformed-events-2": "transformed-events-2",
         },
         "broker": "localhost:9092",
     }
@@ -49,17 +56,17 @@ def setup_basic_flink_env() -> (
 def basic() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[source],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -96,10 +103,10 @@ def basic() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
 def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -109,11 +116,11 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
         function=EventsPipelineMapFunction.simple_map,
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[map],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -158,10 +165,10 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
 def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     filter = Filter(
@@ -171,11 +178,11 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
         function=EventsPipelineFilterFunctions.simple_filter,
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[filter],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -220,10 +227,10 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
 def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -244,11 +251,11 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
         group_by_key=GroupByWord(),
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[reduce],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     expected = {
@@ -344,11 +351,168 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
     return (pipeline, expected)
 
 
+def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
+    pipeline = Pipeline()
+
+    source = StreamSource(
+        name="myinput",
+        ctx=pipeline,
+        stream_name="logical-events",
+    )
+
+    map = Map(
+        name="mymap",
+        ctx=pipeline,
+        inputs=[source],
+        function=EventsPipelineMapFunction.simple_map,
+    )
+
+    router = Router(
+        name="myrouter",
+        ctx=pipeline,
+        inputs=[map],
+        routing_table={
+            "branch_1": Branch(name="branch_1", ctx=pipeline),
+            "branch_2": Branch(name="branch_2", ctx=pipeline),
+        },
+        routing_function=lambda x: "branch_1" if int(x) % 2 == 0 else "branch_2",
+    )
+
+    _ = StreamSink(
+        name="kafkasink_1",
+        ctx=pipeline,
+        inputs=[router.routing_table["branch_1"]],
+        stream_name="transformed-events",
+    )
+
+    _ = StreamSink(
+        name="kafkasink_2",
+        ctx=pipeline,
+        inputs=[router.routing_table["branch_2"]],
+        stream_name="transformed-events-2",
+    )
+
+    expected = {
+        "nodes": [
+            {
+                "contents": "Source: Custom Source",
+                "id": 35,
+                "pact": "Data Source",
+                "parallelism": 1,
+                "type": "Source: Custom Source",
+            },
+            {
+                "contents": "Map",
+                "id": 39,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 44,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Map",
+            },
+            {
+                "contents": "Map",
+                "id": 41,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 44,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Map",
+            },
+            {
+                "contents": "Map, PROCESS",
+                "id": 44,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 35,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Map, PROCESS",
+            },
+            {
+                "contents": "Sink: Writer",
+                "id": 47,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 39,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
+            },
+            {
+                "contents": "Sink: Committer",
+                "id": 49,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 47,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
+            },
+            {
+                "contents": "Sink: Writer",
+                "id": 51,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 41,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
+            },
+            {
+                "contents": "Sink: Committer",
+                "id": 53,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 51,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
+            },
+        ],
+    }
+
+    return (pipeline, expected)
+
+
 @pytest.mark.parametrize(
-    "pipeline,expected_plan", [basic(), basic_map(), basic_filter(), basic_map_reduce()]
+    "pipeline,expected_plan",
+    [basic(), basic_map(), basic_filter(), basic_map_reduce(), basic_router()],
 )
 def test_pipeline(
-    setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator[Stream, StreamSink]],
+    setup_basic_flink_env: tuple[
+        StreamExecutionEnvironment, RuntimeTranslator[StreamT, StreamSinkT]
+    ],
     pipeline: Pipeline,
     expected_plan: MutableMapping[str, list[dict[str, Any]]],
 ) -> None:
@@ -362,10 +526,10 @@ def test_pipeline(
 def bad_import_map() -> Pipeline:
     pipeline = Pipeline()
 
-    source = KafkaSource(
+    source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        logical_topic="logical-events",
+        stream_name="logical-events",
     )
 
     map = Map(
@@ -375,18 +539,20 @@ def bad_import_map() -> Pipeline:
         function="sentry_streams.unknown_module.EventsPipelineFunctions.simple_map",
     )
 
-    _ = KafkaSink(
+    _ = StreamSink(
         name="kafkasink",
         ctx=pipeline,
         inputs=[map],
-        logical_topic="transformed-events",
+        stream_name="transformed-events",
     )
 
     return pipeline
 
 
 def test_import(
-    setup_basic_flink_env: tuple[StreamExecutionEnvironment, RuntimeTranslator[Stream, StreamSink]],
+    setup_basic_flink_env: tuple[
+        StreamExecutionEnvironment, RuntimeTranslator[StreamT, StreamSinkT]
+    ],
     pipeline: Pipeline = bad_import_map(),
 ) -> None:
     _, translator = setup_basic_flink_env
