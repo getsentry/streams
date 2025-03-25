@@ -261,3 +261,6 @@ def streaming_source(name: str, stream_name: str) -> ExtensibleChain:
     )
     pipeline._add_start(source)
     return pipeline
+
+
+# TODO: Support pipelines with multiple sources.
