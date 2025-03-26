@@ -13,12 +13,14 @@ from sentry_streams.pipeline.pipeline import (
 
 
 def build_batch_str(batch: list[InputType]) -> str:
+
     d = {"batch": batch}
 
     return json.dumps(d)
 
 
 def build_message_str(message: str) -> str:
+
     d = {"message": message}
 
     return json.dumps(d)
@@ -29,7 +31,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    stream_name="events",
+    stream_name="logical-events",
 )
 
 # User simply provides the batch size

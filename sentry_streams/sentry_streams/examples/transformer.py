@@ -31,7 +31,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    stream_name="events",
+    stream_name="logical-events",
 )
 
 parser = Map(name="parser", ctx=pipeline, inputs=[source], function=parse)
