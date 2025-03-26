@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=70", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.5.1"]
+build-backend = "maturin"
 
 [project]
 name = "sentry-streams"
@@ -21,6 +21,7 @@ dev = [
     "pytest>=8.3.4",
     "responses>=0.25.6",
     "types-requests>=2.32.0",
+    "maturin>=1.5.1",
 ]
 
 [tool.setuptools.package-data]
