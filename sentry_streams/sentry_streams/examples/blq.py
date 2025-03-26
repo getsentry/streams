@@ -65,12 +65,12 @@ clickhouse_sink = StreamSink(
     name="clickhouse_sinkStreamSource",
     ctx=pipeline,
     inputs=[dump_msg_recent],
-    stream_name="transformed-eventStreamSource-2",
+    stream_name="transformed-events-2",
 )
 
 delayed_msg_sink = StreamSink(
     name="delayed_msg_sinkStreamSource",
     ctx=pipeline,
     inputs=[dump_msg_delayed],
-    stream_name="transformed-eventStreamSourceStreamSource",
+    stream_name="transformed-events-3",
 )
