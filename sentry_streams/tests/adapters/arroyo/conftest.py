@@ -18,7 +18,7 @@ from sentry_streams.pipeline.pipeline import (
 def broker() -> LocalBroker[KafkaPayload]:
     storage: MemoryMessageStorage[KafkaPayload] = MemoryMessageStorage()
     broker = LocalBroker(storage, MockedClock())
-    broker.create_topic(Topic("logical-events"), 1)
+    broker.create_topic(Topic("events"), 1)
     broker.create_topic(Topic("transformed-events"), 1)
     return broker
 
@@ -29,7 +29,7 @@ def pipeline() -> Pipeline:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
     decoder = Map(
         name="decoder",

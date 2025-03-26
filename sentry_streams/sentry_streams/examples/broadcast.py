@@ -11,7 +11,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    stream_name="logical-events",
+    stream_name="events",
 )
 
 map = Map(
