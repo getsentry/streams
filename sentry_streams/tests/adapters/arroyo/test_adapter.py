@@ -60,7 +60,7 @@ def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
             "sinks_config": {},
             "topics": {"logical-events": "logical-events"},
             "sources_override": {
-                "myinput": broker.get_consumer("logical-events"),
+                "myinput": broker.get_consumer("events"),
             },
             "sinks_override": {
                 "kafkasink": broker.get_producer(),
@@ -73,14 +73,14 @@ def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
     processor = adapter.get_processor("myinput")
 
     broker.produce(
-        Partition(Topic("logical-events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
+        Partition(Topic("events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
     )
     broker.produce(
-        Partition(Topic("logical-events"), 0),
+        Partition(Topic("events"), 0),
         KafkaPayload(None, "do_not_go_ahead".encode("utf-8"), []),
     )
     broker.produce(
-        Partition(Topic("logical-events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
+        Partition(Topic("events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
     )
 
     processor._run_once()

@@ -96,7 +96,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         # TODO: Look into using KafkaSource instead
         kafka_consumer = FlinkKafkaConsumer(
-            topics=self.environment_config["topics"][topic],
+            topics=topic,
             deserialization_schema=deserialization_schema,
             properties={
                 "bootstrap.servers": self.environment_config["broker"],
@@ -116,7 +116,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             .set_record_serializer(
                 KafkaRecordSerializationSchema.builder()
                 .set_topic(
-                    self.environment_config["topics"][topic],
+                    topic,
                 )
                 .set_value_serialization_schema(SimpleStringSchema())
                 .build()
