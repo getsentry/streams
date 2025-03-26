@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from json import JSONDecodeError, loads
 from typing import Any, Mapping, MutableSequence, Self, cast
 
@@ -71,7 +72,7 @@ filter = Filter(
     name="myfilter", ctx=pipeline, inputs=[parser], function=lambda msg: msg["type"] == "event"
 )
 
-reduce_window = SlidingWindow(window_size=3, window_slide=2)
+reduce_window = SlidingWindow(window_size=timedelta(seconds=3), window_slide=timedelta(seconds=2))
 
 reduce = Aggregate(
     name="myreduce",

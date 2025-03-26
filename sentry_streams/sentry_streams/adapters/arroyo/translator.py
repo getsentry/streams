@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from typing import Any, Callable, TypeVar, Union
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
@@ -57,10 +58,22 @@ def build_arroyo_windowed_reduce(
 
     match streams_window:
         case SlidingWindow(window_size, window_slide):
+            logger.info(type(window_size))
+            logger.info(type(window_slide))
             match (window_size, window_slide):
                 case (int(), int()):
+                    logger.info("WHAT THE")
                     return WindowedReduce(
                         window_size, window_slide, arroyo_acc, accumulator, next_step
+                    )
+
+                case (timedelta(), timedelta()):
+                    return WindowedReduce(
+                        window_size.total_seconds(),
+                        window_slide.total_seconds(),
+                        arroyo_acc,
+                        accumulator,
+                        next_step,
                     )
 
                 case _:
