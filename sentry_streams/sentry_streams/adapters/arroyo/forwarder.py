@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies import Produce
@@ -8,16 +8,17 @@ from arroyo.types import FilteredPayload, Message
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 
 
-class Forwarder(ProcessingStrategy[Any]):
+class Forwarder(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
     """
-    Either produces an incoming message via a given Producer if the Route of the message
-    matches this strategy's Route, or forwards the message to the next strategy provided.
+    Custom processing strategy which either produces an incoming message via a given Producer
+    if the Route of the message matches this strategy's Route, or forwards the message
+    to the next strategy provided.
     """
 
     def __init__(
         self,
         route: Route,
-        produce_step: Produce[Any],
+        produce_step: Produce[KafkaPayload],
         next_step: ProcessingStrategy[Union[FilteredPayload, RoutedValue]],
     ) -> None:
         self.__produce_step = produce_step

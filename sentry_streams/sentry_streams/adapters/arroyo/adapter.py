@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, MutableMapping, Self, TypedDict
+from typing import (
+    Any,
+    List,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Self,
+    TypedDict,
+    cast,
+)
 
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
@@ -229,12 +238,15 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         assert (
             stream.source in self.__consumers
-        ), f"Stream starting at source {stream.source} not found when adding a filter"
+        ), f"Stream starting at source {stream.source} not found when adding a router"
         self.__consumers[stream.source].add_step(RouterStep(route=stream, pipeline_step=step))
 
         routes_map: MutableMapping[str, Route] = {}
         for branch in step.routing_table.values():
-            branch_stream = Route(source=stream.source, waypoints=stream.waypoints + [branch.name])
+            branch_waypoints = cast(List[str], stream.waypoints) + [branch.name]
+            branch_stream = Route(
+                source=stream.source, waypoints=cast(MutableSequence[str], branch_waypoints)
+            )
             routes_map[branch.name] = branch_stream
 
         return routes_map

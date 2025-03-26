@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Union
+from typing import Any, Callable, Generic, Union
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies import CommitOffsets, Produce
@@ -8,7 +8,7 @@ from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import Commit, FilteredPayload, Message, Topic
 
-from sentry_streams.adapters.arroyo.custom_strategies import Forwarder
+from sentry_streams.adapters.arroyo.forwarder import Forwarder
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.pipeline.pipeline import Filter, Map, Router, RoutingFuncReturnType
 
@@ -124,7 +124,7 @@ class FilterStep(ArroyoStep):
 
 
 @dataclass
-class RouterStep(ArroyoStep):
+class RouterStep(ArroyoStep, Generic[RoutingFuncReturnType]):
     """
     Represents a Router which can direct a message to one of multiple
     downstream branches based on the output of a routing function.
@@ -133,8 +133,7 @@ class RouterStep(ArroyoStep):
     a message's `Route` object based on the result of the routing function.
     """
 
-    # TODO: fix generic typing here
-    pipeline_step: Router[RoutingFuncReturnType]  # type: ignore
+    pipeline_step: Router[RoutingFuncReturnType]
 
     def build(
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
@@ -149,17 +148,12 @@ class RouterStep(ArroyoStep):
             payload.route.waypoints.append(result_branch_name)
             return payload
 
-        def transformer(
-            message: Message[Union[FilteredPayload, RoutedValue]],
-        ) -> Union[FilteredPayload, RoutedValue]:
-            return process_message(
+        return RunTask(
+            lambda message: process_message(
                 self.route,
                 message,
                 append_branch_to_waypoints,
-            )
-
-        return RunTask(
-            transformer,
+            ),
             next,
         )
 

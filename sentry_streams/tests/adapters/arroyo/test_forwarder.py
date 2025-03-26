@@ -2,13 +2,12 @@ from datetime import datetime
 from typing import Any, Mapping
 from unittest import mock
 
-import pytest
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies import Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import BrokerValue, FilteredPayload, Message, Partition, Topic
 
-from sentry_streams.adapters.arroyo.custom_strategies import Forwarder
+from sentry_streams.adapters.arroyo.forwarder import Forwarder
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 
 
@@ -34,16 +33,15 @@ def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
         )
 
 
-@pytest.fixture
-def forwarder() -> Forwarder:
-    return Forwarder(
+def test_submit() -> None:
+    produce_step = mock.Mock(spec=Produce)
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    forwarder = Forwarder(
         route=Route(source="source", waypoints=["correct_branch"]),
-        produce_step=mock.Mock(spec=Produce),
-        next_step=mock.Mock(spec=ProcessingStrategy),
+        produce_step=produce_step,
+        next_step=next_step,
     )
 
-
-def test_forwarder_submit(forwarder: Forwarder) -> None:
     messages: Mapping[str, Message[RoutedValue]] = {
         "correct": make_msg(
             payload="test-payload",
@@ -78,6 +76,58 @@ def test_forwarder_submit(forwarder: Forwarder) -> None:
     }
 
     forwarder.submit(messages["correct"])
-    forwarder._Forwarder__produce_step.submit.assert_called_once_with(expected_messages["correct"])  # type: ignore
+    produce_step.submit.assert_called_once_with(expected_messages["correct"])
     forwarder.submit(messages["wrong"])
-    forwarder._Forwarder__next_step.submit.assert_called_once_with(expected_messages["wrong"]) == 1  # type: ignore
+    next_step.submit.assert_called_once_with(expected_messages["wrong"])
+
+
+def test_poll() -> None:
+    produce_step = mock.Mock(spec=Produce)
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    forwarder = Forwarder(
+        route=Route(source="source", waypoints=["correct_branch"]),
+        produce_step=produce_step,
+        next_step=next_step,
+    )
+    forwarder.poll()
+    produce_step.poll.assert_called_once()
+    next_step.poll.assert_called_once()
+
+
+def test_join() -> None:
+    produce_step = mock.Mock(spec=Produce)
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    forwarder = Forwarder(
+        route=Route(source="source", waypoints=["correct_branch"]),
+        produce_step=produce_step,
+        next_step=next_step,
+    )
+    forwarder.join()
+    produce_step.join.assert_called_once()
+    next_step.join.assert_called_once()
+
+
+def test_close() -> None:
+    produce_step = mock.Mock(spec=Produce)
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    forwarder = Forwarder(
+        route=Route(source="source", waypoints=["correct_branch"]),
+        produce_step=produce_step,
+        next_step=next_step,
+    )
+    forwarder.close()
+    produce_step.close.assert_called_once()
+    next_step.close.assert_called_once()
+
+
+def test_terminate() -> None:
+    produce_step = mock.Mock(spec=Produce)
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    forwarder = Forwarder(
+        route=Route(source="source", waypoints=["correct_branch"]),
+        produce_step=produce_step,
+        next_step=next_step,
+    )
+    forwarder.terminate()
+    produce_step.terminate.assert_called_once()
+    next_step.terminate.assert_called_once()
