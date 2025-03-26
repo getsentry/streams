@@ -19,7 +19,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="ingest",
     ctx=pipeline,
-    stream_name="events",
+    stream_name="logical-events",
 )
 
 unpack_msg = Map(

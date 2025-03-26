@@ -22,13 +22,13 @@ def pipeline() -> Pipeline:
     source = StreamSource(
         name="source",
         ctx=pipeline,
-        stream_name="events",
+        stream_name="logical-events",
     )
 
     source2 = StreamSource(
         name="source2",
         ctx=pipeline,
-        stream_name="anotehr-events",
+        stream_name="anotehr-logical-events",
     )
 
     filter = Filter(

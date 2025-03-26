@@ -15,6 +15,7 @@ Outcome = dict[str, str]
 
 
 def build_outcome(value: str) -> Outcome:
+
     d: Outcome = json.loads(value)
 
     return d
@@ -26,7 +27,7 @@ pipeline = Pipeline()
 source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    stream_name="events",
+    stream_name="logical-events",
 )
 
 map = Map(

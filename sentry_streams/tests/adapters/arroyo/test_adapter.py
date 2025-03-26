@@ -47,12 +47,13 @@ def test_kafka_sources() -> None:
 
 
 def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
+
     adapter = ArroyoAdapter.build(
         {
             "sources_config": {},
             "sinks_config": {},
             "sources_override": {
-                "myinput": broker.get_consumer("events"),
+                "myinput": broker.get_consumer("logical-events"),
             },
             "sinks_override": {
                 "kafkasink": broker.get_producer(),
@@ -65,14 +66,14 @@ def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
     processor = adapter.get_processor("myinput")
 
     broker.produce(
-        Partition(Topic("events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
+        Partition(Topic("logical-events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
     )
     broker.produce(
-        Partition(Topic("events"), 0),
+        Partition(Topic("logical-events"), 0),
         KafkaPayload(None, "do_not_go_ahead".encode("utf-8"), []),
     )
     broker.produce(
-        Partition(Topic("events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
+        Partition(Topic("logical-events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
     )
 
     processor._run_once()
