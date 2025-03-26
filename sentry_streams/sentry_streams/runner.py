@@ -112,7 +112,7 @@ def main() -> None:
     # TODO: read from yaml file
     environment_config = {
         "topics": {
-            "logical-events": "events",
+            "events": "events",
             "transformed-events": "transformed-events",
             "transformed-events-2": "transformed-events-2",
             "transformed-events-3": "transformed-events-3",

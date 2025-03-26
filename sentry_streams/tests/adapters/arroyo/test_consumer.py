@@ -76,13 +76,13 @@ def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> 
 
     factory = ArroyoStreamingFactory(consumer)
     commit = mock.Mock(spec=Commit)
-    strategy = factory.create_with_partitions(commit, {Partition(Topic("logical-events"), 0): 0})
+    strategy = factory.create_with_partitions(commit, {Partition(Topic("events"), 0): 0})
 
-    strategy.submit(make_msg("go_ahead", "logical-events", 0))
+    strategy.submit(make_msg("go_ahead", "events", 0))
     strategy.poll()
-    strategy.submit(make_msg("do_not_go_ahead", "logical-events", 2))
+    strategy.submit(make_msg("do_not_go_ahead", "events", 2))
     strategy.poll()
-    strategy.submit(make_msg("go_ahead", "logical-events", 3))
+    strategy.submit(make_msg("go_ahead", "events", 3))
     strategy.poll()
 
     topic = Topic("transformed-events")
@@ -95,13 +95,13 @@ def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> 
     commit.assert_has_calls(
         [
             call({}),
-            call({Partition(Topic("logical-events"), 0): 1}),
+            call({Partition(Topic("events"), 0): 1}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 3}),
+            call({Partition(Topic("events"), 0): 3}),
             call({}),
             call({}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 4}),
+            call({Partition(Topic("events"), 0): 4}),
             call({}),
         ],
     )
@@ -155,13 +155,13 @@ def test_multiple_routes(broker: LocalBroker[KafkaPayload], router_pipeline: Pip
 
     factory = ArroyoStreamingFactory(consumer)
     commit = mock.Mock(spec=Commit)
-    strategy = factory.create_with_partitions(commit, {Partition(Topic("logical-events"), 0): 0})
+    strategy = factory.create_with_partitions(commit, {Partition(Topic("events"), 0): 0})
 
-    strategy.submit(make_msg("go_ahead", "logical-events", 0))
+    strategy.submit(make_msg("go_ahead", "events", 0))
     strategy.poll()
-    strategy.submit(make_msg("do_not_go_ahead", "logical-events", 2))
+    strategy.submit(make_msg("do_not_go_ahead", "events", 2))
     strategy.poll()
-    strategy.submit(make_msg("go_ahead", "logical-events", 3))
+    strategy.submit(make_msg("go_ahead", "events", 3))
     strategy.poll()
 
     topic = Topic("transformed-events")
@@ -176,15 +176,15 @@ def test_multiple_routes(broker: LocalBroker[KafkaPayload], router_pipeline: Pip
     commit.assert_has_calls(
         [
             call({}),
-            call({Partition(topic=Topic(name="logical-events"), index=0): 1}),
+            call({Partition(topic=Topic(name="events"), index=0): 1}),
             call({}),
             call({}),
             call({}),
             call({}),
-            call({Partition(topic=Topic(name="logical-events"), index=0): 3}),
+            call({Partition(topic=Topic(name="events"), index=0): 3}),
             call({}),
             call({}),
-            call({Partition(topic=Topic(name="logical-events"), index=0): 4}),
+            call({Partition(topic=Topic(name="events"), index=0): 4}),
             call({}),
             call({}),
         ],

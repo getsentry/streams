@@ -29,10 +29,10 @@ python sentry_streams/runner.py \
     -n test \
     -b localhost:9092 \
     -a arroyo \
-    sentry_streams/examples/transfomer.py
+    sentry_streams/examples/transformer.py
 ```
 
 This will start an Arroyo consumer that runs the streaming application defined
-in `sentry_streams/examples/transfomer.py`.
+in `sentry_streams/examples/transformer.py`.
 
 there is a number of examples in the `sentry_streams/examples` directory.
