@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Callable, Union
@@ -7,14 +8,13 @@ from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies import Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import (
-    FilteredPayload,
-    Message,
-    Topic,
-)
+from arroyo.types import FilteredPayload, Message, Topic
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.pipeline.pipeline import Filter, Map
+from sentry_streams.adapters.arroyo.translator import build_arroyo_windowed_reduce
+from sentry_streams.pipeline.pipeline import Filter, Map, Reduce
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -151,3 +151,31 @@ class StreamSinkStep(ArroyoStep):
             extract_value,
             Produce(self.producer, Topic(self.topic_name), next),
         )
+
+
+@dataclass
+class ReduceStep(ArroyoStep):
+
+    pipeline_step: Reduce[Any, Any, Any]
+
+    def build(
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
+    ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
+
+        logger.info(next)
+
+        windowed_reduce: ProcessingStrategy[Union[FilteredPayload, RoutedValue]] = (
+            build_arroyo_windowed_reduce(
+                self.pipeline_step.windowing, self.pipeline_step.aggregate_fn, next
+            )
+        )
+
+        (windowed_reduce)
+        return windowed_reduce
+
+
+# 2025-03-25 17:24:37 - INFO - BrokerValue(_BrokerValue__payload=Rou│
+# tedValue(route=Route(source='myinput', waypoints=[]), payload={'te│
+# st': 'hello world', 'type': 'event'}), partition=Partition(topic=T│
+# opic(name='events'), index=2), offset=39, timestamp=datetime.datet│
+# ime(2025, 3, 26, 0, 24, 37, 81000))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Mapping, MutableMapping, Self, TypedDict
 
 from arroyo.backends.kafka.configuration import (
@@ -15,7 +16,12 @@ from sentry_streams.adapters.arroyo.consumer import (
     ArroyoStreamingFactory,
 )
 from sentry_streams.adapters.arroyo.routes import Route
-from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
+from sentry_streams.adapters.arroyo.steps import (
+    FilterStep,
+    MapStep,
+    ReduceStep,
+    StreamSinkStep,
+)
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import (
     InputType,
@@ -34,6 +40,8 @@ from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
+
+logger = logging.getLogger(__name__)
 
 
 class KafkaConsumerConfig(TypedDict):
@@ -208,7 +216,13 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a reduce operator for the platform the adapter supports.
         """
-        raise NotImplementedError
+
+        assert (
+            stream.source in self.__consumers
+        ), f"Stream starting at source {stream.source} not found when adding a reduce"
+
+        self.__consumers[stream.source].add_step(ReduceStep(route=stream, pipeline_step=step))
+        return stream
 
     def router(
         self,
@@ -222,7 +236,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
     def get_processor(self, source: str) -> StreamProcessor[KafkaPayload]:
         """
-        Returns the stream processor for the given source.
+        Returns the stream processor for the given source
         """
         return self.__processors[source]
 
