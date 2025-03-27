@@ -1,18 +1,20 @@
 import logging
 import math
+import sys
 import time
 from datetime import timedelta
-from typing import Any, Callable, Generic, Optional, TypeVar, Union
+from typing import Any, Callable, Generic, Optional, TypeVar, Union, cast
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.reduce import Reduce
 from arroyo.types import BaseValue, FilteredPayload, Message
 
 from sentry_streams.adapters.arroyo.routes import RoutedValue
-from sentry_streams.pipeline.function_template import Accumulator, InputType, OutputType
+from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.window import (
     MeasurementUnit,
     SlidingWindow,
+    TumblingWindow,
     Window,
 )
 
@@ -107,7 +109,7 @@ class WindowedReduce(
         else:
             # Unfortunate
             return Reduce(
-                1000000000,
+                sys.maxsize,
                 self.window_size,
                 final_acc.accumulator,
                 final_acc.initial_value,
@@ -115,10 +117,6 @@ class WindowedReduce(
             )
 
     def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
-
-        logger.info(f"REDUCE TYPE VALUE {type(message.value)}")
-        logger.info(f"REDUCE TYPE PAYLOAD {type(message.payload)}")
-
         # count based
         if self.count_mode:
             msg_id = self.message_count % self.window_loop
@@ -166,8 +164,8 @@ class WindowedReduce(
 
 def build_arroyo_windowed_reduce(
     streams_window: Window[MeasurementUnit],
-    accumulator: Callable[[], Accumulator[InputType, OutputType]],
-    next_step: ProcessingStrategy[OutputType],
+    accumulator: Callable[[], Accumulator[Any, Any]],
+    next_step: ProcessingStrategy[Union[FilteredPayload, TPayload]],
 ) -> ProcessingStrategy[Union[FilteredPayload, TPayload]]:
 
     match streams_window:
@@ -189,19 +187,45 @@ def build_arroyo_windowed_reduce(
                         f"({type(window_size)}, {type(window_slide)}) is not a supported MeasurementUnit type combination for SlidingWindow"
                     )
 
-        # case TumblingWindow(window_size):
-        #     match window_size:
-        #         case int():
-        #             logger.info("Correct windowing")
-        #             return Reduce(window_size, float('inf'), arroyo_acc_fn, arroyo_init, next_step)
+        case TumblingWindow(window_size):
 
-        #         case timedelta():
-        #             return Reduce(window_size, window_size, arroyo_acc_fn, arroyo_init, next_step)
+            arroyo_acc = ArroyoAccumulator(accumulator)
 
-        #         case _:
-        #             raise TypeError(
-        #                 f"{type(window_size)} is not a supported MeasurementUnit type for TumblingWindow"
-        #             )
+            match window_size:
+                case int():
+                    return Reduce(
+                        window_size,
+                        float("inf"),
+                        cast(
+                            Callable[
+                                [FilteredPayload | TPayload, BaseValue[TPayload]],
+                                FilteredPayload | TPayload,
+                            ],
+                            arroyo_acc.accumulator,
+                        ),
+                        arroyo_acc.initial_value,
+                        next_step,
+                    )
+
+                case timedelta():
+                    return Reduce(
+                        sys.maxsize,
+                        window_size.total_seconds(),
+                        cast(
+                            Callable[
+                                [FilteredPayload | TPayload, BaseValue[TPayload]],
+                                FilteredPayload | TPayload,
+                            ],
+                            arroyo_acc.accumulator,
+                        ),
+                        arroyo_acc.initial_value,
+                        next_step,
+                    )
+
+                case _:
+                    raise TypeError(
+                        f"{type(window_size)} is not a supported MeasurementUnit type for TumblingWindow"
+                    )
 
         case _:
             raise TypeError(f"{streams_window} is not a supported Window type")

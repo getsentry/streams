@@ -51,8 +51,6 @@ def process_message(
     `process_routed_payload` function.
     """
     payload = message.payload
-    logger.info(f"INSIDE PROCESS_MESSAGE {type(payload)}")
-
     if isinstance(payload, FilteredPayload):
         return payload
 
@@ -79,10 +77,6 @@ class MapStep(ArroyoStep):
         def transformer(
             message: Message[Union[FilteredPayload, RoutedValue]],
         ) -> Union[FilteredPayload, RoutedValue]:
-
-            logger.info(f"MAP TYPE {type(message.value)}")
-            logger.info(f"MAP TYPE {type(message.payload)}")
-
             return process_message(
                 self.route,
                 message,
@@ -115,10 +109,6 @@ class FilterStep(ArroyoStep):
         def transformer(
             message: Message[Union[FilteredPayload, RoutedValue]],
         ) -> Union[FilteredPayload, RoutedValue]:
-
-            logger.info(f"FILTER TYPE VALUE {type(message.value)}")
-            logger.info(f"FILTER TYPE PAYLOAD {type(message.payload)}")
-
             return process_message(
                 self.route,
                 message,
@@ -151,8 +141,6 @@ class StreamSinkStep(ArroyoStep):
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         def extract_value(message: Message[Union[FilteredPayload, RoutedValue]]) -> Any:
-            logger.info(f"SINK TYPE VALUE {type(message.value)}")
-            logger.info(f"SINK TYPE PAYLOD {type(message.payload)}")
             message_payload = message.value.payload
             if isinstance(message_payload, RoutedValue) and message_payload.route == self.route:
                 return KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
