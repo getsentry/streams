@@ -39,7 +39,7 @@ class ArroyoAccumulator:
         # get the fresh initial value each time
         return self.instance.get_value()
 
-    # if we hit the accumulator it should never be a FilteredPayload
+    # types still tbd
     def accumulator(self, result: Any, value: BaseValue[RoutedValue]) -> RoutedValue:
         self.instance.add(value.payload.payload)
 
@@ -70,7 +70,7 @@ class WindowedReduce(
         self.acc = acc
         self.next_step = next_step
 
-        # initializers
+        # initializers depending on whether it is count-based or time-based
         if isinstance(window_size, int):
             self.count_mode = True
             self.message_count = 1
@@ -79,14 +79,28 @@ class WindowedReduce(
             self.count_mode = False
             self.start_time = time.time()
 
+        # build the list of Reduces, as we know the number of windows to manage upfront
         self.windows = [self.create_reduce() for _ in range(self.window_count)]
 
+        # we know the starting value of every window goes through a cycle
+        # this represents the size of that cycle / loop
         self.window_loop = self.window_count * self.window_slide
 
+        # since we're adding elements to a cycle effectively,
+        # we know, for each window, which indices within that cycle
+        # CANNOT be part of that window
+
+        # for each window, track a 'greater' and a 'lesser' value
+        # every incoming message will be compared to these to determine
+        # whether or not the message can be added to the window
         self.boundaries = []
         for i in range(self.window_count):
             greater = (self.window_size + i * self.window_slide) % self.window_loop
 
+            # this branch is because of the different meaning of window_size
+            # between count and time
+            # e.g. count window of 5 msgs: [msg1 ... msg5]
+            # e.g. time window of 5 seconds [0s ... 5s]
             if self.count_mode:
                 less = i * self.window_slide + 1
             else:
@@ -126,20 +140,21 @@ class WindowedReduce(
             cur_time = time.time() - self.start_time
             msg_id = cur_time % self.window_loop
 
-        message_tracker = self.message_count if self.count_mode else cur_time
+        tracked_messages = self.message_count if self.count_mode else cur_time
 
-        # actually submit to the right Reduces
+        # actually submit a message to the right Reduces windows
         for i in range(len(self.windows)):
 
-            if message_tracker > i * self.window_slide:
+            if tracked_messages > i * self.window_slide:
                 if self.boundaries[i][0] < self.boundaries[i][1]:
                     if not (msg_id > self.boundaries[i][0] and msg_id < self.boundaries[i][1]):
-                        logger.info(f"message index {message_tracker}, window_id {i}")
+                        logger.info(f"message index {tracked_messages}, window_id {i}")
                         self.windows[i].submit(message)
 
                 else:
+                    # this condition exists because boundary values for every window is cyclic
                     if not (msg_id > self.boundaries[i][0] or msg_id < self.boundaries[i][1]):
-                        logger.info(f"message index {message_tracker}, window_id {i}")
+                        logger.info(f"message index {tracked_messages}, window_id {i}")
                         self.windows[i].submit(message)
 
         if self.count_mode:
