@@ -111,12 +111,6 @@ def main() -> None:
 
     # TODO: read from yaml file
     environment_config = {
-        "topics": {
-            "logical-events": "events",
-            "transformed-events": "transformed-events",
-            "transformed-events-2": "transformed-events-2",
-            "transformed-events-3": "transformed-events-3",
-        },
         "broker": args.broker,
         "sources_config": {
             "myinput": {
@@ -130,7 +124,15 @@ def main() -> None:
             "kafkasink": {
                 "bootstrap_servers": [args.broker],
                 "additional_settings": {},
-            }
+            },
+            "kafkasink2": {
+                "bootstrap_servers": [args.broker],
+                "additional_settings": {},
+            },
+            "kafkasink3": {
+                "bootstrap_servers": [args.broker],
+                "additional_settings": {},
+            },
         },
     }
 

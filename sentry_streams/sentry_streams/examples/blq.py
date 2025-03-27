@@ -12,10 +12,8 @@ storage_branch = (
     .broadcast(
         "Send message to DBs",
         routes=[
-            segment("sbc").sink("sbc_sinkStreamSource", stream_name="transformed-events"),
-            segment("clickhouse").sink(
-                "clickhouse_sinkStreamSource", stream_name="transformed-eventStreamSource-2"
-            ),
+            segment("sbc").sink("kafkasink", stream_name="transformed-events"),
+            segment("clickhouse").sink("kafkasink2", stream_name="transformed-events2"),
         ],
     )
 )
@@ -24,8 +22,8 @@ save_delayed_message = (
     segment(name="delayed")
     .apply("dump_msg_delayed", Map(json_dump_message))
     .sink(
-        "delayed_msg_sinkStreamSource",
-        stream_name="transformed-eventStreamSourceStreamSource",
+        "kafkasink3",
+        stream_name="transformed-events3",
     )
 )
 

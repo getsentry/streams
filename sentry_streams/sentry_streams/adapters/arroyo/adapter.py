@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, MutableMapping, Self, TypedDict
+from typing import (
+    Any,
+    List,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Self,
+    TypedDict,
+    cast,
+)
 
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
@@ -15,7 +24,12 @@ from sentry_streams.adapters.arroyo.consumer import (
     ArroyoStreamingFactory,
 )
 from sentry_streams.adapters.arroyo.routes import Route
-from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
+from sentry_streams.adapters.arroyo.steps import (
+    FilterStep,
+    MapStep,
+    RouterStep,
+    StreamSinkStep,
+)
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import (
     InputType,
@@ -104,7 +118,6 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         sinks_override: Mapping[str, KafkaProducer] = {},
     ) -> None:
         super().__init__()
-
         self.__sources = StreamSources(sources_config, sources_override)
         self.__sinks_config = sinks_config
 
@@ -218,7 +231,20 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a router operator for the platform the adapter supports.
         """
-        raise NotImplementedError
+        assert (
+            stream.source in self.__consumers
+        ), f"Stream starting at source {stream.source} not found when adding a router"
+        self.__consumers[stream.source].add_step(RouterStep(route=stream, pipeline_step=step))
+
+        routes_map: MutableMapping[str, Route] = {}
+        for branch in step.routing_table.values():
+            branch_waypoints = cast(List[str], stream.waypoints) + [branch.name]
+            branch_stream = Route(
+                source=stream.source, waypoints=cast(MutableSequence[str], branch_waypoints)
+            )
+            routes_map[branch.name] = branch_stream
+
+        return routes_map
 
     def get_processor(self, source: str) -> StreamProcessor[KafkaPayload]:
         """
