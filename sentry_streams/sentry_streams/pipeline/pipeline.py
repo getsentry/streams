@@ -12,6 +12,8 @@ from typing import (
     MutableMapping,
     MutableSequence,
     Optional,
+    Sequence,
+    Set,
     TypeVar,
     Union,
     cast,
@@ -40,6 +42,10 @@ class StepType(Enum):
     SOURCE = "source"
 
 
+def make_edge_sets(edge_map: Mapping[str, Sequence[Any]]) -> Mapping[str, Set[Any]]:
+    return {k: set(v) for k, v in edge_map.items()}
+
+
 class Pipeline:
     """
     A graph representing the connections between
@@ -62,6 +68,48 @@ class Pipeline:
 
     def register_source(self, step: Source) -> None:
         self.sources.append(step)
+
+    def merge(self, other: Pipeline, merge_point: str) -> None:
+        """
+        Merges another pipeline into this one after a provided step identified
+        as `merge_point`
+
+        The source of the other pipeline is fully replaced by the merge_point
+        step of this pipeline.
+
+        This does not adjust the context field of the steps contained in the
+        merged pipeline.
+        """
+        assert (
+            not other.sources
+        ), "Cannot merge a pipeline into another if it contains a stream source"
+
+        other_pipeline_sources = {
+            n for n in other.steps if other.steps[n].name not in other.incoming_edges
+        }
+
+        for step in other.steps.values():
+            if step.name not in other_pipeline_sources:
+                self.register(step)
+
+        for source, dests in other.outgoing_edges.items():
+            if source not in other_pipeline_sources:
+                self.outgoing_edges[source].extend(dests)
+
+        for dest, sources in other.incoming_edges.items():
+            for s in sources:
+                if s not in other_pipeline_sources:
+                    self.incoming_edges[dest].append(s)
+
+        merged_pipeline_sources = set()
+        for n in other.steps:
+            incoming_edges = other.incoming_edges[n]
+            if incoming_edges and all(n in other_pipeline_sources for n in incoming_edges):
+                merged_pipeline_sources.add(n)
+
+        self.outgoing_edges[merge_point].extend(merged_pipeline_sources)
+        for n in merged_pipeline_sources:
+            self.incoming_edges[n].append(merge_point)
 
 
 @dataclass
