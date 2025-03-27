@@ -1,9 +1,9 @@
 from json import JSONDecodeError, dumps, loads
 from typing import Any, Mapping, cast
-from sentry_streams.pipeline import Batch, FlatMap, Map, streaming_source, Filter
+
+from sentry_streams.pipeline import Batch, Filter, FlatMap, Map, streaming_source
 from sentry_streams.pipeline.batch import unbatch
 from sentry_streams.pipeline.function_template import InputType
-
 
 # The simplest possible pipeline.
 # - reads from Kafka
