@@ -30,7 +30,10 @@ def test_kafka_sources() -> None:
     consumers = {
         "source2": mock.Mock(),
     }
-    sources = StreamSources(sources_config, consumers)
+    sources = StreamSources(
+        sources_config=sources_config,
+        sources_override=consumers,
+    )
 
     with pytest.raises(KeyError):
         sources.get_consumer("source1")
@@ -51,6 +54,7 @@ def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
         {
             "sources_config": {},
             "sinks_config": {},
+            "topics": {"events": "events"},
             "sources_override": {
                 "myinput": broker.get_consumer("events"),
             },

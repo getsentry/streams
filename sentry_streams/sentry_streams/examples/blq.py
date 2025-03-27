@@ -17,7 +17,7 @@ from sentry_streams.pipeline.pipeline import (
 pipeline = Pipeline()
 
 source = StreamSource(
-    name="ingest",
+    name="myinput",
     ctx=pipeline,
     stream_name="events",
 )
@@ -55,21 +55,21 @@ dump_msg_delayed = Map(
 )
 
 sbc_sink = StreamSink(
-    name="sbc_sinkStreamSource",
+    name="kafkasink",
     ctx=pipeline,
     inputs=[dump_msg_recent],
     stream_name="transformed-events",
 )
 
 clickhouse_sink = StreamSink(
-    name="clickhouse_sinkStreamSource",
+    name="kafkasink2",
     ctx=pipeline,
     inputs=[dump_msg_recent],
     stream_name="transformed-events-2",
 )
 
 delayed_msg_sink = StreamSink(
-    name="delayed_msg_sinkStreamSource",
+    name="kafkasink3",
     ctx=pipeline,
     inputs=[dump_msg_delayed],
     stream_name="transformed-events-3",

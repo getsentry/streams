@@ -124,7 +124,15 @@ def main() -> None:
             "kafkasink": {
                 "bootstrap_servers": [args.broker],
                 "additional_settings": {},
-            }
+            },
+            "kafkasink2": {
+                "bootstrap_servers": [args.broker],
+                "additional_settings": {},
+            },
+            "kafkasink3": {
+                "bootstrap_servers": [args.broker],
+                "additional_settings": {},
+            },
         },
     }
 
