@@ -65,7 +65,7 @@ def router_pipeline() -> Pipeline:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
     decoder = Map(
         name="decoder",
