@@ -118,7 +118,31 @@ def main() -> None:
                 "auto_offset_reset": "latest",
                 "consumer_group": "test",
                 "additional_settings": {},
-            }
+            },
+            "ingest": {
+                "bootstrap_servers": [args.broker],
+                "auto_offset_reset": "latest",
+                "consumer_group": "test1",
+                "additional_settings": {},
+            },
+            "snuba": {
+                "bootstrap_servers": [args.broker],
+                "auto_offset_reset": "latest",
+                "consumer_group": "test2",
+                "additional_settings": {},
+            },
+            "sbc": {
+                "bootstrap_servers": [args.broker],
+                "auto_offset_reset": "latest",
+                "consumer_group": "test3",
+                "additional_settings": {},
+            },
+            "post_process": {
+                "bootstrap_servers": [args.broker],
+                "auto_offset_reset": "latest",
+                "consumer_group": "test4",
+                "additional_settings": {},
+            },
         },
         "sinks_config": {
             "kafkasink": {
@@ -130,6 +154,22 @@ def main() -> None:
                 "additional_settings": {},
             },
             "kafkasink3": {
+                "bootstrap_servers": [args.broker],
+                "additional_settings": {},
+            },
+            "eventstream": {
+                "bootstrap_servers": [args.broker],
+                "additional_settings": {},
+            },
+            "clickhouse": {
+                "bootstrap_servers": [args.broker],
+                "additional_settings": {},
+            },
+            "sbc_sink": {
+                "bootstrap_servers": [args.broker],
+                "additional_settings": {},
+            },
+            "devnull": {
                 "bootstrap_servers": [args.broker],
                 "additional_settings": {},
             },
