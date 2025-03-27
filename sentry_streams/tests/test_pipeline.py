@@ -13,6 +13,7 @@ from sentry_streams.pipeline.pipeline import (
     StreamSink,
     StreamSource,
     TransformStep,
+    make_edge_sets,
 )
 
 
@@ -22,13 +23,13 @@ def pipeline() -> Pipeline:
     source = StreamSource(
         name="source",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
 
     source2 = StreamSource(
         name="source2",
         ctx=pipeline,
-        stream_name="anotehr-logical-events",
+        stream_name="anotehr-events",
     )
 
     filter = Filter(
@@ -166,3 +167,117 @@ def test_resolve_function(
         step_type=StepType.MAP,
     )
     assert step.resolved_function == expected
+
+
+def test_merge_linear() -> None:
+    pipeline1 = Pipeline()
+    StreamSource(
+        name="source",
+        ctx=pipeline1,
+        stream_name="logical-events",
+    )
+
+    pipeline2 = Pipeline()
+    branch = Branch(
+        "branch1",
+        pipeline2,
+    )
+    Map(
+        name="map",
+        ctx=pipeline2,
+        inputs=[branch],
+        function=simple_map,
+    )
+
+    pipeline1.merge(pipeline2, merge_point="source")
+
+    assert set(pipeline1.steps.keys()) == {"source", "map"}
+    assert pipeline1.outgoing_edges == {
+        "source": ["map"],
+    }
+    assert pipeline1.incoming_edges == {
+        "map": ["source"],
+    }
+
+
+def test_merge_branches() -> None:
+    pipeline1 = Pipeline()
+    StreamSource(
+        name="source",
+        ctx=pipeline1,
+        stream_name="logical-events",
+    )
+
+    pipeline2 = Pipeline()
+    branch1 = Branch(
+        "branch1",
+        pipeline2,
+    )
+    Map(
+        name="map1",
+        ctx=pipeline2,
+        inputs=[branch1],
+        function=simple_map,
+    )
+
+    pipeline3 = Pipeline()
+    branch2 = Branch(
+        "branch2",
+        pipeline3,
+    )
+    Map(
+        name="map2",
+        ctx=pipeline3,
+        inputs=[branch2],
+        function=simple_map,
+    )
+
+    pipeline1.merge(pipeline2, merge_point="source")
+    pipeline1.merge(pipeline3, merge_point="source")
+
+    assert set(pipeline1.steps.keys()) == {"source", "map1", "map2"}
+    assert make_edge_sets(pipeline1.outgoing_edges) == {
+        "source": {"map1", "map2"},
+    }
+    assert make_edge_sets(pipeline1.incoming_edges) == {
+        "map1": {"source"},
+        "map2": {"source"},
+    }
+
+
+def test_multi_broadcast() -> None:
+    pipeline1 = Pipeline()
+    StreamSource(
+        name="source",
+        ctx=pipeline1,
+        stream_name="logical-events",
+    )
+
+    pipeline2 = Pipeline()
+    branch1 = Branch(
+        "branch1",
+        pipeline2,
+    )
+    Map(
+        name="map1",
+        ctx=pipeline2,
+        inputs=[branch1],
+        function=simple_map,
+    )
+    Map(
+        name="map2",
+        ctx=pipeline2,
+        inputs=[branch1],
+        function=simple_map,
+    )
+
+    pipeline1.merge(pipeline2, merge_point="source")
+
+    assert set(pipeline1.steps.keys()) == {"source", "map1", "map2"}
+    assert make_edge_sets(pipeline1.outgoing_edges) == {
+        "source": {"map1", "map2"},
+    }
+    assert make_edge_sets(pipeline1.incoming_edges) == {
+        "map1": {"source"},
+        "map2": {"source"},
+    }

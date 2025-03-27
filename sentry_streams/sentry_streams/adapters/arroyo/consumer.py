@@ -51,7 +51,7 @@ class ArroyoConsumer:
         """
         Build the Arroyo consumer wiring up the steps in reverse order.
 
-        It also add a strategy at the beginning that makes each payload
+        It also adds a strategy at the beginning that makes each payload
         a RoutedValue that contains the route the message is supposed to
         follow.
         """
@@ -62,7 +62,7 @@ class ArroyoConsumer:
 
         strategy: ProcessingStrategy[Any] = CommitOffsets(commit)
         for step in reversed(self.steps):
-            strategy = step.build(strategy)
+            strategy = step.build(strategy, commit)
 
         return RunTask(add_route, strategy)
 
