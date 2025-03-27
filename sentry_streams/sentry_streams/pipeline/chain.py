@@ -26,7 +26,7 @@ from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
 )
-from sentry_streams.pipeline.pipeline import Filter as FitlerStep
+from sentry_streams.pipeline.pipeline import Filter as FilterStep
 from sentry_streams.pipeline.pipeline import FlatMap as FlatMapStep
 from sentry_streams.pipeline.pipeline import Map as MapStep
 from sentry_streams.pipeline.pipeline import (
@@ -80,7 +80,7 @@ class Filter(Applier[TIn, TIn], Generic[TIn]):
     function: Union[Callable[[TIn], bool], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
-        return FitlerStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
+        return FilterStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
 
 
 @dataclass

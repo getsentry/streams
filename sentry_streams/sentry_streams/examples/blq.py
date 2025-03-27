@@ -30,7 +30,7 @@ save_delayed_message = (
 pipeline = (
     streaming_source(
         name="ingest",
-        stream_name="logical-events",
+        stream_name="events",
     )
     .apply("unpack_message", Map(unpack_kafka_message))
     .route(
