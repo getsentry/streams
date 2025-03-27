@@ -246,6 +246,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
                 consumer=self.__sources.get_consumer(source),
                 topic=self.__sources.get_topic(source),
                 processor_factory=ArroyoStreamingFactory(consumer),
+                join_timeout=0.0,
             )
             for source, consumer in self.__consumers.items()
         }

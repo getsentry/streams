@@ -1,5 +1,4 @@
 import logging
-from datetime import timedelta
 from json import JSONDecodeError, loads
 from typing import Any, Mapping, MutableSequence, Self, cast
 
@@ -34,18 +33,12 @@ def parse(msg: str) -> Mapping[str, Any]:
 
 
 class TransformerBatch(Accumulator[Any, Any]):
-    """
-    Takes a generic input format, and batches into a generic batch representation
-    with the same input type. Returns this batch representation.
-
-    The data type of the elements remains the same through this operation.
-    """
 
     def __init__(self) -> None:
         self.batch: MutableSequence[Any] = []
 
     def add(self, value: Any) -> Self:
-        self.batch.append(value)
+        self.batch.append(value["test"])
 
         return self
 
@@ -72,7 +65,7 @@ filter = Filter(
     name="myfilter", ctx=pipeline, inputs=[parser], function=lambda msg: msg["type"] == "event"
 )
 
-reduce_window = SlidingWindow(window_size=timedelta(seconds=3), window_slide=timedelta(seconds=2))
+reduce_window = SlidingWindow(window_size=5, window_slide=1)
 
 reduce = Aggregate(
     name="myreduce",
@@ -81,7 +74,6 @@ reduce = Aggregate(
     window=reduce_window,
     aggregate_func=TransformerBatch,
 )
-
 
 # jsonify = Map(name="serializer", ctx=pipeline, inputs=[filter], function=lambda msg: dumps(msg))
 

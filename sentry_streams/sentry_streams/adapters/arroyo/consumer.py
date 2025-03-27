@@ -69,7 +69,10 @@ class ArroyoConsumer:
             logger.info(step)
             strategy = step.build(strategy)
 
-        return RunTask(add_route, strategy)
+        return RunTask(
+            add_route,
+            strategy,
+        )
 
 
 class ArroyoStreamingFactory(ProcessingStrategyFactory[Any]):
@@ -81,6 +84,5 @@ class ArroyoStreamingFactory(ProcessingStrategyFactory[Any]):
         commit: Commit,
         _: Mapping[Partition, int],
     ) -> ProcessingStrategy[Any]:
-        logger.info("BUILDING STRAT")
 
         return self.consumer.build_strategy(commit)

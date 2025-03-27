@@ -51,6 +51,8 @@ def process_message(
     `process_routed_payload` function.
     """
     payload = message.payload
+    logger.info(f"INSIDE PROCESS_MESSAGE {type(payload)}")
+
     if isinstance(payload, FilteredPayload):
         return payload
 
@@ -77,6 +79,10 @@ class MapStep(ArroyoStep):
         def transformer(
             message: Message[Union[FilteredPayload, RoutedValue]],
         ) -> Union[FilteredPayload, RoutedValue]:
+
+            logger.info(f"MAP TYPE {type(message.value)}")
+            logger.info(f"MAP TYPE {type(message.payload)}")
+
             return process_message(
                 self.route,
                 message,
@@ -109,6 +115,10 @@ class FilterStep(ArroyoStep):
         def transformer(
             message: Message[Union[FilteredPayload, RoutedValue]],
         ) -> Union[FilteredPayload, RoutedValue]:
+
+            logger.info(f"FILTER TYPE VALUE {type(message.value)}")
+            logger.info(f"FILTER TYPE PAYLOAD {type(message.payload)}")
+
             return process_message(
                 self.route,
                 message,
@@ -141,6 +151,8 @@ class StreamSinkStep(ArroyoStep):
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         def extract_value(message: Message[Union[FilteredPayload, RoutedValue]]) -> Any:
+            logger.info(f"SINK TYPE VALUE {type(message.value)}")
+            logger.info(f"SINK TYPE PAYLOD {type(message.payload)}")
             message_payload = message.value.payload
             if isinstance(message_payload, RoutedValue) and message_payload.route == self.route:
                 return KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
@@ -162,20 +174,10 @@ class ReduceStep(ArroyoStep):
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]]
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
 
-        logger.info(next)
-
         windowed_reduce: ProcessingStrategy[Union[FilteredPayload, RoutedValue]] = (
             build_arroyo_windowed_reduce(
                 self.pipeline_step.windowing, self.pipeline_step.aggregate_fn, next
             )
         )
 
-        (windowed_reduce)
         return windowed_reduce
-
-
-# 2025-03-25 17:24:37 - INFO - BrokerValue(_BrokerValue__payload=Rou│
-# tedValue(route=Route(source='myinput', waypoints=[]), payload={'te│
-# st': 'hello world', 'type': 'event'}), partition=Partition(topic=T│
-# opic(name='events'), index=2), offset=39, timestamp=datetime.datet│
-# ime(2025, 3, 26, 0, 24, 37, 81000))
