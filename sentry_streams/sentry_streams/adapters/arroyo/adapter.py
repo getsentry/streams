@@ -56,7 +56,7 @@ class KafkaProducerConfig(TypedDict):
 
 class SegmentConfig(TypedDict):
     parallelism: int
-    steps_config: Mapping[str, Any]
+    steps_config: Mapping[str, StepConfig]
 
 
 class StreamSources:

@@ -3,6 +3,7 @@ from typing import (
     Any,
     MutableMapping,
     Self,
+    Sequence,
     Union,
     get_type_hints,
 )
@@ -73,14 +74,18 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         self.pipeline_config = config["pipeline"]
         self.env = env
 
-        self.segment_config = {}
-        self.steps_to_segments = {}
-        for segment in self.pipeline_config["segments"]:
-            all_segment_config = self.pipeline_config["segments"][segment]
-            self.segment_config[segment] = all_segment_config
+        self.cur_segment = 0
+        # A list of segment config objects
+        self.segment_config: Sequence[SegmentConfig] = self.pipeline_config["segments"]
+        # Maps the step to the list index corresponding to the segment config
+        self.steps_to_segments: MutableMapping[str, int] = {}
+        self.steps_config: MutableMapping[str, StepConfig] = {}
 
-            for step in all_segment_config["steps_config"]:
-                self.steps_to_segments[step] = segment
+        for ind in range(len(self.segment_config)):
+            segment = self.segment_config[ind]
+            self.steps_config.update(segment["steps_config"])
+            for step in segment["steps_config"]:
+                self.steps_to_segments[step] = ind
 
     @classmethod
     def build(cls, config: PipelineConfig) -> Self:
@@ -102,35 +107,46 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return cls(config, env)
 
     def resolve_incoming_chain(
-        self, outgoing_step: Step, incoming_stream: DataStream, config: SegmentConfig
+        self, outgoing_step: Step, incoming_stream: DataStream
     ) -> DataStream:
-        step_config = config["steps_config"][outgoing_step.name]
+        step_name = outgoing_step.name
 
-        if "starts_segment" in step_config:
+        config = self.steps_config.get(step_name)
+        if config and "starts_segment" in config:
             return incoming_stream.rebalance()
 
         return incoming_stream
 
-    def resolve_outoing_chain(
-        self, incoming_step: Step, outgoing_stream: DataStream, config: SegmentConfig
-    ) -> DataStream:
-        step_config = config["steps_config"][incoming_step.name]
+    def resolve_outoing_chain(self, incoming_step: Step, outgoing_stream: DataStream) -> DataStream:
+        step_name = incoming_step.name
 
-        if "starts_segment" in step_config:
+        config = self.steps_config.get(step_name)
+        if config and "starts_segment" in config:
             assert isinstance(outgoing_stream, DataStream)
-            return outgoing_stream.start_new_chain().set_parallelism(config["parallelism"])
+            segment_id = self.steps_to_segments[step_name]
+            parallelism = self.segment_config[segment_id].get("parallelism", 1)
 
-        return outgoing_stream.set_parallelism(config["parallelism"])
+            self.cur_segment = segment_id
+            return outgoing_stream.start_new_chain().set_parallelism(parallelism)
 
-    def resolve_sink_chain(
-        self, outgoing_stream: DataStreamSink, config: SegmentConfig
-    ) -> DataStreamSink:
+        # Since Flink must set parallelism on a per-step basis (not per-chain)
+        cur_parallelism = self.segment_config[self.cur_segment].get("parallelism", 1)
+        return outgoing_stream.set_parallelism(cur_parallelism)
 
-        return outgoing_stream.set_parallelism(config["parallelism"])
+    def resolve_sink_chain(self, step: Sink, outgoing_stream: DataStreamSink) -> DataStreamSink:
+        sink_name = step.name
+
+        if sink_name in self.steps_to_segments:
+            segment_id = self.steps_to_segments[sink_name]
+            parallelism = self.segment_config[segment_id].get("parallelism", 1)
+
+            return outgoing_stream.set_parallelism(parallelism)
+
+        return outgoing_stream
 
     def resolve_segment_config(self, step: Step) -> SegmentConfig:
-        segment = self.steps_to_segments[step.name]
-        config: SegmentConfig = self.segment_config[segment]
+        segment_ind = self.steps_to_segments[step.name]
+        config: SegmentConfig = self.segment_config[segment_ind]
 
         return config
 
@@ -149,13 +165,13 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             topics=self.environment_config["topics"][topic],
             deserialization_schema=deserialization_schema,
             properties={
-                "bootstrap.servers": consumer_config["bootstrap_servers"],
-                "group.id": consumer_config["consumer_group"],
+                "bootstrap.servers": consumer_config.get("bootstrap_servers", "localhost:9092"),
+                "group.id": f"pipeline-{step.name}",
             },
         )
 
         source_stream = self.env.add_source(kafka_consumer)
-        return self.resolve_outoing_chain(step, source_stream, config)
+        return self.resolve_outoing_chain(step, source_stream)
 
     def sink(self, step: Sink, stream: DataStream) -> DataStreamSink:
         config: SegmentConfig = self.resolve_segment_config(step)
@@ -167,7 +183,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         sink = (
             KafkaSink.builder()
-            .set_bootstrap_servers(producer_config["bootstrap_servers"])
+            .set_bootstrap_servers(producer_config.get("bootstrap_servers", "localhost:9092"))
             .set_record_serializer(
                 KafkaRecordSerializationSchema.builder()
                 .set_topic(
@@ -179,28 +195,25 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             .build()
         )
 
-        sink_stream = self.resolve_incoming_chain(step, stream, config).sink_to(sink)
-        return self.resolve_sink_chain(sink_stream, config)
+        sink_stream = self.resolve_incoming_chain(step, stream).sink_to(sink)
+        return self.resolve_sink_chain(step, sink_stream)
 
     def filter(self, step: Filter, stream: DataStream) -> DataStream:
-        config: SegmentConfig = self.resolve_segment_config(step)
-
         imported_fn = step.resolved_function
 
-        filter_stream = self.resolve_incoming_chain(step, stream, config).filter(
+        filter_stream = self.resolve_incoming_chain(step, stream).filter(
             func=lambda msg: imported_fn(msg)
         )
 
-        return self.resolve_outoing_chain(step, filter_stream, config)
+        return self.resolve_outoing_chain(step, filter_stream)
 
     def map(self, step: Map, stream: DataStream) -> DataStream:
-        config: SegmentConfig = self.resolve_segment_config(step)
         imported_fn = step.resolved_function
 
         return_type = imported_fn.__annotations__["return"]
 
         # TODO: Ensure output type is configurable like the schema above
-        map_stream = self.resolve_incoming_chain(step, stream, config).map(
+        map_stream = self.resolve_incoming_chain(step, stream).map(
             func=lambda msg: imported_fn(msg),
             output_type=(
                 translate_to_flink_type(return_type)
@@ -209,7 +222,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
-        return self.resolve_outoing_chain(step, map_stream, config)
+        return self.resolve_outoing_chain(step, map_stream)
 
     def flat_map(self, step: FlatMap, stream: DataStream) -> DataStream:
         imported_fn = step.resolved_function
@@ -231,8 +244,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: DataStream,
     ) -> DataStream:
-        config: SegmentConfig = self.resolve_segment_config(step)
-
         agg = step.aggregate_fn
         windowing = step.windowing
 
@@ -257,7 +268,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             )
 
         else:
-            windowed_stream = self.resolve_incoming_chain(step, time_stream, config).window_all(
+            windowed_stream = self.resolve_incoming_chain(step, time_stream).window_all(
                 flink_window
             )
 
@@ -273,7 +284,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
-        return self.resolve_outoing_chain(step, aggregate_stream, config)
+        return self.resolve_outoing_chain(step, aggregate_stream)
 
     def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> MutableMapping[str, Any]:
         routing_table = step.routing_table
