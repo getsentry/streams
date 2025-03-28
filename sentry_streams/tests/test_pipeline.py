@@ -2,6 +2,7 @@ from typing import Any, Callable, Union
 
 import pytest
 
+from sentry_streams.pipeline.chain import streaming_source
 from sentry_streams.pipeline.pipeline import (
     Branch,
     Filter,
@@ -281,3 +282,56 @@ def test_multi_broadcast() -> None:
         "map1": {"source"},
         "map2": {"source"},
     }
+
+
+def test_add_empty_pipeline_to_empty_pipeline() -> None:
+    pipeline1 = Pipeline()
+    pipeline2 = Pipeline()
+
+    pipeline1.add(pipeline2)
+
+    assert len(pipeline1.steps) == 0
+    assert len(pipeline1.sources) == 0
+    assert len(pipeline1.incoming_edges) == 0
+    assert len(pipeline1.outgoing_edges) == 0
+
+
+def test_add_to_empty() -> None:
+    pipeline1 = Pipeline()
+
+    pipeline2 = streaming_source("source", "events").sink("sink", "processed-events")
+    pipeline1.add(pipeline2)
+
+    assert len(pipeline1.steps) == 2
+    assert len(pipeline1.sources) == 1
+    assert pipeline1.sources[0].name == "source"
+    assert pipeline1.incoming_edges["sink"] == ["source"]
+    assert pipeline1.outgoing_edges["source"] == ["sink"]
+
+
+def test_add_multi_pipeline() -> None:
+    pipeline1 = Pipeline()
+
+    pipeline2 = streaming_source("source1", "events").sink("sink1", "processed-events")
+    pipeline1.add(pipeline2)
+
+    pipeline2 = streaming_source("source2", "events").sink("sink2", "processed-events")
+    pipeline1.add(pipeline2)
+
+    assert len(pipeline1.steps) == 4
+    assert len(pipeline1.sources) == 2
+    assert {source.name for source in pipeline1.sources} == {"source1", "source2"}
+    assert pipeline1.incoming_edges["sink1"] == ["source1"]
+    assert pipeline1.incoming_edges["sink2"] == ["source2"]
+    assert pipeline1.outgoing_edges["source1"] == ["sink1"]
+    assert pipeline1.outgoing_edges["source2"] == ["sink2"]
+
+
+def test_invalid_add() -> None:
+    pipeline1 = Pipeline()
+
+    pipeline2 = streaming_source("source", "events").sink("sink", "processed-events")
+    pipeline1.add(pipeline2)
+
+    with pytest.raises(AssertionError):
+        pipeline1.add(pipeline2)

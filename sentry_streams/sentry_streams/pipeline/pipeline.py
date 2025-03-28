@@ -59,7 +59,7 @@ class Pipeline:
         self.sources: list[Source] = []
 
     def register(self, step: Step) -> None:
-        assert step.name not in self.steps
+        assert step.name not in self.steps, f"Step {step.name} already exists in the pipeline"
         self.steps[step.name] = step
 
     def register_edge(self, _from: Step, _to: Step) -> None:
@@ -110,6 +110,29 @@ class Pipeline:
         self.outgoing_edges[merge_point].extend(merged_pipeline_sources)
         for n in merged_pipeline_sources:
             self.incoming_edges[n].append(merge_point)
+
+    def add(self, other: Pipeline) -> None:
+        """
+        Adds all the steps of another pipeline into this one.
+        This does wire the pipeline being added to a specific step of
+        the existing pipeline.
+
+        It is meant to add multiple pipeline chains starting with a source
+        to the existing pipeline.
+        """
+        for step in other.steps.values():
+            assert (
+                step.name not in self.steps
+            ), f"Naming conflict between pipelines {step.name} exists in the current pipeline"
+            self.register(step)
+            if isinstance(step, Source):
+                self.register_source(step)
+
+        for dest, sources in other.incoming_edges.items():
+            self.incoming_edges[dest] = sources
+
+        for source, dests in other.outgoing_edges.items():
+            self.outgoing_edges[source] = dests
 
 
 @dataclass
