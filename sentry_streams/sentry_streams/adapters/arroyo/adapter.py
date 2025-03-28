@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, MutableMapping, Optional, Self
+from typing import Any, Mapping, MutableMapping, Self, cast
 
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
@@ -18,6 +18,8 @@ from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.config_types import (
+    KafkaConsumerConfig,
+    KafkaProducerConfig,
     StepConfig,
 )
 from sentry_streams.pipeline.function_template import (
@@ -66,16 +68,18 @@ class StreamSources:
         source_name = step.name
 
         if source_name not in self.__sources:
-            source_config: Optional[StepConfig] = self.config.get(source_name)
 
-            assert source_config, f"Config not provided for source {source_name}"
+            source_config = self.config.get(source_name)
+            assert source_config is not None, f"Config not provided for source {source_name}"
+
+            source_config = cast(KafkaConsumerConfig, source_config)
+            print(source_config)
+
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
                     default_config={},
-                    bootstrap_servers=source_config["common"].get(
-                        "bootstrap_servers", "localhost:9092"
-                    ),
-                    auto_offset_reset=source_config["common"].get("auto_offset_reset", "latest"),
+                    bootstrap_servers=source_config.get("bootstrap_servers", "localhost: 9092"),
+                    auto_offset_reset=(source_config.get("auto_offset_reset", "latest")),
                     group_id=f"pipeline-{source_name}",
                 )
             )
@@ -140,12 +144,16 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
         sink_name = step.name
         if sink_name not in self.__sinks:
-            config: Optional[StepConfig] = self.steps_config.get(sink_name)
-            assert config, f"Config not provided for sink {sink_name}"
+
+            sink_config = self.steps_config.get(sink_name)
+            assert sink_config is not None, f"Config not provided for source {sink_name}"
+
+            sink_config = cast(KafkaProducerConfig, sink_config)
+
             producer = KafkaProducer(
                 build_kafka_configuration(
                     default_config={},
-                    bootstrap_servers=config["common"].get("bootstrap_servers", "localhost:9092"),
+                    bootstrap_servers=sink_config.get("bootstrap_servers", "localhost:9092"),
                 )
             )
         else:

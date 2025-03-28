@@ -13,15 +13,11 @@ pipeline:
       {
         myinput: {
           starts_segment: True,
-          common: {
-            bootstrap_servers: "localhost:9092",
-          },
+          bootstrap_servers: "localhost:9092",
       },
 
         kafkasink: {
-          common: {
-            bootstrap_servers: "localhost:9092",
-          },
+          bootstrap_servers: "localhost:9092",
         }
       }
   ]

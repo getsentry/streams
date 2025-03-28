@@ -5,6 +5,7 @@ from typing import (
     Self,
     Sequence,
     Union,
+    cast,
     get_type_hints,
 )
 
@@ -152,8 +153,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def source(self, step: Source) -> DataStream:
         config: SegmentConfig = self.resolve_segment_config(step)
-        step_config: StepConfig = config["steps_config"][step.name]
-        consumer_config: KafkaConsumerConfig = step_config["common"]
+        consumer_config = cast(KafkaConsumerConfig, config["steps_config"][step.name])
 
         assert hasattr(step, "stream_name")
         topic = step.stream_name
@@ -175,8 +175,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def sink(self, step: Sink, stream: DataStream) -> DataStreamSink:
         config: SegmentConfig = self.resolve_segment_config(step)
-        step_config: StepConfig = config["steps_config"][step.name]
-        producer_config: KafkaProducerConfig = step_config["common"]
+        producer_config = cast(KafkaProducerConfig, config["steps_config"][step.name])
 
         assert hasattr(step, "stream_name")
         topic = step.stream_name

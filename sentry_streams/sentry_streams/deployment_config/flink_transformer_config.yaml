@@ -18,9 +18,7 @@ pipeline:
       steps_config: {
         myinput: {
           starts_segment: True,
-          common: {
-            bootstrap_servers: "kafka:9093",
-          }
+          bootstrap_servers: "kafka:9093",
         }
       }
       },
@@ -31,9 +29,7 @@ pipeline:
       parallelism: 3,
       steps_config: {
           kafkasink: {
-            common: {
-              bootstrap_servers: "kafka:9093",
-            },
+          bootstrap_servers: "kafka:9093",
         }
       }
       }
