@@ -4,6 +4,7 @@ from sentry_streams.pipeline.chain import (
     FlatMap,
     Map,
     Reducer,
+    multi_chain,
     segment,
     streaming_source,
 )
@@ -11,6 +12,7 @@ from sentry_streams.pipeline.chain import (
 __all__ = [
     "streaming_source",
     "segment",
+    "multi_chain",
     "Map",
     "Filter",
     "FlatMap",

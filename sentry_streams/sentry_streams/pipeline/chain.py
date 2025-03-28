@@ -263,4 +263,13 @@ def streaming_source(name: str, stream_name: str) -> ExtensibleChain:
     return pipeline
 
 
-# TODO: Support pipelines with multiple sources.
+def multi_chain(chains: Sequence[Chain]) -> Pipeline:
+    """
+    Creates a pipeline that contains multiple chains, where every
+    chain is a portion of the pipeline that starts with a source
+    and ends with multiple sinks.
+    """
+    pipeline = Pipeline()
+    for chain in chains:
+        pipeline.add(chain)
+    return pipeline
