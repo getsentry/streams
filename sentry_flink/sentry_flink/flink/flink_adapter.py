@@ -24,13 +24,13 @@ from pyflink.datastream.data_stream import (
     DataStreamSink,
     WindowedStream,
 )
-from sentry_streams.adapters.arroyo.adapter import (
+from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
+from sentry_streams.config_types import (
     KafkaConsumerConfig,
     KafkaProducerConfig,
     SegmentConfig,
     StepConfig,
 )
-from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,

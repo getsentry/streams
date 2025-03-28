@@ -28,7 +28,7 @@ dev = [
 ]
 
 [tool.setuptools.package-data]
-sentry_streams = ["py.typed"]
+sentry_streams = ["py.typed", "config.json"]
 
 [tool.pytest.ini_options]
 minversion = "0.0.13"

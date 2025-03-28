@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, MutableMapping, Optional, Self, TypedDict
+from typing import Any, Mapping, MutableMapping, Optional, Self
 
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
@@ -17,6 +17,9 @@ from sentry_streams.adapters.arroyo.consumer import (
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
+from sentry_streams.config_types import (
+    StepConfig,
+)
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
@@ -34,29 +37,6 @@ from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
-
-
-class StepConfig(TypedDict):
-    starts_segment: Optional[bool]
-    common: Mapping[str, Any]
-    flink_overrides: Mapping[str, Any]
-
-
-class KafkaConsumerConfig(TypedDict):
-    bootstrap_servers: str
-    auto_offset_reset: str
-    consumer_group: str
-    additional_settings: Mapping[str, Any]
-
-
-class KafkaProducerConfig(TypedDict):
-    bootstrap_servers: str
-    additional_settings: Mapping[str, Any]
-
-
-class SegmentConfig(TypedDict):
-    parallelism: int
-    steps_config: Mapping[str, StepConfig]
 
 
 class StreamSources:

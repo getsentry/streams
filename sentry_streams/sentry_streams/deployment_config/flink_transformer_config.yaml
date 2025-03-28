@@ -1,3 +1,10 @@
+# Flink-specific configuration
+# As of now, the schema for this
+# is the same as the schema for the default (local adapter) configuration
+
+# If and when we diverge from the default config's schema,
+# we must introduce a new schema to the FlinkAdapter
+
 env:
   topics:
     events: events
@@ -13,7 +20,6 @@ pipeline:
           starts_segment: True,
           common: {
             bootstrap_servers: "kafka:9093",
-          flink_overrides: {}
           }
         }
       }
@@ -28,7 +34,6 @@ pipeline:
             common: {
               bootstrap_servers: "kafka:9093",
             },
-            flink_overrides: {}
         }
       }
       }

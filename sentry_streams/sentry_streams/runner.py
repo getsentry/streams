@@ -1,8 +1,10 @@
 import argparse
+import importlib
 import json
 import logging
+import os
 import signal
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 import jsonschema
 import yaml
@@ -92,20 +94,6 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--config-template",
-        type=str,
-        default="sentry_streams/deployment_config/config.json",
-        help=(
-            "The deployment config template. Configuration file will be validated against this template."
-        ),
-    )
-    parser.add_argument(
-        "--segment",
-        type=int,
-        default=None,
-        help=("The segment to deploy. Must be a valid segment defined in the config file."),
-    )
-    parser.add_argument(
         "application",
         type=str,
         help=(
@@ -130,8 +118,9 @@ def main() -> None:
     with open(args.config, "r") as config_file:
         environment_config = yaml.safe_load(config_file)
 
-    with open(args.config_template, "r") as f:
-        schema = json.load(f)
+    config_template = importlib.resources.files("sentry_streams") / "config.json"
+    with config_template.open("r") as file:
+        schema = json.load(file)
 
         try:
             jsonschema.validate(environment_config, schema)
@@ -139,7 +128,16 @@ def main() -> None:
             raise
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    runtime: Any = load_adapter(args.adapter, environment_config, args.segment)
+    segment_var = os.environ.get("SEGMENT_ID")
+    segment_id: Optional[int]
+    if segment_var:
+        assert segment_var is not None
+        segment_id = int(segment_var)
+    else:
+        segment_id = None
+
+    # SEGMENT_ID must correspond to the 0-indexed position in the config for segments
+    runtime: Any = load_adapter(args.adapter, environment_config, segment_id)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
