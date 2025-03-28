@@ -10,7 +10,7 @@ Sink = TypeVar("Sink")
 
 
 def load_adapter(
-    adapter_type: str, config: PipelineConfig, segment: Optional[str]
+    adapter_type: str, config: PipelineConfig, segment_id: Optional[int]
 ) -> StreamAdapter[Stream, Sink]:
     """
     Loads a StreamAdapter to run a pipeline.
@@ -30,8 +30,8 @@ def load_adapter(
     #TODO: Actually move out Flink otherwise everything stated above makes
     # no sense.
     """
-    if segment:
-        config = {"env": config["env"], **config["pipeline"]["segments"][segment]}
+    if segment_id is not None:
+        config = {"env": config["env"], **config["pipeline"]["segments"][segment_id]}
 
     if adapter_type == "dummy":
         from sentry_streams.dummy.dummy_adapter import DummyAdapter

@@ -101,7 +101,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--segment",
-        type=str,
+        type=int,
         default=None,
         help=("The segment to deploy. Must be a valid segment defined in the config file."),
     )

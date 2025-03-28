@@ -19,19 +19,13 @@
             "additionalProperties": true,
             "properties": {
                 "segments": {
-                    "type": "object",
-                    "patternProperties": {
-                        "^[a-z0-9]+$": {
-                            "type": "object",
-                            "title": "segment name",
-                            "properties": {
-                                "parallelism": {
-                                    "type": "integer"
-                                },
-                                "steps_config": {
-                                    "type": "object",
-                                    "title": "steps_config"
-                                }
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "steps_config": {
+                                "type": "object",
+                                "title": "steps_config"
                             }
                         }
                     }

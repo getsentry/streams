@@ -5,33 +5,22 @@ env:
     transformed-events-2: transformed-events-2
 
 pipeline:
-  segments:
-    my_segment:
-      parallelism: 1 # This is runtime-agnostic
+  segments: [
       steps_config:
-        myinput:
-          starts_segment: True
-          common:
-            type: source
-            bootstrap_servers: localhost:9092
-            consumer_group: python-test
-            auto_offset_reset: latest
-          flink_overrides:
+      {
+        myinput: {
+          starts_segment: True,
+          common: {
+            bootstrap_servers: "localhost:9092",
+          },
+          flink_overrides: {},
+      },
 
-        parser:
-          common:
-            type: map
-
-        myfilter:
-          common:
-            type: filter
-
-        serializer:
-          common:
-            type: map
-
-        kafkasink:
-          common:
-            type: sink
-            bootstrap_servers: localhost:9092
-          flink_overrides:
+        kafkasink: {
+          common: {
+            bootstrap_servers: "localhost:9092",
+          },
+          flink_overrides: {},
+        }
+      }
+  ]
