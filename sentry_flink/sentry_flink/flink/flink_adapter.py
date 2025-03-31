@@ -1,7 +1,7 @@
 import os
 from typing import (
     Any,
-    MutableMapping,
+    Mapping,
     Self,
     Union,
     get_type_hints,
@@ -205,13 +205,10 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         )
 
     def broadcast(self, step: Broadcast, stream: DataStream) -> DataStream:
-        # flink broadcast is implicit and doesn't require any processing,
-        # so we just return the stream we get
-        return stream
+        # Broadcast in flink is implicit, so no processing needs to happen here
+        return {branch.name: stream for branch in step.routes}
 
-    def router(
-        self, step: Router[RoutingFuncReturnType], stream: DataStream
-    ) -> MutableMapping[str, Any]:
+    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> Mapping[str, Any]:
         routing_table = step.routing_table
         routing_func = step.routing_function
 
