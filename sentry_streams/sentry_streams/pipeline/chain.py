@@ -25,6 +25,7 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
+    Broadcast,
 )
 from sentry_streams.pipeline.pipeline import Filter as FilterStep
 from sentry_streams.pipeline.pipeline import FlatMap as FlatMapStep
@@ -198,6 +199,11 @@ class ExtensibleChain(Chain):
         Forks the pipeline sending all messages to all routes.
         """
         assert self.__edge is not None
+        Broadcast(
+            name,
+            ctx=self,
+            inputs=[self.__edge],
+        )
         for chain in routes:
             self.merge(other=chain, merge_point=self.__edge.name)
         return self

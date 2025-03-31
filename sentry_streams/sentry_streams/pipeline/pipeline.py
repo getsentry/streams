@@ -33,6 +33,7 @@ from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Wind
 
 class StepType(Enum):
     BRANCH = "branch"
+    BROADCAST = "broadcast"
     FILTER = "filter"
     FLAT_MAP = "flat_map"
     MAP = "map"
@@ -298,6 +299,15 @@ class Router(WithInput, Generic[RoutingFuncReturnType]):
         super().__post_init__()
         for branch_step in self.routing_table.values():
             self.ctx.register_edge(self, branch_step)
+
+
+@dataclass
+class Broadcast(WithInput):
+    """
+    A Broadcast step will forward messages to all downstream branches in a pipeline.
+    """
+
+    step_type: StepType = StepType.BROADCAST
 
 
 class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):

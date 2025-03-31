@@ -17,6 +17,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
+    Broadcast,
     Filter,
     FlatMap,
     Map,
@@ -120,6 +121,17 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
+    def broadcast(
+        self,
+        step: Broadcast,
+        stream: StreamT,
+    ) -> StreamT:
+        """
+        Build a broadcast operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def run(self) -> None:
         """
         Starts the pipeline
@@ -179,6 +191,10 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
         elif step_type is StepType.ROUTER:
             assert isinstance(step, Router) and stream is not None
             return self.adapter.router(step, stream)
+
+        elif step_type is StepType.BROADCAST:
+            assert isinstance(step, Broadcast) and stream is not None
+            return {step_name: self.adapter.broadcast(step, stream)}
 
         else:
             assert_never(step_type)
