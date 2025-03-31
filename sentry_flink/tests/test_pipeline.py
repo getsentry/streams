@@ -39,7 +39,7 @@ def setup_basic_flink_env() -> (
     # TODO: read from yaml file
     environment_config = {
         "topics": {
-            "logical-events": "events",
+            "events": "events",
             "transformed-events": "transformed-events",
             "transformed-events-2": "transformed-events-2",
         },
@@ -59,7 +59,7 @@ def basic() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
 
     _ = StreamSink(
@@ -106,7 +106,7 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
 
     map = Map(
@@ -168,7 +168,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
 
     filter = Filter(
@@ -230,7 +230,7 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
 
     map = Map(
@@ -357,7 +357,7 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
 
     map = Map(
@@ -529,7 +529,7 @@ def bad_import_map() -> Pipeline:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
 
     map = Map(

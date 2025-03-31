@@ -12,6 +12,8 @@ from typing import (
     MutableMapping,
     MutableSequence,
     Optional,
+    Sequence,
+    Set,
     TypeVar,
     Union,
     cast,
@@ -31,6 +33,7 @@ from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Wind
 
 class StepType(Enum):
     BRANCH = "branch"
+    BROADCAST = "broadcast"
     FILTER = "filter"
     FLAT_MAP = "flat_map"
     MAP = "map"
@@ -38,6 +41,10 @@ class StepType(Enum):
     ROUTER = "router"
     SINK = "sink"
     SOURCE = "source"
+
+
+def make_edge_sets(edge_map: Mapping[str, Sequence[Any]]) -> Mapping[str, Set[Any]]:
+    return {k: set(v) for k, v in edge_map.items()}
 
 
 class Pipeline:
@@ -53,7 +60,7 @@ class Pipeline:
         self.sources: list[Source] = []
 
     def register(self, step: Step) -> None:
-        assert step.name not in self.steps
+        assert step.name not in self.steps, f"Step {step.name} already exists in the pipeline"
         self.steps[step.name] = step
 
     def register_edge(self, _from: Step, _to: Step) -> None:
@@ -62,6 +69,71 @@ class Pipeline:
 
     def register_source(self, step: Source) -> None:
         self.sources.append(step)
+
+    def merge(self, other: Pipeline, merge_point: str) -> None:
+        """
+        Merges another pipeline into this one after a provided step identified
+        as `merge_point`
+
+        The source of the other pipeline is fully replaced by the merge_point
+        step of this pipeline.
+
+        This does not adjust the context field of the steps contained in the
+        merged pipeline.
+        """
+        assert (
+            not other.sources
+        ), "Cannot merge a pipeline into another if it contains a stream source"
+
+        other_pipeline_sources = {
+            n for n in other.steps if other.steps[n].name not in other.incoming_edges
+        }
+
+        for step in other.steps.values():
+            if step.name not in other_pipeline_sources:
+                self.register(step)
+
+        for source, dests in other.outgoing_edges.items():
+            if source not in other_pipeline_sources:
+                self.outgoing_edges[source].extend(dests)
+
+        for dest, sources in other.incoming_edges.items():
+            for s in sources:
+                if s not in other_pipeline_sources:
+                    self.incoming_edges[dest].append(s)
+
+        merged_pipeline_sources = set()
+        for n in other.steps:
+            incoming_edges = other.incoming_edges[n]
+            if incoming_edges and all(n in other_pipeline_sources for n in incoming_edges):
+                merged_pipeline_sources.add(n)
+
+        self.outgoing_edges[merge_point].extend(merged_pipeline_sources)
+        for n in merged_pipeline_sources:
+            self.incoming_edges[n].append(merge_point)
+
+    def add(self, other: Pipeline) -> None:
+        """
+        Adds all the steps of another pipeline into this one.
+        This does wire the pipeline being added to a specific step of
+        the existing pipeline.
+
+        It is meant to add multiple pipeline chains starting with a source
+        to the existing pipeline.
+        """
+        for step in other.steps.values():
+            assert (
+                step.name not in self.steps
+            ), f"Naming conflict between pipelines {step.name} exists in the current pipeline"
+            self.register(step)
+            if isinstance(step, Source):
+                self.register_source(step)
+
+        for dest, sources in other.incoming_edges.items():
+            self.incoming_edges[dest] = sources
+
+        for source, dests in other.outgoing_edges.items():
+            self.outgoing_edges[source] = dests
 
 
 @dataclass
@@ -226,6 +298,21 @@ class Router(WithInput, Generic[RoutingFuncReturnType]):
     def __post_init__(self) -> None:
         super().__post_init__()
         for branch_step in self.routing_table.values():
+            self.ctx.register_edge(self, branch_step)
+
+
+@dataclass
+class Broadcast(WithInput):
+    """
+    A Broadcast step will forward messages to all downstream branches in a pipeline.
+    """
+
+    routes: Sequence[Branch]
+    step_type: StepType = StepType.BROADCAST
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        for branch_step in self.routes:
             self.ctx.register_edge(self, branch_step)
 
 
