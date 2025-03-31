@@ -125,7 +125,7 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         self,
         step: Broadcast,
         stream: StreamT,
-    ) -> StreamT:
+    ) -> Mapping[str, StreamT]:
         """
         Build a broadcast operator for the platform the adapter supports.
         """
@@ -194,7 +194,7 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
 
         elif step_type is StepType.BROADCAST:
             assert isinstance(step, Broadcast) and stream is not None
-            return {step_name: self.adapter.broadcast(step, stream)}
+            return self.adapter.broadcast(step, stream)
 
         else:
             assert_never(step_type)

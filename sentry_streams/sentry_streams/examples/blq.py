@@ -13,7 +13,7 @@ storage_branch = (
         "Send message to DBs",
         routes=[
             segment("sbc").sink("kafkasink", stream_name="transformed-events"),
-            segment("clickhouse").sink("kafkasink2", stream_name="transformed-events2"),
+            segment("clickhouse").sink("kafkasink2", stream_name="transformed-events-2"),
         ],
     )
 )
