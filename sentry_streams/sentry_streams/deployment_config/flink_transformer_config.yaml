@@ -13,24 +13,15 @@ env:
 
 pipeline:
   segments:
-    [
-      {parallelism: 2,
-      steps_config: {
-        myinput: {
-          starts_segment: True,
-          bootstrap_servers: "kafka:9093",
-        }
-      }
-      },
+    - parallelism: 2
+      steps_config:
+        myinput:
+          starts_segment: True
+          bootstrap_servers: "kafka:9093"
 
       # If a segment is of length 1, we do not need to specify which steps
       # start the segment
-      {
-      parallelism: 3,
-      steps_config: {
-          kafkasink: {
-          bootstrap_servers: "kafka:9093",
-        }
-      }
-      }
-    ]
+    - parallelism: 3
+      steps_config:
+          kafkasink:
+            bootstrap_servers: "kafka:9093"

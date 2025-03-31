@@ -73,7 +73,6 @@ class StreamSources:
             assert source_config is not None, f"Config not provided for source {source_name}"
 
             source_config = cast(KafkaConsumerConfig, source_config)
-            print(source_config)
 
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
