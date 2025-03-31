@@ -29,6 +29,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
+    Broadcast,
     Filter,
     FlatMap,
     Map,
@@ -203,7 +204,14 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
-    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> MutableMapping[str, Any]:
+    def broadcast(self, step: Broadcast, stream: DataStream) -> DataStream:
+        # flink broadcast is implicit and doesn't require any processing,
+        # so we just return the stream we get
+        return stream
+
+    def router(
+        self, step: Router[RoutingFuncReturnType], stream: DataStream
+    ) -> MutableMapping[str, Any]:
         routing_table = step.routing_table
         routing_func = step.routing_function
 
