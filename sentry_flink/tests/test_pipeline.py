@@ -14,6 +14,7 @@ from sentry_streams.examples.word_counter_fn import (
     GroupByWord,
     WordCounter,
 )
+from sentry_streams.pipeline.chain import segment, streaming_source
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Branch,
@@ -221,6 +222,29 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
         ]
     }
 
+    return (pipeline, expected)
+
+
+def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
+    pipeline = streaming_source(name="mysource", stream_name="events").broadcast(
+        "mybroadcast",
+        routes=[
+            segment("sbc").sink("kafkasink", stream_name="transformed-events"),
+            segment("clickhouse").sink("kafkasink2", stream_name="transformed-events-2"),
+        ],
+    )
+    # TODO: update with actual plan output once sentry_streams PR is deployed
+    expected = {
+        "nodes": [
+            {
+                "id": 21,
+                "type": "Source: Custom Source",
+                "pact": "Data Source",
+                "contents": "Source: Custom Source",
+                "parallelism": 1,
+            },
+        ]
+    }
     return (pipeline, expected)
 
 
