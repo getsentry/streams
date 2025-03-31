@@ -161,7 +161,7 @@ class ExtensibleChain(Chain):
             routes={
                 Routes.ROUTE1: segment(name="route1") # Creates a branch
                 .apply("transform2", Map(lambda msg: msg))
-                .sink("myoutput1", "transformed-events2"),
+                .sink("myoutput1", "transformed-events-2"),
                 Routes.ROUTE2: segment(name="route2")
                 .apply("transform3", Map(lambda msg: msg))
                 .sink("myoutput2", "transformed-events3"),
@@ -203,9 +203,10 @@ class ExtensibleChain(Chain):
             name,
             ctx=self,
             inputs=[self.__edge],
+            routes=[Branch(name=chain.name, ctx=self) for chain in routes],
         )
         for chain in routes:
-            self.merge(other=chain, merge_point=self.__edge.name)
+            self.merge(other=chain, merge_point=chain.name)
         return self
 
     def route(

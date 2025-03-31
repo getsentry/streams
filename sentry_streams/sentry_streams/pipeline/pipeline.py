@@ -307,7 +307,13 @@ class Broadcast(WithInput):
     A Broadcast step will forward messages to all downstream branches in a pipeline.
     """
 
+    routes: Sequence[Branch]
     step_type: StepType = StepType.BROADCAST
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        for branch_step in self.routes:
+            self.ctx.register_edge(self, branch_step)
 
 
 class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):

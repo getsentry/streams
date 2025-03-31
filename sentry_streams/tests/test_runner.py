@@ -6,13 +6,9 @@ import pytest
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import PipelineConfig, RuntimeTranslator
 from sentry_streams.dummy.dummy_adapter import DummyAdapter
+from sentry_streams.pipeline.chain import Filter, Map, segment, streaming_source
 from sentry_streams.pipeline.pipeline import (
-    Branch,
-    Filter,
-    Map,
     Pipeline,
-    Router,
-    StreamSource,
 )
 from sentry_streams.runner import iterate_edges
 
@@ -24,57 +20,35 @@ class RouterBranch(Enum):
 
 @pytest.fixture
 def create_pipeline() -> Pipeline:
-    test_pipeline = Pipeline()
-    source1 = StreamSource(
-        name="source1",
-        ctx=test_pipeline,
-        stream_name="foo",
+    broadcast_branch_1 = (
+        segment("branch1")
+        .apply("map2", Map(function=lambda x: x))
+        .route(
+            "router1",
+            routing_function=lambda x: RouterBranch.BRANCH1,
+            routes={
+                RouterBranch.BRANCH1: segment("map4_segment").apply(
+                    "map4", Map(function=lambda x: x)
+                ),
+                RouterBranch.BRANCH2: segment("map5_segment").apply(
+                    "map5", Map(function=lambda x: x)
+                ),
+            },
+        )
     )
-    map1 = Map(
-        name="map1",
-        inputs=[source1],
-        ctx=test_pipeline,
-        function=lambda x: x,
-    )
-    filter1 = Filter(
-        name="filter1",
-        inputs=[map1],
-        ctx=test_pipeline,
-        function=lambda x: True,
-    )
-    map = Map(
-        name="map2",
-        inputs=[filter1],
-        ctx=test_pipeline,
-        function=lambda x: x,
-    )
-    _ = Map(
-        name="map3",
-        inputs=[filter1],
-        ctx=test_pipeline,
-        function=lambda x: x,
-    )
-    router = Router(
-        name="router1",
-        ctx=test_pipeline,
-        inputs=[map],
-        routing_table={
-            RouterBranch.BRANCH1: Branch(name="branch1", ctx=test_pipeline),
-            RouterBranch.BRANCH2: Branch(name="branch2", ctx=test_pipeline),
-        },
-        routing_function=lambda x: RouterBranch.BRANCH1,
-    )
-    _ = Map(
-        name="map4",
-        ctx=test_pipeline,
-        inputs=[router.routing_table[RouterBranch.BRANCH1]],
-        function=lambda x: x,
-    )
-    _ = Map(
-        name="map5",
-        ctx=test_pipeline,
-        inputs=[router.routing_table[RouterBranch.BRANCH2]],
-        function=lambda x: x,
+    broadcast_branch_2 = segment("branch2").apply("map3", Map(function=lambda x: x))
+
+    test_pipeline = (
+        streaming_source("source1", stream_name="foo")
+        .apply("map1", Map(function=lambda x: x))
+        .apply("filter1", Filter(function=lambda x: True))
+        .broadcast(
+            "broadcast_to_maps",
+            routes=[
+                broadcast_branch_1,
+                broadcast_branch_2,
+            ],
+        )
     )
 
     return test_pipeline
@@ -86,14 +60,51 @@ def test_iterate_edges(create_pipeline: Pipeline) -> None:
     translator: RuntimeTranslator[Any, Any] = RuntimeTranslator(runtime)
     iterate_edges(create_pipeline, translator)
     assert runtime.input_streams == {
-        "source1": [],
-        "map1": ["source1"],
-        "filter1": ["source1", "map1"],
-        "map2": ["source1", "map1", "filter1"],
-        "map3": ["source1", "map1", "filter1"],
-        "router1": ["source1", "map1", "filter1", "map2"],
-        "branch1": ["source1", "map1", "filter1", "map2", "router1"],
-        "branch2": ["source1", "map1", "filter1", "map2", "router1"],
-        "map4": ["source1", "map1", "filter1", "map2", "router1", "branch1"],
-        "map5": ["source1", "map1", "filter1", "map2", "router1", "branch2"],
+        "source1": set(),
+        "map1": {"source1"},
+        "filter1": {"source1", "map1"},
+        "broadcast_to_maps": {"source1", "map1", "filter1"},
+        "branch1": {"source1", "map1", "filter1", "broadcast_to_maps"},
+        "map2": {"source1", "map1", "filter1", "broadcast_to_maps", "branch1"},
+        "router1": {"source1", "map1", "filter1", "broadcast_to_maps", "branch1", "map2"},
+        "branch2": {"source1", "map1", "filter1", "broadcast_to_maps"},
+        "map3": {"source1", "map1", "filter1", "broadcast_to_maps", "branch2"},
+        "map4_segment": {
+            "source1",
+            "map1",
+            "filter1",
+            "map2",
+            "broadcast_to_maps",
+            "branch1",
+            "router1",
+        },
+        "map5_segment": {
+            "source1",
+            "map1",
+            "filter1",
+            "map2",
+            "broadcast_to_maps",
+            "branch1",
+            "router1",
+        },
+        "map4": {
+            "source1",
+            "map1",
+            "filter1",
+            "map2",
+            "router1",
+            "broadcast_to_maps",
+            "branch1",
+            "map4_segment",
+        },
+        "map5": {
+            "source1",
+            "map1",
+            "filter1",
+            "map2",
+            "router1",
+            "branch1",
+            "broadcast_to_maps",
+            "map5_segment",
+        },
     }
