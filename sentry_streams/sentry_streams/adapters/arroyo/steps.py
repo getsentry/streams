@@ -142,6 +142,7 @@ class StreamSinkStep(ArroyoStep):
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         def extract_value(message: Message[Union[FilteredPayload, RoutedValue]]) -> Any:
             message_payload = message.value.payload
+            logger.info(message.value)
             if isinstance(message_payload, RoutedValue) and message_payload.route == self.route:
                 return KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
             else:
@@ -164,7 +165,7 @@ class ReduceStep(ArroyoStep):
 
         windowed_reduce: ProcessingStrategy[Union[FilteredPayload, RoutedValue]] = (
             build_arroyo_windowed_reduce(
-                self.pipeline_step.windowing, self.pipeline_step.aggregate_fn, next
+                self.pipeline_step.windowing, self.pipeline_step.aggregate_fn, next, self.route
             )
         )
 

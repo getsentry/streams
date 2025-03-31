@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from json import JSONDecodeError, loads
 from typing import Any, Mapping, MutableSequence, Self, cast
 
@@ -50,6 +51,11 @@ class TransformerBatch(Accumulator[Any, Any]):
 
         return self
 
+    def clear(self) -> None:
+
+        self.batch = []
+        return
+
 
 pipeline = Pipeline()
 
@@ -65,7 +71,7 @@ filter = Filter(
     name="myfilter", ctx=pipeline, inputs=[parser], function=lambda msg: msg["type"] == "event"
 )
 
-reduce_window = SlidingWindow(window_size=5, window_slide=1)
+reduce_window = SlidingWindow(window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2))
 
 reduce = Aggregate(
     name="myreduce",

@@ -65,8 +65,6 @@ class ArroyoConsumer:
 
         strategy: ProcessingStrategy[Any] = CommitOffsets(commit)
         for step in reversed(self.steps):
-
-            logger.info(step)
             strategy = step.build(strategy)
 
         return RunTask(

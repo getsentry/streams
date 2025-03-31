@@ -1,15 +1,24 @@
 import logging
 import math
-import sys
 import time
 from datetime import timedelta
-from typing import Any, Callable, Generic, Optional, TypeVar, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    MutableMapping,
+    Optional,
+    Self,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.reduce import Reduce
-from arroyo.types import BaseValue, FilteredPayload, Message
+from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
 
-from sentry_streams.adapters.arroyo.routes import RoutedValue
+from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.window import (
     MeasurementUnit,
@@ -51,150 +60,197 @@ class ArroyoAccumulator:
         return routed
 
 
+class KafkaAccumulator:
+    """
+    Does internal bookkeeping of offsets and timestamps,
+    as well as all the Accumulator functions.
+    """
+
+    def __init__(self, acc: Callable[[], Accumulator[Any, Any]]):
+        self.acc = acc()
+        self.offsets: MutableMapping[Partition, int] = {}
+        self.timestamp = time.time()
+
+    def add(self, value: Any) -> Self:
+
+        payload = value.payload.payload
+        offsets: MutableMapping[Partition, int] = value.committable
+
+        self.acc.add(payload)
+
+        self.offsets.update(offsets)
+
+        return self
+
+    def get_value(self) -> Any:
+
+        return self.acc.get_value()
+
+    def merge(self, other: Self) -> Self:
+
+        for partition in other.offsets:
+            if partition in self.offsets:
+                self.offsets[partition] = max(self.offsets[partition], other.offsets[partition])
+
+            else:
+                self.offsets[partition] = other.offsets[partition]
+
+        self.acc.merge(other.acc)
+
+        return self
+
+    def get_offsets(self) -> MutableMapping[Partition, int]:
+
+        return self.offsets
+
+    def clear(self) -> None:
+
+        assert hasattr(self.acc, "clear")
+        self.acc.clear()
+        self.offsets = {}
+
+        return
+
+
 class WindowedReduce(
     ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
 ):
     def __init__(
         self,
-        window_size: Union[int, float],
-        window_slide: Union[int, float],
+        window_size: float,
+        window_slide: float,
         acc: Callable[[], Accumulator[Any, Any]],
         next_step: ProcessingStrategy[TResult],
+        route: Route,
     ) -> None:
 
         window_count = math.ceil(window_size / window_slide)
 
         self.window_count = window_count
-        self.window_size = window_size
-        self.window_slide = window_slide
-        self.acc = acc
+        self.window_size = int(window_size)
+        self.window_slide = int(window_slide)
+
         self.next_step = next_step
+        self.start_time = time.time()
+        self.route = route
 
-        # initializers depending on whether it is count-based or time-based
-        if isinstance(window_size, int):
-            self.count_mode = True
-            self.message_count = 1
+        # build a list of Accumulators
+        self.largest_val: int = int(2 * self.window_size - self.window_slide)
+        num_accs: int = int(self.largest_val // self.window_slide)
+        self.accs = [KafkaAccumulator(acc) for _ in range(num_accs)]
 
-        else:
-            self.count_mode = False
-            self.start_time = time.time()
+        self.acc_times = [
+            list(range(i, i + self.window_slide))
+            for i in range(0, self.largest_val, self.window_slide)
+        ]
 
-        # build the list of Reduces, as we know the number of windows to manage upfront
-        self.windows = [self.create_reduce() for _ in range(self.window_count)]
+        accs_per_window = self.window_size // self.window_slide
 
-        # we know the starting value of every window goes through a cycle
-        # this represents the size of that cycle / loop
-        self.window_loop = self.window_count * self.window_slide
+        # list of acc IDs per window ID
+        self.windows = [
+            list(range(i, i + accs_per_window)) for i in range(num_accs - accs_per_window + 1)
+        ]
 
-        # since we're adding elements to a cycle effectively,
-        # we know, for each window, which indices within that cycle
-        # CANNOT be part of that window
+        # the next times at which each window will close
+        self.window_close_times = [
+            float(self.window_size + self.window_slide * i) for i in range(self.window_count)
+        ]
+        self.__closed = False
 
-        # for each window, track a 'greater' and a 'lesser' value
-        # every incoming message will be compared to these to determine
-        # whether or not the message can be added to the window
-        self.boundaries = []
-        for i in range(self.window_count):
-            greater = (self.window_size + i * self.window_slide) % self.window_loop
+    def __merge_and_flush(self, window_id: int) -> None:
+        accs_to_merge: list[int] = self.windows[window_id]
+        first_acc_id = accs_to_merge[0]
 
-            # this branch is because of the different meaning of window_size
-            # between count and time
-            # e.g. count window of 5 msgs: [msg1 ... msg5]
-            # e.g. time window of 5 seconds [0s ... 5s]
-            if self.count_mode:
-                less = i * self.window_slide + 1
-            else:
-                less = i * self.window_slide
+        merged_window: KafkaAccumulator = self.accs[first_acc_id]
+        for i in accs_to_merge[1:]:
+            acc = self.accs[i]
+            merged_window.merge(acc)
 
-            self.boundaries.append((greater, less))
+        payload = merged_window.get_value()
 
-    def create_reduce(self) -> Reduce[Any, Any]:
-        final_acc = ArroyoAccumulator(self.acc)
-
-        if self.count_mode:
-            return Reduce(
-                int(self.window_size),
-                float("inf"),
-                final_acc.accumulator,
-                final_acc.initial_value,
-                self.next_step,
+        if payload:
+            result = RoutedValue(self.route, payload)
+            self.next_step.submit(
+                Message(Value(cast(TResult, result), merged_window.get_offsets()))
             )
 
-        else:
-            # Unfortunate
-            return Reduce(
-                sys.maxsize,
-                self.window_size,
-                final_acc.accumulator,
-                final_acc.initial_value,
-                self.next_step,
-            )
+        # clear only the merged window
+        merged_window.clear()
+        self.accs[first_acc_id] = merged_window
+
+    def __maybe_flush(self, cur_time: float) -> None:
+
+        for i in range(len(self.windows)):
+            window = self.windows[i]
+
+            if cur_time >= self.window_close_times[i]:
+                # FLUSH any window where this id doesn't show up
+                self.__merge_and_flush(i)
+
+                # only shift a window if it was flushed
+                window = [(t + len(window)) % len(self.accs) for t in window]
+                self.windows[i] = window
+
+                self.window_close_times[i] += float(self.window_size)
 
     def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
-        # count based
-        if self.count_mode:
-            msg_id = self.message_count % self.window_loop
 
-        # time based
-        else:
-            cur_time = time.time() - self.start_time
-            msg_id = cur_time % self.window_loop
+        assert not self.__closed
 
-        tracked_messages = self.message_count if self.count_mode else cur_time
+        value = message.payload
+        if isinstance(value, FilteredPayload):
+            self.next_step.submit(cast(Message[TResult], message))
+            return
 
-        # actually submit a message to the right Reduces windows
-        for i in range(len(self.windows)):
+        assert isinstance(value, RoutedValue)
+        if value.route != self.route:
+            self.next_step.submit(cast(Message[TResult], message))
+            return
 
-            if tracked_messages > i * self.window_slide:
-                if self.boundaries[i][0] < self.boundaries[i][1]:
-                    if not (msg_id > self.boundaries[i][0] and msg_id < self.boundaries[i][1]):
-                        logger.info(f"message index {tracked_messages}, window_id {i}")
-                        self.windows[i].submit(message)
+        cur_time = time.time() - self.start_time
+        acc_id = int((cur_time % self.largest_val) // self.window_slide)
 
-                else:
-                    # this condition exists because boundary values for every window is cyclic
-                    if not (msg_id > self.boundaries[i][0] or msg_id < self.boundaries[i][1]):
-                        logger.info(f"message index {tracked_messages}, window_id {i}")
-                        self.windows[i].submit(message)
+        self.__maybe_flush(cur_time)
 
-        if self.count_mode:
-            self.message_count += 1
+        self.accs[acc_id].add(message.value)
 
     def poll(self) -> None:
-        for i in range(self.window_count):
-            self.windows[i].poll()
+        assert not self.__closed
+
+        cur_time = time.time() - self.start_time
+        # acc_id = (cur_time % self.largest_val) // self.window_slide
+
+        self.__maybe_flush(cur_time)
 
     def close(self) -> None:
-        for i in range(self.window_count):
-            self.windows[i].close()
+        self.__closed = True
 
     def terminate(self) -> None:
-        for i in range(self.window_count):
-            self.windows[i].terminate()
+        self.__closed = True
+        self.next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        for i in range(self.window_count):
-            self.windows[i].join(timeout)
+        self.next_step.close()
+        self.next_step.join()
 
 
 def build_arroyo_windowed_reduce(
     streams_window: Window[MeasurementUnit],
     accumulator: Callable[[], Accumulator[Any, Any]],
     next_step: ProcessingStrategy[Union[FilteredPayload, TPayload]],
+    route: Route,
 ) -> ProcessingStrategy[Union[FilteredPayload, TPayload]]:
 
     match streams_window:
         case SlidingWindow(window_size, window_slide):
             match (window_size, window_slide):
-                case (int(), int()):
-                    return WindowedReduce(window_size, window_slide, accumulator, next_step)
-
                 case (timedelta(), timedelta()):
                     return WindowedReduce(
                         window_size.total_seconds(),
                         window_slide.total_seconds(),
                         accumulator,
                         next_step,
+                        route,
                     )
 
                 case _:
@@ -223,18 +279,12 @@ def build_arroyo_windowed_reduce(
                     )
 
                 case timedelta():
-                    return Reduce(
-                        sys.maxsize,
+                    return WindowedReduce(
                         window_size.total_seconds(),
-                        cast(
-                            Callable[
-                                [FilteredPayload | TPayload, BaseValue[TPayload]],
-                                FilteredPayload | TPayload,
-                            ],
-                            arroyo_acc.accumulator,
-                        ),
-                        arroyo_acc.initial_value,
+                        window_size.total_seconds(),
+                        accumulator,
                         next_step,
+                        route,
                     )
 
                 case _:

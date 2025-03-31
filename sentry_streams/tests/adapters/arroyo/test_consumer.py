@@ -1,4 +1,5 @@
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from typing import Any, cast
 from unittest import mock
 from unittest.mock import call
@@ -12,11 +13,17 @@ from sentry_streams.adapters.arroyo.consumer import (
     ArroyoStreamingFactory,
 )
 from sentry_streams.adapters.arroyo.routes import Route
-from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
+from sentry_streams.adapters.arroyo.steps import (
+    FilterStep,
+    MapStep,
+    ReduceStep,
+    StreamSinkStep,
+)
 from sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
     Pipeline,
+    Reduce,
 )
 
 
@@ -94,3 +101,71 @@ def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> 
             call({Partition(Topic("logical-events"), 0): 4}),
         ]
     )
+
+
+def test_reduce(broker: LocalBroker[KafkaPayload], reduce_pipeline: Pipeline) -> None:
+    """
+    Test the creation of an Arroyo Consumer from a number of
+    pipeline steps.
+    """
+
+    consumer = ArroyoConsumer(source="source1")
+    consumer.add_step(
+        MapStep(
+            route=Route(source="source1", waypoints=[]),
+            pipeline_step=cast(Map, reduce_pipeline.steps["decoder"]),
+        )
+    )
+    consumer.add_step(
+        MapStep(
+            route=Route(source="source1", waypoints=[]),
+            pipeline_step=cast(Map, reduce_pipeline.steps["mymap"]),
+        )
+    )
+    consumer.add_step(
+        ReduceStep(
+            route=Route(source="source1", waypoints=[]),
+            pipeline_step=cast(Reduce[timedelta, Any, Any], reduce_pipeline.steps["myreduce"]),
+        )
+    )
+    consumer.add_step(
+        StreamSinkStep(
+            route=Route(source="source1", waypoints=[]),
+            producer=broker.get_producer(),
+            topic_name="transformed-events",
+        )
+    )
+
+    factory = ArroyoStreamingFactory(consumer)
+    commit = mock.Mock(spec=Commit)
+    strategy = factory.create_with_partitions(commit, {Partition(Topic("logical-events"), 0): 0})
+
+    strategy.submit(make_msg("msg1", "logical-events", 0))  # first message
+    time.sleep(2)
+    strategy.submit(make_msg("msg2", "logical-events", 1))  # second message in the first batch
+    time.sleep(2)
+    strategy.submit(make_msg("msg3", "logical-events", 2))  # second message in the first batc
+    time.sleep(3)
+    strategy.poll()
+
+    topic = Topic("transformed-events")
+    msg1 = broker.consume(Partition(topic, 0), 0)
+    assert msg1 is not None and msg1.payload.value == "msg1_mappedmsg2_mappedmsg3_mapped".encode(
+        "utf-8"
+    )
+
+    time.sleep(2)
+    strategy.poll()
+
+    msg2 = broker.consume(Partition(topic, 0), 1)
+    assert msg2 is not None and msg2.payload.value == "msg2_mappedmsg3_mapped".encode("utf-8")
+    assert broker.consume(Partition(topic, 0), 2) is None
+
+    time.sleep(2)
+    strategy.poll()
+
+    msg3 = broker.consume(Partition(topic, 0), 2)
+    assert msg3 is not None and msg3.payload.value == "msg3_mapped".encode("utf-8")
+    assert broker.consume(Partition(topic, 0), 3) is None
+
+    strategy.poll()
