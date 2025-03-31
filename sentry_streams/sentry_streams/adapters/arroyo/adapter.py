@@ -36,6 +36,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
+    Broadcast,
     Filter,
     FlatMap,
     Map,
@@ -220,6 +221,16 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
     ) -> Route:
         """
         Build a reduce operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    def broadcast(
+        self,
+        step: Broadcast,
+        stream: Route,
+    ) -> Mapping[str, Route]:
+        """
+        Build a broadcast operator for the platform the adapter supports.
         """
         raise NotImplementedError
 

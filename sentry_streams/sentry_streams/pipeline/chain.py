@@ -25,6 +25,7 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
+    Broadcast,
 )
 from sentry_streams.pipeline.pipeline import Filter as FilterStep
 from sentry_streams.pipeline.pipeline import FlatMap as FlatMapStep
@@ -160,7 +161,7 @@ class ExtensibleChain(Chain):
             routes={
                 Routes.ROUTE1: segment(name="route1") # Creates a branch
                 .apply("transform2", Map(lambda msg: msg))
-                .sink("myoutput1", "transformed-events2"),
+                .sink("myoutput1", "transformed-events-2"),
                 Routes.ROUTE2: segment(name="route2")
                 .apply("transform3", Map(lambda msg: msg))
                 .sink("myoutput2", "transformed-events3"),
@@ -198,8 +199,14 @@ class ExtensibleChain(Chain):
         Forks the pipeline sending all messages to all routes.
         """
         assert self.__edge is not None
+        Broadcast(
+            name,
+            ctx=self,
+            inputs=[self.__edge],
+            routes=[Branch(name=chain.name, ctx=self) for chain in routes],
+        )
         for chain in routes:
-            self.merge(other=chain, merge_point=self.__edge.name)
+            self.merge(other=chain, merge_point=chain.name)
         return self
 
     def route(
