@@ -1,5 +1,4 @@
 version = 1
-revision = 1
 requires-python = "==3.11.*"
 
 [[package]]
@@ -823,7 +822,7 @@ requires-dist = [
     { name = "apache-flink", specifier = "==1.20.0" },
     { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "requests", specifier = ">=2.32.3" },
-    { name = "sentry-streams", specifier = ">=0.0.13" },
+    { name = "sentry-streams", directory = "../sentry_streams" },
     { name = "setuptools", specifier = "==75.8.0" },
 ]
 
@@ -838,14 +837,32 @@ dev = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.13"
-source = { registry = "https://pypi.org/simple" }
+version = "0.0.14"
+source = { directory = "../sentry_streams" }
 dependencies = [
+    { name = "jsonschema" },
+    { name = "pyyaml" },
     { name = "requests" },
     { name = "sentry-arroyo" },
 ]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/c2/36aac9148239e0fedc17cb194ed73084d26a43cbc48e0c2b23e21734fc77/sentry_streams-0.0.13-py3-none-any.whl", hash = "sha256:cfc79529c227680b3c9b0388295d2ec459603763fc9c8b14c86fc487a410b48f", size = 29464 },
+
+[package.metadata]
+requires-dist = [
+    { name = "jsonschema", specifier = ">=4.23.0" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "requests", specifier = ">=2.32.3" },
+    { name = "sentry-arroyo", specifier = ">=2.18.2" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.14.1" },
+    { name = "pre-commit", specifier = ">=4.1.0" },
+    { name = "pytest", specifier = ">=8.3.4" },
+    { name = "responses", specifier = ">=0.25.6" },
+    { name = "types-jsonschema", specifier = ">=4.23.0" },
+    { name = "types-pyyaml", specifier = ">=6.0.12" },
+    { name = "types-requests", specifier = ">=2.32.0" },
 ]
 
 [[package]]

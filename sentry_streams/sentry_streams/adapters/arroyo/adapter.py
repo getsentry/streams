@@ -159,7 +159,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         if sink_name not in self.__sinks:
 
             sink_config = self.steps_config.get(sink_name)
-            assert sink_config is not None, f"Config not provided for source {sink_name}"
+            assert sink_config is not None, f"Config not provided for sink {sink_name}"
 
             sink_config = cast(KafkaProducerConfig, sink_config)
 
