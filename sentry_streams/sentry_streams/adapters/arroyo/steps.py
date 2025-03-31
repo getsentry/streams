@@ -142,15 +142,15 @@ class StreamSinkStep(ArroyoStep):
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         def extract_value(message: Message[Union[FilteredPayload, RoutedValue]]) -> Any:
             message_payload = message.value.payload
-            logger.info(message.value)
             if isinstance(message_payload, RoutedValue) and message_payload.route == self.route:
                 return KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
             else:
                 return FilteredPayload()
 
+        produce = Produce(self.producer, Topic(self.topic_name), next)
         return RunTask(
             extract_value,
-            Produce(self.producer, Topic(self.topic_name), next),
+            produce,
         )
 
 

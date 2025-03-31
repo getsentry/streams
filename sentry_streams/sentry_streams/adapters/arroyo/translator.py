@@ -75,10 +75,14 @@ class KafkaAccumulator:
 
         payload = value.payload.payload
         offsets: MutableMapping[Partition, int] = value.committable
-
         self.acc.add(payload)
 
-        self.offsets.update(offsets)
+        for partition in offsets:
+            if partition in self.offsets:
+                self.offsets[partition] = max(self.offsets[partition], offsets[partition])
+
+            else:
+                self.offsets[partition] = offsets[partition]
 
         return self
 
@@ -90,7 +94,7 @@ class KafkaAccumulator:
 
         for partition in other.offsets:
             if partition in self.offsets:
-                self.offsets[partition] = max(self.offsets[partition], other.offsets[partition])
+                self.offsets[partition] = min(self.offsets[partition], other.offsets[partition])
 
             else:
                 self.offsets[partition] = other.offsets[partition]
@@ -100,7 +104,6 @@ class KafkaAccumulator:
         return self
 
     def get_offsets(self) -> MutableMapping[Partition, int]:
-
         return self.offsets
 
     def clear(self) -> None:
@@ -184,7 +187,6 @@ class WindowedReduce(
             window = self.windows[i]
 
             if cur_time >= self.window_close_times[i]:
-                # FLUSH any window where this id doesn't show up
                 self.__merge_and_flush(i)
 
                 # only shift a window if it was flushed
@@ -218,9 +220,9 @@ class WindowedReduce(
         assert not self.__closed
 
         cur_time = time.time() - self.start_time
-        # acc_id = (cur_time % self.largest_val) // self.window_slide
-
         self.__maybe_flush(cur_time)
+
+        self.next_step.poll()
 
     def close(self) -> None:
         self.__closed = True

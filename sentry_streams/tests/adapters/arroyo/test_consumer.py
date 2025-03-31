@@ -168,4 +168,13 @@ def test_reduce(broker: LocalBroker[KafkaPayload], reduce_pipeline: Pipeline) ->
     assert msg3 is not None and msg3.payload.value == "msg3_mapped".encode("utf-8")
     assert broker.consume(Partition(topic, 0), 3) is None
 
-    strategy.poll()
+    commit.assert_has_calls(
+        [
+            call({}),
+            call({Partition(Topic("logical-events"), 0): 1}),
+            call({}),
+            call({Partition(Topic("logical-events"), 0): 2}),
+            call({}),
+            call({Partition(Topic("logical-events"), 0): 3}),
+        ]
+    )
