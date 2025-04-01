@@ -1,21 +1,29 @@
-from datetime import timedelta
-
-from sentry_streams.examples.events import AlertsBuffer, build_alert_json, build_event
+from sentry_streams.examples.events import (
+    AlertsBuffer,
+    CountAlertData,
+    GroupByAlertID,
+    TimeSeriesDataPoint,
+    build_alert_json,
+    build_event,
+    materialize_alerts,
+    p95AlertData,
+)
 from sentry_streams.pipeline.pipeline import (
-    KafkaSink,
-    KafkaSource,
+    Aggregate,
+    FlatMap,
     Map,
     Pipeline,
-    Reduce,
+    StreamSink,
+    StreamSource,
 )
-from sentry_streams.pipeline.window import SlidingWindow
+from sentry_streams.pipeline.window import TumblingWindow
 
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    logical_topic="logical-events",
+    stream_name="events",
 )
 
 map = Map(
@@ -25,19 +33,25 @@ map = Map(
     function=build_event,
 )
 
-# Windows are set to be open for 5 seconds
-reduce_window = SlidingWindow(window_size=timedelta(seconds=5), window_slide=timedelta(seconds=2))
+# We add a FlatMap so that we can take a stream of events (as above)
+# And then materialize (potentially multiple) time series data points per
+# event. A time series point is materialized per alert rule that the event
+# matches to. For example, if event A has 3 different alerts configured for it,
+# this will materialize 3 times series points for A.
+flat_map = FlatMap(name="myflatmap", ctx=pipeline, inputs=[map], function=materialize_alerts)
 
-# TODO: Use a flatMap (yet to be supported)
-# to emit both a p95 and count
-# for the reduce to be applied on
+reduce_window = TumblingWindow(window_size=3)
 
-reduce = Reduce(
+# Actually aggregates all the time series data points for each
+# alert rule registered (alert ID). Returns an aggregate value
+# for each window.
+reduce: Aggregate[int, TimeSeriesDataPoint, p95AlertData | CountAlertData] = Aggregate(
     name="myreduce",
     ctx=pipeline,
-    inputs=[map],
-    windowing=reduce_window,
-    aggregate_fn=AlertsBuffer,
+    inputs=[flat_map],
+    window=reduce_window,
+    aggregate_func=AlertsBuffer,
+    group_by_key=GroupByAlertID(),
 )
 
 map_str = Map(
@@ -47,9 +61,9 @@ map_str = Map(
     function=build_alert_json,
 )
 
-sink = KafkaSink(
+sink = StreamSink(
     name="kafkasink",
     ctx=pipeline,
     inputs=[map_str],
-    logical_topic="transformed-events",
+    stream_name="transformed-events",
 )

@@ -5,22 +5,22 @@ from sentry_streams.examples.word_counter_fn import (
     WordCounter,
 )
 from sentry_streams.pipeline.pipeline import (
+    Aggregate,
     Filter,
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
-    Reduce,
+    StreamSink,
+    StreamSource,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
 # pipeline: special name
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    logical_topic="logical-events",
+    stream_name="events",
 )
 
 filter = Filter(
@@ -42,18 +42,18 @@ map = Map(
 # TODO: Get the parameters for window in pipeline configuration.
 reduce_window = TumblingWindow(window_size=3)
 
-reduce = Reduce(
+reduce: Aggregate[int, tuple[str, int], str] = Aggregate(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
-    windowing=reduce_window,
-    aggregate_fn=WordCounter,
+    window=reduce_window,
+    aggregate_func=WordCounter,
     group_by_key=GroupByWord(),
 )
 
-sink = KafkaSink(
+sink = StreamSink(
     name="kafkasink",
     ctx=pipeline,
     inputs=[reduce],
-    logical_topic="transformed-events",
+    stream_name="transformed-events",
 )

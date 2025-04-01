@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentry-streams"
-version = "0.0.9"
+version = "0.0.14"
 description = "The python Sentry Streaming API"
 readme = "README.md"
 
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.32.3",
+    "sentry-arroyo>=2.18.2",
 ]
 
 [dependency-groups]
@@ -31,7 +32,7 @@ dev = [
 sentry_streams = ["py.typed"]
 
 [tool.pytest.ini_options]
-minversion = "0.0.9"
+minversion = "0.0.14"
 addopts = "-ra -q"
 testpaths = ["tests"]
 

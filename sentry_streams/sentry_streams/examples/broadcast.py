@@ -1,17 +1,17 @@
 from sentry_streams.examples.broadcast_fn import BroadcastFunctions
 from sentry_streams.pipeline.pipeline import (
-    KafkaSink,
-    KafkaSource,
     Map,
     Pipeline,
+    StreamSink,
+    StreamSource,
 )
 
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    logical_topic="logical-events",
+    stream_name="events",
 )
 
 map = Map(
@@ -35,16 +35,16 @@ goodbye_map = Map(
     function=BroadcastFunctions.goodbye_map,
 )
 
-hello_sink = KafkaSink(
+hello_sink = StreamSink(
     name="hello_sink",
     ctx=pipeline,
     inputs=[hello_map],
-    logical_topic="transformed-events",
+    stream_name="transformed-events",
 )
 
-goodbye_sink = KafkaSink(
+goodbye_sink = StreamSink(
     name="goodbye_sink",
     ctx=pipeline,
     inputs=[goodbye_map],
-    logical_topic="transformed-events-2",
+    stream_name="transformed-events-2",
 )

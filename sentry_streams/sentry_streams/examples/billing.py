@@ -1,12 +1,13 @@
 import json
+from typing import Any
 
 from sentry_streams.examples.billing_buffer import OutcomesBuffer
 from sentry_streams.pipeline.function_template import KVAggregationBackend
 from sentry_streams.pipeline.pipeline import (
-    KafkaSource,
+    Aggregate,
     Map,
     Pipeline,
-    Reduce,
+    StreamSource,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
@@ -14,7 +15,6 @@ Outcome = dict[str, str]
 
 
 def build_outcome(value: str) -> Outcome:
-
     d: Outcome = json.loads(value)
 
     return d
@@ -23,10 +23,10 @@ def build_outcome(value: str) -> Outcome:
 # pipeline: special name
 pipeline = Pipeline()
 
-source = KafkaSource(
+source = StreamSource(
     name="myinput",
     ctx=pipeline,
-    logical_topic="logical-events",
+    stream_name="events",
 )
 
 map = Map(
@@ -40,11 +40,11 @@ map = Map(
 # Windows are assigned 3 elements.
 reduce_window = TumblingWindow(window_size=3)
 
-reduce = Reduce(
+reduce: Aggregate[int, Outcome, dict[Any, Any]] = Aggregate(
     name="myreduce",
     ctx=pipeline,
     inputs=[map],
-    windowing=reduce_window,
-    aggregate_fn=OutcomesBuffer,
+    window=reduce_window,
+    aggregate_func=OutcomesBuffer,
     aggregate_backend=KVAggregationBackend(),  # NOTE: Provided by the platform
 )

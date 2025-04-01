@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import (
     Any,
@@ -15,9 +17,13 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
+    Broadcast,
     Filter,
+    FlatMap,
     Map,
     Reduce,
+    Router,
+    RoutingFuncReturnType,
     Sink,
     Source,
     Step,
@@ -28,11 +34,11 @@ from sentry_streams.pipeline.window import MeasurementUnit
 PipelineConfig = Mapping[str, Any]
 
 
-Stream = TypeVar("Stream")
-StreamSink = TypeVar("StreamSink")
+StreamT = TypeVar("StreamT")
+StreamSinkT = TypeVar("StreamSinkT")
 
 
-class StreamAdapter(ABC, Generic[Stream, StreamSink]):
+class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
     """
     A generic adapter for mapping sentry_streams APIs
     and primitives to runtime-specific ones. This can
@@ -58,28 +64,35 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
         raise NotImplementedError
 
     @abstractmethod
-    def source(self, step: Source) -> Stream:
+    def source(self, step: Source) -> StreamT:
         """
         Builds a stream source for the platform the adapter supports.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def sink(self, step: Sink, stream: Stream) -> StreamSink:
+    def sink(self, step: Sink, stream: StreamT) -> StreamSinkT:
         """
         Builds a stream sink for the platform the adapter supports.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def map(self, step: Map, stream: Stream) -> Stream:
+    def map(self, step: Map, stream: StreamT) -> StreamT:
         """
         Builds a map operator for the platform the adapter supports.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def filter(self, step: Filter, stream: Stream) -> Stream:
+    def flat_map(self, step: FlatMap, stream: StreamT) -> StreamT:
+        """
+        Builds a flat-map operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def filter(self, step: Filter, stream: StreamT) -> StreamT:
         """
         Builds a filter operator for the platform the adapter supports.
         """
@@ -89,10 +102,32 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
     def reduce(
         self,
         step: Reduce[MeasurementUnit, InputType, OutputType],
-        stream: Stream,
-    ) -> Stream:
+        stream: StreamT,
+    ) -> StreamT:
         """
         Build a map operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def router(
+        self,
+        step: Router[RoutingFuncReturnType],
+        stream: StreamT,
+    ) -> Mapping[str, StreamT]:
+        """
+        Build a router operator for the platform the adapter supports.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def broadcast(
+        self,
+        step: Broadcast,
+        stream: StreamT,
+    ) -> Mapping[str, StreamT]:
+        """
+        Build a broadcast operator for the platform the adapter supports.
         """
         raise NotImplementedError
 
@@ -103,8 +138,15 @@ class StreamAdapter(ABC, Generic[Stream, StreamSink]):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def shutdown(self) -> None:
+        """
+        Cleanly shutdown the application.
+        """
+        raise NotImplementedError
 
-class RuntimeTranslator(Generic[Stream, StreamSink]):
+
+class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
     """
     A runtime-agnostic translator
     which can apply the physical steps and transformations
@@ -112,34 +154,47 @@ class RuntimeTranslator(Generic[Stream, StreamSink]):
     which underlying runtime to translate to.
     """
 
-    def __init__(self, runtime_adapter: StreamAdapter[Stream, StreamSink]):
+    def __init__(self, runtime_adapter: StreamAdapter[StreamT, StreamSinkT]):
         self.adapter = runtime_adapter
 
     def translate_step(
-        self, step: Step, stream: Optional[Stream] = None
-    ) -> Union[Stream, StreamSink]:
+        self, step: Step, stream: Optional[StreamT] = None
+    ) -> Mapping[str, Union[StreamT, StreamSinkT]]:
         assert hasattr(step, "step_type")
         step_type = step.step_type
+        step_name = step.name
 
         if step_type is StepType.SOURCE:
             assert isinstance(step, Source)
-            return self.adapter.source(step)
+            return {step_name: self.adapter.source(step)}
 
         elif step_type is StepType.SINK:
             assert isinstance(step, Sink) and stream is not None
-            return self.adapter.sink(step, stream)
+            return {step_name: self.adapter.sink(step, stream)}
 
         elif step_type is StepType.MAP:
             assert isinstance(step, Map) and stream is not None
-            return self.adapter.map(step, stream)
+            return {step_name: self.adapter.map(step, stream)}
+
+        elif step_type is StepType.FLAT_MAP:
+            assert isinstance(step, FlatMap) and stream is not None
+            return {step_name: self.adapter.flat_map(step, stream)}
 
         elif step_type is StepType.REDUCE:
             assert isinstance(step, Reduce) and stream is not None
-            return self.adapter.reduce(step, stream)
+            return {step_name: self.adapter.reduce(step, stream)}
 
         elif step_type is StepType.FILTER:
             assert isinstance(step, Filter) and stream is not None
-            return self.adapter.filter(step, stream)
+            return {step_name: self.adapter.filter(step, stream)}
+
+        elif step_type is StepType.ROUTER:
+            assert isinstance(step, Router) and stream is not None
+            return self.adapter.router(step, stream)
+
+        elif step_type is StepType.BROADCAST:
+            assert isinstance(step, Broadcast) and stream is not None
+            return self.adapter.broadcast(step, stream)
 
         else:
             assert_never(step_type)
