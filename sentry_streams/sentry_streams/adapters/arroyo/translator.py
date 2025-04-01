@@ -1,5 +1,4 @@
 import logging
-import math
 import time
 from datetime import timedelta
 from typing import (
@@ -77,13 +76,7 @@ class KafkaAccumulator:
         offsets: MutableMapping[Partition, int] = value.committable
         self.acc.add(payload)
 
-        for partition in offsets:
-            if partition in self.offsets:
-                self.offsets[partition] = max(self.offsets[partition], offsets[partition])
-
-            else:
-                self.offsets[partition] = offsets[partition]
-
+        self.offsets.update(offsets)
         return self
 
     def get_value(self) -> Any:
@@ -94,7 +87,7 @@ class KafkaAccumulator:
 
         for partition in other.offsets:
             if partition in self.offsets:
-                self.offsets[partition] = min(self.offsets[partition], other.offsets[partition])
+                self.offsets[partition] = max(self.offsets[partition], other.offsets[partition])
 
             else:
                 self.offsets[partition] = other.offsets[partition]
@@ -118,6 +111,12 @@ class KafkaAccumulator:
 class WindowedReduce(
     ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
 ):
+    """
+    Supports both sliding and tumbling windows. For now, it only supports time durations
+    that are up to the second precision. For example, 5 min 30 sec is supported, but not
+    5 sec 500 milliseconds.
+    """
+
     def __init__(
         self,
         window_size: float,
@@ -127,7 +126,7 @@ class WindowedReduce(
         route: Route,
     ) -> None:
 
-        window_count = math.ceil(window_size / window_slide)
+        window_count = int(window_size / window_slide)
 
         self.window_count = window_count
         self.window_size = int(window_size)
@@ -158,6 +157,7 @@ class WindowedReduce(
         self.window_close_times = [
             float(self.window_size + self.window_slide * i) for i in range(self.window_count)
         ]
+        logger.info(self.window_close_times)
         self.__closed = False
 
     def __merge_and_flush(self, window_id: int) -> None:
@@ -247,9 +247,16 @@ def build_arroyo_windowed_reduce(
         case SlidingWindow(window_size, window_slide):
             match (window_size, window_slide):
                 case (timedelta(), timedelta()):
+
+                    size = window_size.total_seconds()
+                    slide = window_slide.total_seconds()
+
+                    if slide == 0.0:
+                        raise ValueError(f"Window slide {slide} cannot be 0")
+
                     return WindowedReduce(
-                        window_size.total_seconds(),
-                        window_slide.total_seconds(),
+                        size,
+                        slide,
                         accumulator,
                         next_step,
                         route,
