@@ -1,6 +1,7 @@
 import os
 from typing import (
     Any,
+    Mapping,
     MutableMapping,
     Self,
     Sequence,
@@ -25,7 +26,11 @@ from pyflink.datastream.data_stream import (
     DataStreamSink,
     WindowedStream,
 )
-from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
+from sentry_streams.adapters.stream_adapter import (
+    PipelineConfig,
+    StreamAdapter,
+    StreamT,
+)
 from sentry_streams.config_types import (
     KafkaConsumerConfig,
     KafkaProducerConfig,
@@ -37,6 +42,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
+    Broadcast,
     Filter,
     FlatMap,
     Map,
@@ -310,6 +316,13 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return {
             route.tag_id: routed_stream.get_side_output(route) for route in output_tags.values()
         }
+
+    def broadcast(
+        self,
+        step: Broadcast,
+        stream: StreamT,
+    ) -> Mapping[str, StreamT]:
+        pass
 
     def shutdown(self) -> None:
         raise NotImplementedError

@@ -23,5 +23,5 @@ pipeline:
       # start the segment
     - parallelism: 3
       steps_config:
-          kafkasink:
+          kafkasink2:
             bootstrap_servers: "kafka:9093"
