@@ -531,7 +531,7 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
 
 @pytest.mark.parametrize(
     "pipeline,expected_plan",
-    [basic(), basic_map(), basic_filter(), basic_map_reduce(), basic_router()],
+    [basic(), basic_map(), basic_filter(), basic_map_reduce(), basic_router(), basic_broadcast()],
 )
 def test_pipeline(
     setup_basic_flink_env: tuple[
