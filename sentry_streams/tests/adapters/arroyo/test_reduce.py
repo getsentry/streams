@@ -7,11 +7,11 @@ import pytest
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import BrokerValue, Message, Partition, Topic
 
-from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.adapters.arroyo.translator import (
+from sentry_streams.adapters.arroyo.reduce import (
     TimeWindowedReduce,
     build_arroyo_windowed_reduce,
 )
+from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.window import SlidingWindow
 
@@ -28,7 +28,7 @@ def make_msg(payload: Any, route: Route, offset: int, ts: int) -> Message[Any]:
 
 
 @pytest.mark.parametrize(
-    "window_size, window_slide, largest_val, acc_times, windows, window_close_times",
+    "window_size, window_slide, time_loop, acc_times, windows, window_close_times",
     [
         (
             10.0,
@@ -52,7 +52,7 @@ def make_msg(payload: Any, route: Route, offset: int, ts: int) -> Message[Any]:
 def test_window_initializer(
     window_size: float,
     window_slide: float,
-    largest_val: int,
+    time_loop: int,
     acc_times: Sequence[Sequence[int]],
     windows: Sequence[Sequence[int]],
     window_close_times: Sequence[int],
@@ -69,7 +69,7 @@ def test_window_initializer(
         route=route,
     )
 
-    assert reduce.largest_val == largest_val
+    assert reduce.time_loop == time_loop
     assert reduce.acc_times == acc_times
     assert reduce.windows == windows
     assert reduce.window_close_times == window_close_times

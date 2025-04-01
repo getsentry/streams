@@ -10,8 +10,8 @@ from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import FilteredPayload, Message, Topic
 
+from sentry_streams.adapters.arroyo.reduce import build_arroyo_windowed_reduce
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.adapters.arroyo.translator import build_arroyo_windowed_reduce
 from sentry_streams.pipeline.pipeline import Filter, Map, Reduce
 
 logger = logging.getLogger(__name__)

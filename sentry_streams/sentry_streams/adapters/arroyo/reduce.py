@@ -127,19 +127,21 @@ class TimeWindowedReduce(
         self.route = route
 
         self.acc = acc
-        # build a list of Accumulators
-        self.largest_val: int = int(2 * self.window_size - self.window_slide)
-        num_accs: int = int(self.largest_val // self.window_slide)
+
+        # Every sliding window has a time/duration that we loop around
+        # e.g window_size = 6, window_slide = 2, time loop = 10
+        # Accumulators: [0s, 1s] [2s, 3s] [4s, 5s] [6s, 7s] [8s, 9s]
+        self.time_loop = int(2 * self.window_size - self.window_slide)
+        num_accs = int(self.time_loop // self.window_slide)
         self.accs = [KafkaAccumulator(acc) for _ in range(num_accs)]
 
         self.acc_times = [
             list(range(i, i + self.window_slide))
-            for i in range(0, self.largest_val, self.window_slide)
+            for i in range(0, self.time_loop, self.window_slide)
         ]
 
         accs_per_window = self.window_size // self.window_slide
 
-        # list of acc IDs per window ID
         self.windows = [
             list(range(i, i + accs_per_window)) for i in range(num_accs - accs_per_window + 1)
         ]
@@ -148,7 +150,6 @@ class TimeWindowedReduce(
         self.window_close_times = [
             float(self.window_size + self.window_slide * i) for i in range(self.window_count)
         ]
-        logger.info(self.window_close_times)
         self.__closed = False
 
     def __merge_and_flush(self, window_id: int) -> None:
@@ -201,7 +202,7 @@ class TimeWindowedReduce(
             return
 
         cur_time = time.time() - self.start_time
-        acc_id = int((cur_time % self.largest_val) // self.window_slide)
+        acc_id = int((cur_time % self.time_loop) // self.window_slide)
 
         self.__maybe_flush(cur_time)
 
