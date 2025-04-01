@@ -24,9 +24,6 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[StreamT, Stre
     It currently has the structure to deal with, but has no
     real support for, fan-in streams
     """
-    from pprint import pprint
-
-    pprint(p_graph.__dict__)
 
     step_streams = {}
 
@@ -37,7 +34,6 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[StreamT, Stre
             step_streams[source_name] = source_streams[source_name]
 
         while step_streams:
-            logger.info(f"{step_streams=}")
             for input_name in list(step_streams):
                 output_steps = p_graph.outgoing_edges[input_name]
                 input_stream = step_streams.pop(input_name)
@@ -50,7 +46,6 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[StreamT, Stre
                     logger.info(f"Apply step: {next_step.name}")
                     # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                     next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
-                    logger.info(f"{next_step_stream=}")
                     for branch_name in next_step_stream:
                         step_streams[branch_name] = next_step_stream[branch_name]
 
