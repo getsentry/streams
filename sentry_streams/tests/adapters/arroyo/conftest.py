@@ -5,15 +5,18 @@ from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.types import Topic
 from arroyo.utils.clock import MockedClock
 
+from sentry_streams.pipeline.chain import Filter, Map, segment, streaming_source
 from sentry_streams.pipeline.pipeline import (
-    Branch,
-    Filter,
-    Map,
     Pipeline,
-    Router,
-    StreamSink,
-    StreamSource,
 )
+
+
+def decode(msg: bytes) -> str:
+    return msg.decode("utf-8")
+
+
+def basic_map(msg: str) -> str:
+    return msg + "_mapped"
 
 
 @pytest.fixture
@@ -28,32 +31,12 @@ def broker() -> LocalBroker[KafkaPayload]:
 
 @pytest.fixture
 def pipeline() -> Pipeline:
-    pipeline = Pipeline()
-    source = StreamSource(
-        name="myinput",
-        ctx=pipeline,
-        stream_name="events",
-    )
-    decoder = Map(
-        name="decoder",
-        ctx=pipeline,
-        inputs=[source],
-        function=lambda msg: msg.decode("utf-8"),
-    )
-    filter = Filter(
-        name="myfilter", ctx=pipeline, inputs=[decoder], function=lambda msg: msg == "go_ahead"
-    )
-    map = Map(
-        name="mymap",
-        ctx=pipeline,
-        inputs=[filter],
-        function=lambda msg: msg + "_mapped",
-    )
-    _ = StreamSink(
-        name="kafkasink",
-        ctx=pipeline,
-        inputs=[map],
-        stream_name="transformed-events",
+    pipeline = (
+        streaming_source("myinput", stream_name="events")
+        .apply("decoder", Map(decode))
+        .apply("myfilter", Filter(lambda msg: msg == "go_ahead"))
+        .apply("mymap", Map(basic_map))
+        .sink("kafkasink", stream_name="transformed-events")
     )
 
     return pipeline
@@ -61,51 +44,62 @@ def pipeline() -> Pipeline:
 
 @pytest.fixture
 def router_pipeline() -> Pipeline:
-    pipeline = Pipeline()
-    source = StreamSource(
-        name="myinput",
-        ctx=pipeline,
-        stream_name="events",
+    branch_1 = (
+        segment("even_branch")
+        .apply("myfilter", Filter(lambda msg: msg == "go_ahead"))
+        .sink("kafkasink1", stream_name="transformed-events")
     )
-    decoder = Map(
-        name="decoder",
-        ctx=pipeline,
-        inputs=[source],
-        function=lambda msg: msg.decode("utf-8"),
+    branch_2 = (
+        segment("odd_branch")
+        .apply("mymap", Map(basic_map))
+        .sink("kafkasink2", stream_name="transformed-events-2")
     )
-    router = Router(
-        name="router",
-        ctx=pipeline,
-        inputs=[decoder],
-        routing_function=lambda msg: "even" if len(msg) % 2 == 0 else "odd",
-        routing_table={
-            "even": Branch(name="even_branch", ctx=pipeline),
-            "odd": Branch(name="odd_branch", ctx=pipeline),
-        },
+
+    pipeline = (
+        streaming_source(
+            name="ingest",
+            stream_name="events",
+        )
+        .apply("decoder", Map(decode))
+        .route(
+            "router",
+            routing_function=lambda msg: "even" if len(msg) % 2 == 0 else "odd",
+            routes={
+                "even": branch_1,
+                "odd": branch_2,
+            },
+        )
     )
-    filter = Filter(
-        name="myfilter",
-        ctx=pipeline,
-        inputs=[router.routing_table["even"]],
-        function=lambda msg: msg == "go_ahead",
+
+    return pipeline
+
+
+@pytest.fixture
+def broadcast_pipeline() -> Pipeline:
+    branch_1 = (
+        segment("even_branch")
+        .apply("mymap1", Map(basic_map))
+        .sink("kafkasink1", stream_name="transformed-events")
     )
-    map = Map(
-        name="mymap",
-        ctx=pipeline,
-        inputs=[router.routing_table["odd"]],
-        function=lambda msg: msg + "_mapped",
+    branch_2 = (
+        segment("odd_branch")
+        .apply("mymap2", Map(basic_map))
+        .sink("kafkasink2", stream_name="transformed-events-2")
     )
-    _ = StreamSink(
-        name="kafkasink1",
-        ctx=pipeline,
-        inputs=[filter],
-        stream_name="transformed-events",
-    )
-    _ = StreamSink(
-        name="kafkasink2",
-        ctx=pipeline,
-        inputs=[map],
-        stream_name="transformed-events-2",
+
+    pipeline = (
+        streaming_source(
+            name="ingest",
+            stream_name="events",
+        )
+        .apply("decoder", Map(decode))
+        .broadcast(
+            "broadcast",
+            routes=[
+                branch_1,
+                branch_2,
+            ],
+        )
     )
 
     return pipeline
