@@ -30,5 +30,5 @@ build-streams:
 
 docs:
 	uv sync --project ./sentry_streams --group docs
-	sphinx-build -M html sentry_streams/docs/source/ sentry_streams/docs/build/
+	./sentry_streams/.venv/bin/sphinx-build -b html sentry_streams/docs/source/ sentry_streams/docs/build/
 .PHONY: docs
