@@ -99,14 +99,6 @@ class KafkaAccumulator:
     def get_offsets(self) -> MutableMapping[Partition, int]:
         return self.offsets
 
-    def clear(self) -> None:
-
-        assert hasattr(self.acc, "clear")
-        self.acc.clear()
-        self.offsets = {}
-
-        return
-
 
 class WindowedReduce(
     ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
@@ -136,6 +128,7 @@ class WindowedReduce(
         self.start_time = time.time()
         self.route = route
 
+        self.acc = acc
         # build a list of Accumulators
         self.largest_val: int = int(2 * self.window_size - self.window_slide)
         num_accs: int = int(self.largest_val // self.window_slide)
@@ -177,9 +170,9 @@ class WindowedReduce(
                 Message(Value(cast(TResult, result), merged_window.get_offsets()))
             )
 
-        # clear only the merged window
-        merged_window.clear()
-        self.accs[first_acc_id] = merged_window
+        # refresh only the accumulator that was the first
+        # accumulator in the flushed window
+        self.accs[first_acc_id] = KafkaAccumulator(self.acc)
 
     def __maybe_flush(self, cur_time: float) -> None:
 

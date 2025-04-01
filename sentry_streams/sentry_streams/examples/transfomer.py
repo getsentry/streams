@@ -51,11 +51,6 @@ class TransformerBatch(Accumulator[Any, Any]):
 
         return self
 
-    def clear(self) -> None:
-
-        self.batch = []
-        return
-
 
 pipeline = Pipeline()
 

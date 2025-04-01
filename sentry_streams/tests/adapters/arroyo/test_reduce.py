@@ -118,3 +118,5 @@ def test_invalid_window() -> None:
 # tumbling window test
 
 # filtered payload test
+
+# second-precision only test
