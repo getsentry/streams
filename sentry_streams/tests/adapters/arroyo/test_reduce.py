@@ -9,7 +9,7 @@ from arroyo.types import BrokerValue, Message, Partition, Topic
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.translator import (
-    WindowedReduce,
+    TimeWindowedReduce,
     build_arroyo_windowed_reduce,
 )
 from sentry_streams.pipeline.function_template import Accumulator
@@ -61,7 +61,7 @@ def test_window_initializer(
     acc = mock.Mock(spec=Accumulator)
     route = mock.Mock(spec=Route)
 
-    reduce: WindowedReduce[Any, Any] = WindowedReduce(
+    reduce: TimeWindowedReduce[Any, Any] = TimeWindowedReduce(
         window_size=window_size,
         window_slide=window_slide,
         acc=acc,
@@ -81,7 +81,7 @@ def test_submit() -> None:
     acc = mock.Mock(spec=Accumulator)
     route = mock.Mock(spec=Route)
 
-    reduce: WindowedReduce[Any, Any] = WindowedReduce(
+    reduce: TimeWindowedReduce[Any, Any] = TimeWindowedReduce(
         window_size=6.0,
         window_slide=2.0,
         acc=acc,
@@ -120,15 +120,24 @@ def test_invalid_window() -> None:
 # filtered payload test
 
 
-def test_second_precision() -> None:
+@pytest.mark.parametrize(
+    "window_size, window_slide",
+    [
+        (timedelta(seconds=4), timedelta(seconds=5)),
+        (timedelta(seconds=5), timedelta(seconds=0)),
+        (timedelta(seconds=5, milliseconds=500), timedelta(seconds=1, milliseconds=500)),
+    ],
+)
+def test_window_config(window_size: timedelta, window_slide: timedelta) -> None:
 
     next_step = mock.Mock(spec=ProcessingStrategy)
     acc = mock.Mock(spec=Accumulator)
     route = mock.Mock(spec=Route)
 
-    reduce_window = SlidingWindow(
-        window_size=timedelta(seconds=3.3), window_slide=timedelta(seconds=1.1)
-    )
+    reduce_window = SlidingWindow(window_size=window_size, window_slide=window_slide)
 
     with pytest.raises(ValueError):
         build_arroyo_windowed_reduce(reduce_window, acc, next_step, route)
+
+
+# test the poll, join, ... methods and assert the right calls

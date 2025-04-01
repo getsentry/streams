@@ -100,7 +100,7 @@ class KafkaAccumulator:
         return self.offsets
 
 
-class WindowedReduce(
+class TimeWindowedReduce(
     ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
 ):
     """
@@ -242,15 +242,17 @@ def build_arroyo_windowed_reduce(
                     size = window_size.total_seconds()
                     slide = window_slide.total_seconds()
 
-                    if slide == 0.0:
-                        raise ValueError(f"Window slide {slide} cannot be 0")
+                    if slide == 0.0 or slide > size:
+                        raise ValueError(
+                            f"Window slide {slide} cannot be 0 or larger than window size {size}"
+                        )
 
                     if not (size).is_integer() or not (slide).is_integer():
                         raise ValueError(
                             "Currently only second precision is supported for window size and window slide"
                         )
 
-                    return WindowedReduce(
+                    return TimeWindowedReduce(
                         size,
                         slide,
                         accumulator,
@@ -284,7 +286,7 @@ def build_arroyo_windowed_reduce(
                     )
 
                 case timedelta():
-                    return WindowedReduce(
+                    return TimeWindowedReduce(
                         window_size.total_seconds(),
                         window_size.total_seconds(),
                         accumulator,
