@@ -118,9 +118,7 @@ class WindowedReduce(
         route: Route,
     ) -> None:
 
-        window_count = int(window_size / window_slide)
-
-        self.window_count = window_count
+        self.window_count = int(window_size / window_slide)
         self.window_size = int(window_size)
         self.window_slide = int(window_slide)
 
@@ -246,6 +244,11 @@ def build_arroyo_windowed_reduce(
 
                     if slide == 0.0:
                         raise ValueError(f"Window slide {slide} cannot be 0")
+
+                    if not (size).is_integer() or not (slide).is_integer():
+                        raise ValueError(
+                            "Currently only second precision is supported for window size and window slide"
+                        )
 
                     return WindowedReduce(
                         size,

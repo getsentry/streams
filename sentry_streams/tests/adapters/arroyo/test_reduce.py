@@ -119,4 +119,16 @@ def test_invalid_window() -> None:
 
 # filtered payload test
 
-# second-precision only test
+
+def test_second_precision() -> None:
+
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    acc = mock.Mock(spec=Accumulator)
+    route = mock.Mock(spec=Route)
+
+    reduce_window = SlidingWindow(
+        window_size=timedelta(seconds=3.3), window_slide=timedelta(seconds=1.1)
+    )
+
+    with pytest.raises(ValueError):
+        build_arroyo_windowed_reduce(reduce_window, acc, next_step, route)
