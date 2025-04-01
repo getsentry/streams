@@ -29,6 +29,6 @@ build-streams:
 .PHONY: build-streams
 
 docs:
-	pip install -U -r ./docs-requirements.txt
-	sphinx-build -M html docs/source/ docs/build/
+	uv sync --project ./sentry_streams --group docs
+	sphinx-build -M html sentry_streams/docs/source/ sentry_streams/docs/build/
 .PHONY: docs
