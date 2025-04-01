@@ -2,23 +2,36 @@ import argparse
 import copy
 import importlib.resources
 import sys
+from typing import Any, List, Mapping
 
 import yaml
 
+from sentry_streams.adapters.stream_adapter import PipelineConfig
 
-def _merge_labels(tpl_labels, seg_labels) -> dict:
+K8sDeploymentManifest = Mapping[str, Any]
+K8sConfigMapManifest = Mapping[str, Any]
+
+
+def _merge_labels(
+    tpl_labels: Mapping[str, str], seg_labels: Mapping[str, str]
+) -> Mapping[str, str]:
     """
     Merge labels. Segment labels overrides the template labels.
     """
     return {**tpl_labels, **seg_labels}
 
 
-def _apply_namespace(k8s_resources, namespace: str | None = None):
+def _apply_namespace(
+    k8s_resources: List[K8sConfigMapManifest | K8sDeploymentManifest],
+    namespace: str | None = None,
+) -> None:
     for k8s_resource in k8s_resources:
         k8s_resource["metadata"]["namespace"] = namespace
 
 
-def generate_configmap(*, config, configmap_template):
+def generate_configmap(
+    *, config: PipelineConfig, configmap_template: K8sConfigMapManifest
+) -> K8sConfigMapManifest:
     configmap = copy.deepcopy(configmap_template)
     pipeline_name = config["pipeline"]["name"]
     configmap["metadata"]["name"] = pipeline_name
@@ -31,7 +44,13 @@ def generate_configmap(*, config, configmap_template):
     return configmap
 
 
-def generate_deployments(*, config, deployment_template, container_name, image):
+def generate_deployments(
+    *,
+    config: PipelineConfig,
+    deployment_template: K8sDeploymentManifest,
+    container_name: str,
+    image: str,
+) -> List[K8sDeploymentManifest]:
     deployments = []
     pipeline_name = config["pipeline"]["name"]
     common_labels = {"pipeline": pipeline_name}
