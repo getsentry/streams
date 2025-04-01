@@ -150,13 +150,6 @@ def test_standard_reduce(broker: LocalBroker[KafkaPayload], reduce_pipeline: Pip
             strategy.submit(make_msg(msg, "logical-events", i))
 
     # Last submit was at T+10, which means we've only flushed the first 3 windows
-
-    # Poll 3 times now for the remaining 3 windows to flush
-    # This time, there are no more submit() calls for making progress
-    for i in range(6, 9):
-        with mock.patch("time.time", return_value=cur_time + 2 * i):
-            strategy.poll()
-
     topic = Topic("transformed-events")
     msg1 = broker.consume(Partition(topic, 0), 0)
     assert msg1 is not None and msg1.payload.value == "msg0_mappedmsg1_mappedmsg2_mapped".encode(
@@ -173,6 +166,12 @@ def test_standard_reduce(broker: LocalBroker[KafkaPayload], reduce_pipeline: Pip
         "utf-8"
     )
 
+    # Poll 3 times now for the remaining 3 windows to flush
+    # This time, there are no more submit() calls for making progress
+    for i in range(6, 9):
+        with mock.patch("time.time", return_value=cur_time + 2 * i):
+            strategy.poll()
+
     msg4 = broker.consume(Partition(topic, 0), 3)
     assert msg4 is not None and msg4.payload.value == "msg3_mappedmsg4_mappedmsg5_mapped".encode(
         "utf-8"
@@ -185,7 +184,8 @@ def test_standard_reduce(broker: LocalBroker[KafkaPayload], reduce_pipeline: Pip
     assert msg6 is not None and msg6.payload.value == "msg5_mapped".encode("utf-8")
 
     # Up to this point everything is flushed out
-    # Submit data at T+24, T+26
+
+    # Submit data at T+24, T+26 (data comes in at a gap)
     for i in range(12, 14):
         msg = f"msg{i}"
         with mock.patch("time.time", return_value=cur_time + 2 * i):
@@ -203,9 +203,34 @@ def test_standard_reduce(broker: LocalBroker[KafkaPayload], reduce_pipeline: Pip
     msg13 = broker.consume(Partition(topic, 0), 7)
     assert msg13 is not None and msg13.payload.value == "msg12_mappedmsg13_mapped".encode("utf-8")
 
+    msg14 = broker.consume(Partition(topic, 0), 8)
+    assert msg14 is None
+
+    with mock.patch("time.time", return_value=cur_time + 2 * 15):
+        strategy.poll()
+
+    msg14 = broker.consume(Partition(topic, 0), 8)
+    assert msg14 is not None and msg14.payload.value == "msg12_mappedmsg13_mapped".encode("utf-8")
+
+    with mock.patch("time.time", return_value=cur_time + 2 * 16):
+        strategy.poll()
+
+    msg15 = broker.consume(Partition(topic, 0), 9)
+    assert msg15 is not None and msg15.payload.value == "msg13_mapped".encode("utf-8")
+
+    with mock.patch("time.time", return_value=cur_time + 2 * 17):
+        strategy.poll()
+
+    msg16 = broker.consume(Partition(topic, 0), 10)
+    assert msg16 is None
+
     # Commit strategy is this: Commit the largest offset that contributes to a window that will be flushed
     commit.assert_has_calls(
         [
+            call({}),
+            call({Partition(Topic("logical-events"), 0): 1}),
+            call({}),
+            call({Partition(Topic("logical-events"), 0): 2}),
             call({}),
             call({Partition(Topic("logical-events"), 0): 3}),
             call({}),
@@ -215,13 +240,16 @@ def test_standard_reduce(broker: LocalBroker[KafkaPayload], reduce_pipeline: Pip
             call({}),
             call({Partition(Topic("logical-events"), 0): 6}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 6}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 6}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 13}),
+            call({}),
+            call({}),
+            call(
+                {Partition(Topic("logical-events"), 0): 13}
+            ),  # We only commit this offset once we know that all windows which could include this offset have been flushed
             call({}),
             call({Partition(Topic("logical-events"), 0): 14}),
+            call({}),
         ]
     )
 
@@ -312,13 +340,15 @@ def test_reduce_with_gap(broker: LocalBroker[KafkaPayload], reduce_pipeline: Pip
     commit.assert_has_calls(
         [
             call({}),
+            call({Partition(Topic("logical-events"), 0): 1}),
+            call({}),
+            call({Partition(Topic("logical-events"), 0): 2}),
+            call({}),
             call({Partition(Topic("logical-events"), 0): 3}),
             call({}),
             call({Partition(Topic("logical-events"), 0): 4}),
             call({}),
             call({Partition(Topic("logical-events"), 0): 5}),
-            call({}),
-            call({Partition(Topic("logical-events"), 0): 6}),
             call({}),
             call({Partition(Topic("logical-events"), 0): 6}),
         ]

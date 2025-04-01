@@ -85,18 +85,14 @@ class KafkaAccumulator:
 
     def merge(self, other: Self) -> Self:
 
-        for partition in other.offsets:
-            if partition in self.offsets:
-                self.offsets[partition] = max(self.offsets[partition], other.offsets[partition])
-
-            else:
-                self.offsets[partition] = other.offsets[partition]
-
         self.acc.merge(other.acc)
 
         return self
 
     def get_offsets(self) -> MutableMapping[Partition, int]:
+        # return the offsets of the Accumulator we are merging against
+        # when we call this method, we know this Accumulator instance
+        # is ready to be cleared (not part of any further windows)
         return self.offsets
 
 
@@ -151,7 +147,7 @@ class TimeWindowedReduce(
             list(range(i, i + accs_per_window)) for i in range(num_accs - accs_per_window + 1)
         ]
 
-        # the next times at which each window will close
+        # Tracks the next times at which each window will close
         self.window_close_times = [
             float(self.window_size + self.window_slide * i) for i in range(self.window_count)
         ]
@@ -168,13 +164,14 @@ class TimeWindowedReduce(
 
         payload = merged_window.get_value()
 
+        # If there is a gap in the data, it is possible to have empty flushes
         if payload:
             result = RoutedValue(self.route, payload)
             self.next_step.submit(
                 Message(Value(cast(TResult, result), merged_window.get_offsets()))
             )
 
-        # refresh only the accumulator that was the first
+        # Refresh only the accumulator that was the first
         # accumulator in the flushed window
         self.accs[first_acc_id] = KafkaAccumulator(self.acc)
 
@@ -186,7 +183,7 @@ class TimeWindowedReduce(
             if cur_time >= self.window_close_times[i]:
                 self.__merge_and_flush(i)
 
-                # only shift a window if it was flushed
+                # Only shift a window if it was flushed
                 window = [(t + len(window)) % len(self.accs) for t in window]
                 self.windows[i] = window
 
