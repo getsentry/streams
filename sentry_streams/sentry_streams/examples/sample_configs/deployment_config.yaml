@@ -1,0 +1,18 @@
+env:
+  topics:
+    events: events
+    transformed-events: transformed-events
+    transformed-events-2: transformed-events-2
+
+pipeline:
+  name: "example-pipeline"
+  segments:
+    - parallelism: 2
+      steps_config:
+        myinput:
+          starts_segment: true
+          bootstrap_servers: 'kafka:9093'
+    - parallelism: 3
+      steps_config:
+        kafkasink:
+          bootstrap_servers: 'kafka:9093'

@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ~
+  labels: {}
+spec:
+  replicas: ~
+  selector:
+    matchLabels: {}
+  template:
+    metadata:
+      labels: {}
+    spec:
+      containers:
+        - name: segment 
+          image: ~
+          command: ["python", "-m", "sentry_streams.runner"]
