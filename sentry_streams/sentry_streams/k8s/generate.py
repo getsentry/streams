@@ -53,7 +53,7 @@ def generate_deployments(*, config, deployment_template, container_name, image):
         # TODO: sync with PR#77
         # TODO: config as env variable as well?
         labels = copy.deepcopy(common_labels)
-        labels["segment"] = segid
+        labels["segment"] = str(segid)
 
         deployment = copy.deepcopy(deployment_template)
 
@@ -73,7 +73,7 @@ def generate_deployments(*, config, deployment_template, container_name, image):
         deployment["spec"]["replicas"] = segment["parallelism"]
         deployment["metadata"]["name"] = f"{pipeline_name}-{segid}"
 
-        volumes = deployment["spec"].setdefault("volumes", [])
+        volumes = deployment["spec"]["template"]["spec"].setdefault("volumes", [])
         volumes.append(cm_volume)
 
         for container in deployment["spec"]["template"]["spec"]["containers"]:
@@ -111,19 +111,17 @@ def main() -> None:
         "--deployment-template",
         type=argparse.FileType("r"),
         help="Path to a deployment template file.",
-        default=open(
-            importlib.resources.files("sentry_streams") / "k8s/templates/deployment.yaml",
-            "r",
-        ),
+        default=importlib.resources.files("sentry_streams")
+        .joinpath("k8s/templates/deployment.yaml")
+        .open("r"),
     )
     parser.add_argument(
         "--configmap-template",
         type=argparse.FileType("r"),
         help="Path to a configmap template file.",
-        default=open(
-            importlib.resources.files("sentry_streams") / "k8s/templates/configmap.yaml",
-            "r",
-        ),
+        default=importlib.resources.files("sentry_streams")
+        .joinpath("k8s/templates/configmap.yaml")
+        .open("r"),
     )
     parser.add_argument(
         "--output",
