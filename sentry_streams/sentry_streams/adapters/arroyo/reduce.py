@@ -107,6 +107,8 @@ class TimeWindowedReduce(
     Supports both sliding and tumbling windows. For now, it only supports time durations
     that are up to the second precision. For example, 5 min 30 sec is supported, but not
     5 sec 500 milliseconds.
+
+    Currently moves and populates windows based on processing time.
     """
 
     def __init__(
@@ -133,6 +135,8 @@ class TimeWindowedReduce(
         # Accumulators: [0s, 1s] [2s, 3s] [4s, 5s] [6s, 7s] [8s, 9s]
         self.time_loop = int(2 * self.window_size - self.window_slide)
         num_accs = int(self.time_loop // self.window_slide)
+
+        # Maintain a list of Accumulators
         self.accs = [KafkaAccumulator(acc) for _ in range(num_accs)]
 
         self.acc_times = [
@@ -142,6 +146,7 @@ class TimeWindowedReduce(
 
         accs_per_window = self.window_size // self.window_slide
 
+        # Each window id (represented by index) maps to a set of acc ids
         self.windows = [
             list(range(i, i + accs_per_window)) for i in range(num_accs - accs_per_window + 1)
         ]
