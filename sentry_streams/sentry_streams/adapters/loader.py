@@ -10,7 +10,7 @@ Sink = TypeVar("Sink")
 
 
 def load_adapter(
-    adapter_type: str, config: PipelineConfig, segment_id: Optional[int]
+    adapter_type: str, config: PipelineConfig, segment_id: Optional[int] = None
 ) -> StreamAdapter[Stream, Sink]:
     """
     Loads a StreamAdapter to run a pipeline.

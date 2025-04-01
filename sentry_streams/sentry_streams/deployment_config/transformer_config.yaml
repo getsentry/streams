@@ -1,11 +1,7 @@
 # Default configuration
 # As of now, the assumption is that local adapters (like Arroyo)
 # do not require overrides of this file
-env:
-  topics:
-    events: events
-    transformed-events: transformed-events
-    transformed-events-2: transformed-events-2
+env: {}
 
 pipeline:
   segments:

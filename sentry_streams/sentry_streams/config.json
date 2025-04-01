@@ -37,12 +37,7 @@
         },
         "Env": {
             "type": "object",
-            "additionalProperties": true,
-            "properties": {
-                "topics": {
-                    "type": "object"
-                }
-            }
+            "additionalProperties": true
         }
     }
 }

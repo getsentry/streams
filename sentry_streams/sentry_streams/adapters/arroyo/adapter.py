@@ -124,10 +124,15 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self.__processors: Mapping[str, StreamProcessor[KafkaPayload]] = {}
 
     @classmethod
-    def build(cls, config: PipelineConfig) -> Self:
+    def build(
+        cls,
+        config: PipelineConfig,
+        sources_override: Mapping[str, KafkaConsumer] = {},
+        sinks_override: Mapping[str, KafkaProducer] = {},
+    ) -> Self:
         steps_config = config["steps_config"]
 
-        return cls(steps_config)
+        return cls(steps_config, sources_override, sinks_override)
 
     def source(self, step: Source) -> Route:
         """

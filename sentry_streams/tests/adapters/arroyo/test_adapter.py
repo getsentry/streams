@@ -1,16 +1,17 @@
+from typing import cast
 from unittest import mock
 
 import pytest
-from arroyo.backends.kafka.consumer import KafkaPayload
+from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.types import Partition, Topic
 
 from sentry_streams.adapters.arroyo.adapter import (
     ArroyoAdapter,
-    KafkaConsumerConfig,
     StreamSources,
 )
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
+from sentry_streams.config_types import KafkaConsumerConfig
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
     StreamSource,
@@ -21,6 +22,7 @@ from sentry_streams.runner import iterate_edges
 def test_kafka_sources() -> None:
     sources_config = {
         "source1": KafkaConsumerConfig(
+            starts_segment=None,
             bootstrap_servers="localhost:9092",
             auto_offset_reset="earliest",
             consumer_group="test_group",
@@ -31,7 +33,7 @@ def test_kafka_sources() -> None:
         "source2": mock.Mock(),
     }
     sources = StreamSources(
-        sources_config=sources_config,
+        steps_config=sources_config,
         sources_override=consumers,
     )
 
@@ -52,16 +54,14 @@ def test_kafka_sources() -> None:
 def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
     adapter = ArroyoAdapter.build(
         {
-            "sources_config": {},
-            "sinks_config": {},
-            "topics": {"events": "events"},
-            "sources_override": {
-                "myinput": broker.get_consumer("events"),
+            "env": {},
+            "steps_config": {
+                "myinput": {"myinput": {}},
+                "kafkasink": {"kafkasink": {}},
             },
-            "sinks_override": {
-                "kafkasink": broker.get_producer(),
-            },
-        }
+        },
+        {"myinput": cast(KafkaConsumer, broker.get_consumer("events"))},
+        {"kafkasink": cast(KafkaProducer, broker.get_producer())},
     )
     iterate_edges(pipeline, RuntimeTranslator(adapter))
 
