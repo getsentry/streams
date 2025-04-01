@@ -25,6 +25,7 @@ from sentry_streams.adapters.arroyo.consumer import (
 )
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import (
+    BroadcastStep,
     FilterStep,
     MapStep,
     RouterStep,
@@ -232,7 +233,20 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a broadcast operator for the platform the adapter supports.
         """
-        raise NotImplementedError
+        assert (
+            stream.source in self.__consumers
+        ), f"Stream starting at source {stream.source} not found when adding a broadcast step"
+        self.__consumers[stream.source].add_step(BroadcastStep(route=stream, pipeline_step=step))
+
+        return {
+            route.name: Route(
+                source=stream.source,
+                waypoints=cast(
+                    MutableSequence[str], cast(List[str], stream.waypoints) + [route.name]
+                ),
+            )
+            for route in step.routes
+        }
 
     def router(
         self,

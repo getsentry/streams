@@ -1,16 +1,23 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, Union
+from typing import Any, Callable, Generic, Iterable, List, MutableSequence, Union, cast
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies import CommitOffsets, Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import Commit, FilteredPayload, Message, Topic
+from arroyo.processing.strategies.unfold import Unfold
+from arroyo.types import Commit, FilteredPayload, Message, Topic, Value
 
 from sentry_streams.adapters.arroyo.forwarder import Forwarder
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.pipeline.pipeline import Filter, Map, Router, RoutingFuncReturnType
+from sentry_streams.pipeline.pipeline import (
+    Broadcast,
+    Filter,
+    Map,
+    Router,
+    RoutingFuncReturnType,
+)
 
 
 @dataclass
@@ -119,6 +126,53 @@ class FilterStep(ArroyoStep):
 
         return RunTask(
             transformer,
+            next,
+        )
+
+
+@dataclass
+class BroadcastStep(ArroyoStep):
+    """
+    BroadcastStep forwards a copy of an incoming  message downstream for each downstream branch,
+    each copy having a Route matching one of the downstream branches.
+    """
+
+    pipeline_step: Broadcast
+
+    def build(
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
+    ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
+        def generate_message_copies(
+            payload: RoutedValue,
+        ) -> Iterable[Value[Union[FilteredPayload, RoutedValue]]]:
+            if payload.route != self.route:
+                return [
+                    Value(
+                        payload=payload,
+                        committable={},
+                    )
+                ]
+            else:
+                return [
+                    Value(
+                        payload=RoutedValue(
+                            route=Route(
+                                source=payload.route.source,
+                                waypoints=cast(
+                                    MutableSequence[str],
+                                    cast(List[str], payload.route.waypoints)
+                                    + [downstream_branch.name],
+                                ),
+                            ),
+                            payload=payload.payload,
+                        ),
+                        committable={},
+                    )
+                    for downstream_branch in self.pipeline_step.routes
+                ]
+
+        return Unfold(
+            generate_message_copies,
             next,
         )
 
