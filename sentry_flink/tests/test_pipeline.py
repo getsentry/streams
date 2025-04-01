@@ -233,7 +233,7 @@ def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]
             segment("clickhouse").sink("kafkasink2", stream_name="transformed-events-2"),
         ],
     )
-    # TODO: update with actual plan output once sentry_streams PR is deployed
+
     expected = {
         "nodes": [
             {

@@ -204,7 +204,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
-    def broadcast(self, step: Broadcast, stream: DataStream) -> DataStream:
+    def broadcast(self, step: Broadcast, stream: DataStream) -> Mapping[str, DataStream]:
         # Broadcast in flink is implicit, so no processing needs to happen here
         return {branch.name: stream for branch in step.routes}
 
