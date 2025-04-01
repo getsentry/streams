@@ -237,11 +237,67 @@ def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]
     expected = {
         "nodes": [
             {
-                "id": 21,
+                "id": 55,
                 "type": "Source: Custom Source",
                 "pact": "Data Source",
                 "contents": "Source: Custom Source",
                 "parallelism": 1,
+            },
+            {
+                "contents": "Sink: Writer",
+                "id": 58,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 55,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
+            },
+            {
+                "contents": "Sink: Committer",
+                "id": 60,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 58,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
+            },
+            {
+                "contents": "Sink: Writer",
+                "id": 62,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 55,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
+            },
+            {
+                "contents": "Sink: Committer",
+                "id": 64,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 62,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
             },
         ]
     }
