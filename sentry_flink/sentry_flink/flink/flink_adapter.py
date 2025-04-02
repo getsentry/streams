@@ -113,6 +113,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             )
             env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
 
+        logger.info(env.get_parallelism())
         return cls(config, env)
 
     def resolve_incoming_chain(
