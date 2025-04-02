@@ -129,6 +129,8 @@ def main() -> None:
             raise
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
+
+    # If set, SEGMENT_ID must correspond to the 0-indexed position in the segments array in config
     segment_var = os.environ.get("SEGMENT_ID")
     segment_id: Optional[int]
     if segment_var:
@@ -137,7 +139,6 @@ def main() -> None:
     else:
         segment_id = None
 
-    # SEGMENT_ID must correspond to the 0-indexed position in the config for segments
     runtime: Any = load_adapter(args.adapter, environment_config, segment_id)
     translator = RuntimeTranslator(runtime)
 

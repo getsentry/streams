@@ -5,11 +5,7 @@
 # If and when we diverge from the default config's schema,
 # we must introduce a new schema to the FlinkAdapter
 
-env:
-  topics:
-    events: events
-    transformed-events: transformed-events
-    transformed-events-2: transformed-events-2
+env: {}
 
 pipeline:
   segments:
