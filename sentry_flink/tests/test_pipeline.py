@@ -45,7 +45,9 @@ def setup_basic_flink_env() -> (
                 {
                     "steps_config": {
                         "myinput": {"starts_segment": True, "bootstrap_servers": "localhost:9092"},
-                        "kafkasink2": {"bootstrap_servers": "localhost:9092"},
+                        "kafkasink": {"bootstrap_servers": "localhost:9092"},
+                        "kafkasink_1": {"bootstrap_servers": "localhost:9092"},
+                        "kafkasink_2": {"bootstrap_servers": "localhost:9092"},
                     }
                 }
             ]
@@ -232,7 +234,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
 
 
 def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
-    pipeline = streaming_source(name="mysource", stream_name="events").broadcast(
+    pipeline = streaming_source(name="myinput", stream_name="events").broadcast(
         "mybroadcast",
         routes=[
             segment("sbc").sink("kafkasink", stream_name="transformed-events"),
