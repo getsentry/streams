@@ -29,7 +29,6 @@ from pyflink.datastream.data_stream import (
 from sentry_streams.adapters.stream_adapter import (
     PipelineConfig,
     StreamAdapter,
-    StreamT,
 )
 from sentry_streams.config_types import (
     KafkaConsumerConfig,
@@ -291,7 +290,11 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         return self.resolve_outoing_chain(step, aggregate_stream)
 
-    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> MutableMapping[str, Any]:
+    def broadcast(self, step: Broadcast, stream: DataStream) -> Mapping[str, DataStream]:
+        # Broadcast in flink is implicit, so no processing needs to happen here
+        return {branch.name: stream for branch in step.routes}
+
+    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> Mapping[str, Any]:
         routing_table = step.routing_table
         routing_func = step.routing_function
 
@@ -316,13 +319,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return {
             route.tag_id: routed_stream.get_side_output(route) for route in output_tags.values()
         }
-
-    def broadcast(
-        self,
-        step: Broadcast,
-        stream: StreamT,
-    ) -> Mapping[str, StreamT]:
-        pass
 
     def shutdown(self) -> None:
         raise NotImplementedError
