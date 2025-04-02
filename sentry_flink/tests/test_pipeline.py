@@ -48,6 +48,7 @@ def setup_basic_flink_env() -> (
                         "kafkasink": {"bootstrap_servers": "localhost:9092"},
                         "kafkasink_1": {"bootstrap_servers": "localhost:9092"},
                         "kafkasink_2": {"bootstrap_servers": "localhost:9092"},
+                        "kafkasink2": {"bootstrap_servers": "localhost:9092"},
                     }
                 }
             ]

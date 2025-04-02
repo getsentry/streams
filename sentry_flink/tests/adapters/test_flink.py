@@ -7,9 +7,20 @@ from sentry_flink.flink.flink_adapter import FlinkAdapter
 @pytest.fixture
 def pipeline_config() -> PipelineConfig:
     return {
-        "broker": "localhost:9092",
-        "topics": {"test_topic": "test_topic"},
-        "flink": {"parallelism": 2, "kafka_connect_lib_path": "/path/to/libs"},
+        "env": {},
+        "pipeline": {
+            "segments": [
+                {
+                    "steps_config": {
+                        "myinput": {"starts_segment": True, "bootstrap_servers": "localhost:9092"},
+                        "kafkasink": {"bootstrap_servers": "localhost:9092"},
+                        "kafkasink_1": {"bootstrap_servers": "localhost:9092"},
+                        "kafkasink_2": {"bootstrap_servers": "localhost:9092"},
+                        "kafkasink2": {"bootstrap_servers": "localhost:9092"},
+                    }
+                }
+            ]
+        },
     }
 
 
