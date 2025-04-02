@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Callable, Generic, Union
@@ -6,11 +7,17 @@ from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies import CommitOffsets, Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import Commit, FilteredPayload, Message, Topic
+from arroyo.types import FilteredPayload, Message, Topic
+
+from sentry_streams.adapters.arroyo.reduce import build_arroyo_windowed_reduce
+from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
+from sentry_streams.pipeline.pipeline import Filter, Map, Reduce
+
+logger = logging.getLogger(__name__)
+from arroyo.types import Commit
 
 from sentry_streams.adapters.arroyo.forwarder import Forwarder
-from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.pipeline.pipeline import Filter, Map, Router, RoutingFuncReturnType
+from sentry_streams.pipeline.pipeline import Router, RoutingFuncReturnType
 
 
 @dataclass
@@ -178,3 +185,22 @@ class StreamSinkStep(ArroyoStep):
             produce_step=Produce(self.producer, Topic(self.topic_name), CommitOffsets(commit)),
             next_step=next,
         )
+
+
+@dataclass
+class ReduceStep(ArroyoStep):
+
+    pipeline_step: Reduce[Any, Any, Any]
+
+    def build(
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
+    ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
+
+        # TODO: Support group by keys
+        windowed_reduce: ProcessingStrategy[Union[FilteredPayload, RoutedValue]] = (
+            build_arroyo_windowed_reduce(
+                self.pipeline_step.windowing, self.pipeline_step.aggregate_fn, next, self.route
+            )
+        )
+
+        return windowed_reduce
