@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import (
     Any,
@@ -64,6 +65,8 @@ from sentry_flink.flink.flink_translator import (
     translate_custom_type,
     translate_to_flink_type,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
