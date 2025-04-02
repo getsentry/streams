@@ -12,6 +12,8 @@ requires-python = ">=3.11"
 dependencies = [
     "requests>=2.32.3",
     "sentry-arroyo>=2.18.2",
+    "pyyaml>=6.0.2",
+    "jsonschema>=4.23.0",
 ]
 
 [dependency-groups]
@@ -26,10 +28,12 @@ dev = [
     "pytest>=8.3.4",
     "responses>=0.25.6",
     "types-requests>=2.32.0",
+    "types-PyYAML>=6.0.12",
+    "types-jsonschema>=4.23.0",
 ]
 
 [tool.setuptools.package-data]
-sentry_streams = ["py.typed"]
+sentry_streams = ["py.typed", "config.json"]
 
 [tool.pytest.ini_options]
 minversion = "0.0.14"

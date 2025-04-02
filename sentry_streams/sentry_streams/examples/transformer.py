@@ -24,6 +24,10 @@ def filter_not_event(msg: Mapping[str, Any]) -> bool:
     return bool(msg["type"] == "event")
 
 
+def serialize_msg(msg: Mapping[str, Any]) -> str:
+    return dumps(msg)
+
+
 pipeline = (
     streaming_source(
         name="myinput",
@@ -31,7 +35,7 @@ pipeline = (
     )
     .apply("mymap", Map(function=parse))
     .apply("myfilter", Filter(function=filter_not_event))
-    .apply("serializer", Map(function=lambda msg: dumps(msg)))
+    .apply("serializer", Map(function=serialize_msg))
     .sink(
         "kafkasink2",
         stream_name="transformed-events",
