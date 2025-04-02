@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any
 from unittest import mock
 from unittest.mock import call
 
@@ -60,29 +60,26 @@ def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
         )
 
 
-def make_value_msg(
-    payload: Any, route: Route, committable: Mapping[Partition, int], add_timestamp: bool = True
-) -> Message[Any]:
+def make_value_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
     """
     Makes a message containing a Value based on the offset passed.
     Useful if a step you're testing always transforms a Message payload into a Value,
     or if you need an emtpy comittable/timestamp for whatever reason (BrokerValue doesn't support that).
     """
-    timestamp = datetime(2025, 1, 1, 12, 0) if add_timestamp else None
     if isinstance(payload, FilteredPayload):
         return Message(
             Value(
                 payload=payload,
-                committable=committable,
-                timestamp=timestamp,
+                committable={Partition(Topic("test_topic"), 0): offset},
+                timestamp=datetime(2025, 1, 1, 12, 0),
             )
         )
     else:
         return Message(
             Value(
                 payload=RoutedValue(route=route, payload=payload),
-                committable=committable,
-                timestamp=timestamp,
+                committable={Partition(Topic("test_topic"), 0): offset},
+                timestamp=datetime(2025, 1, 1, 12, 0),
             )
         )
 
@@ -262,17 +259,17 @@ def test_broadcast() -> None:
         make_value_msg(
             "test_val",
             Route(source="source1", waypoints=[]),
-            {TEST_PARTITION: 0},
+            0,
         ),
         make_value_msg(
             "not_test_val",
             Route(source="source1", waypoints=[]),
-            {TEST_PARTITION: 1},
+            1,
         ),
         make_value_msg(
             FilteredPayload(),
             Route(source="source1", waypoints=[]),
-            {TEST_PARTITION: 2},
+            2,
         ),
     ]
 
@@ -281,21 +278,17 @@ def test_broadcast() -> None:
         strategy.poll()
 
     expected_calls = [
-        call.submit(make_value_msg("test_val", mapped_route, {}, add_timestamp=False)),
-        call.submit(
-            make_value_msg("test_val", other_route, {TEST_PARTITION: 0}, add_timestamp=False)
-        ),
+        call.submit(make_value_msg("test_val", mapped_route, 0)),
+        call.submit(make_value_msg("test_val", other_route, 0)),
         call.poll(),
-        call.submit(make_value_msg("not_test_val", mapped_route, {}, add_timestamp=False)),
-        call.submit(
-            make_value_msg("not_test_val", other_route, {TEST_PARTITION: 1}, add_timestamp=False)
-        ),
+        call.submit(make_value_msg("not_test_val", mapped_route, 1)),
+        call.submit(make_value_msg("not_test_val", other_route, 1)),
         call.poll(),
         call.submit(
             make_value_msg(
                 FilteredPayload(),
                 Route(source="source1", waypoints=[]),
-                {TEST_PARTITION: 2},
+                2,
             )
         ),
         call.poll(),
