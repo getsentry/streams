@@ -24,11 +24,11 @@ jobs:
         name: Publish to GitHub Pages
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/build
+          publish_dir: sentry_streams/docs/build
           force_orphan: true
 
       - name: Archive Docs
         uses: actions/upload-artifact@v4
         with:
           name: docs
-          path: docs/build
+          path: sentry_streams/docs/build
