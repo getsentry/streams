@@ -39,13 +39,19 @@ def setup_basic_flink_env() -> (
 ):
     # TODO: read from yaml file
     environment_config = {
-        "topics": {
-            "events": "events",
-            "transformed-events": "transformed-events",
-            "transformed-events-2": "transformed-events-2",
+        "env": {},
+        "pipeline": {
+            "segments": [
+                {
+                    "steps_config": {
+                        "myinput": {"starts_segment": True, "bootstrap_servers": "localhost:9092"},
+                        "kafkasink2": {"bootstrap_servers": "localhost:9092"},
+                    }
+                }
+            ]
         },
-        "broker": "localhost:9092",
     }
+
     runtime = FlinkAdapter.build(environment_config)
     translator = RuntimeTranslator(runtime)
 
