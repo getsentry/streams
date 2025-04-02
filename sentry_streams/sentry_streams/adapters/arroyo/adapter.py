@@ -90,7 +90,7 @@ class StreamSources:
 
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
-                    default_config={},
+                    default_config=source_config.get("additional_settings", {}),
                     bootstrap_servers=source_config.get("bootstrap_servers", "localhost: 9092"),
                     auto_offset_reset=(source_config.get("auto_offset_reset", "latest")),
                     group_id=f"pipeline-{source_name}",
@@ -170,7 +170,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
             producer = KafkaProducer(
                 build_kafka_configuration(
-                    default_config={},
+                    default_config=sink_config.get("additional_settings", {}),
                     bootstrap_servers=sink_config.get("bootstrap_servers", "localhost:9092"),
                 )
             )
