@@ -196,6 +196,7 @@ class ReduceStep(ArroyoStep):
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
 
+        # TODO: Support group by keys
         windowed_reduce: ProcessingStrategy[Union[FilteredPayload, RoutedValue]] = (
             build_arroyo_windowed_reduce(
                 self.pipeline_step.windowing, self.pipeline_step.aggregate_fn, next, self.route

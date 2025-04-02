@@ -253,6 +253,7 @@ def build_arroyo_windowed_reduce(
                     size = window_size.total_seconds()
                     slide = window_slide.total_seconds()
 
+                    # TODO: Move this validation to where a SlidingWindow gets created
                     if slide == 0.0 or slide > size:
                         raise ValueError(
                             f"Window slide {slide} cannot be 0 or larger than window size {size}"
