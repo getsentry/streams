@@ -11,9 +11,11 @@ from arroyo.utils.clock import MockedClock
 from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
+    Branch,
     Filter,
     Map,
     Pipeline,
+    Router,
     StreamSink,
     StreamSource,
 )
@@ -24,12 +26,13 @@ from sentry_streams.pipeline.window import SlidingWindow
 def broker() -> LocalBroker[KafkaPayload]:
     storage: MemoryMessageStorage[KafkaPayload] = MemoryMessageStorage()
     broker = LocalBroker(storage, MockedClock())
-    broker.create_topic(Topic("logical-events"), 1)
+    broker.create_topic(Topic("events"), 1)
     broker.create_topic(Topic("transformed-events"), 1)
+    broker.create_topic(Topic("transformed-events-2"), 1)
     return broker
 
 
-class TransformerBatch(Accumulator[Any, Any]):
+class TestTransformerBatch(Accumulator[Any, Any]):
     def __init__(self) -> None:
         self.batch: MutableSequence[Any] = []
 
@@ -48,8 +51,8 @@ class TransformerBatch(Accumulator[Any, Any]):
 
 
 @pytest.fixture
-def transformer() -> Callable[[], TransformerBatch]:
-    return TransformerBatch
+def transformer() -> Callable[[], TestTransformerBatch]:
+    return TestTransformerBatch
 
 
 @pytest.fixture
@@ -58,7 +61,7 @@ def pipeline() -> Pipeline:
     source = StreamSource(
         name="myinput",
         ctx=pipeline,
-        stream_name="logical-events",
+        stream_name="events",
     )
     decoder = Map(
         name="decoder",
@@ -86,7 +89,7 @@ def pipeline() -> Pipeline:
 
 
 @pytest.fixture
-def reduce_pipeline() -> Pipeline:
+def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline:
     pipeline = Pipeline()
     source = StreamSource(
         name="myinput",
@@ -113,7 +116,7 @@ def reduce_pipeline() -> Pipeline:
         ctx=pipeline,
         inputs=[map],
         window=reduce_window,
-        aggregate_func=TransformerBatch,
+        aggregate_func=transformer,
     )
 
     _ = StreamSink(
@@ -121,6 +124,58 @@ def reduce_pipeline() -> Pipeline:
         ctx=pipeline,
         inputs=[reduce],
         stream_name="transformed-events",
+    )
+
+    return pipeline
+
+
+@pytest.fixture
+def router_pipeline() -> Pipeline:
+    pipeline = Pipeline()
+    source = StreamSource(
+        name="myinput",
+        ctx=pipeline,
+        stream_name="events",
+    )
+    decoder = Map(
+        name="decoder",
+        ctx=pipeline,
+        inputs=[source],
+        function=lambda msg: msg.decode("utf-8"),
+    )
+    router = Router(
+        name="router",
+        ctx=pipeline,
+        inputs=[decoder],
+        routing_function=lambda msg: "even" if len(msg) % 2 == 0 else "odd",
+        routing_table={
+            "even": Branch(name="even_branch", ctx=pipeline),
+            "odd": Branch(name="odd_branch", ctx=pipeline),
+        },
+    )
+    filter = Filter(
+        name="myfilter",
+        ctx=pipeline,
+        inputs=[router.routing_table["even"]],
+        function=lambda msg: msg == "go_ahead",
+    )
+    map = Map(
+        name="mymap",
+        ctx=pipeline,
+        inputs=[router.routing_table["odd"]],
+        function=lambda msg: msg + "_mapped",
+    )
+    _ = StreamSink(
+        name="kafkasink1",
+        ctx=pipeline,
+        inputs=[filter],
+        stream_name="transformed-events",
+    )
+    _ = StreamSink(
+        name="kafkasink2",
+        ctx=pipeline,
+        inputs=[map],
+        stream_name="transformed-events-2",
     )
 
     return pipeline

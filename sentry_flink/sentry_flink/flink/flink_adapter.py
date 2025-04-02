@@ -1,7 +1,7 @@
 import os
 from typing import (
     Any,
-    MutableMapping,
+    Mapping,
     Self,
     Union,
     get_type_hints,
@@ -29,6 +29,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
+    Broadcast,
     Filter,
     FlatMap,
     Map,
@@ -96,7 +97,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         # TODO: Look into using KafkaSource instead
         kafka_consumer = FlinkKafkaConsumer(
-            topics=self.environment_config["topics"][topic],
+            topics=topic,
             deserialization_schema=deserialization_schema,
             properties={
                 "bootstrap.servers": self.environment_config["broker"],
@@ -116,7 +117,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             .set_record_serializer(
                 KafkaRecordSerializationSchema.builder()
                 .set_topic(
-                    self.environment_config["topics"][topic],
+                    topic,
                 )
                 .set_value_serialization_schema(SimpleStringSchema())
                 .build()
@@ -203,7 +204,11 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             ),
         )
 
-    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> MutableMapping[str, Any]:
+    def broadcast(self, step: Broadcast, stream: DataStream) -> Mapping[str, DataStream]:
+        # Broadcast in flink is implicit, so no processing needs to happen here
+        return {branch.name: stream for branch in step.routes}
+
+    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> Mapping[str, Any]:
         routing_table = step.routing_table
         routing_func = step.routing_function
 

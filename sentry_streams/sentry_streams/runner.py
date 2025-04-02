@@ -1,7 +1,13 @@
 import argparse
+import importlib
+import json
 import logging
+import os
 import signal
-from typing import Any, cast
+from typing import Any, Optional, cast
+
+import jsonschema
+import yaml
 
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
@@ -59,13 +65,6 @@ def main() -> None:
         help="The name of the Flink Job",
     )
     parser.add_argument(
-        "--broker",
-        "-b",
-        type=str,
-        default="localhost:9092",
-        help="The broker the job should connect to",
-    )
-    parser.add_argument(
         "--log-level",
         "-l",
         type=str,
@@ -84,6 +83,13 @@ def main() -> None:
             "The stream adapter to instantiate. It can be a value from "
             "the AdapterType enum or a fully qualified class name to "
             "load dynamically"
+        ),
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        help=(
+            "The deployment config file path. Each config file currently corresponds to a specific pipeline."
         ),
     )
     parser.add_argument(
@@ -108,33 +114,31 @@ def main() -> None:
     with open(args.application) as f:
         exec(f.read(), pipeline_globals)
 
-    # TODO: read from yaml file
-    environment_config = {
-        "topics": {
-            "logical-events": "events",
-            "transformed-events": "transformed-events",
-            "transformed-events-2": "transformed-events-2",
-            "transformed-events-3": "transformed-events-3",
-        },
-        "broker": args.broker,
-        "sources_config": {
-            "myinput": {
-                "bootstrap_servers": [args.broker],
-                "auto_offset_reset": "latest",
-                "consumer_group": "test",
-                "additional_settings": {},
-            }
-        },
-        "sinks_config": {
-            "kafkasink": {
-                "bootstrap_servers": [args.broker],
-                "additional_settings": {},
-            }
-        },
-    }
+    with open(args.config, "r") as config_file:
+        environment_config = yaml.safe_load(config_file)
+        logger.info(environment_config)
+
+    config_template = importlib.resources.files("sentry_streams") / "config.json"
+    with config_template.open("r") as file:
+        schema = json.load(file)
+
+        try:
+            jsonschema.validate(environment_config, schema)
+        except Exception:
+            raise
 
     pipeline: Pipeline = pipeline_globals["pipeline"]
-    runtime: Any = load_adapter(args.adapter, environment_config)
+
+    # If set, SEGMENT_ID must correspond to the 0-indexed position in the segments array in config
+    segment_var = os.environ.get("SEGMENT_ID")
+    segment_id: Optional[int]
+    if segment_var:
+        assert segment_var is not None
+        segment_id = int(segment_var)
+    else:
+        segment_id = None
+
+    runtime: Any = load_adapter(args.adapter, environment_config, segment_id)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)

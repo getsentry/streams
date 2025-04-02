@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 
 # 10 minutes
-MAX_MESSAGE_LATENCY = 600000
+MAX_MESSAGE_LATENCY = 600
 
 
 class DownstreamBranch(Enum):

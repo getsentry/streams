@@ -1,4 +1,4 @@
-from typing import Any, List, MutableMapping, Self, TypeVar
+from typing import Any, MutableMapping, Optional, Self, Sequence, Set, TypeVar
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import (
@@ -6,6 +6,8 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
+    Branch,
+    Broadcast,
     Filter,
     FlatMap,
     Map,
@@ -30,9 +32,11 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
     """
 
     def __init__(self, _: PipelineConfig) -> None:
-        self.input_streams: MutableMapping[str, List[str]] = {}
+        self.input_streams: MutableMapping[str, Set[str]] = {}
 
-    def track_input_streams(self, step: WithInput) -> None:
+    def track_input_streams(
+        self, step: WithInput, branches: Optional[Sequence[Branch]] = None
+    ) -> None:
         """
         Tracks the streams that each step receives as input.
         This can be used in tests to verify that steps downstream from a split in
@@ -56,18 +60,14 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         input_step = step.inputs[0]
         input_step_name = input_step.name
         input_step_stream = self.input_streams[input_step_name]
-        self.input_streams[step.name] = input_step_stream + [input_step_name]
-        # if step is a Router, also add its Branch nodes to input_streams
-        if isinstance(step, Router):
-            for branch in step.routing_table.values():
-                self.input_streams[branch.name] = self.input_streams[step.name] + [step.name]
+        self.input_streams[step.name] = input_step_stream.union({input_step_name})
 
     @classmethod
     def build(cls, config: PipelineConfig) -> Self:
         return cls(config)
 
     def source(self, step: Step) -> Any:
-        self.input_streams[step.name] = []
+        self.input_streams[step.name] = set()
         return self
 
     def sink(self, step: Sink, stream: Any) -> Any:
@@ -90,8 +90,16 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         self.track_input_streams(step)
         return self
 
+    def broadcast(self, step: Broadcast, stream: Any) -> Any:
+        self.track_input_streams(step, step.routes)
+        for branch in step.routes:
+            self.input_streams[branch.name] = self.input_streams[step.name].union({step.name})
+        return {branch.name: branch for branch in step.routes}
+
     def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> Any:
         self.track_input_streams(step)
+        for branch in step.routing_table.values():
+            self.input_streams[branch.name] = self.input_streams[step.name].union({step.name})
         return {branch.name: branch for branch in step.routing_table.values()}
 
     def run(self) -> None:

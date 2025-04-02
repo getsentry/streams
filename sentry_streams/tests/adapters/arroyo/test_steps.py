@@ -7,17 +7,33 @@ from unittest.mock import call
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import BrokerValue, FilteredPayload, Message, Partition, Topic, Value
+from arroyo.types import (
+    BrokerValue,
+    Commit,
+    FilteredPayload,
+    Message,
+    Partition,
+    Topic,
+    Value,
+)
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.steps import (
     FilterStep,
     MapStep,
     ReduceStep,
+    RouterStep,
     StreamSinkStep,
 )
-from sentry_streams.examples.transfomer import TransformerBatch
-from sentry_streams.pipeline.pipeline import Aggregate, Filter, Map, Pipeline
+from sentry_streams.examples.transformer import TransformerBatch
+from sentry_streams.pipeline.pipeline import (
+    Aggregate,
+    Branch,
+    Filter,
+    Map,
+    Pipeline,
+    Router,
+)
 from sentry_streams.pipeline.window import SlidingWindow
 
 
@@ -65,7 +81,7 @@ def test_map_step() -> None:
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
 
-    strategy = arroyo_map.build(next_strategy)
+    strategy = arroyo_map.build(next_strategy, commit=mock.Mock(spec=Commit))
 
     messages = [
         make_msg("test_val", mapped_route, 0),
@@ -110,7 +126,7 @@ def test_filter_step() -> None:
     arroyo_filter = FilterStep(mapped_route, pipeline_filter)
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
-    strategy = arroyo_filter.build(next_strategy)
+    strategy = arroyo_filter.build(next_strategy, commit=mock.Mock(spec=Commit))
 
     messages = [
         make_msg("test_val", mapped_route, 0),
@@ -143,6 +159,63 @@ def test_filter_step() -> None:
     next_strategy.assert_has_calls(expected_calls)
 
 
+def test_router() -> None:
+    """
+    Verifies the Router step properly updates the waypoints of a RoutedValue message.
+    """
+    mapped_route = Route(source="source1", waypoints=["map_branch"])
+    other_route = Route(source="source1", waypoints=["other_branch"])
+    pipeline = Pipeline()
+
+    def dummy_routing_func(message: str) -> str:
+        return "map" if message == "test_val" else "other"
+
+    pipeline_router = Router(
+        name="myrouter",
+        ctx=pipeline,
+        inputs=[],
+        routing_function=dummy_routing_func,
+        routing_table={
+            "map": Branch(name="map_branch", ctx=pipeline),
+            "other": Branch(name="other_branch", ctx=pipeline),
+        },
+    )
+    arroyo_router = RouterStep(Route(source="source1", waypoints=[]), pipeline_router)
+
+    next_strategy = mock.Mock(spec=ProcessingStrategy)
+    strategy = arroyo_router.build(next_strategy, commit=mock.Mock(spec=Commit))
+
+    messages = [
+        make_msg("test_val", Route(source="source1", waypoints=[]), 0),
+        make_msg("not_test_val", Route(source="source1", waypoints=[]), 1),
+        make_msg("test_val", Route(source="source1", waypoints=[]), 2),
+        make_msg(FilteredPayload(), Route(source="source1", waypoints=[]), 3),
+    ]
+
+    for message in messages:
+        strategy.submit(message)
+        strategy.poll()
+
+    expected_calls = [
+        call.submit(
+            make_msg("test_val", mapped_route, 0),
+        ),
+        call.poll(),
+        call.submit(make_msg("not_test_val", other_route, 1)),
+        call.poll(),
+        call.submit(
+            make_msg("test_val", mapped_route, 2),
+        ),
+        call.poll(),
+        call.submit(
+            make_msg(FilteredPayload(), mapped_route, 3),
+        ),
+        call.poll(),
+    ]
+
+    next_strategy.assert_has_calls(expected_calls)
+
+
 def test_sink() -> None:
     """
     Sends routed messages through a Sink and verifies that only the
@@ -153,7 +226,9 @@ def test_sink() -> None:
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
     producer = mock.Mock(spec=Producer)
-    strategy = StreamSinkStep(mapped_route, producer, "test_topic").build(next_strategy)
+    strategy = StreamSinkStep(mapped_route, producer, "test_topic").build(
+        next_strategy, commit=mock.Mock(spec=Commit)
+    )
 
     messages = [
         make_msg("test_val", mapped_route, 0),
@@ -193,7 +268,7 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch]) -> None:
     )
     arroyo_reduce = ReduceStep(mapped_route, pipeline_reduce)
     next_strategy = mock.Mock(spec=ProcessingStrategy)
-    strategy = arroyo_reduce.build(next_strategy)
+    strategy = arroyo_reduce.build(next_strategy, commit=mock.Mock(spec=Commit))
 
     messages = [
         make_msg("test_val", mapped_route, 0),

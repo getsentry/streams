@@ -1,20 +1,11 @@
-import logging
 from datetime import timedelta
-from json import JSONDecodeError, loads
+from json import JSONDecodeError, dumps, loads
 from typing import Any, Mapping, MutableSequence, Self, cast
 
+from sentry_streams.pipeline import Filter, Map, streaming_source
+from sentry_streams.pipeline.chain import Reducer
 from sentry_streams.pipeline.function_template import Accumulator
-from sentry_streams.pipeline.pipeline import (
-    Aggregate,
-    Filter,
-    Map,
-    Pipeline,
-    StreamSink,
-    StreamSource,
-)
 from sentry_streams.pipeline.window import SlidingWindow
-
-logger = logging.getLogger(__name__)
 
 # The simplest possible pipeline.
 # - reads from Kafka
@@ -31,6 +22,14 @@ def parse(msg: str) -> Mapping[str, Any]:
         return {"type": "invalid"}
 
     return cast(Mapping[str, Any], parsed)
+
+
+def filter_not_event(msg: Mapping[str, Any]) -> bool:
+    return bool(msg["type"] == "event")
+
+
+def serialize_msg(msg: Mapping[str, Any]) -> str:
+    return dumps(msg)
 
 
 class TransformerBatch(Accumulator[Any, Any]):
@@ -52,35 +51,19 @@ class TransformerBatch(Accumulator[Any, Any]):
         return self
 
 
-pipeline = Pipeline()
-
-source = StreamSource(
-    name="myinput",
-    ctx=pipeline,
-    stream_name="events",
-)
-
-parser = Map(name="parser", ctx=pipeline, inputs=[source], function=parse)
-
-filter = Filter(
-    name="myfilter", ctx=pipeline, inputs=[parser], function=lambda msg: msg["type"] == "event"
-)
-
 reduce_window = SlidingWindow(window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2))
 
-reduce = Aggregate(
-    name="myreduce",
-    ctx=pipeline,
-    inputs=[filter],
-    window=reduce_window,
-    aggregate_func=TransformerBatch,
-)
-
-# jsonify = Map(name="serializer", ctx=pipeline, inputs=[filter], function=lambda msg: dumps(msg))
-
-sink = StreamSink(
-    name="kafkasink",
-    ctx=pipeline,
-    inputs=[reduce],
-    stream_name="transformed-events",
+pipeline = (
+    streaming_source(
+        name="myinput",
+        stream_name="events",
+    )
+    .apply("mymap", Map(function=parse))
+    .apply("myfilter", Filter(function=filter_not_event))
+    .apply("myreduce", Reducer(reduce_window, TransformerBatch))
+    .apply("serializer", Map(function=serialize_msg))
+    .sink(
+        "kafkasink2",
+        stream_name="transformed-events",
+    )  # flush the batches to the Sink
 )

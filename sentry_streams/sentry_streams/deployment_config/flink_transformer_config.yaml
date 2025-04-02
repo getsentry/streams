@@ -1,0 +1,23 @@
+# Flink-specific configuration
+# As of now, the schema for this
+# is the same as the schema for the default (local adapter) configuration
+
+# If and when we diverge from the default config's schema,
+# we must introduce a new schema to the FlinkAdapter
+
+env: {}
+
+pipeline:
+  segments:
+    - parallelism: 2
+      steps_config:
+        myinput:
+          starts_segment: True
+          bootstrap_servers: "kafka:9093"
+
+      # If a segment is of length 1, we do not need to specify which steps
+      # start the segment
+    - parallelism: 3
+      steps_config:
+          kafkasink2:
+            bootstrap_servers: "kafka:9093"

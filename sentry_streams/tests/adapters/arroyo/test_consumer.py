@@ -17,6 +17,7 @@ from sentry_streams.adapters.arroyo.steps import (
     FilterStep,
     MapStep,
     ReduceStep,
+    RouterStep,
     StreamSinkStep,
 )
 from sentry_streams.pipeline.pipeline import (
@@ -24,6 +25,7 @@ from sentry_streams.pipeline.pipeline import (
     Map,
     Pipeline,
     Reduce,
+    Router,
 )
 
 
@@ -77,11 +79,13 @@ def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> 
 
     factory = ArroyoStreamingFactory(consumer)
     commit = mock.Mock(spec=Commit)
-    strategy = factory.create_with_partitions(commit, {Partition(Topic("logical-events"), 0): 0})
+    strategy = factory.create_with_partitions(commit, {Partition(Topic("events"), 0): 0})
 
-    strategy.submit(make_msg("go_ahead", "logical-events", 0))
-    strategy.submit(make_msg("do_not_go_ahead", "logical-events", 2))
-    strategy.submit(make_msg("go_ahead", "logical-events", 3))
+    strategy.submit(make_msg("go_ahead", "events", 0))
+    strategy.poll()
+    strategy.submit(make_msg("do_not_go_ahead", "events", 2))
+    strategy.poll()
+    strategy.submit(make_msg("go_ahead", "events", 3))
     strategy.poll()
 
     topic = Topic("transformed-events")
@@ -94,12 +98,99 @@ def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> 
     commit.assert_has_calls(
         [
             call({}),
-            call({Partition(Topic("logical-events"), 0): 1}),
+            call({Partition(Topic("events"), 0): 1}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 3}),
+            call({Partition(Topic("events"), 0): 3}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 4}),
-        ]
+            call({}),
+            call({}),
+            call({Partition(Topic("events"), 0): 4}),
+            call({}),
+        ],
+    )
+
+
+def test_multiple_routes(broker: LocalBroker[KafkaPayload], router_pipeline: Pipeline) -> None:
+    """
+    Test the creation of an Arroyo Consumer from pipeline steps which
+    contain branching routes.
+    """
+
+    consumer = ArroyoConsumer(source="source1")
+    consumer.add_step(
+        MapStep(
+            route=Route(source="source1", waypoints=[]),
+            pipeline_step=cast(Map, router_pipeline.steps["decoder"]),
+        )
+    )
+    consumer.add_step(
+        RouterStep(
+            route=Route(source="source1", waypoints=[]),
+            pipeline_step=cast(Router[str], router_pipeline.steps["router"]),
+        )
+    )
+    consumer.add_step(
+        FilterStep(
+            route=Route(source="source1", waypoints=["even_branch"]),
+            pipeline_step=cast(Filter, router_pipeline.steps["myfilter"]),
+        )
+    )
+    consumer.add_step(
+        MapStep(
+            route=Route(source="source1", waypoints=["odd_branch"]),
+            pipeline_step=cast(Map, router_pipeline.steps["mymap"]),
+        )
+    )
+    consumer.add_step(
+        StreamSinkStep(
+            route=Route(source="source1", waypoints=["even_branch"]),
+            producer=broker.get_producer(),
+            topic_name="transformed-events",
+        )
+    )
+    consumer.add_step(
+        StreamSinkStep(
+            route=Route(source="source1", waypoints=["odd_branch"]),
+            producer=broker.get_producer(),
+            topic_name="transformed-events-2",
+        )
+    )
+
+    factory = ArroyoStreamingFactory(consumer)
+    commit = mock.Mock(spec=Commit)
+    strategy = factory.create_with_partitions(commit, {Partition(Topic("events"), 0): 0})
+
+    strategy.submit(make_msg("go_ahead", "events", 0))
+    strategy.poll()
+    strategy.submit(make_msg("do_not_go_ahead", "events", 2))
+    strategy.poll()
+    strategy.submit(make_msg("go_ahead", "events", 3))
+    strategy.poll()
+
+    topic = Topic("transformed-events")
+    topic2 = Topic("transformed-events-2")
+    msg1 = broker.consume(Partition(topic, 0), 0)
+    assert msg1 is not None and msg1.payload.value == "go_ahead".encode("utf-8")
+    msg2 = broker.consume(Partition(topic, 0), 1)
+    assert msg2 is not None and msg2.payload.value == "go_ahead".encode("utf-8")
+    msg3 = broker.consume(Partition(topic2, 0), 0)
+    assert msg3 is not None and msg3.payload.value == "do_not_go_ahead_mapped".encode("utf-8")
+
+    commit.assert_has_calls(
+        [
+            call({}),
+            call({Partition(topic=Topic(name="events"), index=0): 1}),
+            call({}),
+            call({}),
+            call({}),
+            call({}),
+            call({Partition(topic=Topic(name="events"), index=0): 3}),
+            call({}),
+            call({}),
+            call({Partition(topic=Topic(name="events"), index=0): 4}),
+            call({}),
+            call({}),
+        ],
     )
 
 
@@ -228,27 +319,32 @@ def test_standard_reduce(broker: LocalBroker[KafkaPayload], reduce_pipeline: Pip
     commit.assert_has_calls(
         [
             call({}),
-            call({Partition(Topic("logical-events"), 0): 1}),
+            call({Partition(topic=Topic(name="logical-events"), index=0): 1}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 2}),
+            call({Partition(topic=Topic(name="logical-events"), index=0): 2}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 3}),
+            call({Partition(topic=Topic(name="logical-events"), index=0): 3}),
             call({}),
-            call({Partition(Topic("logical-events"), 0): 4}),
-            call({}),
-            call({Partition(Topic("logical-events"), 0): 5}),
-            call({}),
-            call({Partition(Topic("logical-events"), 0): 6}),
+            call({Partition(topic=Topic(name="logical-events"), index=0): 4}),
             call({}),
             call({}),
+            call({Partition(topic=Topic(name="logical-events"), index=0): 5}),
+            call({}),
+            call({}),
+            call({Partition(topic=Topic(name="logical-events"), index=0): 6}),
             call({}),
             call({}),
             call({}),
-            call(
-                {Partition(Topic("logical-events"), 0): 13}
-            ),  # We only commit this offset once we know that all windows which could include this offset have been flushed
             call({}),
-            call({Partition(Topic("logical-events"), 0): 14}),
+            call({}),
+            call({}),
+            call({}),
+            call({Partition(topic=Topic(name="logical-events"), index=0): 13}),
+            call({}),
+            call({}),
+            call({Partition(topic=Topic(name="logical-events"), index=0): 14}),
+            call({}),
+            call({}),
             call({}),
         ]
     )
