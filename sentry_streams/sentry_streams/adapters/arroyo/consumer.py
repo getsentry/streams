@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Mapping, MutableSequence
 
@@ -16,6 +17,8 @@ from arroyo.types import (
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.steps import ArroyoStep
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -64,7 +67,10 @@ class ArroyoConsumer:
         for step in reversed(self.steps):
             strategy = step.build(strategy, commit)
 
-        return RunTask(add_route, strategy)
+        return RunTask(
+            add_route,
+            strategy,
+        )
 
 
 class ArroyoStreamingFactory(ProcessingStrategyFactory[Any]):
@@ -76,4 +82,5 @@ class ArroyoStreamingFactory(ProcessingStrategyFactory[Any]):
         commit: Commit,
         _: Mapping[Partition, int],
     ) -> ProcessingStrategy[Any]:
+
         return self.consumer.build_strategy(commit)

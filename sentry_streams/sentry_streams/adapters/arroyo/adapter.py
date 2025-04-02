@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import (
     Any,
     List,
@@ -26,6 +27,7 @@ from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import (
     FilterStep,
     MapStep,
+    ReduceStep,
     RouterStep,
     StreamSinkStep,
 )
@@ -53,6 +55,8 @@ from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
+
+logger = logging.getLogger(__name__)
 
 
 class StreamSources:
@@ -223,7 +227,13 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a reduce operator for the platform the adapter supports.
         """
-        raise NotImplementedError
+
+        assert (
+            stream.source in self.__consumers
+        ), f"Stream starting at source {stream.source} not found when adding a reduce"
+
+        self.__consumers[stream.source].add_step(ReduceStep(route=stream, pipeline_step=step))
+        return stream
 
     def broadcast(
         self,
@@ -260,7 +270,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
     def get_processor(self, source: str) -> StreamProcessor[KafkaPayload]:
         """
-        Returns the stream processor for the given source.
+        Returns the stream processor for the given source
         """
         return self.__processors[source]
 
@@ -270,6 +280,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
                 consumer=self.__sources.get_consumer(source),
                 topic=self.__sources.get_topic(source),
                 processor_factory=ArroyoStreamingFactory(consumer),
+                join_timeout=0.0,
             )
             for source, consumer in self.__consumers.items()
         }

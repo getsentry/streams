@@ -49,7 +49,6 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[StreamT, Stre
 
                 for output in output_steps:
                     next_step: WithInput = cast(WithInput, p_graph.steps[output])
-                    logger.info(f"Apply step: {next_step.name}")
                     # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                     next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
                     for branch_name in next_step_stream:
