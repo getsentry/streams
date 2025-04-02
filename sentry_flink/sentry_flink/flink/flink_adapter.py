@@ -83,6 +83,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         self.pipeline_config = config["pipeline"]
         self.env = env
 
+        self.env.set_parallelism(self.environment_config.get("parallelism", 1))
+
         self.cur_segment = 0
         # A list of segment config objects
         self.segment_config: Sequence[SegmentConfig] = self.pipeline_config["segments"]
@@ -99,7 +101,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
     @classmethod
     def build(cls, config: PipelineConfig) -> Self:
         env = StreamExecutionEnvironment.get_execution_environment()
-        logger.info(f"PARALLELISM: {env.get_parallelism()}")
 
         libs_path = config.get("kafka_connect_lib_path")
         if libs_path is None:
@@ -114,7 +115,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             )
             env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
 
-        logger.info(f"PARALLELISM: {env.get_parallelism()}")
         return cls(config, env)
 
     def resolve_incoming_chain(
