@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Any, MutableSequence, Self
+from typing import Any, Callable, MutableSequence, Self
 
 import pytest
 from arroyo.backends.kafka.consumer import KafkaPayload
@@ -30,7 +30,6 @@ def broker() -> LocalBroker[KafkaPayload]:
 
 
 class TransformerBatch(Accumulator[Any, Any]):
-
     def __init__(self) -> None:
         self.batch: MutableSequence[Any] = []
 
@@ -47,10 +46,10 @@ class TransformerBatch(Accumulator[Any, Any]):
 
         return self
 
-    def clear(self) -> None:
 
-        self.batch = []
-        return
+@pytest.fixture
+def transformer() -> Callable[[], TransformerBatch]:
+    return TransformerBatch
 
 
 @pytest.fixture

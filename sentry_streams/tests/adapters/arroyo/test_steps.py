@@ -1,16 +1,24 @@
-from datetime import datetime
-from typing import Any
+import time
+from datetime import datetime, timedelta
+from typing import Any, Callable
 from unittest import mock
 from unittest.mock import call
 
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import BrokerValue, FilteredPayload, Message, Partition, Topic
+from arroyo.types import BrokerValue, FilteredPayload, Message, Partition, Topic, Value
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.adapters.arroyo.steps import FilterStep, MapStep, StreamSinkStep
-from sentry_streams.pipeline.pipeline import Filter, Map, Pipeline
+from sentry_streams.adapters.arroyo.steps import (
+    FilterStep,
+    MapStep,
+    ReduceStep,
+    StreamSinkStep,
+)
+from sentry_streams.examples.transfomer import TransformerBatch
+from sentry_streams.pipeline.pipeline import Aggregate, Filter, Map, Pipeline
+from sentry_streams.pipeline.window import SlidingWindow
 
 
 def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
@@ -32,6 +40,15 @@ def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
                 timestamp=datetime(2025, 1, 1, 12, 0),
             )
         )
+
+
+def make_value_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
+    return Message(
+        Value(
+            payload=RoutedValue(route=route, payload=payload),
+            committable={Partition(Topic("test_topic"), 0): offset},
+        )
+    )
 
 
 def test_map_step() -> None:
@@ -151,3 +168,56 @@ def test_sink() -> None:
     producer.produce.assert_called_with(
         Topic("test_topic"), KafkaPayload(None, "test_val".encode("utf-8"), [])
     )
+
+
+def test_reduce_step(transformer: Callable[[], TransformerBatch]) -> None:
+    """
+    Send messages for different routes through the Arroyo RunTask strategy
+    generate by the pipeline Reduce step.
+    """
+
+    mapped_route = Route(source="source1", waypoints=["branch1"])
+    other_route = Route(source="source1", waypoints=["branch2"])
+    pipeline = Pipeline()
+
+    reduce_window = SlidingWindow(
+        window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2)
+    )
+
+    pipeline_reduce = Aggregate(
+        name="myreduce",
+        ctx=pipeline,
+        inputs=[],
+        window=reduce_window,
+        aggregate_func=transformer,
+    )
+    arroyo_reduce = ReduceStep(mapped_route, pipeline_reduce)
+    next_strategy = mock.Mock(spec=ProcessingStrategy)
+    strategy = arroyo_reduce.build(next_strategy)
+
+    messages = [
+        make_msg("test_val", mapped_route, 0),
+        make_msg("test_val", other_route, 1),  # wrong route
+        make_msg(FilteredPayload(), mapped_route, 3),  # to be filtered out
+    ]
+
+    cur_time = time.time()
+
+    for message in messages:
+        strategy.submit(message)
+        strategy.poll()
+
+    with mock.patch("time.time", return_value=cur_time + 8.0):
+        strategy.poll()
+
+    expected_calls = [
+        call.poll(),
+        call.submit(make_msg("test_val", other_route, 1)),
+        call.poll(),
+        call.submit(make_msg(FilteredPayload(), mapped_route, 3)),
+        call.poll(),
+        call.submit(make_value_msg("test_val", mapped_route, 1)),
+        call.poll(),
+    ]
+
+    next_strategy.assert_has_calls(expected_calls)

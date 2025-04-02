@@ -33,6 +33,14 @@ logger = logging.getLogger(__name__)
 
 
 class ArroyoAccumulator:
+    """
+    A simple wrapper around Streams API's Accumulator which
+    exposes the methods that Arroyo's accumulator mechanism (within Reduce)
+    expects.
+
+    If count-based Tumbling windows become absorbed by WindowedReduce,
+    this will no longer be necessary.
+    """
 
     def __init__(
         self,
@@ -44,10 +52,9 @@ class ArroyoAccumulator:
         # instantaiate the underlying accumulator every time
         self.instance = self.acc()
 
-        # get the fresh initial value each time
+        # get the fresh initial value
         return self.instance.get_value()
 
-    # types still tbd
     def accumulator(self, result: Any, value: BaseValue[RoutedValue]) -> RoutedValue:
         self.instance.add(value.payload.payload)
 
@@ -62,7 +69,9 @@ class ArroyoAccumulator:
 class KafkaAccumulator:
     """
     Does internal bookkeeping of offsets and timestamps,
-    as well as all the Accumulator functions.
+    as well as shares all the functionality of an Accumulator.
+
+    It simply calls the underlying Accumulator.
     """
 
     def __init__(self, acc: Callable[[], Accumulator[Any, Any]]):
@@ -76,7 +85,13 @@ class KafkaAccumulator:
         offsets: MutableMapping[Partition, int] = value.committable
         self.acc.add(payload)
 
-        self.offsets.update(offsets)
+        for partition in offsets:
+            if partition in self.offsets:
+                self.offsets[partition] = max(offsets[partition], self.offsets[partition])
+
+            else:
+                self.offsets.update(offsets)
+
         return self
 
     def get_value(self) -> Any:
@@ -151,7 +166,6 @@ class TimeWindowedReduce(
         self.window_close_times = [
             float(self.window_size + self.window_slide * i) for i in range(self.window_count)
         ]
-        self.__closed = False
 
     def __merge_and_flush(self, window_id: int) -> None:
         accs_to_merge: list[int] = self.windows[window_id]
@@ -190,9 +204,6 @@ class TimeWindowedReduce(
                 self.window_close_times[i] += float(self.window_size)
 
     def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
-
-        assert not self.__closed
-
         value = message.payload
         if isinstance(value, FilteredPayload):
             self.next_step.submit(cast(Message[TResult], message))
@@ -211,18 +222,15 @@ class TimeWindowedReduce(
         self.accs[acc_id].add(message.value)
 
     def poll(self) -> None:
-        assert not self.__closed
-
         cur_time = time.time() - self.start_time
         self.__maybe_flush(cur_time)
 
         self.next_step.poll()
 
     def close(self) -> None:
-        self.__closed = True
+        self.next_step.close()
 
     def terminate(self) -> None:
-        self.__closed = True
         self.next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:

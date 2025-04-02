@@ -74,10 +74,6 @@ class Accumulator(ABC, Generic[InputType, OutputType]):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def clear(self) -> None:
-        raise NotImplementedError
-
 
 class KVAccumulator(Accumulator[InputType, dict[Any, Any]]):
     """
