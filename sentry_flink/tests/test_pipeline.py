@@ -14,6 +14,7 @@ from sentry_streams.examples.word_counter_fn import (
     GroupByWord,
     WordCounter,
 )
+from sentry_streams.pipeline.chain import segment, streaming_source
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Branch,
@@ -221,6 +222,85 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
         ]
     }
 
+    return (pipeline, expected)
+
+
+def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
+    pipeline = streaming_source(name="mysource", stream_name="events").broadcast(
+        "mybroadcast",
+        routes=[
+            segment("sbc").sink("kafkasink", stream_name="transformed-events"),
+            segment("clickhouse").sink("kafkasink2", stream_name="transformed-events-2"),
+        ],
+    )
+
+    expected = {
+        "nodes": [
+            {
+                "id": 55,
+                "type": "Source: Custom Source",
+                "pact": "Data Source",
+                "contents": "Source: Custom Source",
+                "parallelism": 1,
+            },
+            {
+                "contents": "Sink: Writer",
+                "id": 58,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 55,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
+            },
+            {
+                "contents": "Sink: Committer",
+                "id": 60,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 58,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
+            },
+            {
+                "contents": "Sink: Writer",
+                "id": 62,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 55,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
+            },
+            {
+                "contents": "Sink: Committer",
+                "id": 64,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 62,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
+            },
+        ]
+    }
     return (pipeline, expected)
 
 
@@ -507,7 +587,7 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
 
 @pytest.mark.parametrize(
     "pipeline,expected_plan",
-    [basic(), basic_map(), basic_filter(), basic_map_reduce(), basic_router()],
+    [basic(), basic_map(), basic_filter(), basic_map_reduce(), basic_router(), basic_broadcast()],
 )
 def test_pipeline(
     setup_basic_flink_env: tuple[
