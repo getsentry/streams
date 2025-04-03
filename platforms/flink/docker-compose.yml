@@ -1,4 +1,4 @@
-version: '3.5'
+version: "3.5"
 
 x-flink-config: &flink-config |
   state.backend: filesystem
@@ -10,7 +10,7 @@ x-flink-config: &flink-config |
   jobmanager.memory.process.size: 1024m
   jobmanager.rpc.address: jobmanager
   taskmanager.memory.process.size: 1024m
-  taskmanager.numberOfTaskSlots: 2
+  taskmanager.numberOfTaskSlots: 10
   python.executable: /usr/bin/python3.11
   python.files: /apps
 

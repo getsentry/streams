@@ -26,6 +26,8 @@ class SlidingWindow(Window[MeasurementUnit]):
     Windows can overlap.
     """
 
+    # TODO: Adjust the type so that sliding windows
+    # cannot be count-based (we will not support it)
     window_size: MeasurementUnit
     window_slide: MeasurementUnit
 

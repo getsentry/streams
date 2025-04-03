@@ -56,7 +56,7 @@ def create_pipeline() -> Pipeline:
 
 def test_iterate_edges(create_pipeline: Pipeline) -> None:
     dummy_config: PipelineConfig = {}
-    runtime: DummyAdapter[Any, Any] = load_adapter("dummy", dummy_config)  # type: ignore
+    runtime: DummyAdapter[Any, Any] = load_adapter("dummy", dummy_config, None)  # type: ignore
     translator: RuntimeTranslator[Any, Any] = RuntimeTranslator(runtime)
     iterate_edges(create_pipeline, translator)
     assert runtime.input_streams == {

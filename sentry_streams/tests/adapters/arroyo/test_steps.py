@@ -1,3 +1,6 @@
+import time
+from datetime import timedelta
+from typing import Callable
 from unittest import mock
 from unittest.mock import call
 
@@ -15,10 +18,13 @@ from sentry_streams.adapters.arroyo.steps import (
     BroadcastStep,
     FilterStep,
     MapStep,
+    ReduceStep,
     RouterStep,
     StreamSinkStep,
 )
+from sentry_streams.examples.transformer import TransformerBatch
 from sentry_streams.pipeline.pipeline import (
+    Aggregate,
     Branch,
     Broadcast,
     Filter,
@@ -26,6 +32,7 @@ from sentry_streams.pipeline.pipeline import (
     Pipeline,
     Router,
 )
+from sentry_streams.pipeline.window import SlidingWindow
 from tests.adapters.arroyo.message_helpers import make_msg, make_value_msg
 
 
@@ -269,3 +276,56 @@ def test_sink() -> None:
     producer.produce.assert_called_with(
         Topic("test_topic"), KafkaPayload(None, "test_val".encode("utf-8"), [])
     )
+
+
+def test_reduce_step(transformer: Callable[[], TransformerBatch]) -> None:
+    """
+    Send messages for different routes through the Arroyo RunTask strategy
+    generate by the pipeline Reduce step.
+    """
+
+    mapped_route = Route(source="source1", waypoints=["branch1"])
+    other_route = Route(source="source1", waypoints=["branch2"])
+    pipeline = Pipeline()
+
+    reduce_window = SlidingWindow(
+        window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2)
+    )
+
+    pipeline_reduce = Aggregate(
+        name="myreduce",
+        ctx=pipeline,
+        inputs=[],
+        window=reduce_window,
+        aggregate_func=transformer,
+    )
+    arroyo_reduce = ReduceStep(mapped_route, pipeline_reduce)
+    next_strategy = mock.Mock(spec=ProcessingStrategy)
+    strategy = arroyo_reduce.build(next_strategy, commit=mock.Mock(spec=Commit))
+
+    messages = [
+        make_msg("test_val", mapped_route, 0),
+        make_msg("test_val", other_route, 1),  # wrong route
+        make_msg(FilteredPayload(), mapped_route, 3),  # to be filtered out
+    ]
+
+    cur_time = time.time()
+
+    for message in messages:
+        strategy.submit(message)
+        strategy.poll()
+
+    with mock.patch("time.time", return_value=cur_time + 8.0):
+        strategy.poll()
+
+    expected_calls = [
+        call.poll(),
+        call.submit(make_msg("test_val", other_route, 1)),
+        call.poll(),
+        call.submit(make_msg(FilteredPayload(), mapped_route, 3)),
+        call.poll(),
+        call.submit(make_value_msg("test_val", mapped_route, 1)),
+        call.poll(),
+    ]
+
+    next_strategy.assert_has_calls(expected_calls)

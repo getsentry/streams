@@ -1,3 +1,34 @@
+## 0.0.15
+
+### Various fixes & improvements
+
+- feat: Add deployment config (#77) by @ayirr7
+- Add docs (#69) by @ayirr7
+- feat: add explicit broadcast step to flink (#89) by @bmckerry
+- release: 0.0.14 (0f41d356) by @getsentry-bot
+- feat: add explicit Broadcast step to pipeline graph (#88) by @bmckerry
+- Add multi chain support (#86) by @fpacifici
+- Introduce chained primitives to replace the old DSL (#82) by @fpacifici
+- feat: router for arroyo adapter (#83) by @bmckerry
+- ref: remove topics mapping from env config (#84) by @bmckerry
+- feat: add router to sentry_flink (#64) by @bmckerry
+- fix(flink): rename KafkaSink/KafkaSource/generics (#81) by @bmckerry
+- release: 0.0.13 (cb59c4fa) by @getsentry-bot
+- fix: rename Stream/StreamSink generics (#80) by @bmckerry
+- release: 0.0.12 (3a98c93b) by @getsentry-bot
+- Make streams less Kafkaesque (#79) by @fpacifici
+- feat: add router primitive to sentry_streams (#61) by @bmckerry
+- Adapte the runner to run the Arroyo adapter (#78) by @fpacifici
+- feat: Add Batching, FlatMap support in Flink (#63) by @ayirr7
+- release: 0.0.11 (10938dc8) by @getsentry-bot
+- ref: Remove Unbatch, flesh out Reduce ABC (#70) by @ayirr7
+- Add an Arroyo Adapter (#68) by @fpacifici
+- release: 0.0.10 (223d4b5c) by @getsentry-bot
+- feat: Add a Batch, Unbatch, FlatMap primitive (#62) by @ayirr7
+- release: 0.0.9 (f4063d22) by @getsentry-bot
+
+_Plus 19 more_
+
 ## 0.0.14
 
 ### Various fixes & improvements
