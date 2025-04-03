@@ -1,5 +1,3 @@
-from datetime import datetime
-from typing import Any
 from unittest import mock
 from unittest.mock import call
 
@@ -7,16 +5,12 @@ from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import (
-    BrokerValue,
     Commit,
     FilteredPayload,
-    Message,
-    Partition,
     Topic,
-    Value,
 )
 
-from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
+from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import (
     BroadcastStep,
     FilterStep,
@@ -32,56 +26,7 @@ from sentry_streams.pipeline.pipeline import (
     Pipeline,
     Router,
 )
-
-TEST_PARTITION = Partition(Topic("test_topic"), 0)
-
-
-def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
-    """
-    Makes a message containing a BrokerValue based on the offset passed.
-    """
-    if isinstance(payload, FilteredPayload):
-        return Message(
-            BrokerValue(
-                payload=payload,
-                partition=TEST_PARTITION,
-                offset=offset,
-                timestamp=datetime(2025, 1, 1, 12, 0),
-            )
-        )
-    else:
-        return Message(
-            BrokerValue(
-                payload=RoutedValue(route=route, payload=payload),
-                partition=TEST_PARTITION,
-                offset=offset,
-                timestamp=datetime(2025, 1, 1, 12, 0),
-            )
-        )
-
-
-def make_value_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
-    """
-    Makes a message containing a Value based on the offset passed.
-    Useful if a step you're testing always transforms a Message payload into a Value,
-    or if you need an emtpy comittable/timestamp for whatever reason (BrokerValue doesn't support that).
-    """
-    if isinstance(payload, FilteredPayload):
-        return Message(
-            Value(
-                payload=payload,
-                committable={Partition(Topic("test_topic"), 0): offset},
-                timestamp=datetime(2025, 1, 1, 12, 0),
-            )
-        )
-    else:
-        return Message(
-            Value(
-                payload=RoutedValue(route=route, payload=payload),
-                committable={Partition(Topic("test_topic"), 0): offset},
-                timestamp=datetime(2025, 1, 1, 12, 0),
-            )
-        )
+from tests.adapters.arroyo.message_helpers import make_msg, make_value_msg
 
 
 def test_map_step() -> None:

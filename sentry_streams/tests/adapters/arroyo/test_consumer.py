@@ -1,11 +1,10 @@
-from datetime import datetime
-from typing import Any, cast
+from typing import cast
 from unittest import mock
 from unittest.mock import call
 
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.backends.local.backend import LocalBroker
-from arroyo.types import BrokerValue, Commit, Message, Partition, Topic
+from arroyo.types import Commit, Partition, Topic
 
 from sentry_streams.adapters.arroyo.consumer import (
     ArroyoConsumer,
@@ -26,21 +25,7 @@ from sentry_streams.pipeline.pipeline import (
     Pipeline,
     Router,
 )
-
-
-def make_msg(
-    payload: str,
-    topic: str,
-    offset: int,
-) -> Message[Any]:
-    return Message(
-        BrokerValue(
-            payload=KafkaPayload(None, payload.encode("utf-8"), []),
-            partition=Partition(Topic(topic), 0),
-            offset=offset,
-            timestamp=datetime.now(),
-        )
-    )
+from tests.adapters.arroyo.message_helpers import make_kafka_msg
 
 
 def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
@@ -48,29 +33,30 @@ def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> 
     Test the creation of an Arroyo Consumer from a number of
     pipeline steps.
     """
+    empty_route = Route(source="source1", waypoints=[])
 
     consumer = ArroyoConsumer(source="source1")
     consumer.add_step(
         MapStep(
-            route=Route(source="source1", waypoints=[]),
+            route=empty_route,
             pipeline_step=cast(Map, pipeline.steps["decoder"]),
         )
     )
     consumer.add_step(
         FilterStep(
-            route=Route(source="source1", waypoints=[]),
+            route=empty_route,
             pipeline_step=cast(Filter, pipeline.steps["myfilter"]),
         )
     )
     consumer.add_step(
         MapStep(
-            route=Route(source="source1", waypoints=[]),
+            route=empty_route,
             pipeline_step=cast(Map, pipeline.steps["mymap"]),
         )
     )
     consumer.add_step(
         StreamSinkStep(
-            route=Route(source="source1", waypoints=[]),
+            route=empty_route,
             producer=broker.get_producer(),
             topic_name="transformed-events",
         )
@@ -80,11 +66,11 @@ def test_single_route(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> 
     commit = mock.Mock(spec=Commit)
     strategy = factory.create_with_partitions(commit, {Partition(Topic("events"), 0): 0})
 
-    strategy.submit(make_msg("go_ahead", "events", 0))
+    strategy.submit(make_kafka_msg("go_ahead", "events", 0))
     strategy.poll()
-    strategy.submit(make_msg("do_not_go_ahead", "events", 2))
+    strategy.submit(make_kafka_msg("do_not_go_ahead", "events", 2))
     strategy.poll()
-    strategy.submit(make_msg("go_ahead", "events", 3))
+    strategy.submit(make_kafka_msg("go_ahead", "events", 3))
     strategy.poll()
 
     topic = Topic("transformed-events")
@@ -159,11 +145,11 @@ def test_broadcast(broker: LocalBroker[KafkaPayload], broadcast_pipeline: Pipeli
     commit = mock.Mock(spec=Commit)
     strategy = factory.create_with_partitions(commit, {Partition(Topic("events"), 0): 0})
 
-    strategy.submit(make_msg("go_ahead", "events", 0))
+    strategy.submit(make_kafka_msg("go_ahead", "events", 0))
     strategy.poll()
-    strategy.submit(make_msg("do_not_go_ahead", "events", 2))
+    strategy.submit(make_kafka_msg("do_not_go_ahead", "events", 2))
     strategy.poll()
-    strategy.submit(make_msg("go_ahead", "events", 3))
+    strategy.submit(make_kafka_msg("go_ahead", "events", 3))
     strategy.poll()
 
     topics = [Topic("transformed-events"), Topic("transformed-events-2")]
@@ -227,11 +213,11 @@ def test_multiple_routes(broker: LocalBroker[KafkaPayload], router_pipeline: Pip
     commit = mock.Mock(spec=Commit)
     strategy = factory.create_with_partitions(commit, {Partition(Topic("events"), 0): 0})
 
-    strategy.submit(make_msg("go_ahead", "events", 0))
+    strategy.submit(make_kafka_msg("go_ahead", "events", 0))
     strategy.poll()
-    strategy.submit(make_msg("do_not_go_ahead", "events", 2))
+    strategy.submit(make_kafka_msg("do_not_go_ahead", "events", 2))
     strategy.poll()
-    strategy.submit(make_msg("go_ahead", "events", 3))
+    strategy.submit(make_kafka_msg("go_ahead", "events", 3))
     strategy.poll()
 
     topic = Topic("transformed-events")
