@@ -324,7 +324,7 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch]) -> None:
         call.poll(),
         call.submit(make_msg(FilteredPayload(), mapped_route, 3)),
         call.poll(),
-        call.submit(make_value_msg("test_val", mapped_route, 1)),
+        call.submit(make_value_msg("test_val", mapped_route, 1, include_timestamp=False)),
         call.poll(),
     ]
 

@@ -81,9 +81,9 @@ class Pipeline:
         This does not adjust the context field of the steps contained in the
         merged pipeline.
         """
-        assert not other.sources, (
-            "Cannot merge a pipeline into another if it contains a stream source"
-        )
+        assert (
+            not other.sources
+        ), "Cannot merge a pipeline into another if it contains a stream source"
 
         other_pipeline_sources = {
             n for n in other.steps if other.steps[n].name not in other.incoming_edges
@@ -122,9 +122,9 @@ class Pipeline:
         to the existing pipeline.
         """
         for step in other.steps.values():
-            assert step.name not in self.steps, (
-                f"Naming conflict between pipelines {step.name} exists in the current pipeline"
-            )
+            assert (
+                step.name not in self.steps
+            ), f"Naming conflict between pipelines {step.name} exists in the current pipeline"
             self.register(step)
             if isinstance(step, Source):
                 self.register_source(step)

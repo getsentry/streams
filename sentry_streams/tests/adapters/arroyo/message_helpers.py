@@ -40,7 +40,9 @@ def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
         )
 
 
-def make_value_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
+def make_value_msg(
+    payload: Any, route: Route, offset: int, include_timestamp: bool = True
+) -> Message[Any]:
     """
     Makes a message containing a Value based on the offset passed.
     Useful if a step you're testing always transforms a Message payload into a Value,
@@ -51,7 +53,7 @@ def make_value_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
             Value(
                 payload=payload,
                 committable={Partition(Topic("test_topic"), 0): offset},
-                timestamp=datetime(2025, 1, 1, 12, 0),
+                timestamp=datetime(2025, 1, 1, 12, 0) if include_timestamp else None,
             )
         )
     else:
@@ -59,7 +61,7 @@ def make_value_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
             Value(
                 payload=RoutedValue(route=route, payload=payload),
                 committable={Partition(Topic("test_topic"), 0): offset},
-                timestamp=datetime(2025, 1, 1, 12, 0),
+                timestamp=datetime(2025, 1, 1, 12, 0) if include_timestamp else None,
             )
         )
 
