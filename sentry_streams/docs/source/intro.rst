@@ -106,7 +106,7 @@ and produces the result to another topic.
     -n Batch \
     --broker localhost:9092 \
     --adapter arroyo \
-    <YOUR PIELINE FILE>
+    <YOUR PIPELINE FILE>
 
 
 6. Produce events on the `events` topic and consume them from the `transformed-events` topic.
