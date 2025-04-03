@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import (
     Any,
-    List,
     Mapping,
     MutableMapping,
     MutableSequence,
@@ -239,13 +238,11 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers[stream.source].add_step(BroadcastStep(route=stream, pipeline_step=step))
 
         return {
-            route.name: Route(
+            branch.name: Route(
                 source=stream.source,
-                waypoints=cast(
-                    MutableSequence[str], cast(List[str], stream.waypoints) + [route.name]
-                ),
+                waypoints=[*stream.waypoints, branch.name],
             )
-            for route in step.routes
+            for branch in step.routes
         }
 
     def router(
@@ -263,7 +260,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
         routes_map: MutableMapping[str, Route] = {}
         for branch in step.routing_table.values():
-            branch_waypoints = cast(List[str], stream.waypoints) + [branch.name]
+            branch_waypoints = [*stream.waypoints, branch.name]
             branch_stream = Route(
                 source=stream.source, waypoints=cast(MutableSequence[str], branch_waypoints)
             )

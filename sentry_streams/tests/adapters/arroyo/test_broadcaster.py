@@ -3,7 +3,7 @@ from typing import Any
 from unittest import mock
 from unittest.mock import call
 
-from arroyo.processing.strategies.abstract import ProcessingStrategy
+from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, Partition, Topic, Value
 
 from sentry_streams.adapters.arroyo.broadcaster import Broadcaster
@@ -36,7 +36,7 @@ def make_value_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
         )
 
 
-def test_submit() -> None:
+def test_submit_routedvalue() -> None:
     next_step = mock.Mock(spec=ProcessingStrategy)
     broadcaster = Broadcaster(
         route=Route(source="source", waypoints=[]),
@@ -64,10 +64,97 @@ def test_submit() -> None:
             )
         ),
     ]
-    print(expected_calls)
 
     broadcaster.submit(message)
     next_step.assert_has_calls(expected_calls)
+
+
+def test_submit_filteredpayload() -> None:
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    broadcaster = Broadcaster(
+        route=Route(source="source", waypoints=[]),
+        downstream_branches=["branch_1", "branch_2"],
+        next_step=next_step,
+    )
+
+    message = make_value_msg(
+        payload=FilteredPayload(), route=Route(source="source", waypoints=[]), offset=0
+    )
+
+    broadcaster.submit(message)
+    next_step.submit.assert_called_once_with(message)
+
+
+def test_submit_wrong_route() -> None:
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    broadcaster = Broadcaster(
+        route=Route(source="source", waypoints=[]),
+        downstream_branches=["branch_1", "branch_2"],
+        next_step=next_step,
+    )
+
+    message = make_value_msg(
+        payload="wrong_route", route=Route(source="source", waypoints=["wrong"]), offset=0
+    )
+
+    broadcaster.submit(message)
+    next_step.submit.assert_called_once_with(message)
+
+
+def test_message_rejected() -> None:
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    # raise MessageRejected on submit
+    next_step.submit.side_effect = MessageRejected()
+
+    broadcaster = Broadcaster(
+        route=Route(source="source", waypoints=[]),
+        downstream_branches=["branch_1", "branch_2"],
+        next_step=next_step,
+    )
+
+    message = make_value_msg(
+        payload="test-payload", route=Route(source="source", waypoints=[]), offset=0
+    )
+
+    expected_calls = [
+        # MessageRejected calls
+        call.submit(
+            make_value_msg(
+                payload="test-payload",
+                route=Route(source="source", waypoints=["branch_1"]),
+                offset=0,
+            )
+        ),
+        call.submit(
+            make_value_msg(
+                payload="test-payload",
+                route=Route(source="source", waypoints=["branch_2"]),
+                offset=0,
+            )
+        ),
+        # __flush_pending() calls
+        call.submit(
+            make_value_msg(
+                payload="test-payload",
+                route=Route(source="source", waypoints=["branch_1"]),
+                offset=0,
+            )
+        ),
+        call.submit(
+            make_value_msg(
+                payload="test-payload",
+                route=Route(source="source", waypoints=["branch_2"]),
+                offset=0,
+            )
+        ),
+    ]
+
+    broadcaster.submit(message)
+
+    # stop raising MessageRejected
+    next_step.submit.side_effect = None
+    broadcaster.poll()
+    assert next_step.submit.call_args_list == expected_calls
 
 
 def test_poll() -> None:
