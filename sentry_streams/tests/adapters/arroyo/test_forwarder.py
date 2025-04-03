@@ -1,36 +1,15 @@
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Mapping
 from unittest import mock
 
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies import Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import BrokerValue, FilteredPayload, Message, Partition, Topic
+from arroyo.types import BrokerValue, Message, Partition, Topic
 
 from sentry_streams.adapters.arroyo.forwarder import Forwarder
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-
-
-# TODO: move make_msg into some kind of test utils folder as it's shared with other tests
-def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
-    if isinstance(payload, FilteredPayload):
-        return Message(
-            BrokerValue(
-                payload=payload,
-                partition=Partition(Topic("test_topic"), 0),
-                offset=offset,
-                timestamp=datetime(2025, 1, 1, 12, 0),
-            )
-        )
-    else:
-        return Message(
-            BrokerValue(
-                payload=RoutedValue(route=route, payload=payload),
-                partition=Partition(Topic("test_topic"), 0),
-                offset=offset,
-                timestamp=datetime(2025, 1, 1, 12, 0),
-            )
-        )
+from tests.adapters.arroyo.message_helpers import make_msg
 
 
 def test_submit() -> None:

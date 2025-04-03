@@ -23,7 +23,7 @@ save_delayed_message = (
     .apply("dump_msg_delayed", Map(json_dump_message))
     .sink(
         "kafkasink3",
-        stream_name="transformed-events3",
+        stream_name="transformed-events-3",
     )
 )
 
