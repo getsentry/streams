@@ -5,6 +5,7 @@ import pytest
 from sentry_streams.pipeline.chain import streaming_source
 from sentry_streams.pipeline.pipeline import (
     Branch,
+    Broadcast,
     Filter,
     Map,
     Pipeline,
@@ -255,32 +256,55 @@ def test_multi_broadcast() -> None:
     )
 
     pipeline2 = Pipeline()
-    branch1 = Branch(
-        "branch1",
+    pipeline2_start = Branch(
+        "pipeline2_start",
         pipeline2,
+    )
+
+    broadcast = Broadcast(
+        "broadcast1",
+        ctx=pipeline2,
+        inputs=[pipeline2_start],
+        routes=[
+            Branch("branch1", ctx=pipeline2),
+            Branch("branch2", ctx=pipeline2),
+        ],
     )
     Map(
         name="map1",
         ctx=pipeline2,
-        inputs=[branch1],
+        inputs=[broadcast.routes[0]],
         function=simple_map,
     )
     Map(
         name="map2",
         ctx=pipeline2,
-        inputs=[branch1],
+        inputs=[broadcast.routes[1]],
         function=simple_map,
     )
 
     pipeline1.merge(pipeline2, merge_point="source")
 
-    assert set(pipeline1.steps.keys()) == {"source", "map1", "map2"}
+    assert set(pipeline1.steps.keys()) == {
+        "source",
+        "map1",
+        "map2",
+        "broadcast1",
+        "branch1",
+        "branch2",
+    }
     assert make_edge_sets(pipeline1.outgoing_edges) == {
-        "source": {"map1", "map2"},
+        "source": {"broadcast1"},
+        "broadcast1": {"branch1", "branch2"},
+        "branch1": {"map1"},
+        "branch2": {"map2"},
     }
     assert make_edge_sets(pipeline1.incoming_edges) == {
-        "map1": {"source"},
-        "map2": {"source"},
+        "map1": {"branch1"},
+        "map2": {"branch2"},
+        "branch1": {"broadcast1"},
+        "branch2": {"broadcast1"},
+        "broadcast1": {"source"},
     }
 
 

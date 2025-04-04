@@ -58,7 +58,7 @@ def test_broadcast() -> None:
             [
                 segment(name="route1")
                 .apply("transform2", Map(lambda msg: msg))
-                .sink("myoutput1", "transformed-events2"),
+                .sink("myoutput1", "transformed-events-2"),
                 segment(name="route2")
                 .apply("transform3", Map(lambda msg: msg))
                 .sink("myoutput2", "transformed-events3"),
@@ -69,6 +69,9 @@ def test_broadcast() -> None:
     assert set(pipeline.steps.keys()) == {
         "myinput",
         "transform1",
+        "route_to_all",
+        "route1",
+        "route2",
         "transform2",
         "myoutput1",
         "transform3",
@@ -77,15 +80,21 @@ def test_broadcast() -> None:
 
     assert make_edge_sets(pipeline.incoming_edges) == {
         "transform1": {"myinput"},
-        "transform2": {"transform1"},
+        "route_to_all": {"transform1"},
+        "route1": {"route_to_all"},
+        "transform2": {"route1"},
         "myoutput1": {"transform2"},
-        "transform3": {"transform1"},
+        "route2": {"route_to_all"},
+        "transform3": {"route2"},
         "myoutput2": {"transform3"},
     }
 
     assert make_edge_sets(pipeline.outgoing_edges) == {
         "myinput": {"transform1"},
-        "transform1": {"transform2", "transform3"},
+        "route1": {"transform2"},
+        "route2": {"transform3"},
+        "route_to_all": {"route1", "route2"},
+        "transform1": {"route_to_all"},
         "transform2": {"myoutput1"},
         "transform3": {"myoutput2"},
     }
@@ -110,7 +119,7 @@ def test_router() -> None:
             routes={
                 Routes.ROUTE1: segment(name="route1")
                 .apply("transform2", Map(lambda msg: msg))
-                .sink("myoutput1", "transformed-events2"),
+                .sink("myoutput1", "transformed-events-2"),
                 Routes.ROUTE2: segment(name="route2")
                 .apply("transform3", Map(lambda msg: msg))
                 .sink("myoutput2", "transformed-events3"),
