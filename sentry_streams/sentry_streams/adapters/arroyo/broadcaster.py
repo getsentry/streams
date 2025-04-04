@@ -1,7 +1,9 @@
+from collections import deque
 from copy import deepcopy
-from typing import Optional, Sequence, Union, cast
+from time import time
+from typing import Deque, Optional, Sequence, Union, cast
 
-from arroyo.processing.strategies.abstract import ProcessingStrategy
+from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, Value
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
@@ -23,8 +25,25 @@ class Broadcaster(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
         self.__next_step = next_step
         self.__route = route
         self.__downstream_branches = downstream_branches
+        # If we get MessageRejected from the next step, we put the pending messages here
+        self.__pending: Deque[Message[RoutedValue]] = deque()
+
+    def __flush_pending(self) -> None:
+        while self.__pending:
+            try:
+                message = self.__pending[0]
+                self.__next_step.submit(message)
+                self.__pending.popleft()
+            except MessageRejected:
+                break
 
     def submit(self, message: Message[Union[FilteredPayload, RoutedValue]]) -> None:
+        if self.__pending:
+            raise MessageRejected
+
+        # if any downstream branch raises MessageRejected, we need to propagate
+        # the error back to the previous step
+        raise_message_rejected = False
         message_payload = message.value.payload
         if isinstance(message_payload, RoutedValue) and message_payload.route == self.__route:
             for branch in self.__downstream_branches:
@@ -44,16 +63,30 @@ class Broadcaster(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
                         ),
                     )
                 )
-                self.__next_step.submit(routed_copy)
-                self.__next_step.poll()
+                try:
+                    self.__next_step.submit(routed_copy)
+                except MessageRejected:
+                    self.__pending.append(routed_copy)
+                    raise_message_rejected = True
+            if raise_message_rejected:
+                raise MessageRejected()
         else:
             self.__next_step.submit(message)
 
     def poll(self) -> None:
+        self.__flush_pending()
         self.__next_step.poll()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__next_step.join(timeout=timeout)
+        deadline = time() + timeout if timeout is not None else None
+        while deadline is None or time() < deadline:
+            if self.__pending:
+                self.__flush_pending()
+            else:
+                break
+
+        self.__next_step.close()
+        self.__next_step.join(timeout=max(deadline - time(), 0) if deadline is not None else None)
 
     def close(self) -> None:
         self.__next_step.close()
