@@ -3,6 +3,7 @@ from typing import Any
 from unittest import mock
 from unittest.mock import call
 
+import pytest
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, Partition, Topic, Value
 
@@ -116,31 +117,15 @@ def test_message_rejected() -> None:
         payload="test-payload", route=Route(source="source", waypoints=[]), offset=0
     )
 
-    expected_calls = [
-        # MessageRejected calls
-        call.submit(
+    message_rejected_expected_calls = [
+        call(
             make_value_msg(
                 payload="test-payload",
                 route=Route(source="source", waypoints=["branch_1"]),
                 offset=0,
             )
         ),
-        call.submit(
-            make_value_msg(
-                payload="test-payload",
-                route=Route(source="source", waypoints=["branch_2"]),
-                offset=0,
-            )
-        ),
-        # __flush_pending() calls
-        call.submit(
-            make_value_msg(
-                payload="test-payload",
-                route=Route(source="source", waypoints=["branch_1"]),
-                offset=0,
-            )
-        ),
-        call.submit(
+        call(
             make_value_msg(
                 payload="test-payload",
                 route=Route(source="source", waypoints=["branch_2"]),
@@ -149,12 +134,34 @@ def test_message_rejected() -> None:
         ),
     ]
 
-    broadcaster.submit(message)
+    flush_pending_expected_calls = [
+        call(
+            make_value_msg(
+                payload="test-payload",
+                route=Route(source="source", waypoints=["branch_1"]),
+                offset=0,
+            )
+        ),
+        call(
+            make_value_msg(
+                payload="test-payload",
+                route=Route(source="source", waypoints=["branch_2"]),
+                offset=0,
+            )
+        ),
+    ]
+
+    with pytest.raises(MessageRejected):
+        broadcaster.submit(message)
+    assert next_step.submit.call_args_list == message_rejected_expected_calls
 
     # stop raising MessageRejected
     next_step.submit.side_effect = None
     broadcaster.poll()
-    assert next_step.submit.call_args_list == expected_calls
+    assert next_step.submit.call_args_list == [
+        *message_rejected_expected_calls,
+        *flush_pending_expected_calls,
+    ]
 
 
 def test_poll() -> None:
