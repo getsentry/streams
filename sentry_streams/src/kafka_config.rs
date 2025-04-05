@@ -1,4 +1,6 @@
 use pyo3::prelude::*;
+use sentry_arroyo::backends::kafka::config::KafkaConfig;
+use sentry_arroyo::backends::kafka::InitialOffset as KafkaInitialOffset;
 use std::collections::HashMap;
 
 #[pyclass]
@@ -31,6 +33,16 @@ impl InitialOffset {
     }
 }
 
+impl Into<KafkaInitialOffset> for InitialOffset {
+    fn into(self) -> KafkaInitialOffset {
+        match self {
+            InitialOffset::Earliest => KafkaInitialOffset::Earliest,
+            InitialOffset::Latest => KafkaInitialOffset::Latest,
+            InitialOffset::Error => KafkaInitialOffset::Error,
+        }
+    }
+}
+
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct OffsetResetConfig {
@@ -53,23 +65,46 @@ impl OffsetResetConfig {
 
 #[pyclass]
 #[derive(Debug, Clone)]
-pub struct PyKafkaConfig {
-    #[pyo3(get, set)]
-    config_map: HashMap<String, String>,
-    #[pyo3(get, set)]
-    offset_reset_config: Option<OffsetResetConfig>,
+pub struct PyKafkaConsumerConfig {
+    bootstrap_servers: Vec<String>,
+    group_id: String,
+    auto_offset_reset: InitialOffset,
+    strict_offset_reset: bool,
+    max_poll_interval_ms: usize,
+    override_params: Option<HashMap<String, String>>,
 }
 
 #[pymethods]
-impl PyKafkaConfig {
+impl PyKafkaConsumerConfig {
     #[new]
     fn new(
-        config_map: HashMap<String, String>,
-        offset_reset_config: Option<OffsetResetConfig>,
+        bootstrap_servers: Vec<String>,
+        group_id: String,
+        auto_offset_reset: InitialOffset,
+        strict_offset_reset: bool,
+        max_poll_interval_ms: usize,
+        override_params: Option<HashMap<String, String>>,
     ) -> Self {
-        PyKafkaConfig {
-            config_map,
-            offset_reset_config,
+        PyKafkaConsumerConfig {
+            bootstrap_servers,
+            group_id,
+            auto_offset_reset,
+            strict_offset_reset,
+            max_poll_interval_ms,
+            override_params,
         }
+    }
+}
+
+impl From<PyKafkaConsumerConfig> for KafkaConfig {
+    fn from(py_config: PyKafkaConsumerConfig) -> Self {
+        KafkaConfig::new_consumer_config(
+            py_config.bootstrap_servers,
+            py_config.group_id,
+            py_config.auto_offset_reset.into(),
+            py_config.strict_offset_reset,
+            py_config.max_poll_interval_ms,
+            py_config.override_params,
+        )
     }
 }

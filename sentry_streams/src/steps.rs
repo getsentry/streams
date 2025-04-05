@@ -1,4 +1,4 @@
-use crate::kafka_config::PyKafkaConfig;
+use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::routes::Route;
 use pyo3::prelude::*;
 
@@ -38,7 +38,7 @@ pub enum ArroyoStep {
     StreamSink {
         route: Route,
         topic_name: String,
-        kafka_config: PyKafkaConfig,
+        kafka_config: PyKafkaConsumerConfig,
     },
 }
 
@@ -68,7 +68,11 @@ impl ArroyoStep {
     }
 
     #[staticmethod]
-    pub fn new_stream_sink(route: Route, topic_name: String, kafka_config: PyKafkaConfig) -> Self {
+    pub fn new_stream_sink(
+        route: Route,
+        topic_name: String,
+        kafka_config: PyKafkaConsumerConfig,
+    ) -> Self {
         ArroyoStep::StreamSink {
             route,
             topic_name,

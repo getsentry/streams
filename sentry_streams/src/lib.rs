@@ -9,6 +9,8 @@ mod strategies;
 fn rust_streams(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<routes::Route>()?;
     m.add_class::<steps::ArroyoStep>()?;
+    m.add_class::<kafka_config::PyKafkaConsumerConfig>()?;
+    m.add_class::<kafka_config::InitialOffset>()?;
     m.add_class::<consumer::ArroyoConsumer>()?;
     Ok(())
 }
