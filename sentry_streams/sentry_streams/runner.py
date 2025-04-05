@@ -116,7 +116,6 @@ def main() -> None:
 
     with open(args.config, "r") as config_file:
         environment_config = yaml.safe_load(config_file)
-        logger.info(environment_config)
 
     config_template = importlib.resources.files("sentry_streams") / "config.json"
     with config_template.open("r") as file:
