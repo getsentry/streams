@@ -33,7 +33,7 @@ dev = [
 ]
 
 [tool.setuptools.package-data]
-sentry_streams = ["py.typed", "config.json"]
+sentry_streams = ["py.typed", "config.json", "deployment_config/test_flink_config.yaml"]
 
 [tool.pytest.ini_options]
 minversion = "0.0.15"

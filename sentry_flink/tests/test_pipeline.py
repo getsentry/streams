@@ -1,7 +1,10 @@
+import importlib
 import json
 from typing import Any, Generator, MutableMapping
 
+import jsonschema
 import pytest
+import yaml
 from pyflink.datastream import DataStream, DataStreamSink, StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import (
     RuntimeTranslator,
@@ -37,15 +40,21 @@ def setup_basic_flink_env() -> (
         tuple[StreamExecutionEnvironment, RuntimeTranslator[DataStream, DataStreamSink]], None, None
     ]
 ):
-    # TODO: read from yaml file
-    environment_config = {
-        "topics": {
-            "events": "events",
-            "transformed-events": "transformed-events",
-            "transformed-events-2": "transformed-events-2",
-        },
-        "broker": "localhost:9092",
-    }
+    config_file = (
+        importlib.resources.files("sentry_streams") / "deployment_config" / "test_flink_config.yaml"
+    )
+    with config_file.open("r") as file:
+        environment_config = yaml.safe_load(file)
+
+    config_template = importlib.resources.files("sentry_streams") / "config.json"
+    with config_template.open("r") as file:
+        schema = json.load(file)
+
+        try:
+            jsonschema.validate(environment_config, schema)
+        except Exception:
+            raise
+
     runtime = FlinkAdapter.build(environment_config)
     translator = RuntimeTranslator(runtime)
 
@@ -226,7 +235,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
 
 
 def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
-    pipeline = streaming_source(name="mysource", stream_name="events").broadcast(
+    pipeline = streaming_source(name="myinput", stream_name="events").broadcast(
         "mybroadcast",
         routes=[
             segment("sbc").sink("kafkasink", stream_name="transformed-events"),
