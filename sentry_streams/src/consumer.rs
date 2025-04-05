@@ -1,24 +1,14 @@
-use std::ops::Deref;
-
 use crate::steps::ArroyoStep;
 use crate::strategies::build;
 use pyo3::prelude::*;
-use sentry_arroyo::backends::kafka::config::KafkaConfig;
-
 use pyo3::types::PyBytes;
-use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
-use sentry_arroyo::backends::kafka::InitialOffset;
 use sentry_arroyo::processing::strategies::commit_offsets::CommitOffsets;
-use sentry_arroyo::processing::strategies::noop::Noop;
-use sentry_arroyo::processing::strategies::produce::Produce;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
-use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
-use sentry_arroyo::processing::strategies::{
-    ProcessingStrategy, ProcessingStrategyFactory, SubmitError,
-};
-use sentry_arroyo::processing::StreamProcessor;
-use sentry_arroyo::types::{Message, Topic, TopicOrPartition};
+use sentry_arroyo::processing::strategies::ProcessingStrategy;
+use sentry_arroyo::processing::strategies::ProcessingStrategyFactory;
+use sentry_arroyo::types::{Message, Partition, Topic};
+use std::collections::BTreeMap;
 
 use std::time::Duration;
 
@@ -27,6 +17,8 @@ pub struct ArroyoConsumer {
     source: String,
 
     steps: Vec<Py<ArroyoStep>>,
+
+    factory: Option<ArroyoStreamingFactory>,
 }
 
 #[pymethods]
@@ -36,6 +28,7 @@ impl ArroyoConsumer {
         ArroyoConsumer {
             source,
             steps: Vec::new(),
+            factory: None,
         }
     }
 
@@ -51,35 +44,63 @@ impl ArroyoConsumer {
         }
     }
 
-    fn run(&mut self, msg: Py<PyAny>) {}
+    fn run(&mut self) {
+        let steps_copy = Python::with_gil(|py| {
+            self.steps
+                .iter()
+                .map(|step| step.clone_ref(py))
+                .collect::<Vec<_>>()
+        });
+        let factory = ArroyoStreamingFactory { steps: steps_copy };
+        self.factory = Some(factory);
+        let mut chain = self.factory.as_mut().expect("Missing factory").create();
+        let message1 = Message::new_any_message(
+            KafkaPayload::new(Some(b"key1".to_vec()), None, Some(b"payload2".to_vec())),
+            BTreeMap::from([(Partition::new(Topic::new("test"), 0), 0)]),
+        );
+
+        let message2 = Message::new_any_message(
+            KafkaPayload::new(Some(b"key1".to_vec()), None, Some(b"payload3".to_vec())),
+            BTreeMap::from([(Partition::new(Topic::new("test"), 0), 0)]),
+        );
+
+        chain.submit(message1).unwrap();
+        chain.submit(message2).unwrap();
+    }
 
     fn shutdown(&mut self) {}
 }
 
-fn pythonify(message: &Message<KafkaPayload>) -> Py<PyAny> {
-    Python::with_gil(|py| {
+fn to_python(message: Message<KafkaPayload>) -> Message<Py<PyAny>> {
+    let payload = Python::with_gil(|py| {
         let payload = message.payload().payload().unwrap();
         let py_bytes = PyBytes::new(py, payload);
-        Ok(py_bytes.into())
-    })
-    .unwrap()
+        py_bytes.into_any().unbind()
+    });
+    message.replace(payload)
 }
 
-fn build_chain(steps: Vec<Py<ArroyoStep>>) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
-    let mut next = CommitOffsets::new(Duration::from_secs(5));
+fn build_chain(steps: &[Py<ArroyoStep>]) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
+    let mut next: Box<dyn ProcessingStrategy<Py<PyAny>>> =
+        Box::new(CommitOffsets::new(Duration::from_secs(5)));
     for step in steps.iter().rev() {
-        let next = build(step, next);
+        next = build(step, next);
     }
 
-    Box::new(next)
+    let converter = RunTask::new(
+        |message: Message<KafkaPayload>| Ok(to_python(message)),
+        next,
+    );
+
+    Box::new(converter)
 }
 
-//fn build_strategy_factory() -> ProcessingStrategyFactory<KafkaPayload> {
-//    struct ArroyoStreamingFactory {
-//        steps: Vec<Py<ArroyoStep>>,
-//    }
-//
-//    impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
-//        fn create(&self) -> Box<dyn ProcessingStrategy<KafkaPayload>> {}
-//    }
-//}
+struct ArroyoStreamingFactory {
+    steps: Vec<Py<ArroyoStep>>,
+}
+
+impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
+    fn create(&self) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
+        build_chain(&self.steps)
+    }
+}
