@@ -20,4 +20,4 @@ def pipeline_config() -> PipelineConfig:
 
 def test_build(pipeline_config: PipelineConfig) -> None:
     adapter = FlinkAdapter.build(pipeline_config)
-    assert adapter.env.get_parallelism() == 4
+    assert adapter.env.get_parallelism() == 2

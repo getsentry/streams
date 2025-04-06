@@ -1,7 +1,10 @@
+import importlib
 import json
 from typing import Any, Generator, MutableMapping
 
+import jsonschema
 import pytest
+import yaml
 from pyflink.datastream import DataStream, DataStreamSink, StreamExecutionEnvironment
 from sentry_streams.adapters.stream_adapter import (
     RuntimeTranslator,
@@ -37,23 +40,22 @@ def setup_basic_flink_env() -> (
         tuple[StreamExecutionEnvironment, RuntimeTranslator[DataStream, DataStreamSink]], None, None
     ]
 ):
+    config_file = (
+        importlib.resources.files("sentry_streams") / "deployment_config" / "test_flink_config.yaml"
+    )
+    with config_file.open("r") as file:
+        environment_config = yaml.safe_load(file)
 
-    environment_config = {
-        "env": {},
-        "pipeline": {
-            "segments": [
-                {
-                    "steps_config": {
-                        "myinput": {"starts_segment": True, "bootstrap_servers": "localhost:9092"},
-                        "kafkasink": {"bootstrap_servers": "localhost:9092"},
-                        "kafkasink_1": {"bootstrap_servers": "localhost:9092"},
-                        "kafkasink_2": {"bootstrap_servers": "localhost:9092"},
-                        "kafkasink2": {"bootstrap_servers": "localhost:9092"},
-                    }
-                }
-            ]
-        },
-    }
+    config_template = importlib.resources.files("sentry_streams") / "config.json"
+    with config_template.open("r") as file:
+        schema = json.load(file)
+
+        try:
+            jsonschema.validate(environment_config, schema)
+        except Exception:
+            raise
+
+    environment_config["env"] = {}
 
     runtime = FlinkAdapter.build(environment_config)
     translator = RuntimeTranslator(runtime)
