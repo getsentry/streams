@@ -2,37 +2,36 @@
 
 The Sentry Streaming Platform
 
-This repo contains two libraries: `sentry_streams` and `sentry_flink`.
+Sentry Streams is a distributed platform that, like most streaming platforms,
+is designed to handle real-time unbounded data streams.
 
-The first contain all the streaming api and an Arroyo based adapter to run
-the streaming applications on top of Arroyo.
+This is built primarily to allow the creation of Sentry ingestion pipelines
+though the api provided is fully independent from the Sentry product and can
+be used to build any streaming application.
 
-The second contains the Flink adapter to run streaming applications on
-Apache Flink. This part is in a separate library because, until we will not
-be able to make it run on python 3.13 and produce wheels for python 3.13,
-it will require Java to run even in the dev environment.
+The main features are:
 
-## Quickstart
+- Kafka sources and multiple sinks. Ingestion pipeline take data from Kafka
+  and write enriched data into multiple data stores.
 
-We are going to run a streaming application on top of Arroyo.
+- Dataflow API support. This allows the creation of streaming application
+  focusing on the application logic and pipeline topology rather than
+  the underlying dataflow engine.
 
-1. Run `make install-dev`
+- Support for stateful and stateless transformations. The state storage is
+  provided by the platform rather than being part of the application.
 
-2. Go to the sentry_streams directory
+- Distributed execution. The primitives used to build the application can
+  be distributed on multiple nodes by configuration.
 
-3. Activate the virtual environment: `source .venv/bin/activate`
+- Hide the Kafka details from the application. Like commit policy and topic
+  partitioning.
 
-4. Run one of the examples
+- Out of the box support for some streaming applications best practices:
+  DLQ, monitoring, health checks, etc.
 
-```
-python sentry_streams/runner.py \
-    -n test \
-    -b localhost:9092 \
-    -a arroyo \
-    sentry_streams/examples/transformer.py
-```
+- Support for Rust and Python applications.
 
-This will start an Arroyo consumer that runs the streaming application defined
-in `sentry_streams/examples/transformer.py`.
+- Support for multiple runtimes.
 
-there is a number of examples in the `sentry_streams/examples` directory.
+[Streams Documentation](https://getsentry.github.io/streams/)
