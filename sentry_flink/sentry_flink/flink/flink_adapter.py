@@ -330,7 +330,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         routed_stream = self.resolve_incoming_chain(step, stream).process(routing_process_func)
 
         return {
-            route.tag_id: self.resolve_outoing_chain(routed_stream).get_side_output(route)
+            route.tag_id: self.resolve_outoing_chain(step, routed_stream).get_side_output(route)
             for route in output_tags.values()
         }
 
