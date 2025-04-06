@@ -833,7 +833,7 @@ requires-dist = [
     { name = "apache-flink", specifier = "==1.20.0" },
     { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "requests", specifier = ">=2.32.3" },
-    { name = "sentry-streams", specifier = ">=0.0.15" },
+    { name = "sentry-streams", specifier = ">=0.0.16" },
     { name = "setuptools", specifier = "==75.8.0" },
 ]
 
@@ -848,7 +848,7 @@ dev = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.15"
+version = "0.0.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonschema" },
@@ -857,7 +857,7 @@ dependencies = [
     { name = "sentry-arroyo" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0f/24/9c25f9f1ce1c28d4e6b362a67ecad526929990e0335ee969b0514665fff7/sentry_streams-0.0.15-py3-none-any.whl", hash = "sha256:3977e8fbf63741459ff45ea8ddeab4aece2cfce56cfd809e58b1bf657245b336", size = 35997 },
+    { url = "https://files.pythonhosted.org/packages/82/f0/adb4af2f3cad84357de63b74a235830e69b573a2322d2c2ab678b2df37fc/sentry_streams-0.0.16-py3-none-any.whl", hash = "sha256:4c8524c6f7f23b2e48e94c528d1f44bee3029c5a7a96f09cb49c5f4b3e33b3ce", size = 39949 },
 ]
 
 [[package]]
