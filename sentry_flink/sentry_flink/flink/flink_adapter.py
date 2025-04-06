@@ -239,7 +239,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return_type = get_type_hints(imported_fn)["return"]
 
         # TODO: Ensure output type is configurable like the schema above
-        return stream.flat_map(
+        flat_map_stream = self.resolve_incoming_chain(step, stream).flat_map(
             func=lambda msg: imported_fn(msg),
             output_type=(
                 translate_to_flink_type(return_type)
@@ -247,6 +247,8 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
                 else translate_custom_type(return_type)
             ),
         )
+
+        return self.resolve_outoing_chain(step, flat_map_stream)
 
     def reduce(
         self,
@@ -296,8 +298,13 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return self.resolve_outoing_chain(step, aggregate_stream)
 
     def broadcast(self, step: Broadcast, stream: DataStream) -> Mapping[str, DataStream]:
+
+        broadcast_stream = self.resolve_incoming_chain(step, stream)
         # Broadcast in flink is implicit, so no processing needs to happen here
-        return {branch.name: stream for branch in step.routes}
+        return {
+            branch.name: self.resolve_outoing_chain(step, broadcast_stream)
+            for branch in step.routes
+        }
 
     def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> Mapping[str, Any]:
         routing_table = step.routing_table
@@ -319,10 +326,12 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             for key, route in routing_table.items()
         }
         routing_process_func = FlinkRoutingFunction(routing_func, output_tags)
-        routed_stream = stream.process(routing_process_func)
+
+        routed_stream = self.resolve_incoming_chain(step, stream).process(routing_process_func)
 
         return {
-            route.tag_id: routed_stream.get_side_output(route) for route in output_tags.values()
+            route.tag_id: self.resolve_outoing_chain(routed_stream).get_side_output(route)
+            for route in output_tags.values()
         }
 
     def shutdown(self) -> None:

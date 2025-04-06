@@ -55,8 +55,6 @@ def setup_basic_flink_env() -> (
         except Exception:
             raise
 
-    environment_config["env"] = {}
-
     runtime = FlinkAdapter.build(environment_config)
     translator = RuntimeTranslator(runtime)
 
