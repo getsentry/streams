@@ -1,4 +1,4 @@
-from typing import Any, Mapping, Optional, TypedDict
+from typing import Any, Mapping, Optional, Sequence, TypedDict
 
 
 class StepConfig(TypedDict):
@@ -10,14 +10,14 @@ class StepConfig(TypedDict):
 
 
 class KafkaConsumerConfig(TypedDict, StepConfig):
-    bootstrap_servers: str
+    bootstrap_servers: Sequence[str]
     auto_offset_reset: str
     consumer_group: str
     additional_settings: Mapping[str, Any]
 
 
 class KafkaProducerConfig(TypedDict, StepConfig):
-    bootstrap_servers: str
+    bootstrap_servers: Sequence[str]
     additional_settings: Mapping[str, Any]
 
 
