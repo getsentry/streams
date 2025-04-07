@@ -1,12 +1,21 @@
-from collections import deque
 from copy import deepcopy
+from dataclasses import dataclass
 from time import time
-from typing import Deque, Optional, Sequence, Union, cast
+from typing import Mapping, MutableMapping, Optional, Sequence, Union, cast
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import FilteredPayload, Message, Value
+from arroyo.types import FilteredPayload, Message, Partition, Value
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
+
+
+@dataclass(eq=True)
+class Messageidentifier:
+    route: Route
+    committable: Mapping[Partition, int]
+
+    def __hash__(self) -> int:
+        return hash((self.route.source, *self.route.waypoints, str(self.committable)))
 
 
 class Broadcaster(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
@@ -26,34 +35,56 @@ class Broadcaster(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
         self.__route = route
         self.__downstream_branches = downstream_branches
         # If we get MessageRejected from the next step, we put the pending messages here
-        self.__pending: Deque[Message[RoutedValue]] = deque()
+        self.__failed_msgs: MutableMapping[Messageidentifier, Message[RoutedValue]] = {}
 
-    def __flush_pending(self) -> None:
-        while self.__pending:
-            try:
-                message = self.__pending[0]
-                self.__next_step.submit(message)
-                self.__pending.popleft()
-            except MessageRejected:
-                break
+    def __retry_failed_msg(
+        self, msg: Message[RoutedValue], msg_identifier: Messageidentifier
+    ) -> None:
+        """
+        Retries a message which got MessageRejected previously.
+        """
+        self.__next_step.submit(msg)
+        del self.__failed_msgs[msg_identifier]
+
+    def __submit_to_next_step(
+        self, msg: Message[RoutedValue], msg_identifier: Messageidentifier
+    ) -> None:
+        """
+        Submits to the next step.
+        If the next step raises MessageRejected, this records the failed message
+        and raises MessageRejected to propagate the error.
+        """
+        try:
+            self.__next_step.submit(msg)
+        except MessageRejected:
+            self.__failed_msgs[msg_identifier] = msg
+            raise MessageRejected()
+
+    def __handle_submit(self, msg: Message[RoutedValue]) -> None:
+        msg_identifier = Messageidentifier(
+            route=msg.value.payload.route,
+            committable=msg.value.committable,
+        )
+        if msg_identifier in self.__failed_msgs:
+            self.__retry_failed_msg(msg, msg_identifier)
+        else:
+            self.__submit_to_next_step(msg, msg_identifier)
 
     def submit(self, message: Message[Union[FilteredPayload, RoutedValue]]) -> None:
-        if self.__pending:
-            raise MessageRejected
-
         # if any downstream branch raises MessageRejected, we need to propagate
         # the error back to the previous step
         raise_message_rejected = False
-        message_payload = message.value.payload
-        if isinstance(message_payload, RoutedValue) and message_payload.route == self.__route:
+        if (
+            isinstance(message.value.payload, RoutedValue)
+            and message.value.payload.route == self.__route
+        ):
             for branch in self.__downstream_branches:
-                msg_copy = deepcopy(message)
-                copy_value = msg_copy.value
-                copy_payload = cast(RoutedValue, copy_value.payload)
+                msg_copy = cast(Message[RoutedValue], deepcopy(message))
+                copy_payload = msg_copy.value.payload
                 routed_copy = Message(
                     Value(
-                        committable=copy_value.committable,
-                        timestamp=copy_value.timestamp,
+                        committable=msg_copy.value.committable,
+                        timestamp=msg_copy.value.timestamp,
                         payload=RoutedValue(
                             route=Route(
                                 source=copy_payload.route.source,
@@ -64,24 +95,28 @@ class Broadcaster(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
                     )
                 )
                 try:
-                    self.__next_step.submit(routed_copy)
+                    self.__handle_submit(routed_copy)
                 except MessageRejected:
-                    self.__pending.append(routed_copy)
+                    # Raise a single MessageRejected at the end of the loop
                     raise_message_rejected = True
             if raise_message_rejected:
                 raise MessageRejected()
         else:
+            # If message isn't a RoutedValue, just submit it to the next step
             self.__next_step.submit(message)
 
     def poll(self) -> None:
-        self.__flush_pending()
+        failed_msgs = {id: msg for id, msg in self.__failed_msgs.items()}
+        for id, msg in failed_msgs.items():
+            self.__retry_failed_msg(msg, id)
         self.__next_step.poll()
 
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time() + timeout if timeout is not None else None
         while deadline is None or time() < deadline:
-            if self.__pending:
-                self.__flush_pending()
+            if self.__failed_msgs:
+                for id, msg in self.__failed_msgs.items():
+                    self.__retry_failed_msg(msg, id)
             else:
                 break
 
