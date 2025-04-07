@@ -151,24 +151,24 @@ class ExtensibleChain(Chain):
     Other steps manage the pipeline topology: sink, broadcast, route.
 
     Example:
-    ```
-    pipeline = (
-        streaming_source("myinput", "events") # Starts the pipeline
-        .apply("transform1", Map(lambda msg: msg)) # Performs an operation
-        .route( # Branches the pipeline
-            "route_to_one",
-            routing_function=routing_func,
-            routes={
-                Routes.ROUTE1: segment(name="route1") # Creates a branch
-                .apply("transform2", Map(lambda msg: msg))
-                .sink("myoutput1", "transformed-events-2"),
-                Routes.ROUTE2: segment(name="route2")
-                .apply("transform3", Map(lambda msg: msg))
-                .sink("myoutput2", "transformed-events-3"),
-            },
-        )
-    )
-    ```
+
+    .. code-block:: python
+
+        pipeline = streaming_source("myinput", "events") # Starts the pipeline
+            .apply("transform1", Map(lambda msg: msg)) # Performs an operation
+            .route( # Branches the pipeline
+                "route_to_one",
+                routing_function=routing_func,
+                routes={
+                    Routes.ROUTE1: segment(name="route1") # Creates a branch
+                    .apply("transform2", Map(lambda msg: msg))
+                    .sink("myoutput1", "transformed-events-2"),
+                    Routes.ROUTE2: segment(name="route2")
+                    .apply("transform3", Map(lambda msg: msg))
+                    .sink("myoutput2", "transformed-events3"),
+                }, \
+            ) \
+
     """
 
     def __init__(self, name: str) -> None:
