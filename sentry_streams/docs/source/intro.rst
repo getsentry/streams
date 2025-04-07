@@ -102,9 +102,9 @@ and produces the result to another topic.
 
 .. code-block::
 
-    python -m sentry_streams.runner \
+    SEGMENT_ID=0 python -m sentry_streams.runner \
     -n Batch \
-    --broker localhost:9092 \
+    --config sentry_streams/deployment_config/<YOUR CONFIG FILE>.yaml \
     --adapter arroyo \
     <YOUR PIPELINE FILE>
 
