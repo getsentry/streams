@@ -90,51 +90,22 @@ def test_message_rejected() -> None:
         payload="test-payload", route=Route(source="source", waypoints=[]), offset=0
     )
 
-    message_rejected_expected_calls = [
-        call(
-            make_value_msg(
-                payload="test-payload",
-                route=Route(source="source", waypoints=["branch_1"]),
-                offset=0,
-            )
-        ),
-        call(
-            make_value_msg(
-                payload="test-payload",
-                route=Route(source="source", waypoints=["branch_2"]),
-                offset=0,
-            )
-        ),
-    ]
-
-    retry_expected_calls = [
-        call(
-            make_value_msg(
-                payload="test-payload",
-                route=Route(source="source", waypoints=["branch_1"]),
-                offset=0,
-            )
-        ),
-        call(
-            make_value_msg(
-                payload="test-payload",
-                route=Route(source="source", waypoints=["branch_2"]),
-                offset=0,
-            )
-        ),
-    ]
+    message_rejected_expected_call = call(
+        make_value_msg(
+            payload="test-payload",
+            route=Route(source="source", waypoints=["branch_1"]),
+            offset=0,
+        )
+    )
 
     with pytest.raises(MessageRejected):
         broadcaster.submit(message)
-    assert next_step.submit.call_args_list == message_rejected_expected_calls
+    assert next_step.submit.call_args_list == [message_rejected_expected_call]
 
     # stop raising MessageRejected
     next_step.submit.side_effect = None
     broadcaster.poll()
-    assert next_step.submit.call_args_list == [
-        *message_rejected_expected_calls,
-        *retry_expected_calls,
-    ]
+    assert next_step.submit.call_args_list == [message_rejected_expected_call] * 2
 
 
 def test_poll() -> None:

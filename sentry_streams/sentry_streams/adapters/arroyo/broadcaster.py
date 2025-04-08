@@ -71,9 +71,6 @@ class Broadcaster(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
             self.__submit_to_next_step(msg, msg_identifier)
 
     def submit(self, message: Message[Union[FilteredPayload, RoutedValue]]) -> None:
-        # if any downstream branch raises MessageRejected, we need to propagate
-        # the error back to the previous step
-        raise_message_rejected = False
         if (
             isinstance(message.value.payload, RoutedValue)
             and message.value.payload.route == self.__route
@@ -94,13 +91,7 @@ class Broadcaster(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
                         ),
                     )
                 )
-                try:
-                    self.__handle_submit(routed_copy)
-                except MessageRejected:
-                    # Raise a single MessageRejected at the end of the loop
-                    raise_message_rejected = True
-            if raise_message_rejected:
-                raise MessageRejected()
+                self.__handle_submit(routed_copy)
         else:
             # If message isn't a RoutedValue, just submit it to the next step
             self.__next_step.submit(message)
