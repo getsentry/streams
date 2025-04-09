@@ -4,6 +4,7 @@ from typing import (
     Any,
     Mapping,
     MutableMapping,
+    Optional,
     Self,
     Sequence,
     Union,
@@ -153,17 +154,25 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
             return outgoing_stream.set_parallelism(parallelism)
 
-        return outgoing_stream
+        cur_parallelism = self.segment_config[self.cur_segment].get("parallelism", 1)
+        return outgoing_stream.set_parallelism(cur_parallelism)
 
-    def resolve_segment_config(self, step: Step) -> SegmentConfig:
-        segment_ind = self.steps_to_segments[step.name]
-        config: SegmentConfig = self.segment_config[segment_ind]
+    def resolve_segment_config(self, step: Step) -> Optional[SegmentConfig]:
+        segment_ind = self.steps_to_segments.get(step.name)
 
-        return config
+        if segment_ind:
+            config: SegmentConfig = self.segment_config[segment_ind]
+
+            return config
+        else:
+            return None
 
     def source(self, step: Source) -> DataStream:
-        config: SegmentConfig = self.resolve_segment_config(step)
-        consumer_config = cast(KafkaConsumerConfig, config["steps_config"][step.name])
+        config = self.resolve_segment_config(step)
+        if config:
+            consumer_config = cast(KafkaConsumerConfig, config["steps_config"][step.name])
+        else:
+            consumer_config = {}
 
         assert hasattr(step, "stream_name")
         topic = step.stream_name
@@ -175,7 +184,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             topics=topic,
             deserialization_schema=deserialization_schema,
             properties={
-                "bootstrap.servers": consumer_config.get("bootstrap_servers", "localhost:9092"),
+                "bootstrap.servers": consumer_config.get("bootstrap_servers", "kafka:9093"),
                 "group.id": f"pipeline-{step.name}",
             },
         )
@@ -185,14 +194,17 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def sink(self, step: Sink, stream: DataStream) -> DataStreamSink:
         config: SegmentConfig = self.resolve_segment_config(step)
-        producer_config = cast(KafkaProducerConfig, config["steps_config"][step.name])
+        if config:
+            producer_config = cast(KafkaProducerConfig, config["steps_config"][step.name])
+        else:
+            producer_config = {}
 
         assert hasattr(step, "stream_name")
         topic = step.stream_name
 
         sink = (
             KafkaSink.builder()
-            .set_bootstrap_servers(producer_config.get("bootstrap_servers", "localhost:9092"))
+            .set_bootstrap_servers(producer_config.get("bootstrap_servers", "kafka:9093"))
             .set_record_serializer(
                 KafkaRecordSerializationSchema.builder()
                 .set_topic(
@@ -327,10 +339,10 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         }
         routing_process_func = FlinkRoutingFunction(routing_func, output_tags)
 
-        routed_stream = self.resolve_incoming_chain(step, stream.process(routing_process_func))
+        routed_stream = self.resolve_outoing_chain(step, stream.process(routing_process_func))
 
         return {
-            route.tag_id: self.resolve_outoing_chain(step, routed_stream).get_side_output(route)
+            route.tag_id: self.resolve_outoing_chain(step, routed_stream.get_side_output(route))
             for route in output_tags.values()
         }
 
