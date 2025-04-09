@@ -172,7 +172,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         if config:
             consumer_config = cast(KafkaConsumerConfig, config["steps_config"][step.name])
         else:
-            consumer_config = {}
+            consumer_config = None
 
         assert hasattr(step, "stream_name")
         topic = step.stream_name
@@ -184,7 +184,11 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
             topics=topic,
             deserialization_schema=deserialization_schema,
             properties={
-                "bootstrap.servers": consumer_config.get("bootstrap_servers", "kafka:9093"),
+                "bootstrap.servers": (
+                    consumer_config.get("bootstrap_servers", "kafka:9093")
+                    if consumer_config
+                    else "kafka:9093"
+                ),
                 "group.id": f"pipeline-{step.name}",
             },
         )
@@ -197,14 +201,18 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         if config:
             producer_config = cast(KafkaProducerConfig, config["steps_config"][step.name])
         else:
-            producer_config = {}
+            producer_config = None
 
         assert hasattr(step, "stream_name")
         topic = step.stream_name
 
         sink = (
             KafkaSink.builder()
-            .set_bootstrap_servers(producer_config.get("bootstrap_servers", "kafka:9093"))
+            .set_bootstrap_servers(
+                producer_config.get("bootstrap_servers", "kafka:9093")
+                if producer_config
+                else "kafka:9093"
+            )
             .set_record_serializer(
                 KafkaRecordSerializationSchema.builder()
                 .set_topic(
