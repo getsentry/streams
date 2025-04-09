@@ -152,7 +152,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return outgoing_stream.set_parallelism(parallelism)
 
     def resolve_segment_config(self, step: Step) -> SegmentConfig:
-        segment_ind = self.steps_to_segments.get(step.name)
+        segment_ind = self.steps_to_segments[step.name]
         config: SegmentConfig = self.segment_config[segment_ind]
 
         return config
