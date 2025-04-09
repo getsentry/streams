@@ -61,7 +61,7 @@ def test_broadcast() -> None:
                 .sink("myoutput1", "transformed-events-2"),
                 segment(name="route2")
                 .apply("transform3", Map(lambda msg: msg))
-                .sink("myoutput2", "transformed-events3"),
+                .sink("myoutput2", "transformed-events-3"),
             ],
         )
     )
@@ -122,7 +122,7 @@ def test_router() -> None:
                 .sink("myoutput1", "transformed-events-2"),
                 Routes.ROUTE2: segment(name="route2")
                 .apply("transform3", Map(lambda msg: msg))
-                .sink("myoutput2", "transformed-events3"),
+                .sink("myoutput2", "transformed-events-3"),
             },
         )
     )

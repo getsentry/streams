@@ -1,6 +1,6 @@
 import time
-from datetime import datetime, timedelta
-from typing import Any, Callable
+from datetime import timedelta
+from typing import Callable
 from unittest import mock
 from unittest.mock import call
 
@@ -8,17 +8,14 @@ from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import (
-    BrokerValue,
     Commit,
     FilteredPayload,
-    Message,
-    Partition,
     Topic,
-    Value,
 )
 
-from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
+from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import (
+    BroadcastStep,
     FilterStep,
     MapStep,
     ReduceStep,
@@ -29,42 +26,14 @@ from sentry_streams.examples.transformer import TransformerBatch
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Branch,
+    Broadcast,
     Filter,
     Map,
     Pipeline,
     Router,
 )
 from sentry_streams.pipeline.window import SlidingWindow
-
-
-def make_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
-    if isinstance(payload, FilteredPayload):
-        return Message(
-            BrokerValue(
-                payload=payload,
-                partition=Partition(Topic("test_topic"), 0),
-                offset=offset,
-                timestamp=datetime(2025, 1, 1, 12, 0),
-            )
-        )
-    else:
-        return Message(
-            BrokerValue(
-                payload=RoutedValue(route=route, payload=payload),
-                partition=Partition(Topic("test_topic"), 0),
-                offset=offset,
-                timestamp=datetime(2025, 1, 1, 12, 0),
-            )
-        )
-
-
-def make_value_msg(payload: Any, route: Route, offset: int) -> Message[Any]:
-    return Message(
-        Value(
-            payload=RoutedValue(route=route, payload=payload),
-            committable={Partition(Topic("test_topic"), 0): offset},
-        )
-    )
+from tests.adapters.arroyo.message_helpers import make_msg, make_value_msg
 
 
 def test_map_step() -> None:
@@ -216,6 +185,70 @@ def test_router() -> None:
     next_strategy.assert_has_calls(expected_calls)
 
 
+def test_broadcast() -> None:
+    """
+    Verifies the Broadcast step properly updates the waypoints the messages it produces.
+    """
+    mapped_route = Route(source="source1", waypoints=["map_branch"])
+    other_route = Route(source="source1", waypoints=["other_branch"])
+    pipeline = Pipeline()
+
+    pipeline_router = Broadcast(
+        name="mybroadcast",
+        ctx=pipeline,
+        inputs=[],
+        routes=[
+            Branch(name="map_branch", ctx=pipeline),
+            Branch(name="other_branch", ctx=pipeline),
+        ],
+    )
+    arroyo_broadcast = BroadcastStep(Route(source="source1", waypoints=[]), pipeline_router)
+
+    next_strategy = mock.Mock(spec=ProcessingStrategy)
+    strategy = arroyo_broadcast.build(next_strategy, commit=mock.Mock(spec=Commit))
+
+    messages = [
+        make_value_msg(
+            "test_val",
+            Route(source="source1", waypoints=[]),
+            0,
+        ),
+        make_value_msg(
+            "not_test_val",
+            Route(source="source1", waypoints=[]),
+            1,
+        ),
+        make_value_msg(
+            FilteredPayload(),
+            Route(source="source1", waypoints=[]),
+            2,
+        ),
+    ]
+
+    for message in messages:
+        strategy.submit(message)
+        strategy.poll()
+
+    expected_calls = [
+        call.submit(make_value_msg("test_val", mapped_route, 0)),
+        call.submit(make_value_msg("test_val", other_route, 0)),
+        call.poll(),
+        call.submit(make_value_msg("not_test_val", mapped_route, 1)),
+        call.submit(make_value_msg("not_test_val", other_route, 1)),
+        call.poll(),
+        call.submit(
+            make_value_msg(
+                FilteredPayload(),
+                Route(source="source1", waypoints=[]),
+                2,
+            )
+        ),
+        call.poll(),
+    ]
+
+    next_strategy.assert_has_calls(expected_calls)
+
+
 def test_sink() -> None:
     """
     Sends routed messages through a Sink and verifies that only the
@@ -291,7 +324,7 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch]) -> None:
         call.poll(),
         call.submit(make_msg(FilteredPayload(), mapped_route, 3)),
         call.poll(),
-        call.submit(make_value_msg("test_val", mapped_route, 1)),
+        call.submit(make_value_msg("test_val", mapped_route, 1, include_timestamp=False)),
         call.poll(),
     ]
 

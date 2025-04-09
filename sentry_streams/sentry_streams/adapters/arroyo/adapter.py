@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from typing import (
     Any,
-    List,
     Mapping,
     MutableMapping,
     MutableSequence,
@@ -25,6 +24,7 @@ from sentry_streams.adapters.arroyo.consumer import (
 )
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import (
+    BroadcastStep,
     FilterStep,
     MapStep,
     ReduceStep,
@@ -95,7 +95,7 @@ class StreamSources:
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
                     default_config=source_config.get("additional_settings", {}),
-                    bootstrap_servers=source_config.get("bootstrap_servers", "localhost: 9092"),
+                    bootstrap_servers=source_config.get("bootstrap_servers", ["localhost: 9092"]),
                     auto_offset_reset=(source_config.get("auto_offset_reset", "latest")),
                     group_id=f"pipeline-{source_name}",
                 )
@@ -243,7 +243,18 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a broadcast operator for the platform the adapter supports.
         """
-        raise NotImplementedError
+        assert (
+            stream.source in self.__consumers
+        ), f"Stream starting at source {stream.source} not found when adding a broadcast step"
+        self.__consumers[stream.source].add_step(BroadcastStep(route=stream, pipeline_step=step))
+
+        return {
+            branch.name: Route(
+                source=stream.source,
+                waypoints=[*stream.waypoints, branch.name],
+            )
+            for branch in step.routes
+        }
 
     def router(
         self,
@@ -260,7 +271,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
         routes_map: MutableMapping[str, Route] = {}
         for branch in step.routing_table.values():
-            branch_waypoints = cast(List[str], stream.waypoints) + [branch.name]
+            branch_waypoints = [*stream.waypoints, branch.name]
             branch_stream = Route(
                 source=stream.source, waypoints=cast(MutableSequence[str], branch_waypoints)
             )
