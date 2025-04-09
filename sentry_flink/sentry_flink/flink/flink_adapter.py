@@ -197,7 +197,7 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         return self.resolve_outoing_chain(step, source_stream)
 
     def sink(self, step: Sink, stream: DataStream) -> DataStreamSink:
-        config: SegmentConfig = self.resolve_segment_config(step)
+        config = self.resolve_segment_config(step)
         if config:
             producer_config = cast(KafkaProducerConfig, config["steps_config"][step.name])
         else:
