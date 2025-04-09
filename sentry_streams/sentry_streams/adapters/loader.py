@@ -48,6 +48,12 @@ def load_adapter(
         # So we need to move responsibilities from iterate_edges to the adapter
         # to have a sane type structure.
         return cast(StreamAdapter[Stream, Sink], ArroyoAdapter.build(config))
+
+    if adapter_type == "rust_arroyo":
+        from sentry_streams.adapters.arroyo import RustArroyoAdapter
+
+        # TODO: Fix this type as above.
+        return cast(StreamAdapter[Stream, Sink], RustArroyoAdapter.build(config))
     else:
         mod, cls = adapter_type.rsplit(".", 1)
 
