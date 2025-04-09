@@ -166,9 +166,8 @@ class ExtensibleChain(Chain):
                     Routes.ROUTE2: segment(name="route2")
                     .apply("transform3", Map(lambda msg: msg))
                     .sink("myoutput2", "transformed-events3"),
-                }, \
-            ) \
-        )
+                }
+            )
 
     """
 
