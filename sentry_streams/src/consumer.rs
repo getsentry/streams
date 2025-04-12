@@ -1,6 +1,13 @@
+//! This module contains the implementation of a single Arroyo consumer
+//! that runs a streaming pipeline.
+//!
+//! Each arroyo consumer represents a source in the streaming pipeline
+//! and all the steps following that source.
+//! The pipeline is built by adding RuntimeOperators to the consumer.
+
 use crate::kafka_config::PyKafkaConsumerConfig;
-use crate::steps::ArroyoStep;
-use crate::strategies::build;
+use crate::operators::build;
+use crate::operators::RuntimeOperator;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
@@ -12,27 +19,38 @@ use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 
+use pyo3::Python;
 use std::time::Duration;
 
+/// The class that represent the consumer.
+/// This class is exposed to python and it is the main entry point
+/// used by the Python adapter to build a pipeline and run it.
+///
+/// The Consumer class needs the Kafka configuration to be instantiated
+/// then RuntimeOperator are added one by one in the order a message
+/// would be processed. It is needed for the consumer to be provided
+/// the whole pipeline before an Arroyo consumer can be built because
+/// arroyo primitives have to be instantiated from the end to the
+/// beginning.
+///
 #[pyclass]
 pub struct ArroyoConsumer {
-    source: String,
-
     consumer_config: PyKafkaConsumerConfig,
 
     topic: String,
 
-    steps: Vec<Py<ArroyoStep>>,
+    steps: Vec<Py<RuntimeOperator>>,
 
+    /// The ProcessorHandle allows the main thread to stop the StreamingProcessor
+    /// from a different thread.
     handle: Option<ProcessorHandle>,
 }
 
 #[pymethods]
 impl ArroyoConsumer {
     #[new]
-    fn new(source: String, kafka_config: PyKafkaConsumerConfig, topic: String) -> Self {
+    fn new(kafka_config: PyKafkaConsumerConfig, topic: String) -> Self {
         ArroyoConsumer {
-            source,
             consumer_config: kafka_config,
             topic,
             steps: Vec::new(),
@@ -40,19 +58,17 @@ impl ArroyoConsumer {
         }
     }
 
-    fn add_step(&mut self, step: Py<ArroyoStep>) {
+    /// Add a step to the Consumer pipeline at the end of it.
+    /// This class is supposed to be instantiated by the Python adapter
+    /// so it takes the steps descriptor as a Py<RuntimeOperator>.
+    fn add_step(&mut self, step: Py<RuntimeOperator>) {
         self.steps.push(step);
     }
 
-    fn dump(&self) {
-        println!("Arroyo Consumer:");
-        println!("Source: {}", self.source);
-        for step in &self.steps {
-            println!("Step: {:?}", step);
-        }
-    }
-
-    fn run(&mut self, py: Python<'_>) {
+    /// Runs the consumer.
+    /// This method is blocking and will run until the consumer
+    /// is stopped via SIGTERM or SIGINT.
+    fn run(&mut self) {
         tracing_subscriber::fmt::init();
         println!("Running Arroyo Consumer...");
         let steps_copy = Python::with_gil(|py| {
@@ -84,6 +100,9 @@ impl ArroyoConsumer {
     }
 }
 
+/// Converts a Message<KafkaPayload> to a Message<Py<PyAny>>.
+/// It takes the Kafka payload as bytes and turns it into a
+/// Python bytes object.
 fn to_python(message: Message<KafkaPayload>) -> Message<Py<PyAny>> {
     let payload = Python::with_gil(|py| {
         let payload = message.payload().payload().unwrap();
@@ -93,7 +112,10 @@ fn to_python(message: Message<KafkaPayload>) -> Message<Py<PyAny>> {
     message.replace(payload)
 }
 
-fn build_chain(steps: &[Py<ArroyoStep>]) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
+/// Builds the Arroyo StreamProcessor for this consumer.
+/// It plugs a Commit policy at the end and a translator at the beginning
+/// that takes the payload of the Kafka message and turns it into a Py<PyAny>
+fn build_chain(steps: &[Py<RuntimeOperator>]) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
     let mut next: Box<dyn ProcessingStrategy<Py<PyAny>>> =
         Box::new(CommitOffsets::new(Duration::from_secs(5)));
     for step in steps.iter().rev() {
@@ -109,11 +131,73 @@ fn build_chain(steps: &[Py<ArroyoStep>]) -> Box<dyn ProcessingStrategy<KafkaPayl
 }
 
 struct ArroyoStreamingFactory {
-    steps: Vec<Py<ArroyoStep>>,
+    steps: Vec<Py<RuntimeOperator>>,
 }
 
 impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
     fn create(&self) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
         build_chain(&self.steps)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::operators::RuntimeOperator;
+    use crate::routes::Route;
+    use pyo3::ffi::c_str;
+    use pyo3::IntoPyObjectExt;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn test_to_python() {
+        Python::with_gil(|py| {
+            let payload_data = b"test_payload";
+            let message = Message::new_any_message(
+                KafkaPayload::new(None, None, Some(payload_data.to_vec())),
+                BTreeMap::new(),
+            );
+
+            let python_message = to_python(message);
+
+            let py_payload = python_message.payload();
+
+            let down: &Bound<PyBytes> = py_payload.bind(py).downcast().unwrap();
+            let payload_bytes: &[u8] = down.as_bytes();
+            assert_eq!(payload_bytes, payload_data);
+        });
+    }
+
+    #[test]
+    fn test_build_chain() {
+        Python::with_gil(|py| {
+            let callable = py
+                .eval(
+                    c_str!("lambda x: x.decode('utf-8') + '_transformed'"),
+                    None,
+                    None,
+                )
+                .unwrap()
+                .into_py_any(py)
+                .unwrap();
+
+            let mut steps: Vec<Py<RuntimeOperator>> = vec![];
+
+            let r = Py::new(
+                py,
+                RuntimeOperator::Map {
+                    route: Route::new("source".to_string(), vec![]),
+                    function: callable,
+                },
+            )
+            .unwrap();
+            steps.push(r);
+
+            let mut chain = build_chain(&steps);
+            let message = Message::new_any_message(
+                KafkaPayload::new(None, None, Some(b"test_payload".to_vec())),
+                BTreeMap::new(),
+            );
+            chain.submit(message).unwrap();
+        })
     }
 }

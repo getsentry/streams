@@ -1226,6 +1226,7 @@ dependencies = [
  "chrono",
  "ctrlc",
  "pyo3",
+ "rdkafka",
  "sentry_arroyo",
  "serde",
  "tracing-subscriber",
