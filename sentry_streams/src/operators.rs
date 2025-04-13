@@ -1,5 +1,5 @@
 use crate::kafka_config::PyKafkaConsumerConfig;
-use crate::routes::Route;
+use crate::routes::{Route, RoutedValue};
 use crate::transformer::build_map;
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
@@ -77,12 +77,12 @@ impl RuntimeOperator {
 
 pub fn build(
     step: &Py<RuntimeOperator>,
-    next: Box<dyn ProcessingStrategy<Py<PyAny>>>,
-) -> Box<dyn ProcessingStrategy<Py<PyAny>>> {
+    next: Box<dyn ProcessingStrategy<RoutedValue>>,
+) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     match step.get() {
-        RuntimeOperator::Map { function, .. } => {
+        RuntimeOperator::Map { function, route } => {
             let func_ref = Python::with_gil(|py| function.clone_ref(py));
-            build_map(func_ref, next)
+            build_map(route, func_ref, next)
         }
         RuntimeOperator::StreamSink { .. } => {
             // Handle StreamSink step

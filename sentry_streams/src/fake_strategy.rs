@@ -1,4 +1,5 @@
 use super::*;
+use crate::routes::RoutedValue;
 use sentry_arroyo::processing::strategies::{
     CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
 };
@@ -10,13 +11,16 @@ pub struct FakeStrategy {
     pub submitted: Arc<Mutex<Vec<Py<PyAny>>>>,
 }
 
-impl ProcessingStrategy<Py<PyAny>> for FakeStrategy {
+impl ProcessingStrategy<RoutedValue> for FakeStrategy {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         Ok(None)
     }
 
-    fn submit(&mut self, message: Message<Py<PyAny>>) -> Result<(), SubmitError<Py<PyAny>>> {
-        self.submitted.lock().unwrap().push(message.into_payload());
+    fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
+        self.submitted
+            .lock()
+            .unwrap()
+            .push(message.into_payload().payload);
         Ok(())
     }
 
