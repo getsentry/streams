@@ -8,7 +8,6 @@ from typing import (
     cast,
 )
 
-from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaProducer
 from rust_streams import (
     ArroyoConsumer,
     InitialOffset,
@@ -106,8 +105,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     def __init__(
         self,
         steps_config: Mapping[str, StepConfig],
-        sources_override: Mapping[str, KafkaConsumer] = {},
-        sinks_override: Mapping[str, KafkaProducer] = {},
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
@@ -117,12 +114,10 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     def build(
         cls,
         config: PipelineConfig,
-        sources_override: Mapping[str, KafkaConsumer] = {},
-        sinks_override: Mapping[str, KafkaProducer] = {},
     ) -> Self:
         steps_config = config["pipeline"]["segments"][0]["steps_config"]
 
-        return cls(steps_config, sources_override, sinks_override)
+        return cls(steps_config)
 
     def source(self, step: Source) -> Route:
         """
