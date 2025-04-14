@@ -2,30 +2,29 @@ from __future__ import annotations
 
 import logging
 from typing import (
-    Any,
     Mapping,
     MutableMapping,
     Self,
     cast,
 )
 
-from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaPayload, KafkaProducer
-from arroyo.processing.processor import StreamProcessor
+from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaProducer
 from rust_streams import (
     ArroyoConsumer,
     InitialOffset,
     PyKafkaConsumerConfig,
+    PyKafkaProducerConfig,
 )
 from rust_streams import Route as RustRoute
 from rust_streams import (
     RuntimeOperator,
 )
 
-from sentry_streams.adapters.arroyo.adapter import StreamSources
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.config_types import (
     KafkaConsumerConfig,
+    KafkaProducerConfig,
     StepConfig,
 )
 from sentry_streams.pipeline.function_template import (
@@ -42,6 +41,7 @@ from sentry_streams.pipeline.pipeline import (
     RoutingFuncReturnType,
     Sink,
     Source,
+    StreamSink,
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
@@ -54,11 +54,11 @@ def build_initial_offset(offset_reset: str) -> InitialOffset:
     Build the initial offset for the Kafka consumer.
     """
     if offset_reset == "earliest":
-        return InitialOffset.Earliest
+        return InitialOffset.earliest
     elif offset_reset == "latest":
-        return InitialOffset.Latest
+        return InitialOffset.latest
     elif offset_reset == "error":
-        return InitialOffset.Error
+        return InitialOffset.error
     else:
         raise ValueError(f"Invalid offset reset value: {offset_reset}")
 
@@ -89,6 +89,19 @@ def build_kafka_consumer_config(
     )
 
 
+def build_kafka_producer_config(
+    sink: str, steps_config: Mapping[str, StepConfig]
+) -> PyKafkaProducerConfig:
+    sink_config = steps_config.get(sink)
+    assert sink_config is not None, f"Config not provided for source {sink}"
+
+    producer_config = cast(KafkaProducerConfig, sink_config)
+    return PyKafkaProducerConfig(
+        bootstrap_servers=producer_config["bootstrap_servers"],
+        override_params=cast(Mapping[str, str], producer_config.get("override_params", {})),
+    )
+
+
 class RustArroyoAdapter(StreamAdapter[Route, Route]):
     def __init__(
         self,
@@ -98,13 +111,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
-        self.__sources = StreamSources(steps_config, sources_override)
-
-        # Overrides are for unit testing purposes
-        self.__sinks: MutableMapping[str, Any] = {**sinks_override}
-
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
-        self.__processors: Mapping[str, StreamProcessor[KafkaPayload]] = {}
 
     @classmethod
     def build(
@@ -143,7 +150,15 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         It is possible to override the configuration by providing an
         instantiated consumer for unit testing purposes.
         """
-        raise NotImplementedError
+        assert isinstance(step, StreamSink), "Only Stream Sinks are supported"
+        route = RustRoute(stream.source, stream.waypoints)
+
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.StreamSink(
+                route, step.stream_name, build_kafka_producer_config(step.name, self.steps_config)
+            )
+        )
+        return stream
 
     def map(self, step: Map, stream: Route) -> Route:
         """

@@ -17,12 +17,14 @@ def transform_msg(msg: Mapping[str, Any]) -> Mapping[str, Any]:
     return {**msg, "transformed": True}
 
 
-def serialize_msg(msg: Mapping[str, Any]) -> str:
-    return dumps(msg)
+def serialize_msg(msg: Mapping[str, Any]) -> bytes:
+    ret = dumps(msg).encode()
+    print(f"PROCESSING {msg}")
+    return ret
 
 
 def print_msg(msg: Any) -> Any:
-    print(msg)
+    print(f"PROCESSING {msg}")
     return msg
 
 
@@ -34,5 +36,5 @@ pipeline = (
     .apply("mymap", Map(function=parse))
     .apply("transform", Map(function=transform_msg))
     .apply("serializer", Map(function=serialize_msg))
-    .apply("printer", Map(function=print_msg))
+    .sink("mysink", "transformed-events")
 )

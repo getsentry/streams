@@ -8,9 +8,9 @@ class Route:
     def __init__(self, source: str, waypoints: Sequence[str]) -> None: ...
 
 class InitialOffset(Enum):
-    Earliest = "earliest"
-    Latest = "latest"
-    Error = "error"
+    earliest = "earliest"
+    latest = "latest"
+    error = "error"
 
 class OffsetResetConfig:
     auto_offset_reset: InitialOffset
@@ -40,7 +40,9 @@ class RuntimeOperator:
     @classmethod
     def Map(cls, route: Route, function: Callable[[Any], Any]) -> Self: ...
     @classmethod
-    def Sink(cls, route: Route, topic_name: str, kafka_config: PyKafkaProducerConfig) -> Self: ...
+    def StreamSink(
+        cls, route: Route, topic_name: str, kafka_config: PyKafkaProducerConfig
+    ) -> Self: ...
 
 class ArroyoConsumer:
     def __init__(self, source: str, kafka_config: PyKafkaConsumerConfig, topic: str) -> None: ...
