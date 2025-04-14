@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import (
+    Any,
     Callable,
     Generic,
     Mapping,
     MutableSequence,
+    Optional,
     Sequence,
+    Tuple,
     TypeVar,
     Union,
+    cast,
 )
 
 from sentry_streams.pipeline.function_template import (
@@ -39,10 +44,21 @@ from sentry_streams.pipeline.pipeline import (
 )
 from sentry_streams.pipeline.window import MeasurementUnit, Window
 
+logger = logging.getLogger(__name__)
+
+
 TRoute = TypeVar("TRoute")
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
+
+
+# a message with a generic payload
+class Message(Generic[TIn]):
+    payload: TIn
+    key: Optional[bytes]
+    value: bytes
+    headers: MutableSequence[Tuple[str, bytes]]
 
 
 @dataclass
@@ -112,6 +128,22 @@ class Reducer(Applier[InputType, OutputType], Generic[MeasurementUnit, InputType
 
 
 @dataclass
+class Parser(Applier[bytes, TOut], Generic[TOut]):
+    deserializer: Union[
+        Callable[[bytes], TOut], str
+    ]  # This has to be a type-annotated function so that the type of TOut can be inferred
+
+    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+
+        return MapStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            function=self.deserializer,
+        )
+
+
+@dataclass
 class Batch(
     Applier[InputType, MutableSequence[InputType]],
     Generic[MeasurementUnit, InputType],
@@ -141,7 +173,7 @@ class Chain(Pipeline):
         self.name = name
 
 
-class ExtensibleChain(Chain):
+class ExtensibleChain(Chain, Generic[TIn]):
     """
     Defines a streaming pipeline or a segment of a pipeline by chaining
     operators that define steps via function calls.
@@ -178,7 +210,7 @@ class ExtensibleChain(Chain):
     def _add_start(self, start: Step) -> None:
         self.__edge = start
 
-    def apply(self, name: str, applier: Applier[TIn, TOut]) -> ExtensibleChain:
+    def apply(self, name: str, applier: Applier[TIn, TOut]) -> ExtensibleChain[TOut]:
         """
         Apply a transformation to the stream. The transformation is
         defined via an `Applier`.
@@ -192,7 +224,7 @@ class ExtensibleChain(Chain):
         """
         assert self.__edge is not None
         self.__edge = applier.build_step(name, self, self.__edge)
-        return self
+        return cast(ExtensibleChain[TOut], self)
 
     def broadcast(self, name: str, routes: Sequence[Chain]) -> Chain:
         """
@@ -235,32 +267,35 @@ class ExtensibleChain(Chain):
 
         return self
 
-    def sink(self, name: str, stream_name: str) -> Chain:
+    def sink(
+        self, name: str, stream_name: str, serializer: Union[Callable[[TIn], Any], str]
+    ) -> Chain:
         """
         Terminates the pipeline.
 
         TODO: support anything other than StreamSink.
         """
         assert self.__edge is not None
-        StreamSink(name=name, ctx=self, inputs=[self.__edge], stream_name=stream_name)
+        serialized = self.apply("serializer", Map(function=serializer))
+        StreamSink(name=name, ctx=serialized, inputs=[self.__edge], stream_name=stream_name)
         return self
 
 
-def segment(name: str) -> ExtensibleChain:
+def segment(name: str) -> ExtensibleChain[TIn]:
     """
     Creates a segment of a pipeline to be referenced in existing pipelines
     in route and broadcast steps.
     """
-    pipeline: ExtensibleChain = ExtensibleChain(name)
+    pipeline: ExtensibleChain[TIn] = ExtensibleChain(name)
     pipeline._add_start(Branch(name=name, ctx=pipeline))
     return pipeline
 
 
-def streaming_source(name: str, stream_name: str) -> ExtensibleChain:
+def streaming_source(name: str, stream_name: str) -> ExtensibleChain[bytes]:
     """
     Create a pipeline that starts with a StreamingSource.
     """
-    pipeline: ExtensibleChain = ExtensibleChain("root")
+    pipeline: ExtensibleChain[bytes] = ExtensibleChain("root")
     source = StreamSource(
         name=name,
         ctx=pipeline,
@@ -280,3 +315,8 @@ def multi_chain(chains: Sequence[Chain]) -> Pipeline:
     for chain in chains:
         pipeline.add(chain)
     return pipeline
+
+
+# 1. Introduce generic linking between steps
+# 2. Flesh out source and sink by adding serialization and deserialization
+#    1. Offer a few different serializers and deserializers out of the box
