@@ -60,6 +60,12 @@ class Message(Generic[TIn]):
     # schema: ...
     additional: Optional[MutableMapping[str, Any]]
 
+    def __init__(self, value: Any) -> None:
+        self.payload = value
+
+    def replace_payload(self, p: TIn) -> None:
+        self.payload = p
+
 
 @dataclass
 class Applier(ABC, Generic[TIn, TOut]):
@@ -86,7 +92,7 @@ class Applier(ABC, Generic[TIn, TOut]):
 
 @dataclass
 class Map(Applier[TIn, TOut], Generic[TIn, TOut]):
-    function: Union[Callable[[TIn], TOut], str]
+    function: Union[Callable[[Message[TIn]], Message[TOut]], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
@@ -94,7 +100,7 @@ class Map(Applier[TIn, TOut], Generic[TIn, TOut]):
 
 @dataclass
 class Filter(Applier[TIn, TIn], Generic[TIn]):
-    function: Union[Callable[[TIn], bool], str]
+    function: Union[Callable[[Message[TIn]], bool], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FilterStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
@@ -102,7 +108,7 @@ class Filter(Applier[TIn, TIn], Generic[TIn]):
 
 @dataclass
 class FlatMap(Applier[TIn, TOut], Generic[TIn, TOut]):
-    function: Union[Callable[[TIn], TOut], str]
+    function: Union[Callable[[Message[TIn]], Message[TOut]], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
@@ -130,11 +136,10 @@ class Reducer(Applier[InputType, OutputType], Generic[MeasurementUnit, InputType
 @dataclass
 class Parser(Applier[bytes, TOut], Generic[TOut]):
     deserializer: Union[
-        Callable[[bytes], TOut], str
+        Callable[[bytes], Message[TOut]], str
     ]  # This has to be a type-annotated function so that the type of TOut can be inferred
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
-
         return MapStep(
             name=name,
             ctx=ctx,
@@ -268,7 +273,7 @@ class ExtensibleChain(Chain, Generic[TIn]):
         return self
 
     def sink(
-        self, name: str, stream_name: str, serializer: Union[Callable[[TIn], Any], str]
+        self, name: str, stream_name: str, serializer: Union[Callable[[Message[TIn]], Any], str]
     ) -> Chain:
         """
         Terminates the pipeline.

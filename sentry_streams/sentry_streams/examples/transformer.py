@@ -3,7 +3,7 @@ from json import JSONDecodeError, dumps, loads
 from typing import Any, Mapping, MutableSequence, Self, cast
 
 from sentry_streams.pipeline import Filter, streaming_source
-from sentry_streams.pipeline.chain import Parser, Reducer
+from sentry_streams.pipeline.chain import Message, Parser, Reducer
 from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.msg_parser import json_parser, json_serializer
 from sentry_streams.pipeline.window import SlidingWindow
@@ -25,8 +25,8 @@ def parse(msg: str) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], parsed)
 
 
-def filter_not_event(msg: Mapping[str, Any]) -> bool:
-    return bool(msg["type"] == "event")
+def filter_not_event(msg: Message[Mapping[str, Any]]) -> bool:
+    return bool(msg.payload["type"] == "event")
 
 
 def serialize_msg(msg: Mapping[str, Any]) -> str:
@@ -39,12 +39,13 @@ class TransformerBatch(Accumulator[Any, Any]):
         self.batch: MutableSequence[Any] = []
 
     def add(self, value: Any) -> Self:
-        self.batch.append(value["test"])
+        self.batch.append(value.payload["test"])  # deal with Message
 
         return self
 
     def get_value(self) -> Any:
-        return "".join(self.batch)
+        new_payload = "".join(self.batch)
+        return Message(new_payload)
 
     def merge(self, other: Self) -> Self:
         self.batch.extend(other.batch)
