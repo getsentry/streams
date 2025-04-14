@@ -14,6 +14,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::processing::strategies::commit_offsets::CommitOffsets;
+use sentry_arroyo::processing::strategies::noop::Noop;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::processing::strategies::ProcessingStrategyFactory;
@@ -131,7 +132,11 @@ fn build_chain(
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
     let mut next = ending_strategy;
     for step in steps.iter().rev() {
-        next = build(step, next);
+        next = build(
+            step,
+            next,
+            Box::new(CommitOffsets::new(Duration::from_secs(5))),
+        );
     }
 
     let copied_source = source.to_string();
@@ -166,11 +171,7 @@ impl ArroyoStreamingFactory {
 
 impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
     fn create(&self) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
-        build_chain(
-            &self.source,
-            &self.steps,
-            Box::new(CommitOffsets::new(Duration::from_secs(5))),
-        )
+        build_chain(&self.source, &self.steps, Box::new(Noop {}))
     }
 }
 #[cfg(test)]

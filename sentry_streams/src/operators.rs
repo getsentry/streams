@@ -1,7 +1,10 @@
-use crate::kafka_config::PyKafkaConsumerConfig;
+use crate::kafka_config::PyKafkaProducerConfig;
 use crate::routes::{Route, RoutedValue};
+use crate::sinks::StreamSink;
 use crate::transformer::build_map;
 use pyo3::prelude::*;
+use sentry_arroyo::backends::kafka::producer::KafkaProducer;
+use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
 
 /// RuntimeOperator represent a translated step in the streaming pipeline the
@@ -30,7 +33,7 @@ pub enum RuntimeOperator {
     StreamSink {
         route: Route,
         topic_name: String,
-        kafka_config: PyKafkaConsumerConfig,
+        kafka_config: PyKafkaProducerConfig,
     },
 }
 
@@ -78,15 +81,26 @@ impl RuntimeOperator {
 pub fn build(
     step: &Py<RuntimeOperator>,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
+    terminator_strategy: Box<dyn ProcessingStrategy<KafkaPayload>>,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     match step.get() {
         RuntimeOperator::Map { function, route } => {
             let func_ref = Python::with_gil(|py| function.clone_ref(py));
             build_map(route, func_ref, next)
         }
-        RuntimeOperator::StreamSink { .. } => {
-            // Handle StreamSink step
-            unimplemented!()
+        RuntimeOperator::StreamSink {
+            route,
+            topic_name,
+            kafka_config,
+        } => {
+            let producer = KafkaProducer::new(kafka_config.clone().into());
+            Box::new(StreamSink::new(
+                route.clone(),
+                producer,
+                topic_name,
+                next,
+                terminator_strategy,
+            ))
         }
     }
 }

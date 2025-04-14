@@ -47,6 +47,7 @@ impl Route {
 /// Represents a message being passed between steps in the Arroyo
 /// consumer. All messages have a Route attached to them which
 /// represents the path taken by the message in the pipeline.
+#[derive(Debug)]
 pub struct RoutedValue {
     pub route: Route,
     pub payload: Py<PyAny>, // Replace Py<PyAny> with the concrete type you need

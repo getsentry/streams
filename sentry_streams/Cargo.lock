@@ -1225,6 +1225,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "ctrlc",
+ "parking_lot",
  "pyo3",
  "rdkafka",
  "sentry_arroyo",

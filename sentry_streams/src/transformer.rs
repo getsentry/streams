@@ -50,6 +50,7 @@ mod tests {
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
     use crate::routes::Route;
+    use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
@@ -57,15 +58,6 @@ mod tests {
     use std::collections::BTreeMap;
     use std::ops::Deref;
     use std::sync::{Arc, Mutex};
-
-    fn build_routed_value(py: Python<'_>, source: &str, waypoints: Vec<String>) -> RoutedValue {
-        let msg_payload = "test_message".into_py_any(py).unwrap();
-        let route = Route::new(source.to_string(), waypoints);
-        RoutedValue {
-            route,
-            payload: msg_payload,
-        }
-    }
 
     #[test]
     fn test_build_map() {
@@ -85,7 +77,12 @@ mod tests {
 
             // Expected message
             let message = Message::new_any_message(
-                build_routed_value(py, "source1", vec!["waypoint1".to_string()]),
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
                 BTreeMap::new(),
             );
             let result = strategy.submit(message);
@@ -93,7 +90,12 @@ mod tests {
 
             // Separate route message. Not transformed
             let message2 = Message::new_any_message(
-                build_routed_value(py, "source1", vec!["waypoint2".to_string()]),
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint2".to_string()],
+                ),
                 BTreeMap::new(),
             );
             let result2 = strategy.submit(message2);
@@ -115,7 +117,12 @@ mod tests {
             let callable = make_lambda(py, c_str!("lambda x: x + '_transformed'"));
 
             let message = Message::new_any_message(
-                build_routed_value(py, "source1", vec!["waypoint1".to_string()]),
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
                 BTreeMap::new(),
             );
 

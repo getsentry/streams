@@ -3,6 +3,7 @@ mod consumer;
 mod kafka_config;
 mod operators;
 mod routes;
+mod sinks;
 mod transformer;
 
 #[cfg(test)]
