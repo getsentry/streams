@@ -148,7 +148,12 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         source_name = step.name
         self.__sources.add_source(step)
-        self.__consumers[source_name] = ArroyoConsumer(source_name)
+
+        filter = None
+        if hasattr(step, "header_filter") and step.header_filter:
+            filter = step.header_filter
+
+        self.__consumers[source_name] = ArroyoConsumer(source_name, filter)
 
         return Route(source_name, [])
 

@@ -1,19 +1,15 @@
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Mapping, MutableSequence
+from typing import Any, Mapping, MutableSequence, Optional, Tuple, Union
 
-from arroyo.backends.kafka.consumer import KafkaPayload
+from arroyo.backends.kafka.consumer import Headers, KafkaPayload
 from arroyo.processing.strategies import CommitOffsets
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
 from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import (
-    Commit,
-    Message,
-    Partition,
-)
+from arroyo.types import Commit, FilteredPayload, Message, Partition
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.steps import ArroyoStep
@@ -41,6 +37,7 @@ class ArroyoConsumer:
     """
 
     source: str
+    header_filter: Optional[Tuple[str, bytes]] = None
     steps: MutableSequence[ArroyoStep] = field(default_factory=list)
 
     def add_step(self, step: ArroyoStep) -> None:
@@ -59,9 +56,20 @@ class ArroyoConsumer:
         follow.
         """
 
-        def add_route(message: Message[KafkaPayload]) -> RoutedValue:
-            value = message.payload.value
-            return RoutedValue(route=Route(source=self.source, waypoints=[]), payload=value)
+        def add_route(message: Message[KafkaPayload]) -> Union[FilteredPayload, RoutedValue]:
+            filtered = True
+            if self.header_filter:
+                exp_k, exp_v = self.header_filter
+                headers: Headers = message.payload.headers
+                for k, v in headers:
+                    if k == exp_k and v == exp_v:
+                        filtered = False
+
+            if not filtered:
+                value = message.payload.value
+                return RoutedValue(route=Route(source=self.source, waypoints=[]), payload=value)
+            else:
+                return FilteredPayload()
 
         strategy: ProcessingStrategy[Any] = CommitOffsets(commit)
         for step in reversed(self.steps):

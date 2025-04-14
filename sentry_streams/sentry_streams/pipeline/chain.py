@@ -8,6 +8,7 @@ from typing import (
     Callable,
     Generic,
     Mapping,
+    MutableMapping,
     MutableSequence,
     Optional,
     Sequence,
@@ -56,9 +57,8 @@ TOut = TypeVar("TOut")
 # a message with a generic payload
 class Message(Generic[TIn]):
     payload: TIn
-    key: Optional[bytes]
-    value: bytes
-    headers: MutableSequence[Tuple[str, bytes]]
+    # schema: ...
+    additional: Optional[MutableMapping[str, Any]]
 
 
 @dataclass
@@ -291,15 +291,15 @@ def segment(name: str) -> ExtensibleChain[TIn]:
     return pipeline
 
 
-def streaming_source(name: str, stream_name: str) -> ExtensibleChain[bytes]:
+def streaming_source(
+    name: str, stream_name: str, header_filter: Optional[Tuple[str, bytes]] = None
+) -> ExtensibleChain[bytes]:
     """
     Create a pipeline that starts with a StreamingSource.
     """
     pipeline: ExtensibleChain[bytes] = ExtensibleChain("root")
     source = StreamSource(
-        name=name,
-        ctx=pipeline,
-        stream_name=stream_name,
+        name=name, ctx=pipeline, stream_name=stream_name, header_filter=header_filter
     )
     pipeline._add_start(source)
     return pipeline
