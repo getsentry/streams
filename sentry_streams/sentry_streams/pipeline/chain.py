@@ -315,8 +315,3 @@ def multi_chain(chains: Sequence[Chain]) -> Pipeline:
     for chain in chains:
         pipeline.add(chain)
     return pipeline
-
-
-# 1. Introduce generic linking between steps
-# 2. Flesh out source and sink by adding serialization and deserialization
-#    1. Offer a few different serializers and deserializers out of the box
