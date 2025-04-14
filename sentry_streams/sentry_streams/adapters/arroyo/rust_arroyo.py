@@ -11,13 +11,15 @@ from typing import (
 
 from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.processing.processor import StreamProcessor
-from rust_streams import (  # type: ignore
+from rust_streams import (
     ArroyoConsumer,
-    ArroyoStep,
     InitialOffset,
     PyKafkaConsumerConfig,
 )
 from rust_streams import Route as RustRoute
+from rust_streams import (
+    RuntimeOperator,
+)
 
 from sentry_streams.adapters.arroyo.adapter import StreamSources
 from sentry_streams.adapters.arroyo.routes import Route
@@ -52,11 +54,11 @@ def build_initial_offset(offset_reset: str) -> InitialOffset:
     Build the initial offset for the Kafka consumer.
     """
     if offset_reset == "earliest":
-        return InitialOffset.earliest
+        return InitialOffset.Earliest
     elif offset_reset == "latest":
-        return InitialOffset.latest
+        return InitialOffset.Latest
     elif offset_reset == "error":
-        return InitialOffset.error
+        return InitialOffset.Error
     else:
         raise ValueError(f"Invalid offset reset value: {offset_reset}")
 
@@ -71,11 +73,11 @@ def build_kafka_consumer_config(
     assert source_config is not None, f"Config not provided for source {source}"
 
     consumer_config = cast(KafkaConsumerConfig, source_config)
-    bootstrap_servers = [consumer_config["bootstrap_servers"]]
+    bootstrap_servers = consumer_config["bootstrap_servers"]
     group_id = f"pipeline-{source}"
     auto_offset_reset = build_initial_offset(consumer_config.get("auto_offset_reset", "latest"))
-    strict_offset_reset = consumer_config.get("strict_offset_reset", False)
-    override_params = consumer_config.get("override_params", {})
+    strict_offset_reset = bool(consumer_config.get("strict_offset_reset", False))
+    override_params = cast(Mapping[str, str], consumer_config.get("override_params", {}))
 
     return PyKafkaConsumerConfig(
         bootstrap_servers=bootstrap_servers,
@@ -152,7 +154,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
         route = RustRoute(stream.source, stream.waypoints)
-        self.__consumers[stream.source].add_step(ArroyoStep.new_map(route, step.resolved_function))
+        self.__consumers[stream.source].add_step(RuntimeOperator.Map(route, step.resolved_function))
         return stream
 
     def flat_map(self, step: FlatMap, stream: Route) -> Route:
