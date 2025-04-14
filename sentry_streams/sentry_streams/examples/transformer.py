@@ -54,20 +54,6 @@ class TransformerBatch(Accumulator[Any, Any]):
 
 reduce_window = SlidingWindow(window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2))
 
-# chain1 = streaming_source(
-#     name="myinput",
-#     stream_name="events",
-# )
-
-# chain2 = chain1.apply("parser", Parser(deserializer=json_parser))
-# chain3 = chain2.apply("myfilter", Filter(function=filter_not_event))
-# chain4 = chain3.apply("myreduce", Reducer(reduce_window, TransformerBatch))
-# chain5 = chain4.apply("serializer", Map(function=serialize_msg))
-# chain6 = chain5.sink(
-#     "kafkasink2", stream_name="transformed-events"
-# )  # flush the batches to the Sink
-
-
 pipeline = (
     streaming_source(
         name="myinput",
