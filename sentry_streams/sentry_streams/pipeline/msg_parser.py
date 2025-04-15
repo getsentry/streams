@@ -1,20 +1,15 @@
 from json import JSONDecodeError, dumps, loads
 from typing import Any, Mapping, cast
 
-from sentry_streams.pipeline.chain import Message
 
-
-def json_parser(msg: bytes) -> Message[Mapping[str, Any]]:
+def json_parser(msg: bytes) -> Mapping[str, Any]:
     try:
         parsed = loads(msg)
     except JSONDecodeError:
-        new_msg: Message[Mapping[str, Any]] = Message({"type": "invalid"})
-        return new_msg
+        return {"type": "invalid"}
 
-    cast(Mapping[str, Any], parsed)
-    new_msg = Message(parsed)
-    return new_msg
+    return cast(Mapping[str, Any], parsed)
 
 
-def json_serializer(msg: Message[Mapping[str, Any]]) -> Message[str]:
-    return Message(dumps(msg.payload))
+def json_serializer(msg: Mapping[str, Any]) -> str:
+    return dumps(msg)

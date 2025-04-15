@@ -4,11 +4,9 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import (
-    Any,
     Callable,
     Generic,
     Mapping,
-    MutableMapping,
     MutableSequence,
     Optional,
     Sequence,
@@ -54,19 +52,6 @@ TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 
 
-# a message with a generic payload
-class Message(Generic[TIn]):
-    payload: TIn
-    # schema: ...
-    additional: Optional[MutableMapping[str, Any]]
-
-    def __init__(self, value: Any) -> None:
-        self.payload = value
-
-    def replace_payload(self, p: TIn) -> None:
-        self.payload = p
-
-
 @dataclass
 class Applier(ABC, Generic[TIn, TOut]):
     """
@@ -91,7 +76,7 @@ class Applier(ABC, Generic[TIn, TOut]):
 
 
 @dataclass
-class Map(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
+class Map(Applier[TIn, TOut], Generic[TIn, TOut]):
     function: Union[Callable[[TIn], TOut], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -99,18 +84,16 @@ class Map(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
 
 
 @dataclass
-class Filter(Applier[Message[TIn], Message[TIn]], Generic[TIn]):
-    function: Union[Callable[[Message[TIn]], bool], str]
+class Filter(Applier[TIn, TIn], Generic[TIn]):
+    function: Union[Callable[[TIn], bool], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FilterStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
 
 
 @dataclass
-class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
-    function: Union[
-        Callable[[Message[TIn]], Message[TOut]], str
-    ]  # at type level this doesnt express an iterable
+class FlatMap(Applier[TIn, TOut], Generic[TIn, TOut]):
+    function: Union[Callable[[TIn], TOut], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
@@ -118,11 +101,11 @@ class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
 
 @dataclass
 class Reducer(
-    Applier[Message[InputType], Message[OutputType]],
+    Applier[InputType, OutputType],
     Generic[MeasurementUnit, InputType, OutputType],
 ):
     window: Window[MeasurementUnit]
-    aggregate_func: Callable[[], Accumulator[Message[InputType], OutputType]]
+    aggregate_func: Callable[[], Accumulator[InputType, OutputType]]
     aggregate_backend: AggregationBackend[OutputType] | None = None
     group_by_key: GroupBy | None = None
 
@@ -139,9 +122,9 @@ class Reducer(
 
 
 @dataclass
-class Parser(Applier[bytes, Message[TOut]], Generic[TOut]):
+class Parser(Applier[bytes, TOut], Generic[TOut]):
     deserializer: Union[
-        Callable[[bytes], Message[TOut]], str
+        Callable[[bytes], TOut], str
     ]  # This has to be a type-annotated function so that the type of TOut can be inferred
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -281,7 +264,7 @@ class ExtensibleChain(Chain, Generic[TIn]):
         self,
         name: str,
         stream_name: str,
-        serializer: Union[Callable[[Message[TIn]], Message[TOut]], str],
+        serializer: Union[Callable[[TIn], TOut], str],
     ) -> Chain:
         """
         Terminates the pipeline.

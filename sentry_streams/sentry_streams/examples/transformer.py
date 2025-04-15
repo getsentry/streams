@@ -3,7 +3,7 @@ from json import JSONDecodeError, dumps, loads
 from typing import Any, Mapping, MutableSequence, Self, cast
 
 from sentry_streams.pipeline import Filter, streaming_source
-from sentry_streams.pipeline.chain import Message, Parser, Reducer
+from sentry_streams.pipeline.chain import Parser, Reducer
 from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.msg_parser import json_parser, json_serializer
 from sentry_streams.pipeline.window import SlidingWindow
@@ -25,27 +25,26 @@ def parse(msg: str) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], parsed)
 
 
-def filter_not_event(msg: Message[Mapping[str, Any]]) -> bool:
-    return bool(msg.payload["type"] == "event")
+def filter_not_event(msg: Mapping[str, Any]) -> bool:
+    return bool(msg["type"] == "event")
 
 
 def serialize_msg(msg: Mapping[str, Any]) -> str:
     return dumps(msg)
 
 
-class TransformerBatch(Accumulator[Message[Mapping[str, Any]], Message[Mapping[str, Any]]]):
+class TransformerBatch(Accumulator[Mapping[str, Any], Mapping[str, Any]]):
 
     def __init__(self) -> None:
         self.batch: MutableSequence[Any] = []
 
-    def add(self, value: Message[Mapping[str, Any]]) -> Self:
-        self.batch.append(value.payload["test"])
+    def add(self, value: Mapping[str, Any]) -> Self:
+        self.batch.append(value["test"])
 
         return self
 
     def get_value(self) -> Any:
-        new_payload = "".join(self.batch)
-        return Message(new_payload)
+        return "".join(self.batch)
 
     def merge(self, other: Self) -> Self:
         self.batch.extend(other.batch)
@@ -54,22 +53,6 @@ class TransformerBatch(Accumulator[Message[Mapping[str, Any]], Message[Mapping[s
 
 
 reduce_window = SlidingWindow(window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2))
-
-
-# pipeline = (
-#     streaming_source(
-#         name="myinput",
-#         stream_name="events",
-#     )
-#     .apply("parser", Parser(deserializer=json_parser))
-#     .apply("myfilter", Filter(function=filter_not_event))
-#     .apply("myreduce", Reducer(reduce_window, TransformerBatch))
-#     .sink(
-#         "kafkasink2",
-#         stream_name="transformed-events",
-#         serializer=json_serializer,
-#     )  # flush the batches to the Sink
-
 
 pipeline = (
     streaming_source(
