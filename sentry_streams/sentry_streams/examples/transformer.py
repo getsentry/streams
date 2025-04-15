@@ -33,13 +33,13 @@ def serialize_msg(msg: Mapping[str, Any]) -> str:
     return dumps(msg)
 
 
-class TransformerBatch(Accumulator[Any, Any]):
+class TransformerBatch(Accumulator[Message[Mapping[str, Any]], Message[Mapping[str, Any]]]):
 
     def __init__(self) -> None:
         self.batch: MutableSequence[Any] = []
 
-    def add(self, value: Any) -> Self:
-        self.batch.append(value.payload["test"])  # deal with Message
+    def add(self, value: Message[Mapping[str, Any]]) -> Self:
+        self.batch.append(value.payload["test"])
 
         return self
 
@@ -54,6 +54,22 @@ class TransformerBatch(Accumulator[Any, Any]):
 
 
 reduce_window = SlidingWindow(window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2))
+
+
+# pipeline = (
+#     streaming_source(
+#         name="myinput",
+#         stream_name="events",
+#     )
+#     .apply("parser", Parser(deserializer=json_parser))
+#     .apply("myfilter", Filter(function=filter_not_event))
+#     .apply("myreduce", Reducer(reduce_window, TransformerBatch))
+#     .sink(
+#         "kafkasink2",
+#         stream_name="transformed-events",
+#         serializer=json_serializer,
+#     )  # flush the batches to the Sink
+
 
 pipeline = (
     streaming_source(

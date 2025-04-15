@@ -90,7 +90,7 @@ class KafkaAccumulator:
                 self.offsets[partition] = max(offsets[partition], self.offsets[partition])
 
             else:
-                self.offsets.update(offsets)
+                self.offsets[partition] = offsets[partition]
 
         return self
 

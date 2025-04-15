@@ -91,15 +91,15 @@ class Applier(ABC, Generic[TIn, TOut]):
 
 
 @dataclass
-class Map(Applier[TIn, TOut], Generic[TIn, TOut]):
-    function: Union[Callable[[Message[TIn]], Message[TOut]], str]
+class Map(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
+    function: Union[Callable[[TIn], TOut], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
 
 
 @dataclass
-class Filter(Applier[TIn, TIn], Generic[TIn]):
+class Filter(Applier[Message[TIn], Message[TIn]], Generic[TIn]):
     function: Union[Callable[[Message[TIn]], bool], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -107,17 +107,22 @@ class Filter(Applier[TIn, TIn], Generic[TIn]):
 
 
 @dataclass
-class FlatMap(Applier[TIn, TOut], Generic[TIn, TOut]):
-    function: Union[Callable[[Message[TIn]], Message[TOut]], str]
+class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
+    function: Union[
+        Callable[[Message[TIn]], Message[TOut]], str
+    ]  # at type level this doesnt express an iterable
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
 
 
 @dataclass
-class Reducer(Applier[InputType, OutputType], Generic[MeasurementUnit, InputType, OutputType]):
+class Reducer(
+    Applier[Message[InputType], Message[OutputType]],
+    Generic[MeasurementUnit, InputType, OutputType],
+):
     window: Window[MeasurementUnit]
-    aggregate_func: Callable[[], Accumulator[InputType, OutputType]]
+    aggregate_func: Callable[[], Accumulator[Message[InputType], OutputType]]
     aggregate_backend: AggregationBackend[OutputType] | None = None
     group_by_key: GroupBy | None = None
 
@@ -134,7 +139,7 @@ class Reducer(Applier[InputType, OutputType], Generic[MeasurementUnit, InputType
 
 
 @dataclass
-class Parser(Applier[bytes, TOut], Generic[TOut]):
+class Parser(Applier[bytes, Message[TOut]], Generic[TOut]):
     deserializer: Union[
         Callable[[bytes], Message[TOut]], str
     ]  # This has to be a type-annotated function so that the type of TOut can be inferred
@@ -273,7 +278,10 @@ class ExtensibleChain(Chain, Generic[TIn]):
         return self
 
     def sink(
-        self, name: str, stream_name: str, serializer: Union[Callable[[Message[TIn]], Any], str]
+        self,
+        name: str,
+        stream_name: str,
+        serializer: Union[Callable[[Message[TIn]], Message[TOut]], str],
     ) -> Chain:
         """
         Terminates the pipeline.
@@ -281,7 +289,7 @@ class ExtensibleChain(Chain, Generic[TIn]):
         TODO: support anything other than StreamSink.
         """
         assert self.__edge is not None
-        serialized = self.apply("serializer", Map(function=serializer))
+        serialized: ExtensibleChain[TOut] = self.apply("serializer", Map(function=serializer))
         StreamSink(name=name, ctx=serialized, inputs=[self.__edge], stream_name=stream_name)
         return self
 
