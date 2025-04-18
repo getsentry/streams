@@ -10,9 +10,12 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import Commit, FilteredPayload, Message, Partition
+from sentry_kafka_schemas import get_codec
+from sentry_kafka_schemas.codecs import Codec
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.steps import ArroyoStep
+from sentry_streams.pipeline.chain import Message as StreamsMessage
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +70,11 @@ class ArroyoConsumer:
 
             if not filtered:
                 value = message.payload.value
-                return RoutedValue(route=Route(source=self.source, waypoints=[]), payload=value)
+                schema: Codec[Any] = get_codec(self.source)
+                return RoutedValue(
+                    route=Route(source=self.source, waypoints=[]),
+                    payload=StreamsMessage(schema=schema, payload=value),
+                )
             else:
                 return FilteredPayload()
 

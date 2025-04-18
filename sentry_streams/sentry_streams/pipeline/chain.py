@@ -4,17 +4,22 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import (
+    Any,
     Callable,
     Generic,
     Mapping,
+    MutableMapping,
     MutableSequence,
     Optional,
     Sequence,
     Tuple,
+    Type,
     TypeVar,
     Union,
     cast,
 )
+
+from sentry_kafka_schemas.codecs import Codec
 
 from sentry_streams.pipeline.function_template import (
     Accumulator,
@@ -23,6 +28,7 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
+from sentry_streams.pipeline.msg_parser import json_parser
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
 )
@@ -47,9 +53,24 @@ logger = logging.getLogger(__name__)
 
 
 TRoute = TypeVar("TRoute")
+SchemaT = TypeVar("SchemaT")
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
+
+
+# a message with a generic payload
+class Message(Generic[TIn]):
+    payload: TIn
+    schema: Codec[Any]
+    additional: Optional[MutableMapping[str, Any]]
+
+    def __init__(self, schema: Codec[Any], payload: Any) -> None:
+        self.payload = payload
+        self.schema = schema
+
+    def replace_payload(self, p: TIn) -> None:
+        self.payload = p
 
 
 @dataclass
@@ -76,24 +97,24 @@ class Applier(ABC, Generic[TIn, TOut]):
 
 
 @dataclass
-class Map(Applier[TIn, TOut], Generic[TIn, TOut]):
-    function: Union[Callable[[TIn], TOut], str]
+class Map(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
+    function: Union[Callable[[Message[TIn]], Message[TOut]], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
 
 
 @dataclass
-class Filter(Applier[TIn, TIn], Generic[TIn]):
-    function: Union[Callable[[TIn], bool], str]
+class Filter(Applier[Message[TIn], Message[TIn]], Generic[TIn]):
+    function: Union[Callable[[Message[TIn]], bool], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FilterStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
 
 
 @dataclass
-class FlatMap(Applier[TIn, TOut], Generic[TIn, TOut]):
-    function: Union[Callable[[TIn], TOut], str]
+class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
+    function: Union[Callable[[Message[TIn]], Message[TOut]], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
@@ -101,12 +122,12 @@ class FlatMap(Applier[TIn, TOut], Generic[TIn, TOut]):
 
 @dataclass
 class Reducer(
-    Applier[InputType, OutputType],
+    Applier[Message[InputType], Message[OutputType]],
     Generic[MeasurementUnit, InputType, OutputType],
 ):
     window: Window[MeasurementUnit]
-    aggregate_func: Callable[[], Accumulator[InputType, OutputType]]
-    aggregate_backend: AggregationBackend[OutputType] | None = None
+    aggregate_func: Callable[[], Accumulator[Message[InputType], Message[OutputType]]]
+    aggregate_backend: AggregationBackend[Message[OutputType]] | None = None
     group_by_key: GroupBy | None = None
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -122,9 +143,25 @@ class Reducer(
 
 
 @dataclass
-class Parser(Applier[bytes, TOut], Generic[TOut]):
-    deserializer: Union[
-        Callable[[bytes], TOut], str
+class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
+    # deserializer: Union[
+    #     Callable[[Message[bytes]], Message[TOut]], str
+    # ]  # This has to be a type-annotated function so that the type of TOut can be inferred
+    msg_type: Type[TOut]
+
+    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        return MapStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            function=json_parser,
+        )
+
+
+@dataclass
+class Serializer(Applier[Message[TIn], str], Generic[TIn]):
+    serializer: Union[
+        Callable[[Message[TIn]], bytes], str
     ]  # This has to be a type-annotated function so that the type of TOut can be inferred
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -132,7 +169,7 @@ class Parser(Applier[bytes, TOut], Generic[TOut]):
             name=name,
             ctx=ctx,
             inputs=[previous],
-            function=self.deserializer,
+            function=self.serializer,
         )
 
 
@@ -264,7 +301,6 @@ class ExtensibleChain(Chain, Generic[TIn]):
         self,
         name: str,
         stream_name: str,
-        serializer: Union[Callable[[TIn], TOut], str],
     ) -> Chain:
         """
         Terminates the pipeline.
@@ -272,8 +308,7 @@ class ExtensibleChain(Chain, Generic[TIn]):
         TODO: support anything other than StreamSink.
         """
         assert self.__edge is not None
-        serialized: ExtensibleChain[TOut] = self.apply("serializer", Map(function=serializer))
-        StreamSink(name=name, ctx=serialized, inputs=[self.__edge], stream_name=stream_name)
+        StreamSink(name=name, ctx=self, inputs=[self.__edge], stream_name=stream_name)
         return self
 
 
@@ -289,11 +324,11 @@ def segment(name: str) -> ExtensibleChain[TIn]:
 
 def streaming_source(
     name: str, stream_name: str, header_filter: Optional[Tuple[str, bytes]] = None
-) -> ExtensibleChain[bytes]:
+) -> ExtensibleChain[Message[bytes]]:
     """
     Create a pipeline that starts with a StreamingSource.
     """
-    pipeline: ExtensibleChain[bytes] = ExtensibleChain("root")
+    pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain("root")
     source = StreamSource(
         name=name, ctx=pipeline, stream_name=stream_name, header_filter=header_filter
     )

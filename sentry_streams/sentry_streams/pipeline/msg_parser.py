@@ -1,15 +1,27 @@
-from json import JSONDecodeError, dumps, loads
-from typing import Any, Mapping, cast
+from typing import Any, TypeVar
+
+from sentry_kafka_schemas.codecs import Codec
+
+from sentry_streams.pipeline.chain import Message
+
+T = TypeVar("T")
 
 
-def json_parser(msg: bytes) -> Mapping[str, Any]:
-    try:
-        parsed = loads(msg)
-    except JSONDecodeError:
-        return {"type": "invalid"}
+def json_parser(msg: Message[bytes]) -> Message[Any]:
 
-    return cast(Mapping[str, Any], parsed)
+    schema: Codec[Any] = msg.schema
+    payload = msg.payload
+
+    decoded = schema.decode(payload, True)
+
+    return Message(schema, decoded)
 
 
-def json_serializer(msg: Mapping[str, Any]) -> str:
-    return dumps(msg)
+def json_serializer(msg: Message[Any]) -> bytes:
+
+    schema: Codec[Any] = msg.schema
+    payload = msg.payload
+
+    encoded = schema.encode(payload)
+
+    return encoded
