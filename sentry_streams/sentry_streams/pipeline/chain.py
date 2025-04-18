@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import (
-    Any,
     Callable,
     Generic,
     Mapping,
-    MutableMapping,
     MutableSequence,
     Optional,
     Sequence,
@@ -19,8 +16,6 @@ from typing import (
     cast,
 )
 
-from sentry_kafka_schemas.codecs import Codec
-
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -28,7 +23,7 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
-from sentry_streams.pipeline.msg_parser import json_parser
+from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
 )
@@ -49,28 +44,9 @@ from sentry_streams.pipeline.pipeline import (
 )
 from sentry_streams.pipeline.window import MeasurementUnit, Window
 
-logger = logging.getLogger(__name__)
-
-
 TRoute = TypeVar("TRoute")
-SchemaT = TypeVar("SchemaT")
-
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
-
-
-# a message with a generic payload
-class Message(Generic[TIn]):
-    payload: TIn
-    schema: Codec[Any]
-    additional: Optional[MutableMapping[str, Any]]
-
-    def __init__(self, schema: Codec[Any], payload: Any) -> None:
-        self.payload = payload
-        self.schema = schema
-
-    def replace_payload(self, p: TIn) -> None:
-        self.payload = p
 
 
 @dataclass
@@ -144,9 +120,9 @@ class Reducer(
 
 @dataclass
 class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
-    # deserializer: Union[
-    #     Callable[[Message[bytes]], Message[TOut]], str
-    # ]  # This has to be a type-annotated function so that the type of TOut can be inferred
+    deserializer: Union[
+        Callable[[Message[bytes]], Message[TOut]], str
+    ]  # This has to be a type-annotated function so that the type of TOut can be inferred
     msg_type: Type[TOut]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -154,12 +130,12 @@ class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
             name=name,
             ctx=ctx,
             inputs=[previous],
-            function=json_parser,
+            function=self.deserializer,
         )
 
 
 @dataclass
-class Serializer(Applier[Message[TIn], str], Generic[TIn]):
+class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
     serializer: Union[
         Callable[[Message[TIn]], bytes], str
     ]  # This has to be a type-annotated function so that the type of TOut can be inferred
@@ -175,7 +151,7 @@ class Serializer(Applier[Message[TIn], str], Generic[TIn]):
 
 @dataclass
 class Batch(
-    Applier[InputType, MutableSequence[InputType]],
+    Applier[Message[InputType], Message[MutableSequence[InputType]]],
     Generic[MeasurementUnit, InputType],
 ):
     batch_size: MeasurementUnit

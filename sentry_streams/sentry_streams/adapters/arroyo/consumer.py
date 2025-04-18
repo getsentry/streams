@@ -15,7 +15,7 @@ from sentry_kafka_schemas.codecs import Codec
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.steps import ArroyoStep
-from sentry_streams.pipeline.chain import Message as StreamsMessage
+from sentry_streams.pipeline.message import Message as StreamsMessage
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ class ArroyoConsumer:
     """
 
     source: str
+    stream_name: str
     header_filter: Optional[Tuple[str, bytes]] = None
     steps: MutableSequence[ArroyoStep] = field(default_factory=list)
 
@@ -60,17 +61,15 @@ class ArroyoConsumer:
         """
 
         def add_route(message: Message[KafkaPayload]) -> Union[FilteredPayload, RoutedValue]:
-            filtered = True
+            filtered = False
             if self.header_filter:
-                exp_k, exp_v = self.header_filter
                 headers: Headers = message.payload.headers
-                for k, v in headers:
-                    if k == exp_k and v == exp_v:
-                        filtered = False
+                if self.header_filter not in headers:
+                    filtered = True
 
             if not filtered:
                 value = message.payload.value
-                schema: Codec[Any] = get_codec(self.source)
+                schema: Codec[Any] = get_codec(self.stream_name)
                 return RoutedValue(
                     route=Route(source=self.source, waypoints=[]),
                     payload=StreamsMessage(schema=schema, payload=value),

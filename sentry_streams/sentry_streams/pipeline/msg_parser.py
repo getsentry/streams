@@ -1,27 +1,22 @@
-from typing import Any, TypeVar
+import json
+import logging
+from typing import Any
 
-from sentry_kafka_schemas.codecs import Codec
+from sentry_streams.pipeline.message import Message
 
-from sentry_streams.pipeline.chain import Message
-
-T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 def json_parser(msg: Message[bytes]) -> Message[Any]:
+    schema = msg.schema
+    assert schema is not None
 
-    schema: Codec[Any] = msg.schema
     payload = msg.payload
 
     decoded = schema.decode(payload, True)
 
-    return Message(schema, decoded)
+    return Message(decoded, schema)
 
 
 def json_serializer(msg: Message[Any]) -> bytes:
-
-    schema: Codec[Any] = msg.schema
-    payload = msg.payload
-
-    encoded = schema.encode(payload)
-
-    return encoded
+    return json.dumps(msg.payload).encode("utf-8")
