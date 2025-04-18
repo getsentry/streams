@@ -1,10 +1,14 @@
 from datetime import timedelta
-from json import JSONDecodeError, dumps, loads
-from typing import Any, Mapping, MutableSequence, Self, cast
 
-from sentry_streams.pipeline import Filter, Map, streaming_source
-from sentry_streams.pipeline.chain import Reducer
-from sentry_streams.pipeline.function_template import Accumulator
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
+
+from sentry_streams.pipeline import streaming_source
+from sentry_streams.pipeline.chain import (
+    Batch,
+    Parser,
+    Serializer,
+)
+from sentry_streams.pipeline.msg_parser import json_parser, json_serializer
 from sentry_streams.pipeline.window import SlidingWindow
 
 # The simplest possible pipeline.
@@ -15,40 +19,41 @@ from sentry_streams.pipeline.window import SlidingWindow
 # - produces the event on Kafka
 
 
-def parse(msg: str) -> Mapping[str, Any]:
-    try:
-        parsed = loads(msg)
-    except JSONDecodeError:
-        return {"type": "invalid"}
+# def parse(msg: str) -> Mapping[str, Any]:
+#     try:
+#         parsed = loads(msg)
+#     except JSONDecodeError:
+#         return {"type": "invalid"}
 
-    return cast(Mapping[str, Any], parsed)
-
-
-def filter_not_event(msg: Mapping[str, Any]) -> bool:
-    return bool(msg["type"] == "event")
+#     return cast(Mapping[str, Any], parsed)
 
 
-def serialize_msg(msg: Mapping[str, Any]) -> str:
-    return dumps(msg)
+# def filter_not_event(msg: Message[Mapping[str, Any]]) -> bool:
+#     return bool(msg.payload["type"] == "event")
 
 
-class TransformerBatch(Accumulator[Any, Any]):
+# def serialize_msg(msg: Mapping[str, Any]) -> str:
+#     return dumps(msg)
 
-    def __init__(self) -> None:
-        self.batch: MutableSequence[Any] = []
 
-    def add(self, value: Any) -> Self:
-        self.batch.append(value["test"])
+# class TransformerBatch(Accumulator[Message[IngestMetric], Message[MutableSequence[IngestMetric]]]):
 
-        return self
+#     def __init__(self) -> None:
+#         self.batch: MutableSequence[Any] = []
 
-    def get_value(self) -> Any:
-        return "".join(self.batch)
+#     def add(self, value: Message[IngestMetric]) -> Self:
+#         self.batch.append(value.payload)
+#         self.schema = value.schema
 
-    def merge(self, other: Self) -> Self:
-        self.batch.extend(other.batch)
+#         return self
 
-        return self
+#     def get_value(self) -> Any:
+#         return Message(self.schema, self.batch)
+
+#     def merge(self, other: Self) -> Self:
+#         self.batch.extend(other.batch)
+
+#         return self
 
 
 reduce_window = SlidingWindow(window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2))
@@ -56,12 +61,11 @@ reduce_window = SlidingWindow(window_size=timedelta(seconds=6), window_slide=tim
 pipeline = (
     streaming_source(
         name="myinput",
-        stream_name="events",
+        stream_name="ingest-metrics",
     )
-    .apply("mymap", Map(function=parse))
-    .apply("myfilter", Filter(function=filter_not_event))
-    .apply("myreduce", Reducer(reduce_window, TransformerBatch))
-    .apply("serializer", Map(function=serialize_msg))
+    .apply("parser", Parser(deserializer=json_parser, msg_type=IngestMetric))
+    .apply("batcher", Batch(batch_size=5))
+    .apply("serializer", Serializer(serializer=json_serializer))
     .sink(
         "kafkasink2",
         stream_name="transformed-events",

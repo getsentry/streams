@@ -14,6 +14,7 @@ from typing import (
     Optional,
     Sequence,
     Set,
+    Tuple,
     TypeVar,
     Union,
     cast,
@@ -165,6 +166,7 @@ class StreamSource(Source):
     """
 
     stream_name: str
+    header_filter: Optional[Tuple[str, bytes]] = None
     step_type: StepType = StepType.SOURCE
 
     def __post_init__(self) -> None:

@@ -90,7 +90,7 @@ class KafkaAccumulator:
                 self.offsets[partition] = max(offsets[partition], self.offsets[partition])
 
             else:
-                self.offsets.update(offsets)
+                self.offsets[partition] = offsets[partition]
 
         return self
 
@@ -280,6 +280,8 @@ def build_arroyo_windowed_reduce(
         case TumblingWindow(window_size):
 
             arroyo_acc = ArroyoAccumulator(accumulator)
+
+            logger.info(f"INITIAL VALUE {arroyo_acc.initial_value().payload}")
 
             match window_size:
                 case int():

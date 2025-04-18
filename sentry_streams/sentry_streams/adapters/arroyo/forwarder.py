@@ -28,9 +28,7 @@ class Forwarder(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
     def submit(self, message: Message[Union[FilteredPayload, RoutedValue]]) -> None:
         message_payload = message.value.payload
         if isinstance(message_payload, RoutedValue) and message_payload.route == self.__route:
-            kafka_payload = message.value.replace(
-                KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
-            )
+            kafka_payload = message.value.replace(KafkaPayload(None, message_payload.payload, []))
             self.__produce_step.submit(Message(kafka_payload))
         else:
             self.__next_step.submit(message)
