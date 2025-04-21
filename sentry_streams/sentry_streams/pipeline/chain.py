@@ -289,12 +289,12 @@ class ExtensibleChain(Chain, Generic[TIn]):
         return self
 
 
-def segment(name: str) -> ExtensibleChain[TIn]:
+def segment(name: str, msg_type: Type[TIn]) -> ExtensibleChain[Message[TIn]]:
     """
     Creates a segment of a pipeline to be referenced in existing pipelines
     in route and broadcast steps.
     """
-    pipeline: ExtensibleChain[TIn] = ExtensibleChain(name)
+    pipeline: ExtensibleChain[Message[TIn]] = ExtensibleChain(name)
     pipeline._add_start(Branch(name=name, ctx=pipeline))
     return pipeline
 
