@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import (
+    Any,
     Callable,
     Generic,
     Mapping,
@@ -120,10 +121,10 @@ class Reducer(
 
 @dataclass
 class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
+    msg_type: Type[TOut]
     deserializer: Union[
         Callable[[Message[bytes]], Message[TOut]], str
     ]  # This has to be a type-annotated function so that the type of TOut can be inferred
-    msg_type: Type[TOut]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(
@@ -137,7 +138,7 @@ class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
 @dataclass
 class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
     serializer: Union[
-        Callable[[Message[TIn]], bytes], str
+        Callable[[Message[Any]], bytes], str
     ]  # This has to be a type-annotated function so that the type of TOut can be inferred
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:

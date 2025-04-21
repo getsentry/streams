@@ -34,7 +34,9 @@ class BatchBuilder(Accumulator[Message[InputType], Message[MutableSequence[Input
         return self
 
 
-def unbatch(batch: MutableSequence[InputType]) -> Generator[InputType, None, None]:
+def unbatch(
+    batch: Message[MutableSequence[InputType]],
+) -> Generator[Message[InputType], None, None]:
     """
     Takes in a generic batch representation, outputs a Generator type for iterating over
     individual elements which compose the batch.
@@ -42,5 +44,7 @@ def unbatch(batch: MutableSequence[InputType]) -> Generator[InputType, None, Non
     The data type of the elements remains the same through this operation. This operation
     may need to be followed by a Map or other transformation if a new output type is expected.
     """
-    for message in batch:
-        yield message
+    schema = batch.schema
+
+    for payload in batch.payload:
+        yield Message(payload, schema)
