@@ -281,8 +281,6 @@ def build_arroyo_windowed_reduce(
 
             arroyo_acc = ArroyoAccumulator(accumulator)
 
-            logger.info(f"INITIAL VALUE {arroyo_acc.initial_value().payload}")
-
             match window_size:
                 case int():
                     return Reduce(

@@ -149,13 +149,12 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         source_name = step.name
         self.__sources.add_source(step)
 
-        filter = None
-        if hasattr(step, "header_filter") and step.header_filter:
-            filter = step.header_filter
+        # This is the Arroyo adapter, and it only supports consuming from StreamSource anyways
+        assert isinstance(step, StreamSource)
 
-        assert hasattr(step, "stream_name")
-
-        self.__consumers[source_name] = ArroyoConsumer(source_name, step.stream_name, filter)
+        self.__consumers[source_name] = ArroyoConsumer(
+            source_name, step.stream_name, step.header_filter
+        )
 
         return Route(source_name, [])
 
