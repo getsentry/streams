@@ -69,7 +69,11 @@ class ArroyoConsumer:
 
             if not filtered:
                 value = message.payload.value
-                schema: Codec[Any] = get_codec(self.stream_name)
+                try:
+                    schema: Codec[Any] = get_codec(self.stream_name)
+                except Exception:
+                    raise ValueError(f"Kafka topic {self.stream_name} has no associated schema")
+
                 return RoutedValue(
                     route=Route(source=self.source, waypoints=[]),
                     payload=StreamsMessage(schema=schema, payload=value),
