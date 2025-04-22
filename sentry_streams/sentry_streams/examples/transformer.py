@@ -47,16 +47,24 @@ class TransformerBatch(Accumulator[Message[IngestMetric], Message[MutableSequenc
 
 reduce_window = SlidingWindow(window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2))
 
-pipeline = streaming_source(name="myinput", stream_name="ingest-metrics")
+pipeline = streaming_source(
+    name="myinput", stream_name="ingest-metrics"
+)  # ExtensibleChain[Message[bytes]]
 
-chain2 = pipeline.apply("parser", Parser(msg_type=IngestMetric, deserializer=json_parser))
+chain1 = pipeline.apply(
+    "parser", Parser(msg_type=IngestMetric, deserializer=json_parser)
+)  # ExtensibleChain[Message[IngestMetric]]
 
-chain3 = chain2.apply("batcher", Reducer(reduce_window, TransformerBatch))
+chain2 = chain1.apply(
+    "custom_batcher", Reducer(reduce_window, TransformerBatch)
+)  # ExtensibleChain[Message[MutableSequence[IngestMetric]]]
 
-chain4 = chain3.apply(
+chain3 = chain2.apply(
     "serializer",
     Serializer(serializer=json_serializer),
-).sink(
+)  # ExtensibleChain[bytes]
+
+chain4 = chain3.sink(
     "kafkasink2",
     stream_name="transformed-events",
-)  # flush the batches to the Sink
+)  # Chain

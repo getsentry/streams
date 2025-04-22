@@ -8,7 +8,7 @@ def json_parser(msg: Message[bytes]) -> Message[Any]:
     schema = msg.schema
     assert (
         schema is not None
-    )  # Message cannot be deserialized without a schema, this should be automatically inferred by stream sources
+    )  # Message cannot be deserialized without a schema, it is automatically inferred from the stream source
 
     payload = msg.payload
 

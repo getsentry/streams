@@ -67,7 +67,9 @@ class ArroyoConsumer:
                 if self.header_filter not in headers:
                     filtered = True
 
-            if not filtered:
+            if filtered:
+                return FilteredPayload()
+            else:
                 value = message.payload.value
                 try:
                     schema: Codec[Any] = get_codec(self.stream_name)
@@ -78,8 +80,6 @@ class ArroyoConsumer:
                     route=Route(source=self.source, waypoints=[]),
                     payload=StreamsMessage(schema=schema, payload=value),
                 )
-            else:
-                return FilteredPayload()
 
         strategy: ProcessingStrategy[Any] = CommitOffsets(commit)
         for step in reversed(self.steps):
