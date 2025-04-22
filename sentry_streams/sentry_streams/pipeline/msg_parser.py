@@ -3,6 +3,9 @@ from typing import Any
 
 from sentry_streams.pipeline.message import Message
 
+# Standard message decoders and encoders live here
+# Choose between transports like JSON, protobuf
+
 
 def json_parser(msg: Message[bytes]) -> Message[Any]:
     schema = msg.schema
