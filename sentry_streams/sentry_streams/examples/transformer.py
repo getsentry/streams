@@ -12,7 +12,7 @@ from sentry_streams.pipeline.chain import (
 )
 from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.message import Message
-from sentry_streams.pipeline.msg_parser import json_parser, json_serializer
+from sentry_streams.pipeline.msg_parser import msg_parser, msg_serializer
 from sentry_streams.pipeline.window import SlidingWindow
 
 # The simplest possible pipeline.
@@ -52,7 +52,7 @@ pipeline = streaming_source(
 )  # ExtensibleChain[Message[bytes]]
 
 chain1 = pipeline.apply(
-    "parser", Parser(msg_type=IngestMetric, deserializer=json_parser)
+    "parser", Parser(msg_type=IngestMetric, deserializer=msg_parser)
 )  # ExtensibleChain[Message[IngestMetric]]
 
 chain2 = chain1.apply(
@@ -61,7 +61,7 @@ chain2 = chain1.apply(
 
 chain3 = chain2.apply(
     "serializer",
-    Serializer(serializer=json_serializer),
+    Serializer(serializer=msg_serializer),
 )  # ExtensibleChain[bytes]
 
 chain4 = chain3.sink(
