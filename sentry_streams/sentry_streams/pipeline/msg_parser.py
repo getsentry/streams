@@ -1,4 +1,3 @@
-import json
 from typing import Any
 
 from sentry_streams.pipeline.message import Message
@@ -7,18 +6,25 @@ from sentry_streams.pipeline.message import Message
 # Choose between transports like JSON, protobuf
 
 
-def json_parser(msg: Message[bytes]) -> Message[Any]:
-    schema = msg.schema
-    assert (
-        schema is not None
-    )  # Message cannot be deserialized without a schema, it is automatically inferred from the stream source
-
+def msg_parser(msg: Message[bytes]) -> Message[Any]:
+    codec = msg.schema
     payload = msg.payload
 
-    decoded = schema.decode(payload, True)
+    assert (
+        codec is not None
+    )  # Message cannot be deserialized without a schema, it is automatically inferred from the stream source
 
-    return Message(decoded, schema)
+    decoded = codec.decode(payload, True)
+
+    return Message(decoded, codec)
 
 
-def json_serializer(msg: Message[Any]) -> bytes:
-    return json.dumps(msg.payload).encode("utf-8")
+def msg_serializer(msg: Message[Any]) -> bytes:
+    codec = msg.schema
+    payload = msg.payload
+
+    assert codec is not None
+
+    encoded = codec.encode(payload, False)
+
+    return encoded
