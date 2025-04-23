@@ -2,8 +2,9 @@ from typing import Any
 
 from sentry_streams.pipeline.message import Message
 
+# TODO: Push the following to docs
 # Standard message decoders and encoders live here
-# Choose between transports like JSON, protobuf
+# Pass these into Parser() and Serializer() steps, see examples/
 
 
 def msg_parser(msg: Message[bytes]) -> Message[Any]:

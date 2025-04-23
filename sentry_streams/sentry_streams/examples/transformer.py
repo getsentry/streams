@@ -52,7 +52,10 @@ pipeline = streaming_source(
 )  # ExtensibleChain[Message[bytes]]
 
 chain1 = pipeline.apply(
-    "parser", Parser(msg_type=IngestMetric, deserializer=msg_parser)
+    "parser",
+    Parser(
+        msg_type=IngestMetric, deserializer=msg_parser
+    ),  # pass in the standard message parser function
 )  # ExtensibleChain[Message[IngestMetric]]
 
 chain2 = chain1.apply(
@@ -61,7 +64,7 @@ chain2 = chain1.apply(
 
 chain3 = chain2.apply(
     "serializer",
-    Serializer(serializer=msg_serializer),
+    Serializer(serializer=msg_serializer),  # pass in the standard message serializer function
 )  # ExtensibleChain[bytes]
 
 chain4 = chain3.sink(
