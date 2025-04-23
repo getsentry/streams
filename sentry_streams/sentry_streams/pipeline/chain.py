@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import (
-    Any,
     Callable,
     Generic,
     Mapping,
@@ -25,6 +24,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.msg_parser import msg_parser, msg_serializer
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
 )
@@ -122,31 +122,28 @@ class Reducer(
 @dataclass
 class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
     msg_type: Type[TOut]
-    deserializer: Union[
-        Callable[[Message[bytes]], Message[TOut]], str
-    ]  # This has to be a type-annotated function so that the type of TOut can be inferred
+    # deserializer: Union[
+    #     Callable[[Message[bytes]], Message[TOut]], str
+    # ]  # This has to be a type-annotated function so that the type of TOut can be inferred
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(
             name=name,
             ctx=ctx,
             inputs=[previous],
-            function=self.deserializer,
+            function=msg_parser,
         )
 
 
 @dataclass
 class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
-    serializer: Union[
-        Callable[[Message[Any]], bytes], str
-    ]  # This has to be a type-annotated function so that the type of TOut can be inferred
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(
             name=name,
             ctx=ctx,
             inputs=[previous],
-            function=self.serializer,
+            function=msg_serializer,
         )
 
 
