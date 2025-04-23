@@ -21,7 +21,7 @@ def _merge_labels(
     return {**tpl_labels, **seg_labels}
 
 
-def _apply_namespace(
+def apply_namespace(
     k8s_resources: List[K8sConfigMapManifest | K8sDeploymentManifest],
     namespace: str | None = None,
 ) -> None:
@@ -163,7 +163,7 @@ def main() -> None:
     parser.add_argument(
         "--namespace",
         type=str,
-        help="Namespace for deployment and configmap.",
+        help="Namespace for deployments and configmap.",
     )
     args = parser.parse_args()
 
@@ -183,7 +183,7 @@ def main() -> None:
         )
     ]
 
-    _apply_namespace(k8s_resources, args.namespace)
+    apply_namespace(k8s_resources, args.namespace)
 
     # default_flow_style=False - always dump in the block style, never inline
     yaml.dump_all(

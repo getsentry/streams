@@ -1,0 +1,11 @@
+FROM python:3.13
+
+RUN pip install uv
+
+ADD src /src
+
+RUN uv venv
+RUN uv pip install -e /src/
+RUN uv pip install kopf kubernetes
+
+# CMD kopf run /src/handlers.py --verbose

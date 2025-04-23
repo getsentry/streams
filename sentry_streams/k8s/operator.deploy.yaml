@@ -1,0 +1,132 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: streams-operator-pipelines
+  namespace: streams-operator
+  labels:
+    service: streams-operator
+data:
+  events.yaml: |
+    env:
+      topics:
+        events: events
+        transformed-events: transformed-events
+        transformed-events-2: transformed-events-2
+
+    pipeline:
+      name: "events-pipeline"
+      segments:
+        - parallelism: 2
+          steps_config:
+            myinput:
+              starts_segment: true
+              bootstrap_servers: 'kafka:9093'
+        - parallelism: 3
+          steps_config:
+            kafkasink:
+              bootstrap_servers: 'kafka:9093'
+  transactions.yaml: |
+    env:
+      topics:
+        events: events
+        transformed-events: transformed-events
+        transformed-events-2: transformed-events-2
+
+    pipeline:
+      name: "transactions-pipeline"
+      segments:
+        - parallelism: 2
+          steps_config:
+            myinput:
+              starts_segment: true
+              bootstrap_servers: 'kafka:9093'
+  crons.yaml: |
+    env:
+      topics:
+        events: events
+        transformed-events: transformed-events
+        transformed-events-2: transformed-events-2
+
+    pipeline:
+      name: "crons-pipeline"
+      segments:
+        - parallelism: 2
+          steps_config:
+            myinput:
+              starts_segment: true
+              bootstrap_servers: 'kafka:9093'
+  issues.yaml: |
+    env:
+      topics:
+        events: events
+        transformed-events: transformed-events
+        transformed-events-2: transformed-events-2
+
+    pipeline:
+      name: "issues-pipeline"
+      segments:
+        - parallelism: 2
+          steps_config:
+            myinput:
+              starts_segment: true
+              bootstrap_servers: 'kafka:9093'
+  replay.yaml: |
+    env:
+      topics:
+        events: events
+        transformed-events: transformed-events
+        transformed-events-2: transformed-events-2
+
+    pipeline:
+      name: "replay-pipeline"
+      segments:
+        - parallelism: 2
+          steps_config:
+            myinput:
+              starts_segment: true
+              bootstrap_servers: 'kafka:9093'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streams-operator
+  namespace: streams-operator
+  labels:
+    service: streams-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: streams-operator
+  template:
+    metadata:
+      labels:
+        service: streams-operator
+    spec:
+      serviceAccountName: streams-operator-serviceaccount
+      containers:
+        - name: streams-operator
+          image: "streams-k8s-operator:latest"
+          imagePullPolicy: Never
+          command:
+            - "/.venv/bin/kopf"
+            - "run"
+            - "/src/sentry_streams/k8s/operator/handlers.py"
+            - "--verbose"
+          volumeMounts:
+            - name: pipelines
+              mountPath: "/etc/streams/pipelines/"
+          env:
+            - name: STREAMS_PIPELINES_CONFIGMAP
+              value: streams-operator-pipelines
+            - name: STREAMS_PIPELINE_CONFIGS_DIR
+              value: "/etc/streams/pipelines/"
+            - name: STREAMS_DEPLOYMENT_TEMPLATES_DIR
+              value: "/etc/streams/deployment_templates/"
+            - name: STREAMS_CONFIGMAP_TEMPLATES_DIR
+              value: "/etc/streams/configmap_templates/"
+      volumes:
+        - name: pipelines
+          configMap:
+            name: streams-operator-pipelines
