@@ -37,47 +37,6 @@ pub enum RuntimeOperator {
     },
 }
 
-/*
-#[pymethods]
-impl RuntimeOperator {
-    #[staticmethod]
-    pub fn new_map(route: Route, function: Py<PyAny>) -> Self {
-        RuntimeOperator::Map { route, function }
-    }
-
-    #[staticmethod]
-    pub fn new_filter(route: Route, function: Py<PyAny>) -> Self {
-        RuntimeOperator::Filter { route, function }
-    }
-
-    #[staticmethod]
-    pub fn new_router(
-        route: Route,
-        routing_function: Py<PyAny>,
-        branch_names: std::collections::HashSet<String>,
-    ) -> Self {
-        RuntimeOperator::Router {
-            route,
-            routing_function,
-            branch_names,
-        }
-    }
-
-    #[staticmethod]
-    pub fn new_stream_sink(
-        route: Route,
-        topic_name: String,
-        kafka_config: PyKafkaConsumerConfig,
-    ) -> Self {
-        RuntimeOperator::StreamSink {
-            route,
-            topic_name,
-            kafka_config,
-        }
-    }
-}
-*/
-
 pub fn build(
     step: &Py<RuntimeOperator>,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
