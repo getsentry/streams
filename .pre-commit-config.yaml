@@ -43,6 +43,13 @@ repos:
           types-pyYAML,
         ]
         files: ^sentry_streams/.+
+    -   id: mypy
+        args: [--config-file, sentry_streams_operator/mypy.ini, --strict]
+        additional_dependencies: [
+          pytest==7.1.2,
+          types-pyYAML,
+        ]
+        files: ^sentry_streams_operator/.+
   - repo: https://github.com/pycqa/isort
     rev: 6.0.0
     hooks:
@@ -50,6 +57,10 @@ repos:
         name: isort (python)
         files: ^sentry_streams/.+
         args: [--settings-path=./sentry_streams/pyproject.toml]
+      - id: isort
+        name: isort (python)
+        files: ^sentry_streams_operator/.+
+        args: [--settings-path=./sentry_streams_operator/pyproject.toml]
       - id: isort
         name: isort (python)
         files: ^sentry_flink/.+
