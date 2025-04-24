@@ -63,7 +63,7 @@ def main() -> None:
         "--name-prefix", type=str, help="Prefix to resource names.", default="streams-operator"
     )
     with (
-        importlib.resources.files("sentry_streams")
+        importlib.resources.files("sentry_streams_operator")
         .joinpath("k8s/templates/operator_rbac.yaml")
         .open("r") as template_file
     ):

@@ -130,7 +130,7 @@ def main() -> None:
         "--deployment-template",
         type=argparse.FileType("r"),
         help="Path to a deployment template file.",
-        default=importlib.resources.files("sentry_streams")
+        default=importlib.resources.files("sentry_streams_operator")
         .joinpath("k8s/templates/deployment.yaml")
         .open("r"),
     )
@@ -138,7 +138,7 @@ def main() -> None:
         "--configmap-template",
         type=argparse.FileType("r"),
         help="Path to a configmap template file.",
-        default=importlib.resources.files("sentry_streams")
+        default=importlib.resources.files("sentry_streams_operato")
         .joinpath("k8s/templates/configmap.yaml")
         .open("r"),
     )
