@@ -95,7 +95,7 @@ class StreamsOperator:
     def create_or_patch_configmap(self, body):
         name, namespace = body["metadata"]["name"], body["metadata"]["namespace"]
         try:
-            api_res = self.core_v1_client.read_namespaced_config_map(name=name, namespace=namespace)
+            self.core_v1_client.read_namespaced_config_map(name=name, namespace=namespace)
         except K8sApiException as exc:
             if exc.status == 404:
                 # Create a new configmap.
@@ -109,7 +109,7 @@ class StreamsOperator:
     def create_or_patch_deployment(self, body):
         name, namespace = body["metadata"]["name"], body["metadata"]["namespace"]
         try:
-            api_res = self.apps_v1_client.read_namespaced_deployment(name=name, namespace=namespace)
+            self.apps_v1_client.read_namespaced_deployment(name=name, namespace=namespace)
         except K8sApiException as exc:
             if exc.status == 404:
                 self.logger.info(f"Create deployment {name=}")
