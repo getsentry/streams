@@ -7,7 +7,7 @@ import kubernetes
 import yaml
 from kubernetes.client.exceptions import ApiException as K8sApiException
 
-from sentry_streams.k8s.generate import (
+from sentry_streams_operator.generate import (
     apply_namespace,
     generate_configmap,
     generate_deployments,
@@ -29,13 +29,13 @@ class StreamsOperator:
         self.logger = logging.getLogger("streams_operator")
 
         self.deployment_template = yaml.safe_load(
-            importlib.resources.files("sentry_streams")
-            .joinpath("k8s/templates/deployment.yaml")
+            importlib.resources.files("sentry_streams_operator")
+            .joinpath("templates/deployment.yaml")
             .open("r"),
         )
         self.configmap_template = yaml.safe_load(
-            importlib.resources.files("sentry_streams")
-            .joinpath("k8s/templates/configmap.yaml")
+            importlib.resources.files("sentry_streams_operator")
+            .joinpath("templates/configmap.yaml")
             .open("r"),
         )
         self.image = "sleep"
@@ -137,4 +137,5 @@ streams_operator.register_handlers()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     streams_operator.configure(streams_operator.logger)
