@@ -12,6 +12,6 @@ spec:
       labels: {}
     spec:
       containers:
-        - name: segment 
+        - name: segment
           image: ~
           command: ["python", "-m", "sentry_streams.runner"]

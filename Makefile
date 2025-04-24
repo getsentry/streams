@@ -3,10 +3,12 @@ install-dev:
 	which uv || (curl -LsSf https://astral.sh/uv/install.sh | sh)
 	uv sync --project ./sentry_streams
 	PROJECT_ROOT=`pwd`/sentry_flink uv sync --project ./sentry_flink
+	PROJECT_ROOT=`pwd`/sentry_streams_operator uv sync --project ./sentry_streams_operator
 .PHONY: install-dev
 
 install-pre-commit-hook:
 	./sentry_streams/.venv/bin/pre-commit install --install-hooks
+	./sentry_streams_operator/.venv/bin/pre-commit install --install-hooks
 .PHONY: install-pre-commit-hook
 
 tests-streams:

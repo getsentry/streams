@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentry-streams-operator"
+version = "0.0.1"
+description = "The python Sentry Streaming k8s Operator"
+readme = "README.md"
+
+requires-python = ">=3.11"
+dependencies = [
+    "kopf",
+    "kubernetes",
+    "sentry-streams",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14.1",
+    "pre-commit>=4.1.0",
+    "pytest>=8.3.4",
+]
+
+[tool.setuptools]
+packages = ["sentry_streams_operator"]
+
+[tool.setuptools.package-data]
+sentry_streams = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "0.0.1"
+addopts = "-ra -q"
+testpaths = ["tests"]
+
+[tool.black]
+# File filtering is taken care of in pre-commit.
+line-length = 100
+
+[tool.isort]
+profile = "black"
