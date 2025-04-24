@@ -1,6 +1,7 @@
 import importlib.resources
 import logging
 import os
+from typing import Self
 
 import kopf
 import kubernetes
@@ -12,19 +13,17 @@ from sentry_streams_operator.generate import (
     generate_configmap,
     generate_deployments,
 )
+from sentry_streams_operator.settings import load_settings_from_envvar
 
 
 class StreamsOperator:
     PIPELINES_CONFIGMAP: str
 
-    def __init__(self):
+    def __init__(self, settings):
+        self.settings = settings
         self.PIPELINES_CONFIGMAP = os.getenv(
             "STREAMS_PIPELINES_CONFIGMAP",
             "streams-operator-pipelines",
-        )
-        self.NAMESPACE = os.getenv(
-            "STREAMS_OPERATOR_NAMESPACE",
-            "streams-operator",
         )
         self.logger = logging.getLogger("streams_operator")
 
@@ -38,14 +37,12 @@ class StreamsOperator:
             .joinpath("templates/configmap.yaml")
             .open("r"),
         )
-        self.image = "sleep"
-        self.container_name = "segment"
 
         # Default to running in k8s cluster
-        if os.getenv("STREAMS_OPERATOR_INCLUSTER", True) in ("False", "false"):
-            kubernetes.config.load_kube_config()
-        else:
+        if settings.incluster:
             kubernetes.config.load_incluster_config()
+        else:
+            kubernetes.config.load_kube_config()
 
         self.core_v1_client = kubernetes.client.CoreV1Api()
         self.apps_v1_client = kubernetes.client.AppsV1Api()
@@ -60,7 +57,7 @@ class StreamsOperator:
     def read_pipelines_configmap(self):
         api_res = self.core_v1_client.read_namespaced_config_map(
             self.PIPELINES_CONFIGMAP,
-            self.NAMESPACE,
+            self.settings.namespace,
         )
         self.logger.info(f"{api_res=}")
         self.logger.info(f"{api_res.data=}")
@@ -77,17 +74,17 @@ class StreamsOperator:
             cm = generate_configmap(
                 config=pipeline_config, configmap_template=self.configmap_template
             )
-            apply_namespace(k8s_resources=[cm], namespace=self.NAMESPACE)
+            apply_namespace(k8s_resources=[cm], namespace=self.settings.namespace)
 
             self.create_or_patch_configmap(body=cm)
 
             deployments = generate_deployments(
                 config=pipeline_config,
                 deployment_template=self.deployment_template,
-                image=self.image,
-                container_name=self.container_name,
+                image=self.settings.container_image,
+                container_name=self.settings.container_name,
             )
-            apply_namespace(k8s_resources=deployments, namespace=self.NAMESPACE)
+            apply_namespace(k8s_resources=deployments, namespace=self.settings.namespace)
 
             for deployment in deployments:
                 self.create_or_patch_deployment(body=deployment)
@@ -118,7 +115,7 @@ class StreamsOperator:
                 raise
         # do not patch the image
         for container in body["spec"]["template"]["spec"]["containers"]:
-            if container["name"] == self.container_name:
+            if container["name"] == self.settings.container_name:
                 del container["image"]
         self.apps_v1_client.patch_namespaced_deployment(name=name, namespace=namespace, body=body)
 
@@ -131,11 +128,7 @@ class StreamsOperator:
             self.configure
         )
 
-
-streams_operator = StreamsOperator()
-streams_operator.register_handlers()
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    streams_operator.configure(streams_operator.logger)
+    @classmethod
+    def from_env(cls) -> Self:
+        settings = load_settings_from_envvar()
+        return cls(settings)

@@ -35,4 +35,4 @@ k8s-list:
 
 .PHONY: single-run
 single-run:
-	STREAMS_OPERATOR_INCLUSTER=false python -m sentry_streams_operator.operator.handlers
+	SENTRY_STREAMS_OPERATOR_INCLUSTER=false python -m sentry_streams_operator.runenv

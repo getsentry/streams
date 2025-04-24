@@ -19,6 +19,10 @@ tests-flink:
 	./sentry_flink/.venv/bin/pytest -vv sentry_flink/tests
 .PHONY: tests-flink
 
+tests-operator:
+	./sentry_streams_operator/.venv/bin/pytest -vv sentry_streams_operator/tests
+.PHONY: tests-operator
+
 typecheck:
 	./sentry_streams/.venv/bin/mypy --config-file sentry_streams/mypy.ini --strict sentry_streams/sentry_streams/
 	./sentry_flink/.venv/bin/mypy --config-file sentry_flink/mypy.ini --strict sentry_flink/sentry_flink/
