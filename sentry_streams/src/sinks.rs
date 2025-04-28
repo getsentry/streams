@@ -12,7 +12,7 @@ use pyo3::types::PyBytes;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::backends::Producer;
 use sentry_arroyo::processing::strategies::MessageRejected;
-use sentry_arroyo::types::{Message, Topic, TopicOrPartition};
+use sentry_arroyo::types::{Message, Topic};
 
 use sentry_arroyo::processing::strategies::produce::Produce;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
@@ -75,6 +75,7 @@ impl StreamSink {
     pub fn new(
         route: Route,
         producer: impl Producer<KafkaPayload> + 'static,
+        concurrency_config: &ConcurrencyConfig,
         topic: &str,
         next_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
         terminator_strategy: Box<dyn ProcessingStrategy<KafkaPayload>>,
@@ -82,8 +83,8 @@ impl StreamSink {
         let produce_strategy = Produce::new(
             terminator_strategy,
             producer,
-            &ConcurrencyConfig::new(1),
-            TopicOrPartition::from(Topic::new(topic)),
+            concurrency_config,
+            Topic::new(topic).into(),
         );
 
         StreamSink {
@@ -145,6 +146,7 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
                 Err(SubmitError::MessageRejected(MessageRejected {
                     message: transformed_message,
                 })) => {
+                    println!("Message rejected: {:?}", transformed_message);
                     self.message_carried_over = Some(transformed_message);
                 }
                 Err(SubmitError::InvalidMessage(invalid_message)) => {
@@ -180,10 +182,15 @@ mod tests {
     use crate::test_operators::make_routed_msg;
     use parking_lot::Mutex;
     use sentry_arroyo::backends::local::broker::LocalBroker;
+
     use sentry_arroyo::backends::local::LocalProducer;
+
     use sentry_arroyo::backends::storages::memory::MemoryMessageStorage;
+
     use sentry_arroyo::processing::strategies::noop::Noop;
+    use sentry_arroyo::types::Topic;
     use sentry_arroyo::utils::clock::TestingClock;
+
     use std::ops::Deref;
     use std::sync::Arc;
     use std::sync::Mutex as RawMutex;
@@ -226,9 +233,11 @@ mod tests {
         };
         let terminator = Noop {};
 
+        let concurrency_config = ConcurrencyConfig::new(1);
         let mut sink = StreamSink::new(
             Route::new("source".to_string(), vec!["wp1".to_string()]),
             producer,
+            &concurrency_config,
             "result-topic",
             Box::new(next_step),
             Box::new(terminator),
@@ -260,6 +269,7 @@ mod tests {
                 vec!["wp1".to_string()],
             );
             sink.submit(message).unwrap();
+            sink.poll().unwrap();
             let expected_messages = vec![PyBytes::new(py, b"test_message").into_any().unbind()];
             let actual_messages = submitted_messages_clone.lock().unwrap();
             assert_messages_match(py, expected_messages, actual_messages.deref());

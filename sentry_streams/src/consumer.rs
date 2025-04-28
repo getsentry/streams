@@ -16,11 +16,13 @@ use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::processing::strategies::commit_offsets::CommitOffsets;
 use sentry_arroyo::processing::strategies::noop::Noop;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
+use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::processing::strategies::ProcessingStrategyFactory;
 use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
+use std::sync::Arc;
 
 use pyo3::Python;
 use std::time::Duration;
@@ -49,6 +51,10 @@ pub struct ArroyoConsumer {
     /// The ProcessorHandle allows the main thread to stop the StreamingProcessor
     /// from a different thread.
     handle: Option<ProcessorHandle>,
+
+    // this variable must live for the lifetime of the entire consumer.
+    // This is a requirement of Arroyo Rust.
+    concurrency_config: Arc<ConcurrencyConfig>,
 }
 
 #[pymethods]
@@ -61,6 +67,7 @@ impl ArroyoConsumer {
             source,
             steps: Vec::new(),
             handle: None,
+            concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
         }
     }
 
@@ -78,7 +85,11 @@ impl ArroyoConsumer {
         tracing_subscriber::fmt::init();
         println!("Running Arroyo Consumer...");
 
-        let factory = ArroyoStreamingFactory::new(self.source.clone(), &self.steps);
+        let factory = ArroyoStreamingFactory::new(
+            self.source.clone(),
+            &self.steps,
+            self.concurrency_config.clone(),
+        );
         let config = self.consumer_config.clone().into();
         let processor = StreamProcessor::with_kafka(config, factory, Topic::new(&self.topic), None);
         self.handle = Some(processor.get_handle());
@@ -129,6 +140,7 @@ fn build_chain(
     source: &str,
     steps: &[Py<RuntimeOperator>],
     ending_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
+    concurrency_config: &ConcurrencyConfig,
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
     let mut next = ending_strategy;
     for step in steps.iter().rev() {
@@ -136,6 +148,7 @@ fn build_chain(
             step,
             next,
             Box::new(CommitOffsets::new(Duration::from_secs(5))),
+            concurrency_config,
         );
     }
 
@@ -151,27 +164,39 @@ fn build_chain(
 struct ArroyoStreamingFactory {
     source: String,
     steps: Vec<Py<RuntimeOperator>>,
+    concurrency_config: Arc<ConcurrencyConfig>,
 }
 
 impl ArroyoStreamingFactory {
     /// Creates a new instance of ArroyoStreamingFactory.
-    fn new(source: String, steps: &[Py<RuntimeOperator>]) -> Self {
+    fn new(
+        source: String,
+        steps: &[Py<RuntimeOperator>],
+        concurrency_config: Arc<ConcurrencyConfig>,
+    ) -> Self {
         let steps_copy = Python::with_gil(|py| {
             steps
                 .iter()
                 .map(|step| step.clone_ref(py))
                 .collect::<Vec<_>>()
         });
+
         ArroyoStreamingFactory {
             source,
             steps: steps_copy,
+            concurrency_config,
         }
     }
 }
 
 impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
     fn create(&self) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
-        build_chain(&self.source, &self.steps, Box::new(Noop {}))
+        build_chain(
+            &self.source,
+            &self.steps,
+            Box::new(Noop {}),
+            &self.concurrency_config,
+        )
     }
 }
 #[cfg(test)]
@@ -240,7 +265,8 @@ mod tests {
                 submitted: submitted_messages,
             };
 
-            let mut chain = build_chain("source", &steps, Box::new(next_step));
+            let concurrency_config = ConcurrencyConfig::new(1);
+            let mut chain = build_chain("source", &steps, Box::new(next_step), &concurrency_config);
             let message = make_msg(Some(b"test_payload".to_vec()));
 
             chain.submit(message).unwrap();

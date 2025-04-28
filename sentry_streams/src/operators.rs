@@ -5,6 +5,7 @@ use crate::transformer::build_map;
 use pyo3::prelude::*;
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
+use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
 
 /// RuntimeOperator represent a translated step in the streaming pipeline the
@@ -41,6 +42,7 @@ pub fn build(
     step: &Py<RuntimeOperator>,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
     terminator_strategy: Box<dyn ProcessingStrategy<KafkaPayload>>,
+    concurrency_config: &ConcurrencyConfig,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     match step.get() {
         RuntimeOperator::Map { function, route } => {
@@ -56,6 +58,7 @@ pub fn build(
             Box::new(StreamSink::new(
                 route.clone(),
                 producer,
+                concurrency_config,
                 topic_name,
                 next,
                 terminator_strategy,
