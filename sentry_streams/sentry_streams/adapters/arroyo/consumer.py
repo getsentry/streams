@@ -1,4 +1,5 @@
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping, MutableSequence, Optional, Tuple, Union
 
@@ -62,8 +63,8 @@ class ArroyoConsumer:
 
         def add_route(message: Message[KafkaPayload]) -> Union[FilteredPayload, RoutedValue]:
             filtered = False
+            headers: Headers = message.payload.headers
             if self.header_filter:
-                headers: Headers = message.payload.headers
                 if self.header_filter not in headers:
                     filtered = True
 
@@ -76,9 +77,12 @@ class ArroyoConsumer:
                 except Exception:
                     raise ValueError(f"Kafka topic {self.stream_name} has no associated schema")
 
+                now = time.time()
                 return RoutedValue(
                     route=Route(source=self.source, waypoints=[]),
-                    payload=StreamsMessage(schema=schema, payload=value),
+                    payload=StreamsMessage(
+                        payload=value, headers=headers, timestamp=now, schema=schema
+                    ),
                 )
 
         strategy: ProcessingStrategy[Any] = CommitOffsets(commit)

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import (
     Any,
     Generic,
-    MutableMapping,
+    MutableSequence,
     Optional,
+    Tuple,
     TypeVar,
 )
 
@@ -14,16 +16,11 @@ TIn = TypeVar("TIn")
 
 
 # A message with a generic payload
+@dataclass(frozen=True)
 class Message(Generic[TIn]):
     payload: TIn
+    headers: MutableSequence[Tuple[str, bytes]]
+    timestamp: float
     schema: Optional[
         Codec[Any]
     ]  # The schema of incoming messages. This is optional so Messages can be flexibly initialized in any part of the pipeline. We may want to change this down the road.
-    additional: Optional[MutableMapping[str, Any]]
-
-    def __init__(self, payload: Any, schema: Optional[Codec[Any]] = None) -> None:
-        self.payload = payload
-        self.schema = schema
-
-    def replace_payload(self, p: TIn) -> None:
-        self.payload = p

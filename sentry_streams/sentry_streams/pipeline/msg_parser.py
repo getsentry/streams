@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from sentry_streams.pipeline.message import Message
@@ -7,7 +8,7 @@ from sentry_streams.pipeline.message import Message
 # Pass these into Parser() and Serializer() steps, see examples/
 
 
-def msg_parser(msg: Message[bytes]) -> Message[Any]:
+def msg_parser(msg: Message[bytes]) -> Any:
     codec = msg.schema
     payload = msg.payload
 
@@ -17,15 +18,10 @@ def msg_parser(msg: Message[bytes]) -> Message[Any]:
 
     decoded = codec.decode(payload, True)
 
-    return Message(decoded, codec)
+    return decoded
 
 
 def msg_serializer(msg: Message[Any]) -> bytes:
-    codec = msg.schema
     payload = msg.payload
 
-    assert codec is not None
-
-    encoded = codec.encode(payload, False)
-
-    return encoded
+    return json.dumps(payload).encode("utf-8")

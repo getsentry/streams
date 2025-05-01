@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, MutableSequence
 
+from sentry_streams.pipeline.message import Message as StreamsMessage
+
 
 @dataclass(frozen=True)
 class Route:
@@ -23,4 +25,4 @@ class Route:
 @dataclass(frozen=True)
 class RoutedValue:
     route: Route
-    payload: Any
+    payload: StreamsMessage[Any]

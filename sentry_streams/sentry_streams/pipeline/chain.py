@@ -75,7 +75,7 @@ class Applier(ABC, Generic[TIn, TOut]):
 
 @dataclass
 class Map(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
-    function: Union[Callable[[Message[TIn]], Message[TOut]], str]
+    function: Union[Callable[[Message[TIn]], TOut], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
@@ -91,7 +91,7 @@ class Filter(Applier[Message[TIn], Message[TIn]], Generic[TIn]):
 
 @dataclass
 class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
-    function: Union[Callable[[Message[TIn]], Message[TOut]], str]
+    function: Union[Callable[[Message[TIn]], TOut], str]  # Should be an iterator output
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
@@ -103,8 +103,8 @@ class Reducer(
     Generic[MeasurementUnit, InputType, OutputType],
 ):
     window: Window[MeasurementUnit]
-    aggregate_func: Callable[[], Accumulator[Message[InputType], Message[OutputType]]]
-    aggregate_backend: AggregationBackend[Message[OutputType]] | None = None
+    aggregate_func: Callable[[], Accumulator[Message[InputType], OutputType]]
+    aggregate_backend: AggregationBackend[OutputType] | None = None
     group_by_key: GroupBy | None = None
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -122,9 +122,6 @@ class Reducer(
 @dataclass
 class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
     msg_type: Type[TOut]
-    # deserializer: Union[
-    #     Callable[[Message[bytes]], Message[TOut]], str
-    # ]  # This has to be a type-annotated function so that the type of TOut can be inferred
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(

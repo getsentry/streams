@@ -1,7 +1,6 @@
 from datetime import timedelta
-from typing import Any, MutableSequence, Optional, Self
+from typing import MutableSequence, Self
 
-from sentry_kafka_schemas.codecs import Codec
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline import streaming_source
@@ -22,21 +21,19 @@ from sentry_streams.pipeline.window import SlidingWindow
 # - produces the event on Kafka
 
 
-class TransformerBatch(Accumulator[Message[IngestMetric], Message[MutableSequence[IngestMetric]]]):
+# make this return the actual payload, add a Map next step with no headers
+class TransformerBatch(Accumulator[Message[IngestMetric], MutableSequence[IngestMetric]]):
 
     def __init__(self) -> None:
         self.batch: MutableSequence[IngestMetric] = []
-        self.schema: Optional[Codec[Any]] = None
 
     def add(self, value: Message[IngestMetric]) -> Self:
         self.batch.append(value.payload)
-        if self.schema is None:
-            self.schema = value.schema
 
         return self
 
-    def get_value(self) -> Message[MutableSequence[IngestMetric]]:
-        return Message(self.batch, self.schema)
+    def get_value(self) -> MutableSequence[IngestMetric]:
+        return self.batch
 
     def merge(self, other: Self) -> Self:
         self.batch.extend(other.batch)

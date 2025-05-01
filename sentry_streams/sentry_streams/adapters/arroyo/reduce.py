@@ -127,7 +127,7 @@ class TimeWindowedReduce(
         window_size: float,
         window_slide: float,
         acc: Callable[[], Accumulator[Any, Any]],
-        next_step: ProcessingStrategy[TResult],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
         route: Route,
     ) -> None:
 
@@ -180,9 +180,10 @@ class TimeWindowedReduce(
 
         # If there is a gap in the data, it is possible to have empty flushes
         if payload:
-            result = RoutedValue(self.route, payload)
+            # construct a StreamsMessage
+            # result = RoutedValue(self.route, payload)
             self.next_step.submit(
-                Message(Value(cast(TResult, result), merged_window.get_offsets()))
+                Message(Value(cast(TResult, payload), merged_window.get_offsets()))
             )
 
         # Refresh only the accumulator that was the first
