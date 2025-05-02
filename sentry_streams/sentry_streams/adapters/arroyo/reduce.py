@@ -90,7 +90,7 @@ class KafkaAccumulator:
                 self.offsets[partition] = max(offsets[partition], self.offsets[partition])
 
             else:
-                self.offsets.update(offsets)
+                self.offsets[partition] = offsets[partition]
 
         return self
 
@@ -127,7 +127,7 @@ class TimeWindowedReduce(
         window_size: float,
         window_slide: float,
         acc: Callable[[], Accumulator[Any, Any]],
-        next_step: ProcessingStrategy[TResult],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
         route: Route,
     ) -> None:
 
@@ -135,7 +135,7 @@ class TimeWindowedReduce(
         self.window_size = int(window_size)
         self.window_slide = int(window_slide)
 
-        self.next_step = next_step
+        self.msg_wrap_step = next_step
         self.start_time = time.time()
         self.route = route
 
@@ -180,9 +180,8 @@ class TimeWindowedReduce(
 
         # If there is a gap in the data, it is possible to have empty flushes
         if payload:
-            result = RoutedValue(self.route, payload)
-            self.next_step.submit(
-                Message(Value(cast(TResult, result), merged_window.get_offsets()))
+            self.msg_wrap_step.submit(
+                Message(Value(cast(TResult, payload), merged_window.get_offsets()))
             )
 
         # Refresh only the accumulator that was the first
@@ -206,12 +205,12 @@ class TimeWindowedReduce(
     def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
         value = message.payload
         if isinstance(value, FilteredPayload):
-            self.next_step.submit(cast(Message[TResult], message))
+            self.msg_wrap_step.submit(cast(Message[Union[FilteredPayload, TResult]], message))
             return
 
         assert isinstance(value, RoutedValue)
         if value.route != self.route:
-            self.next_step.submit(cast(Message[TResult], message))
+            self.msg_wrap_step.submit(cast(Message[Union[FilteredPayload, TResult]], message))
             return
 
         cur_time = time.time() - self.start_time
@@ -225,23 +224,23 @@ class TimeWindowedReduce(
         cur_time = time.time() - self.start_time
         self.__maybe_flush(cur_time)
 
-        self.next_step.poll()
+        self.msg_wrap_step.poll()
 
     def close(self) -> None:
-        self.next_step.close()
+        self.msg_wrap_step.close()
 
     def terminate(self) -> None:
-        self.next_step.terminate()
+        self.msg_wrap_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.next_step.close()
-        self.next_step.join()
+        self.msg_wrap_step.close()
+        self.msg_wrap_step.join()
 
 
 def build_arroyo_windowed_reduce(
     streams_window: Window[MeasurementUnit],
     accumulator: Callable[[], Accumulator[Any, Any]],
-    next_step: ProcessingStrategy[Union[FilteredPayload, TPayload]],
+    msg_wrapper: ProcessingStrategy[Union[FilteredPayload, TPayload]],
     route: Route,
 ) -> ProcessingStrategy[Union[FilteredPayload, TPayload]]:
 
@@ -268,7 +267,7 @@ def build_arroyo_windowed_reduce(
                         size,
                         slide,
                         accumulator,
-                        next_step,
+                        msg_wrapper,
                         route,
                     )
 
@@ -294,7 +293,7 @@ def build_arroyo_windowed_reduce(
                             arroyo_acc.accumulator,
                         ),
                         arroyo_acc.initial_value,
-                        next_step,
+                        msg_wrapper,
                     )
 
                 case timedelta():
@@ -302,7 +301,7 @@ def build_arroyo_windowed_reduce(
                         window_size.total_seconds(),
                         window_size.total_seconds(),
                         accumulator,
-                        next_step,
+                        msg_wrapper,
                         route,
                     )
 

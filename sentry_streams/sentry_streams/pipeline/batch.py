@@ -1,9 +1,12 @@
-from typing import Generator, MutableSequence, Self
+from typing import Any, Generator, MutableSequence, Optional, Self
+
+from sentry_kafka_schemas.codecs import Codec
 
 from sentry_streams.pipeline.function_template import Accumulator, InputType
+from sentry_streams.pipeline.message import Message
 
 
-class BatchBuilder(Accumulator[InputType, MutableSequence[InputType]]):
+class BatchBuilder(Accumulator[Message[InputType], MutableSequence[InputType]]):
     """
     Takes a generic input format, and batches into a generic batch representation
     with the same input type. Returns this batch representation.
@@ -13,9 +16,10 @@ class BatchBuilder(Accumulator[InputType, MutableSequence[InputType]]):
 
     def __init__(self) -> None:
         self.batch: MutableSequence[InputType] = []
+        self.schema: Optional[Codec[Any]] = None
 
-    def add(self, value: InputType) -> Self:
-        self.batch.append(value)
+    def add(self, value: Message[InputType]) -> Self:
+        self.batch.append(value.payload)
 
         return self
 
@@ -28,7 +32,9 @@ class BatchBuilder(Accumulator[InputType, MutableSequence[InputType]]):
         return self
 
 
-def unbatch(batch: MutableSequence[InputType]) -> Generator[InputType, None, None]:
+def unbatch(
+    batch: Message[MutableSequence[InputType]],
+) -> Generator[InputType, None, None]:
     """
     Takes in a generic batch representation, outputs a Generator type for iterating over
     individual elements which compose the batch.
@@ -36,5 +42,5 @@ def unbatch(batch: MutableSequence[InputType]) -> Generator[InputType, None, Non
     The data type of the elements remains the same through this operation. This operation
     may need to be followed by a Map or other transformation if a new output type is expected.
     """
-    for message in batch:
-        yield message
+    for payload in batch.payload:
+        yield payload

@@ -1,3 +1,4 @@
+import json
 from typing import cast
 from unittest import mock
 
@@ -5,6 +6,7 @@ import pytest
 from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.types import Partition, Topic
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.adapters.arroyo.adapter import (
     ArroyoAdapter,
@@ -51,7 +53,12 @@ def test_kafka_sources() -> None:
     assert sources.get_consumer("source1") is not None
 
 
-def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
+def test_adapter(
+    broker: LocalBroker[KafkaPayload],
+    pipeline: Pipeline,
+    metric: IngestMetric,
+    transformed_metric: IngestMetric,
+) -> None:
     adapter = ArroyoAdapter.build(
         {
             "env": {},
@@ -60,7 +67,7 @@ def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
                 "kafkasink": {"kafkasink": {}},
             },
         },
-        {"myinput": cast(KafkaConsumer, broker.get_consumer("events"))},
+        {"myinput": cast(KafkaConsumer, broker.get_consumer("ingest-metrics"))},
         {"kafkasink": cast(KafkaProducer, broker.get_producer())},
     )
     iterate_edges(pipeline, RuntimeTranslator(adapter))
@@ -69,14 +76,17 @@ def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
     processor = adapter.get_processor("myinput")
 
     broker.produce(
-        Partition(Topic("events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
+        Partition(Topic("ingest-metrics"), 0),
+        KafkaPayload(None, json.dumps(metric).encode("utf-8"), []),
     )
     broker.produce(
-        Partition(Topic("events"), 0),
-        KafkaPayload(None, "do_not_go_ahead".encode("utf-8"), []),
+        Partition(Topic("ingest-metrics"), 0),
+        KafkaPayload(None, json.dumps(metric).encode("utf-8"), []),
     )
+    metric["type"] = "c"
     broker.produce(
-        Partition(Topic("events"), 0), KafkaPayload(None, "go_ahead".encode("utf-8"), [])
+        Partition(Topic("ingest-metrics"), 0),
+        KafkaPayload(None, json.dumps(metric).encode("utf-8"), []),
     )
 
     processor._run_once()
@@ -85,7 +95,8 @@ def test_adapter(broker: LocalBroker[KafkaPayload], pipeline: Pipeline) -> None:
 
     topic = Topic("transformed-events")
     msg1 = broker.consume(Partition(topic, 0), 0)
-    assert msg1 is not None and msg1.payload.value == "go_ahead_mapped".encode("utf-8")
+
+    assert msg1 is not None and msg1.payload.value == json.dumps(transformed_metric).encode("utf-8")
     msg2 = broker.consume(Partition(topic, 0), 1)
-    assert msg2 is not None and msg2.payload.value == "go_ahead_mapped".encode("utf-8")
+    assert msg2 is not None and msg2.payload.value == json.dumps(transformed_metric).encode("utf-8")
     assert broker.consume(Partition(topic, 0), 2) is None

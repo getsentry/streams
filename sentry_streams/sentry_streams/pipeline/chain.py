@@ -7,9 +7,13 @@ from typing import (
     Generic,
     Mapping,
     MutableSequence,
+    Optional,
     Sequence,
+    Tuple,
+    Type,
     TypeVar,
     Union,
+    cast,
 )
 
 from sentry_streams.pipeline.function_template import (
@@ -19,6 +23,8 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
+from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.msg_parser import msg_parser, msg_serializer
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
 )
@@ -40,7 +46,6 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.window import MeasurementUnit, Window
 
 TRoute = TypeVar("TRoute")
-
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 
@@ -69,33 +74,38 @@ class Applier(ABC, Generic[TIn, TOut]):
 
 
 @dataclass
-class Map(Applier[TIn, TOut], Generic[TIn, TOut]):
-    function: Union[Callable[[TIn], TOut], str]
+class Map(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
+    function: Union[Callable[[Message[TIn]], TOut], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
 
 
 @dataclass
-class Filter(Applier[TIn, TIn], Generic[TIn]):
-    function: Union[Callable[[TIn], bool], str]
+class Filter(Applier[Message[TIn], Message[TIn]], Generic[TIn]):
+    function: Union[Callable[[Message[TIn]], bool], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FilterStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
 
 
 @dataclass
-class FlatMap(Applier[TIn, TOut], Generic[TIn, TOut]):
-    function: Union[Callable[[TIn], TOut], str]
+class FlatMap(Applier[Message[MutableSequence[TIn]], Message[TOut]], Generic[TIn, TOut]):
+    function: Union[
+        Callable[[Message[MutableSequence[TIn]]], TOut], str
+    ]  # TODO: Consider making this type an Iterable rather than MutableSequence
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
 
 
 @dataclass
-class Reducer(Applier[InputType, OutputType], Generic[MeasurementUnit, InputType, OutputType]):
+class Reducer(
+    Applier[Message[InputType], Message[OutputType]],
+    Generic[MeasurementUnit, InputType, OutputType],
+):
     window: Window[MeasurementUnit]
-    aggregate_func: Callable[[], Accumulator[InputType, OutputType]]
+    aggregate_func: Callable[[], Accumulator[Message[InputType], OutputType]]
     aggregate_backend: AggregationBackend[OutputType] | None = None
     group_by_key: GroupBy | None = None
 
@@ -112,8 +122,47 @@ class Reducer(Applier[InputType, OutputType], Generic[MeasurementUnit, InputType
 
 
 @dataclass
+class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
+    """
+    A step to decode bytes, deserialize the resulting message and validate it against the schema
+    which corresponds to the message type provided. The message type should be one which
+    is supported by sentry-kafka-schemas. See examples/ for usage, this step can be plugged in
+    flexibly into a pipeline. Keep in mind, data up until this step will simply be bytes.
+
+    Supports both JSON and protobuf.
+    """
+
+    msg_type: Type[TOut]
+
+    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        return MapStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            function=msg_parser,
+        )
+
+
+@dataclass
+class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
+    """
+    A step to serialize and encode messages into bytes. These bytes can be written
+    to sink data to a Kafka topic, for example. This step will need to precede a
+    sink step which writes to Kafka.
+    """
+
+    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        return MapStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            function=msg_serializer,
+        )
+
+
+@dataclass
 class Batch(
-    Applier[InputType, MutableSequence[InputType]],
+    Applier[Message[InputType], Message[MutableSequence[InputType]]],
     Generic[MeasurementUnit, InputType],
 ):
     batch_size: MeasurementUnit
@@ -141,7 +190,7 @@ class Chain(Pipeline):
         self.name = name
 
 
-class ExtensibleChain(Chain):
+class ExtensibleChain(Chain, Generic[TIn]):
     """
     Defines a streaming pipeline or a segment of a pipeline by chaining
     operators that define steps via function calls.
@@ -178,7 +227,7 @@ class ExtensibleChain(Chain):
     def _add_start(self, start: Step) -> None:
         self.__edge = start
 
-    def apply(self, name: str, applier: Applier[TIn, TOut]) -> ExtensibleChain:
+    def apply(self, name: str, applier: Applier[TIn, TOut]) -> ExtensibleChain[TOut]:
         """
         Apply a transformation to the stream. The transformation is
         defined via an `Applier`.
@@ -192,7 +241,7 @@ class ExtensibleChain(Chain):
         """
         assert self.__edge is not None
         self.__edge = applier.build_step(name, self, self.__edge)
-        return self
+        return cast(ExtensibleChain[TOut], self)
 
     def broadcast(self, name: str, routes: Sequence[Chain]) -> Chain:
         """
@@ -235,7 +284,11 @@ class ExtensibleChain(Chain):
 
         return self
 
-    def sink(self, name: str, stream_name: str) -> Chain:
+    def sink(
+        self,
+        name: str,
+        stream_name: str,
+    ) -> Chain:
         """
         Terminates the pipeline.
 
@@ -246,25 +299,25 @@ class ExtensibleChain(Chain):
         return self
 
 
-def segment(name: str) -> ExtensibleChain:
+def segment(name: str, msg_type: Type[TIn]) -> ExtensibleChain[Message[TIn]]:
     """
     Creates a segment of a pipeline to be referenced in existing pipelines
     in route and broadcast steps.
     """
-    pipeline: ExtensibleChain = ExtensibleChain(name)
+    pipeline: ExtensibleChain[Message[TIn]] = ExtensibleChain(name)
     pipeline._add_start(Branch(name=name, ctx=pipeline))
     return pipeline
 
 
-def streaming_source(name: str, stream_name: str) -> ExtensibleChain:
+def streaming_source(
+    name: str, stream_name: str, header_filter: Optional[Tuple[str, bytes]] = None
+) -> ExtensibleChain[Message[bytes]]:
     """
     Create a pipeline that starts with a StreamingSource.
     """
-    pipeline: ExtensibleChain = ExtensibleChain("root")
+    pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain("root")
     source = StreamSource(
-        name=name,
-        ctx=pipeline,
-        stream_name=stream_name,
+        name=name, ctx=pipeline, stream_name=stream_name, header_filter=header_filter
     )
     pipeline._add_start(source)
     return pipeline

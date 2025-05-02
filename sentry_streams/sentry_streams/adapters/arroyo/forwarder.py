@@ -28,8 +28,10 @@ class Forwarder(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
     def submit(self, message: Message[Union[FilteredPayload, RoutedValue]]) -> None:
         message_payload = message.value.payload
         if isinstance(message_payload, RoutedValue) and message_payload.route == self.__route:
+            # TODO: get headers from the StreamsMessage
+            assert isinstance(message_payload.payload.payload, bytes)
             kafka_payload = message.value.replace(
-                KafkaPayload(None, str(message_payload.payload).encode("utf-8"), [])
+                KafkaPayload(None, message_payload.payload.payload, [])
             )
             self.__produce_step.submit(Message(kafka_payload))
         else:

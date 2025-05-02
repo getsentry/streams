@@ -1,26 +1,31 @@
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
+
 from sentry_streams.examples.blq_fn import (
     DownstreamBranch,
-    json_dump_message,
     should_send_to_blq,
-    unpack_kafka_message,
 )
-from sentry_streams.pipeline import Map, segment, streaming_source
+from sentry_streams.pipeline import segment, streaming_source
+from sentry_streams.pipeline.chain import Parser, Serializer
 
 storage_branch = (
-    segment(name="recent")
-    .apply("dump_msg_recent", Map(json_dump_message))
+    segment(name="recent", msg_type=IngestMetric)
+    .apply("serializer1", Serializer())
     .broadcast(
         "send_message_to_DBs",
         routes=[
-            segment("sbc").sink("kafkasink", stream_name="transformed-events"),
-            segment("clickhouse").sink("kafkasink2", stream_name="transformed-events-2"),
+            segment("sbc", msg_type=IngestMetric).sink(
+                "kafkasink", stream_name="transformed-events"
+            ),
+            segment("clickhouse", msg_type=IngestMetric).sink(
+                "kafkasink2", stream_name="transformed-events-2"
+            ),
         ],
     )
 )
 
 save_delayed_message = (
-    segment(name="delayed")
-    .apply("dump_msg_delayed", Map(json_dump_message))
+    segment(name="delayed", msg_type=IngestMetric)
+    .apply("serializer2", Serializer())
     .sink(
         "kafkasink3",
         stream_name="transformed-events-3",
@@ -30,9 +35,9 @@ save_delayed_message = (
 pipeline = (
     streaming_source(
         name="ingest",
-        stream_name="events",
+        stream_name="ingest-metrics",
     )
-    .apply("unpack_message", Map(unpack_kafka_message))
+    .apply("parser", Parser(msg_type=IngestMetric))
     .route(
         "blq_router",
         routing_function=should_send_to_blq,

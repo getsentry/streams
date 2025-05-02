@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Any
 
 import pytest
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import PipelineConfig, RuntimeTranslator
@@ -21,22 +22,22 @@ class RouterBranch(Enum):
 @pytest.fixture
 def create_pipeline() -> Pipeline:
     broadcast_branch_1 = (
-        segment("branch1")
+        segment("branch1", IngestMetric)
         .apply("map2", Map(function=lambda x: x))
         .route(
             "router1",
             routing_function=lambda x: RouterBranch.BRANCH1,
             routes={
-                RouterBranch.BRANCH1: segment("map4_segment").apply(
+                RouterBranch.BRANCH1: segment("map4_segment", IngestMetric).apply(
                     "map4", Map(function=lambda x: x)
                 ),
-                RouterBranch.BRANCH2: segment("map5_segment").apply(
+                RouterBranch.BRANCH2: segment("map5_segment", IngestMetric).apply(
                     "map5", Map(function=lambda x: x)
                 ),
             },
         )
     )
-    broadcast_branch_2 = segment("branch2").apply("map3", Map(function=lambda x: x))
+    broadcast_branch_2 = segment("branch2", IngestMetric).apply("map3", Map(function=lambda x: x))
 
     test_pipeline = (
         streaming_source("source1", stream_name="foo")

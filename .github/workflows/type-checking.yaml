@@ -1,5 +1,9 @@
 name: type-checking
 on:
+  push:
+    branches:
+      - main
+      - release-sentry-streams/**
   pull_request:
 
 jobs:

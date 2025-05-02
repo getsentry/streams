@@ -7,6 +7,7 @@ from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStr
 from arroyo.types import FilteredPayload, Message, Partition, Value
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
+from sentry_streams.pipeline.message import Message as StreamsMessage
 
 
 @dataclass(eq=True)
@@ -78,6 +79,7 @@ class Broadcaster(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
             for branch in self.__downstream_branches:
                 msg_copy = cast(Message[RoutedValue], deepcopy(message))
                 copy_payload = msg_copy.value.payload
+                streams_msg = copy_payload.payload
                 routed_copy = Message(
                     Value(
                         committable=msg_copy.value.committable,
@@ -87,7 +89,12 @@ class Broadcaster(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
                                 source=copy_payload.route.source,
                                 waypoints=[*copy_payload.route.waypoints, branch],
                             ),
-                            payload=copy_payload.payload,
+                            payload=StreamsMessage(
+                                streams_msg.payload,
+                                streams_msg.headers,
+                                streams_msg.timestamp,
+                                streams_msg.schema,
+                            ),
                         ),
                     )
                 )

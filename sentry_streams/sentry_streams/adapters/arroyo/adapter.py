@@ -17,6 +17,8 @@ from arroyo.backends.kafka.configuration import (
 from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.processing.processor import StreamProcessor
 from arroyo.types import Topic
+from sentry_kafka_schemas import get_codec
+from sentry_kafka_schemas.codecs import Codec
 
 from sentry_streams.adapters.arroyo.consumer import (
     ArroyoConsumer,
@@ -148,7 +150,17 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         source_name = step.name
         self.__sources.add_source(step)
-        self.__consumers[source_name] = ArroyoConsumer(source_name)
+
+        # This is the Arroyo adapter, and it only supports consuming from StreamSource anyways
+        assert isinstance(step, StreamSource)
+        try:
+            schema: Codec[Any] = get_codec(step.stream_name)
+        except Exception:
+            raise ValueError(f"Kafka topic {step.stream_name} has no associated schema")
+
+        self.__consumers[source_name] = ArroyoConsumer(
+            source_name, step.stream_name, schema, step.header_filter
+        )
 
         return Route(source_name, [])
 

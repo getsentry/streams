@@ -41,7 +41,8 @@ repos:
           responses,
           "sentry-arroyo>=2.18.2",
           types-pyYAML,
-          types-jsonschema
+          types-jsonschema,
+          "sentry-kafka-schemas>=1.2.0",
         ]
         files: ^sentry_streams/.+
   - repo: https://github.com/pycqa/isort

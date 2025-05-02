@@ -1,23 +1,11 @@
-from json import JSONDecodeError, dumps, loads
-from typing import Any, Mapping, cast
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline import Map, multi_chain, streaming_source
+from sentry_streams.pipeline.chain import Parser, Serializer
+from sentry_streams.pipeline.message import Message
 
 
-def parse(msg: str) -> Mapping[str, Any]:
-    try:
-        parsed = loads(msg)
-    except JSONDecodeError:
-        return {"type": "invalid"}
-
-    return cast(Mapping[str, Any], parsed)
-
-
-def serialize(msg: Mapping[str, Any]) -> str:
-    return dumps(msg)
-
-
-def do_something(msg: Mapping[str, Any]) -> Mapping[str, Any]:
+def do_something(msg: Message[IngestMetric]) -> Message[IngestMetric]:
     # Do something with the message
     return msg
 
@@ -25,29 +13,32 @@ def do_something(msg: Mapping[str, Any]) -> Mapping[str, Any]:
 pipeline = multi_chain(
     [
         # Main Ingest chain
-        streaming_source("ingest", stream_name="ingest-events")
-        .apply("parse_msg", Map(parse))
+        streaming_source("ingest", stream_name="ingest-metrics")
+        .apply("parse_msg", Parser(msg_type=IngestMetric))
         .apply("process", Map(do_something))
-        .apply("serialize", Map(serialize))
+        .apply("serialize", Serializer())
         .sink("eventstream", stream_name="events"),
         # Snuba chain to Clickhouse
-        streaming_source("snuba", stream_name="events")
-        .apply("snuba_parse_msg", Map(parse))
+        streaming_source("snuba", stream_name="ingest-metrics")
+        .apply("snuba_parse_msg", Parser(msg_type=IngestMetric))
+        .apply("snuba_serialize", Serializer())
         .sink(
             "clickhouse",
             stream_name="someewhere",
         ),
         # Super Big Consumer chain
-        streaming_source("sbc", stream_name="events")
-        .apply("sbc_parse_msg", Map(parse))
+        streaming_source("sbc", stream_name="ingest-metrics")
+        .apply("sbc_parse_msg", Parser(msg_type=IngestMetric))
+        .apply("sbc_serialize", Serializer())
         .sink(
             "sbc_sink",
             stream_name="someewhere",
         ),
         # Post process chain
-        streaming_source("post_process", stream_name="events")
-        .apply("post_parse_msg", Map(parse))
+        streaming_source("post_process", stream_name="ingest-metrics")
+        .apply("post_parse_msg", Parser(msg_type=IngestMetric))
         .apply("postprocess", Map(do_something))
+        .apply("postprocess_serialize", Serializer())
         .sink(
             "devnull",
             stream_name="someewhereelse",
