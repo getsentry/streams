@@ -28,12 +28,21 @@ class MessageWrapper(ProcessingStrategy[Union[FilteredPayload, TPayload]]):
     def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
         now = time.time()
         if not isinstance(message.payload, FilteredPayload):
-            msg = StreamsMessage(message.payload, [], now, None)
 
-            routed_msg: Message[RoutedValue] = Message(
-                Value(committable=message.value.committable, payload=RoutedValue(self.__route, msg))
-            )
-            self.__next_step.submit(routed_msg)
+            if isinstance(message.payload, RoutedValue):
+                # No need to wrap a StreamsMessage in Message() again
+                assert isinstance(message.payload.payload, StreamsMessage)
+                self.__next_step.submit(cast(Message[Union[FilteredPayload, RoutedValue]], message))
+            else:
+                msg = StreamsMessage(message.payload, [], now, None)
+
+                routed_msg: Message[RoutedValue] = Message(
+                    Value(
+                        committable=message.value.committable,
+                        payload=RoutedValue(self.__route, msg),
+                    )
+                )
+                self.__next_step.submit(routed_msg)
 
         else:
             self.__next_step.submit(cast(Message[FilteredPayload], message))

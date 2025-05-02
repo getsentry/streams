@@ -29,6 +29,7 @@ class Forwarder(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
         message_payload = message.value.payload
         if isinstance(message_payload, RoutedValue) and message_payload.route == self.__route:
             # TODO: get headers from the StreamsMessage
+            assert isinstance(message_payload.payload.payload, bytes)
             kafka_payload = message.value.replace(
                 KafkaPayload(None, message_payload.payload.payload, [])
             )

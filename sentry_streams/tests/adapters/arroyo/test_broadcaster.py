@@ -1,16 +1,19 @@
+import time
 from unittest import mock
 from unittest.mock import call
 
 import pytest
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.adapters.arroyo.broadcaster import Broadcaster
 from sentry_streams.adapters.arroyo.routes import Route
+from sentry_streams.pipeline.message import Message
 from tests.adapters.arroyo.message_helpers import make_value_msg
 
 
-def test_submit_routedvalue() -> None:
+def test_submit_routedvalue(metric: IngestMetric) -> None:
     next_step = mock.Mock(spec=ProcessingStrategy)
     broadcaster = Broadcaster(
         route=Route(source="source", waypoints=[]),
@@ -18,21 +21,20 @@ def test_submit_routedvalue() -> None:
         next_step=next_step,
     )
 
-    message = make_value_msg(
-        payload="test-payload", route=Route(source="source", waypoints=[]), offset=0
-    )
+    msg = Message(metric, [], time.time(), None)
+    message = make_value_msg(payload=msg, route=Route(source="source", waypoints=[]), offset=0)
 
     expected_calls = [
         call.submit(
             make_value_msg(
-                payload="test-payload",
+                payload=msg,
                 route=Route(source="source", waypoints=["branch_1"]),
                 offset=0,
             )
         ),
         call.submit(
             make_value_msg(
-                payload="test-payload",
+                payload=msg,
                 route=Route(source="source", waypoints=["branch_2"]),
                 offset=0,
             )
@@ -75,7 +77,7 @@ def test_submit_wrong_route() -> None:
     next_step.submit.assert_called_once_with(message)
 
 
-def test_message_rejected() -> None:
+def test_message_rejected(metric: IngestMetric) -> None:
     next_step = mock.Mock(spec=ProcessingStrategy)
     # raise MessageRejected on submit
     next_step.submit.side_effect = MessageRejected()
@@ -86,13 +88,12 @@ def test_message_rejected() -> None:
         next_step=next_step,
     )
 
-    message = make_value_msg(
-        payload="test-payload", route=Route(source="source", waypoints=[]), offset=0
-    )
+    msg = Message(metric, [], time.time(), None)
+    message = make_value_msg(payload=msg, route=Route(source="source", waypoints=[]), offset=0)
 
     message_rejected_expected_call = call(
         make_value_msg(
-            payload="test-payload",
+            payload=msg,
             route=Route(source="source", waypoints=["branch_1"]),
             offset=0,
         )

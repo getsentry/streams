@@ -1,5 +1,4 @@
 import logging
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Callable, Generic, TypeVar, Union
@@ -105,7 +104,7 @@ class MapStep(ArroyoStep):
                     payload=StreamsMessage(
                         self.pipeline_step.resolved_function(routed_value.payload),
                         routed_value.payload.headers,
-                        time.time(),
+                        routed_value.payload.timestamp,
                         routed_value.payload.schema,
                     ),
                 ),
@@ -140,9 +139,9 @@ class FilterStep(ArroyoStep):
                     RoutedValue(
                         self.route,
                         StreamsMessage(
-                            routed_value.payload,
+                            routed_value.payload.payload,
                             routed_value.payload.headers,
-                            time.time(),
+                            routed_value.payload.timestamp,
                             routed_value.payload.schema,
                         ),
                     )
@@ -204,7 +203,7 @@ class RouterStep(ArroyoStep, Generic[RoutingFuncReturnType]):
 
             streams_msg = payload.payload
             msg = StreamsMessage(
-                streams_msg.payload, streams_msg.headers, time.time(), streams_msg.schema
+                streams_msg.payload, streams_msg.headers, streams_msg.timestamp, streams_msg.schema
             )
 
             return RoutedValue(payload.route, msg)

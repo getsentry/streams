@@ -62,28 +62,23 @@ class ArroyoConsumer:
         """
 
         def add_route(message: Message[KafkaPayload]) -> Union[FilteredPayload, RoutedValue]:
-            filtered = False
             headers: Headers = message.payload.headers
-            if self.header_filter:
-                if self.header_filter not in headers:
-                    filtered = True
-
-            if filtered:
+            if self.header_filter and self.header_filter not in headers:
                 return FilteredPayload()
-            else:
-                value = message.payload.value
-                try:
-                    schema: Codec[Any] = get_codec(self.stream_name)
-                except Exception:
-                    raise ValueError(f"Kafka topic {self.stream_name} has no associated schema")
 
-                now = time.time()
-                return RoutedValue(
-                    route=Route(source=self.source, waypoints=[]),
-                    payload=StreamsMessage(
-                        payload=value, headers=headers, timestamp=now, schema=schema
-                    ),
-                )
+            broker_timestamp = message.timestamp.timestamp() if message.timestamp else time.time()
+            value = message.payload.value
+            try:
+                schema: Codec[Any] = get_codec(self.stream_name)
+            except Exception:
+                raise ValueError(f"Kafka topic {self.stream_name} has no associated schema")
+
+            return RoutedValue(
+                route=Route(source=self.source, waypoints=[]),
+                payload=StreamsMessage(
+                    payload=value, headers=headers, timestamp=broker_timestamp, schema=schema
+                ),
+            )
 
         strategy: ProcessingStrategy[Any] = CommitOffsets(commit)
         for step in reversed(self.steps):

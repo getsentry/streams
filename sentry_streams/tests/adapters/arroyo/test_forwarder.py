@@ -1,3 +1,5 @@
+import json
+import time
 from datetime import datetime
 from typing import Mapping
 from unittest import mock
@@ -6,13 +8,15 @@ from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies import Produce
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import BrokerValue, Message, Partition, Topic
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.adapters.arroyo.forwarder import Forwarder
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
+from sentry_streams.pipeline.message import Message as StreamsMessage
 from tests.adapters.arroyo.message_helpers import make_msg
 
 
-def test_submit() -> None:
+def test_submit(metric: IngestMetric) -> None:
     produce_step = mock.Mock(spec=Produce)
     next_step = mock.Mock(spec=ProcessingStrategy)
     forwarder = Forwarder(
@@ -21,14 +25,17 @@ def test_submit() -> None:
         next_step=next_step,
     )
 
+    produced_msg = StreamsMessage(json.dumps(metric).encode("utf-8"), [], time.time(), None)
+    msg = StreamsMessage(metric, [], time.time(), None)
+
     messages: Mapping[str, Message[RoutedValue]] = {
         "correct": make_msg(
-            payload="test-payload",
+            payload=produced_msg,
             route=Route(source="source", waypoints=["correct_branch"]),
             offset=0,
         ),
         "wrong": make_msg(
-            payload="test-payload",
+            payload=msg,
             route=Route(source="source", waypoints=["wrong_branch"]),
             offset=1,
         ),
@@ -36,7 +43,7 @@ def test_submit() -> None:
     expected_messages = {
         "correct": Message(
             value=BrokerValue(
-                payload=KafkaPayload(None, "test-payload".encode("utf-8"), []),
+                payload=KafkaPayload(None, json.dumps(msg.payload).encode("utf-8"), []),
                 partition=Partition(Topic("test_topic"), 0),
                 offset=0,
                 timestamp=datetime(2025, 1, 1, 12, 0),
@@ -45,7 +52,7 @@ def test_submit() -> None:
         "wrong": Message(
             value=BrokerValue(
                 payload=RoutedValue(
-                    route=Route(source="source", waypoints=["wrong_branch"]), payload="test-payload"
+                    route=Route(source="source", waypoints=["wrong_branch"]), payload=msg
                 ),
                 partition=Partition(Topic("test_topic"), 0),
                 offset=1,
