@@ -54,8 +54,10 @@ class ArroyoStep(ABC):
         raise NotImplementedError
 
 
-# every step needs to be responsible for constructing the StreamsMessage
-# as its output
+# NOTE: All of the steps below now:
+# Perform operations / evaluations on a StreamsMessage
+# Receive a raw payload, which is NOT wrapped in a StreamsMessage (as the user provides this type signature)
+# Wrap the raw payload in a StreamsMessage to send it along to the next step
 
 
 def process_message(
@@ -147,7 +149,7 @@ class FilterStep(ArroyoStep):
                     )
                     if self.pipeline_step.resolved_function(
                         routed_value.payload
-                    )  # this should be receiving and evaluating against a StreamsMessage
+                    )  # The function used for filtering takes in a StreamsMessage
                     else FilteredPayload()
                 ),
             )
@@ -251,14 +253,16 @@ class ReduceStep(ArroyoStep):
 
         msg_wrapper: ProcessingStrategy[Union[FilteredPayload, Any]] = MessageWrapper(
             self.route, next
-        )
+        )  # Since the Reduce step produces aggregated raw payloads, we need to wrap them
+        # in a Message (a StreamsMessage) to prepare it for the next step. The next step
+        # expects a Message (a StreamsMessage).
 
         windowed_reduce: ProcessingStrategy[Union[FilteredPayload, Any]] = (
             build_arroyo_windowed_reduce(
                 self.pipeline_step.windowing,
                 self.pipeline_step.aggregate_fn,
                 msg_wrapper,
-                self.route,  # should be receiving individual Messages
+                self.route,
             )
         )
 
