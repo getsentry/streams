@@ -5,7 +5,7 @@ from sentry_streams.pipeline.message import Message
 
 # TODO: Push the following to docs
 # Standard message decoders and encoders live here
-# Pass these into Parser() and Serializer() steps, see examples/
+# These are used in the defintions of Parser() and Serializer() steps, see chain/
 
 
 def msg_parser(msg: Message[bytes]) -> Any:

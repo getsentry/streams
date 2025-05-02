@@ -12,7 +12,7 @@ from typing import (
 
 from sentry_kafka_schemas.codecs import Codec
 
-TIn = TypeVar("TIn")
+TIn = TypeVar("TIn")  # TODO: Consider naming this TPayload
 
 
 # A message with a generic payload

@@ -90,8 +90,10 @@ class Filter(Applier[Message[TIn], Message[TIn]], Generic[TIn]):
 
 
 @dataclass
-class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
-    function: Union[Callable[[Message[TIn]], TOut], str]  # Change the type here
+class FlatMap(Applier[Message[MutableSequence[TIn]], Message[TOut]], Generic[TIn, TOut]):
+    function: Union[
+        Callable[[Message[MutableSequence[TIn]]], TOut], str
+    ]  # TODO: Consider making this type an Iterable rather than MutableSequence
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
@@ -121,6 +123,15 @@ class Reducer(
 
 @dataclass
 class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
+    """
+    A step to decode bytes, deserialize the resulting message and validate it against the schema
+    which corresponds to the message type provided. The message type should be one which
+    is supported by sentry-kafka-schemas. See examples/ for usage, this step can be plugged in
+    flexibly into a pipeline. Keep in mind, data up until this step will simply be bytes.
+
+    Supports both JSON and protobuf.
+    """
+
     msg_type: Type[TOut]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -134,6 +145,11 @@ class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
 
 @dataclass
 class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
+    """
+    A step to serialize and encode messages into bytes. These bytes can be written
+    to sink data to a Kafka topic, for example. This step will need to precede a
+    sink step which writes to Kafka.
+    """
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(
