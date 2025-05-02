@@ -12,9 +12,10 @@ TPayload = TypeVar("TPayload")
 
 class MessageWrapper(ProcessingStrategy[Union[FilteredPayload, TPayload]]):
     """
-    Custom processing strategy which either produces an incoming message via a given Producer
-    if the Route of the message matches this strategy's Route, or forwards the message
-    to the next strategy provided.
+    Custom processing strategy which can wrap payloads coming from the previous step
+    into a Message. In the case that the previous step already forwards a Message
+    or a FilteredPayload, this strategy will simply forward that as well to the
+    next step.
     """
 
     def __init__(
@@ -30,7 +31,8 @@ class MessageWrapper(ProcessingStrategy[Union[FilteredPayload, TPayload]]):
         if not isinstance(message.payload, FilteredPayload):
 
             if isinstance(message.payload, RoutedValue):
-                # No need to wrap a StreamsMessage in Message() again
+                # No need to wrap a StreamsMessage in StreamsMessage() again
+                # This case occurs when prior strategy is forwarding a message that belongs on a separate route
                 assert isinstance(message.payload.payload, StreamsMessage)
                 self.__next_step.submit(cast(Message[Union[FilteredPayload, RoutedValue]], message))
             else:

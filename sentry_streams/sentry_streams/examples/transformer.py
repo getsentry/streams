@@ -15,13 +15,12 @@ from sentry_streams.pipeline.window import SlidingWindow
 
 # The simplest possible pipeline.
 # - reads from Kafka
-# - parses the event
-# - filters the event based on an attribute
-# - serializes the event into json
+# - parses the metric data, validating against schema
+# - batches messages together, emits aggregate results based on sliding window configuration
+# - serializes the result into bytes
 # - produces the event on Kafka
 
 
-# make this return the actual payload, add a Map next step with no headers
 class TransformerBatch(Accumulator[Message[IngestMetric], MutableSequence[IngestMetric]]):
 
     def __init__(self) -> None:

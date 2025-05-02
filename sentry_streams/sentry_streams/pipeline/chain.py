@@ -91,7 +91,7 @@ class Filter(Applier[Message[TIn], Message[TIn]], Generic[TIn]):
 
 @dataclass
 class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
-    function: Union[Callable[[Message[TIn]], TOut], str]  # Should be an iterator output
+    function: Union[Callable[[Message[TIn]], TOut], str]  # Change the type here
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)

@@ -11,7 +11,6 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import Commit, FilteredPayload, Message, Partition
-from sentry_kafka_schemas import get_codec
 from sentry_kafka_schemas.codecs import Codec
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
@@ -42,6 +41,7 @@ class ArroyoConsumer:
 
     source: str
     stream_name: str
+    schema: Codec[Any]
     header_filter: Optional[Tuple[str, bytes]] = None
     steps: MutableSequence[ArroyoStep] = field(default_factory=list)
 
@@ -68,15 +68,11 @@ class ArroyoConsumer:
 
             broker_timestamp = message.timestamp.timestamp() if message.timestamp else time.time()
             value = message.payload.value
-            try:
-                schema: Codec[Any] = get_codec(self.stream_name)
-            except Exception:
-                raise ValueError(f"Kafka topic {self.stream_name} has no associated schema")
 
             return RoutedValue(
                 route=Route(source=self.source, waypoints=[]),
                 payload=StreamsMessage(
-                    payload=value, headers=headers, timestamp=broker_timestamp, schema=schema
+                    payload=value, headers=headers, timestamp=broker_timestamp, schema=self.schema
                 ),
             )
 
