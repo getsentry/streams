@@ -9,6 +9,7 @@ from unittest.mock import call
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.types import Commit, Partition, Topic
+from sentry_kafka_schemas import get_codec
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.adapters.arroyo.consumer import (
@@ -34,6 +35,8 @@ from sentry_streams.pipeline.pipeline import (
 )
 from tests.adapters.arroyo.message_helpers import make_kafka_msg
 
+SCHEMA = get_codec("ingest-metrics")
+
 
 def test_single_route(
     broker: LocalBroker[KafkaPayload],
@@ -47,7 +50,7 @@ def test_single_route(
     """
     empty_route = Route(source="source1", waypoints=[])
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics")
+    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
     consumer.add_step(
         MapStep(
             route=empty_route,
@@ -127,7 +130,7 @@ def test_broadcast(
     contain a Broadcast.
     """
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics")
+    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
@@ -215,7 +218,7 @@ def test_multiple_routes(
     contain branching routes.
     """
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics")
+    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
@@ -308,7 +311,7 @@ def test_standard_reduce(
     and offset management strategy
     """
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics")
+    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
@@ -469,7 +472,7 @@ def test_reduce_with_gap(
     and offset management strategy
     """
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics")
+    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
