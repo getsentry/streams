@@ -351,23 +351,41 @@ def test_standard_reduce(
     cur_time = time.time()
 
     # 6 messages
+    messages = []
+    for i in range(6):
+        modified_metric = deepcopy(metric)
+        modified_metric["org_id"] = i
+        messages.append(modified_metric)
+
     # Accumulators: [0,1] [2,3] [4,5] [6,7] [8,9]
     for i in range(6):
         with mock.patch("time.time", return_value=cur_time + 2 * i):
-            strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", i))
+            strategy.submit(make_kafka_msg(json.dumps(messages[i]), "ingest-metrics", i))
 
     # Last submit was at T+10, which means we've only flushed the first 3 windows
-    three_msgs = json.dumps([transformed_metric for _ in range(3)])
+
+    transformed_msgs = []
+    for i in range(6):
+        modified_metric = deepcopy(transformed_metric)
+        modified_metric["org_id"] = i
+        transformed_msgs.append(modified_metric)
+
     topic = Topic("transformed-events")
     msg1 = broker.consume(Partition(topic, 0), 0)
 
-    assert msg1 is not None and msg1.payload.value == three_msgs.encode("utf-8")
+    assert msg1 is not None and msg1.payload.value == json.dumps(transformed_msgs[:3]).encode(
+        "utf-8"
+    )
 
     msg2 = broker.consume(Partition(topic, 0), 1)
-    assert msg2 is not None and msg2.payload.value == three_msgs.encode("utf-8")
+    assert msg2 is not None and msg2.payload.value == json.dumps(transformed_msgs[1:4]).encode(
+        "utf-8"
+    )
 
     msg3 = broker.consume(Partition(topic, 0), 2)
-    assert msg3 is not None and msg3.payload.value == three_msgs.encode("utf-8")
+    assert msg3 is not None and msg3.payload.value == json.dumps(transformed_msgs[2:5]).encode(
+        "utf-8"
+    )
 
     # Poll 3 times now for the remaining 3 windows to flush
     # This time, there are no more submit() calls for making progress
@@ -376,25 +394,42 @@ def test_standard_reduce(
             strategy.poll()
 
     msg4 = broker.consume(Partition(topic, 0), 3)
-    assert msg4 is not None and msg4.payload.value == three_msgs.encode("utf-8")
+    assert msg4 is not None and msg4.payload.value == json.dumps(transformed_msgs[3:6]).encode(
+        "utf-8"
+    )
 
-    two_msgs = json.dumps([transformed_metric for _ in range(2)])
     msg5 = broker.consume(Partition(topic, 0), 4)
-    assert msg5 is not None and msg5.payload.value == two_msgs.encode("utf-8")
+    assert msg5 is not None and msg5.payload.value == json.dumps(transformed_msgs[4:6]).encode(
+        "utf-8"
+    )
 
-    one_msg = json.dumps([transformed_metric])
     msg6 = broker.consume(Partition(topic, 0), 5)
-    assert msg6 is not None and msg6.payload.value == one_msg.encode("utf-8")
+    assert msg6 is not None and msg6.payload.value == json.dumps([transformed_msgs[5]]).encode(
+        "utf-8"
+    )
 
     # Up to this point everything is flushed out
+    messages = []
+    for i in range(12, 14):
+        modified_metric = deepcopy(metric)
+        modified_metric["org_id"] = i
+        messages.append(modified_metric)
 
     # Submit data at T+24, T+26 (data comes in at a gap)
     for i in range(12, 14):
         with mock.patch("time.time", return_value=cur_time + 2 * i):
-            strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", i))
+            strategy.submit(make_kafka_msg(json.dumps(messages[i - 12]), "ingest-metrics", i))
+
+    transformed_msgs = []
+    for i in range(12, 14):
+        modified_metric = deepcopy(transformed_metric)
+        modified_metric["org_id"] = i
+        transformed_msgs.append(modified_metric)
 
     msg12 = broker.consume(Partition(topic, 0), 6)
-    assert msg12 is not None and msg12.payload.value == one_msg.encode("utf-8")
+    assert msg12 is not None and msg12.payload.value == json.dumps([transformed_msgs[0]]).encode(
+        "utf-8"
+    )
 
     msg13 = broker.consume(Partition(topic, 0), 7)
     assert msg13 is None
@@ -403,7 +438,9 @@ def test_standard_reduce(
         strategy.poll()
 
     msg13 = broker.consume(Partition(topic, 0), 7)
-    assert msg13 is not None and msg13.payload.value == two_msgs.encode("utf-8")
+    assert msg13 is not None and msg13.payload.value == json.dumps(transformed_msgs[:2]).encode(
+        "utf-8"
+    )
 
     msg14 = broker.consume(Partition(topic, 0), 8)
     assert msg14 is None
@@ -412,13 +449,17 @@ def test_standard_reduce(
         strategy.poll()
 
     msg14 = broker.consume(Partition(topic, 0), 8)
-    assert msg14 is not None and msg14.payload.value == two_msgs.encode("utf-8")
+    assert msg14 is not None and msg14.payload.value == json.dumps(transformed_msgs[:2]).encode(
+        "utf-8"
+    )
 
     with mock.patch("time.time", return_value=cur_time + 2 * 16):
         strategy.poll()
 
     msg15 = broker.consume(Partition(topic, 0), 9)
-    assert msg15 is not None and msg15.payload.value == one_msg.encode("utf-8")
+    assert msg15 is not None and msg15.payload.value == json.dumps([transformed_msgs[1]]).encode(
+        "utf-8"
+    )
 
     with mock.patch("time.time", return_value=cur_time + 2 * 17):
         strategy.poll()
@@ -511,24 +552,42 @@ def test_reduce_with_gap(
 
     cur_time = time.time()
 
-    # 6 messages
+    # 6 messages to use in this test
+    # Give them an "ID" so we can test for correctness in the algorithm
+    messages = []
+    for i in range(6):
+        modified_metric = deepcopy(metric)
+        modified_metric["org_id"] = i
+        messages.append(modified_metric)
+
     # Accumulators: [0,1] [2,3] [4,5] [6,7] [8,9]
     for i in range(6):
         with mock.patch("time.time", return_value=cur_time + 2 * i):
-            strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", i))
+            strategy.submit(make_kafka_msg(json.dumps(messages[i]), "ingest-metrics", i))
 
     # Last submit was at T+10, which means we've only flushed the first 3 windows
 
-    three_msgs = json.dumps([transformed_metric for _ in range(3)])
+    transformed_msgs = []
+    for i in range(6):
+        modified_metric = deepcopy(transformed_metric)
+        modified_metric["org_id"] = i
+        transformed_msgs.append(modified_metric)
+
     topic = Topic("transformed-events")
     msg1 = broker.consume(Partition(topic, 0), 0)
-    assert msg1 is not None and msg1.payload.value == three_msgs.encode("utf-8")
+    assert msg1 is not None and msg1.payload.value == json.dumps(transformed_msgs[:3]).encode(
+        "utf-8"
+    )
 
     msg2 = broker.consume(Partition(topic, 0), 1)
-    assert msg2 is not None and msg2.payload.value == three_msgs.encode("utf-8")
+    assert msg2 is not None and msg2.payload.value == json.dumps(transformed_msgs[1:4]).encode(
+        "utf-8"
+    )
 
     msg3 = broker.consume(Partition(topic, 0), 2)
-    assert msg3 is not None and msg3.payload.value == three_msgs.encode("utf-8")
+    assert msg3 is not None and msg3.payload.value == json.dumps(transformed_msgs[2:5]).encode(
+        "utf-8"
+    )
 
     # We did not make it past the first 3 windows yet
     msg4 = broker.consume(Partition(topic, 0), 3)
@@ -539,15 +598,19 @@ def test_reduce_with_gap(
         strategy.poll()
 
     msg4 = broker.consume(Partition(topic, 0), 3)
-    assert msg4 is not None and msg4.payload.value == three_msgs.encode("utf-8")
+    assert msg4 is not None and msg4.payload.value == json.dumps(transformed_msgs[3:6]).encode(
+        "utf-8"
+    )
 
-    two_msgs = json.dumps([transformed_metric for _ in range(2)])
     msg5 = broker.consume(Partition(topic, 0), 4)
-    assert msg5 is not None and msg5.payload.value == two_msgs.encode("utf-8")
+    assert msg5 is not None and msg5.payload.value == json.dumps(transformed_msgs[4:6]).encode(
+        "utf-8"
+    )
 
-    one_msg = json.dumps([transformed_metric])
     msg6 = broker.consume(Partition(topic, 0), 5)
-    assert msg6 is not None and msg6.payload.value == one_msg.encode("utf-8")
+    assert msg6 is not None and msg6.payload.value == json.dumps([transformed_msgs[5]]).encode(
+        "utf-8"
+    )
 
     commit.assert_has_calls(
         [
