@@ -3,6 +3,7 @@ from typing import Any, TypeVar, cast
 from unittest import mock
 
 import pytest
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline.chain import (
     Applier,
@@ -56,10 +57,10 @@ def test_broadcast() -> None:
         .broadcast(
             "route_to_all",
             [
-                segment(name="route1")
+                segment(name="route1", msg_type=IngestMetric)
                 .apply("transform2", Map(lambda msg: msg))
                 .sink("myoutput1", "transformed-events-2"),
-                segment(name="route2")
+                segment(name="route2", msg_type=IngestMetric)
                 .apply("transform3", Map(lambda msg: msg))
                 .sink("myoutput2", "transformed-events-3"),
             ],
@@ -117,10 +118,10 @@ def test_router() -> None:
             "route_to_one",
             routing_function=routing_func,
             routes={
-                Routes.ROUTE1: segment(name="route1")
+                Routes.ROUTE1: segment(name="route1", msg_type=IngestMetric)
                 .apply("transform2", Map(lambda msg: msg))
                 .sink("myoutput1", "transformed-events-2"),
-                Routes.ROUTE2: segment(name="route2")
+                Routes.ROUTE2: segment(name="route2", msg_type=IngestMetric)
                 .apply("transform3", Map(lambda msg: msg))
                 .sink("myoutput2", "transformed-events-3"),
             },

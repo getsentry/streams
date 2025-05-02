@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, Union
+from typing import Any, Callable, Generic, TypeVar, Union
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies import CommitOffsets, Produce
@@ -11,8 +11,10 @@ from arroyo.types import Commit, FilteredPayload, Message, Topic
 
 from sentry_streams.adapters.arroyo.broadcaster import Broadcaster
 from sentry_streams.adapters.arroyo.forwarder import Forwarder
+from sentry_streams.adapters.arroyo.msg_wrapper import MessageWrapper
 from sentry_streams.adapters.arroyo.reduce import build_arroyo_windowed_reduce
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
+from sentry_streams.pipeline.message import Message as StreamsMessage
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
     Filter,
@@ -23,6 +25,8 @@ from sentry_streams.pipeline.pipeline import (
 )
 
 logger = logging.getLogger(__name__)
+
+TPayload = TypeVar("TPayload")
 
 
 @dataclass
@@ -48,6 +52,12 @@ class ArroyoStep(ABC):
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         raise NotImplementedError
+
+
+# NOTE: All of the steps below now:
+# Perform operations / evaluations on a StreamsMessage
+# Receive a raw payload, which is NOT wrapped in a StreamsMessage (as the user provides this type signature)
+# Wrap the raw payload in a StreamsMessage to send it along to the next step
 
 
 def process_message(
@@ -91,9 +101,14 @@ class MapStep(ArroyoStep):
             return process_message(
                 self.route,
                 message,
-                lambda payload: RoutedValue(
-                    route=payload.route,
-                    payload=self.pipeline_step.resolved_function(payload.payload),
+                lambda routed_value: RoutedValue(
+                    route=routed_value.route,
+                    payload=StreamsMessage(
+                        self.pipeline_step.resolved_function(routed_value.payload),
+                        routed_value.payload.headers,
+                        routed_value.payload.timestamp,
+                        routed_value.payload.schema,
+                    ),
                 ),
             )
 
@@ -122,9 +137,19 @@ class FilterStep(ArroyoStep):
             return process_message(
                 self.route,
                 message,
-                lambda payload: (
-                    payload
-                    if self.pipeline_step.resolved_function(payload.payload)
+                lambda routed_value: (
+                    RoutedValue(
+                        self.route,
+                        StreamsMessage(
+                            routed_value.payload.payload,
+                            routed_value.payload.headers,
+                            routed_value.payload.timestamp,
+                            routed_value.payload.schema,
+                        ),
+                    )
+                    if self.pipeline_step.resolved_function(
+                        routed_value.payload
+                    )  # The function used for filtering takes in a StreamsMessage
                     else FilteredPayload()
                 ),
             )
@@ -177,7 +202,13 @@ class RouterStep(ArroyoStep, Generic[RoutingFuncReturnType]):
             result_branch = routing_func(payload.payload)
             result_branch_name = routing_table[result_branch].name
             payload.route.waypoints.append(result_branch_name)
-            return payload
+
+            streams_msg = payload.payload
+            msg = StreamsMessage(
+                streams_msg.payload, streams_msg.headers, streams_msg.timestamp, streams_msg.schema
+            )
+
+            return RoutedValue(payload.route, msg)
 
         return RunTask(
             lambda message: process_message(
@@ -219,9 +250,19 @@ class ReduceStep(ArroyoStep):
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         # TODO: Support group by keys
-        windowed_reduce: ProcessingStrategy[Union[FilteredPayload, RoutedValue]] = (
+
+        msg_wrapper: ProcessingStrategy[Union[FilteredPayload, Any]] = MessageWrapper(
+            self.route, next
+        )  # Since the Reduce step produces aggregated raw payloads, we need to wrap them
+        # in a Message (a StreamsMessage) to prepare it for the next step. The next step
+        # expects a Message (a StreamsMessage).
+
+        windowed_reduce: ProcessingStrategy[Union[FilteredPayload, Any]] = (
             build_arroyo_windowed_reduce(
-                self.pipeline_step.windowing, self.pipeline_step.aggregate_fn, next, self.route
+                self.pipeline_step.windowing,
+                self.pipeline_step.aggregate_fn,
+                msg_wrapper,
+                self.route,
             )
         )
 
