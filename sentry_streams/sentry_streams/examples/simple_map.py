@@ -2,30 +2,26 @@ from json import JSONDecodeError, dumps, loads
 from typing import Any, Mapping, cast
 
 from sentry_streams.pipeline import Map, streaming_source
+from sentry_streams.pipeline.message import Message
 
 
-def parse(msg: str) -> Mapping[str, Any]:
+def parse(msg: Message[bytes]) -> Mapping[str, Any]:
     try:
-        parsed = loads(msg)
+        parsed = loads(msg.payload)
     except JSONDecodeError:
         return {"type": "invalid"}
 
     return cast(Mapping[str, Any], parsed)
 
 
-def transform_msg(msg: Mapping[str, Any]) -> Mapping[str, Any]:
-    return {**msg, "transformed": True}
+def transform_msg(msg: Message[Mapping[str, Any]]) -> Mapping[str, Any]:
+    return {**msg.payload, "transformed": True}
 
 
-def serialize_msg(msg: Mapping[str, Any]) -> bytes:
-    ret = dumps(msg).encode()
+def serialize_msg(msg: Message[Mapping[str, Any]]) -> bytes:
+    ret = dumps(msg.payload).encode()
     print(f"PROCESSING {msg}")
     return ret
-
-
-def print_msg(msg: Any) -> Any:
-    print(f"PROCESSING {msg}")
-    return msg
 
 
 pipeline = (
