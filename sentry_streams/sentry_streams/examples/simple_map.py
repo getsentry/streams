@@ -24,6 +24,7 @@ def serialize_msg(msg: Message[Mapping[str, Any]]) -> bytes:
     return ret
 
 
+# A pipline with a few transformations
 pipeline = (
     streaming_source(
         name="myinput",
