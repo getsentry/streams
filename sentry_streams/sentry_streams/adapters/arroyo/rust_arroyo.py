@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import (
+    Any,
     Mapping,
     MutableMapping,
     Self,
@@ -30,6 +31,7 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
+from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
     Filter,
@@ -135,6 +137,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             topic=step.stream_name,
         )
 
+        def make_msg(payload: Any) -> Message[Any]:
+            return Message(payload=payload, headers=[], timestamp=0, schema=None)
+
+        route = RustRoute(source_name, [])
+        self.__consumers[source_name].add_step(RuntimeOperator.Map(route, make_msg))
+
         return Route(source_name, [])
 
     def sink(self, step: Sink, stream: Route) -> Route:
@@ -148,6 +156,10 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         assert isinstance(step, StreamSink), "Only Stream Sinks are supported"
         route = RustRoute(stream.source, stream.waypoints)
 
+        def unpack_msg(msg: Message[Any]) -> Any:
+            return msg.payload
+
+        self.__consumers[stream.source].add_step(RuntimeOperator.Map(route, unpack_msg))
         self.__consumers[stream.source].add_step(
             RuntimeOperator.StreamSink(
                 route, step.stream_name, build_kafka_producer_config(step.name, self.steps_config)
@@ -163,8 +175,16 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
+        def transform_msg(msg: Message[Any]) -> Message[Any]:
+            return Message(
+                payload=step.resolved_function(msg),
+                headers=msg.headers,
+                timestamp=msg.timestamp,
+                schema=msg.schema,
+            )
+
         route = RustRoute(stream.source, stream.waypoints)
-        self.__consumers[stream.source].add_step(RuntimeOperator.Map(route, step.resolved_function))
+        self.__consumers[stream.source].add_step(RuntimeOperator.Map(route, transform_msg))
         return stream
 
     def flat_map(self, step: FlatMap, stream: Route) -> Route:
