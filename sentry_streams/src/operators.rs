@@ -1,0 +1,68 @@
+use crate::kafka_config::PyKafkaProducerConfig;
+use crate::routes::{Route, RoutedValue};
+use crate::sinks::StreamSink;
+use crate::transformer::build_map;
+use pyo3::prelude::*;
+use sentry_arroyo::backends::kafka::producer::KafkaProducer;
+use sentry_arroyo::backends::kafka::types::KafkaPayload;
+use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
+use sentry_arroyo::processing::strategies::ProcessingStrategy;
+
+/// RuntimeOperator represent a translated step in the streaming pipeline the
+/// Arroyo Rust runtime know how to run.
+///
+/// This enum is exported to Python as this is the data structure the adapter
+/// code builds to instruct the Rust runtime on how to add logic to the
+/// pipeline.
+///
+/// RuntimeOperators do not necessarily map 1:1 to the steps in the python Pipeline
+/// data model. This are the operations the Rust runtime can run. Multiple
+/// Python pipeline steps may be managed by the same Rust runtime step.
+#[pyclass]
+#[derive(Debug)]
+pub enum RuntimeOperator {
+    /// Represents a Map transformation in the streaming pipeline.
+    /// This translates to a RunTask step in arroyo where a function
+    /// is provided to transform the message payload into a different
+    /// one.
+    #[pyo3(name = "Map")]
+    Map { route: Route, function: Py<PyAny> },
+
+    /// Represents a Kafka Producer as a Sink in the pipeline.
+    /// It is translated to an Arroyo Kafka producer.
+    #[pyo3(name = "StreamSink")]
+    StreamSink {
+        route: Route,
+        topic_name: String,
+        kafka_config: PyKafkaProducerConfig,
+    },
+}
+
+pub fn build(
+    step: &Py<RuntimeOperator>,
+    next: Box<dyn ProcessingStrategy<RoutedValue>>,
+    terminator_strategy: Box<dyn ProcessingStrategy<KafkaPayload>>,
+    concurrency_config: &ConcurrencyConfig,
+) -> Box<dyn ProcessingStrategy<RoutedValue>> {
+    match step.get() {
+        RuntimeOperator::Map { function, route } => {
+            let func_ref = Python::with_gil(|py| function.clone_ref(py));
+            build_map(route, func_ref, next)
+        }
+        RuntimeOperator::StreamSink {
+            route,
+            topic_name,
+            kafka_config,
+        } => {
+            let producer = KafkaProducer::new(kafka_config.clone().into());
+            Box::new(StreamSink::new(
+                route.clone(),
+                producer,
+                concurrency_config,
+                topic_name,
+                next,
+                terminator_strategy,
+            ))
+        }
+    }
+}
