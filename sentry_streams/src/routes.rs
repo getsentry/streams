@@ -89,6 +89,7 @@ mod tests {
 
     #[test]
     fn test_routed_value_creation() {
+        pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
             let payload = PyBytes::new(py, &[1, 2, 3]).into_any();
