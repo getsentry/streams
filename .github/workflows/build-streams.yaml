@@ -8,6 +8,8 @@ on:
 
 jobs:
   linux:
+    permissions:
+      contents: read
     timeout-minutes: 5
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -53,6 +55,8 @@ jobs:
 
 
   macos:
+    permissions:
+      contents: read
     timeout-minutes: 5
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -96,6 +100,8 @@ jobs:
           path: ./sentry_streams/dist
 
   sdist:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -112,6 +118,8 @@ jobs:
           path: ./sentry_streams/dist
 
   merge:
+    permissions:
+      contents: read
     name: Create Release Artifact
     runs-on: ubuntu-latest
     needs: [linux, macos, sdist]
