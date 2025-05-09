@@ -1,3 +1,34 @@
+## 0.0.17
+
+### Various fixes & improvements
+
+- Pypi seems not to like an empty readme (#103) by @fpacifici
+- Add workflow to build the wheel containing the rust binary (#102) by @fpacifici
+- Rust Arroyo adapter (#98) by @fpacifici
+- ref: Type out chains and steps (#99) by @ayirr7
+- feat: Flink deployment config (#90) by @ayirr7
+- feat: add arroyo broadcast step (#91) by @bmckerry
+- fix: Update config types for bootstrap_servers (#97) by @ayirr7
+- fix: arroyo adapter deployment config (#96) by @bmckerry
+- release: 0.0.16 (16cb4330) by @getsentry-bot
+- ref: Make Flink tests use deployment config (#95) by @ayirr7
+- Fix typo (#94) by @fpacifici
+- Add some docs (#93) by @fpacifici
+- feat: Arroyo-backed SlidingWindows, TumblingWindows (#85) by @ayirr7
+- release: 0.0.15 (44332cb7) by @getsentry-bot
+- feat: Add deployment config (#77) by @ayirr7
+- Add docs (#69) by @ayirr7
+- feat: add explicit broadcast step to flink (#89) by @bmckerry
+- release: 0.0.14 (0f41d356) by @getsentry-bot
+- feat: add explicit Broadcast step to pipeline graph (#88) by @bmckerry
+- Add multi chain support (#86) by @fpacifici
+- Introduce chained primitives to replace the old DSL (#82) by @fpacifici
+- feat: router for arroyo adapter (#83) by @bmckerry
+- ref: remove topics mapping from env config (#84) by @bmckerry
+- feat: add router to sentry_flink (#64) by @bmckerry
+
+_Plus 33 more_
+
 ## 0.0.16
 
 ### Various fixes & improvements
