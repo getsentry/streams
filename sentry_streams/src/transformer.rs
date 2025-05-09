@@ -61,6 +61,7 @@ mod tests {
 
     #[test]
     fn test_build_map() {
+        pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let callable = make_lambda(py, c_str!("lambda x: x + '_transformed'"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
@@ -113,6 +114,7 @@ mod tests {
 
     #[test]
     fn test_call_python_function() {
+        pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let callable = make_lambda(py, c_str!("lambda x: x + '_transformed'"));
 

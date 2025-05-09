@@ -34,6 +34,9 @@ dev = [
     "types-jsonschema>=4.23.0",
 ]
 
+[tool.maturin]
+module-name = "sentry_streams.rust_streams"
+
 [tool.setuptools.package-data]
 sentry_streams = ["py.typed", "config.json", "deployment_config/test_flink_config.yaml"]
 

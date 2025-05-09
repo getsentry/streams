@@ -9,17 +9,6 @@ from typing import (
     cast,
 )
 
-from rust_streams import (
-    ArroyoConsumer,
-    InitialOffset,
-    PyKafkaConsumerConfig,
-    PyKafkaProducerConfig,
-)
-from rust_streams import Route as RustRoute
-from rust_streams import (
-    RuntimeOperator,
-)
-
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.config_types import (
@@ -46,6 +35,16 @@ from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
+from sentry_streams.rust_streams import (
+    ArroyoConsumer,
+    InitialOffset,
+    PyKafkaConsumerConfig,
+    PyKafkaProducerConfig,
+)
+from sentry_streams.rust_streams import Route as RustRoute
+from sentry_streams.rust_streams import (
+    RuntimeOperator,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -198,6 +198,7 @@ mod tests {
 
     #[test]
     fn test_kafka_payload() {
+        pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let message = make_routed_msg(
                 py,
@@ -216,6 +217,7 @@ mod tests {
 
     #[test]
     fn test_route() {
+        pyo3::prepare_freethreaded_python();
         let result_topic = Topic::new("result-topic");
         let mut broker = LocalBroker::new(
             Box::new(MemoryMessageStorage::default()),
