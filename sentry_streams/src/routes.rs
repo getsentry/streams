@@ -52,6 +52,14 @@ pub struct RoutedValue {
     pub route: Route,
     pub payload: Py<PyAny>, // Replace Py<PyAny> with the concrete type you need
 }
+
+impl RoutedValue {
+    pub fn add_waypoint(mut self, waypoint: String) -> RoutedValue {
+        self.route.waypoints.push(waypoint);
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
