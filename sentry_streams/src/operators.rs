@@ -45,9 +45,6 @@ pub enum RuntimeOperator {
         route: Route,
         routing_function: Py<PyAny>,
     },
-    // Broadcasts messages to all the downstream routes.
-    //#[pyo3(name = "Router")]
-    //Broadcast { route: Route, routes: Vec<String> },
 }
 
 pub fn build(
@@ -82,6 +79,6 @@ pub fn build(
         } => {
             let func_ref = Python::with_gil(|py| routing_function.clone_ref(py));
             build_router(route, func_ref, next)
-        } //RuntimeOperator::Broadcast { route, routes } => {}
+        }
     }
 }

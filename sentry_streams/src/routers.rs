@@ -2,8 +2,8 @@ use crate::callers::call_python_function;
 use crate::routes::{Route, RoutedValue};
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
-use sentry_arroyo::processing::strategies::{ProcessingStrategy, SubmitError};
-use sentry_arroyo::types::Message;
+use sentry_arroyo::processing::strategies::{InvalidMessage, ProcessingStrategy, SubmitError};
+use sentry_arroyo::types::{InnerMessage, Message};
 
 fn route_message(
     route: &Route,
@@ -13,13 +13,28 @@ fn route_message(
     if message.payload().route != *route {
         return Ok(message);
     }
-    let dest_route = call_python_function(&callable, &message);
-    Python::with_gil(|py| {
-        let new_waypoint = dest_route.unwrap().extract::<String>(py).unwrap();
-        message.try_map(|payload| Ok(payload.add_waypoint(new_waypoint.clone())))
+    let dest_route = call_python_function(callable, &message);
+    Python::with_gil(|py| match dest_route {
+        Ok(dest_route) => {
+            let new_waypoint = dest_route.extract::<String>(py).unwrap();
+            message.try_map(|payload| Ok(payload.add_waypoint(new_waypoint.clone())))
+        }
+        Err(_) => match message.inner_message {
+            InnerMessage::BrokerMessage(inner) => {
+                Err(SubmitError::InvalidMessage(InvalidMessage {
+                    partition: inner.partition,
+                    offset: inner.offset,
+                }))
+            }
+            InnerMessage::AnyMessage(inner) => panic!("Unexpected message type: {:?}", inner),
+        },
     })
 }
 
+/// Creates an Arroyo strategy that routes a message to a single route downstream.
+/// The route is picked by a Python function passed as PyAny. The python function
+/// is expected to return a string that represent the waypoint to add to the
+/// route.
 pub fn build_router(
     route: &Route,
     callable: Py<PyAny>,
@@ -63,10 +78,24 @@ mod tests {
                 message,
             );
 
-            let result = routed.unwrap();
+            let routed = routed.unwrap();
 
             assert_eq!(
-                result.payload().route,
+                routed.payload().route,
+                Route::new(
+                    "source1".to_string(),
+                    vec!["waypoint1".to_string(), "waypoint2".to_string()]
+                )
+            );
+
+            let through = route_message(
+                &Route::new("source3".to_string(), vec!["waypoint1".to_string()]),
+                &callable,
+                routed,
+            );
+            let through = through.unwrap();
+            assert_eq!(
+                through.payload().route,
                 Route::new(
                     "source1".to_string(),
                     vec!["waypoint1".to_string(), "waypoint2".to_string()]
