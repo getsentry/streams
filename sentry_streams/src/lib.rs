@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 mod consumer;
 mod kafka_config;
 mod operators;
+mod python_operator;
 mod routes;
 mod sinks;
 mod transformer;

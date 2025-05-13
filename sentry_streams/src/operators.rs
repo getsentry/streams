@@ -1,4 +1,5 @@
 use crate::kafka_config::PyKafkaProducerConfig;
+use crate::python_operator::PythonOperator;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
 use crate::transformer::build_map;
@@ -7,6 +8,7 @@ use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
+use std::sync::Arc;
 
 /// RuntimeOperator represent a translated step in the streaming pipeline the
 /// Arroyo Rust runtime know how to run.
@@ -36,6 +38,14 @@ pub enum RuntimeOperator {
         topic_name: String,
         kafka_config: PyKafkaProducerConfig,
     },
+    /// Delegates messages processing to a Python operator that provides
+    /// the same kind of interface as an Arroyo strategy. This is meant
+    /// to simplify the porting of python strategies to Rust.
+    #[pyo3(name = "PythonOperator")]
+    PythonOperator {
+        route: Route,
+        processing_step: Py<PyAny>,
+    },
 }
 
 pub fn build(
@@ -63,6 +73,13 @@ pub fn build(
                 next,
                 terminator_strategy,
             ))
+        }
+        RuntimeOperator::PythonOperator {
+            route,
+            processing_step,
+        } => {
+            let strategy = Python::with_gil(|py| processing_step.clone_ref(py));
+            Box::new(PythonOperator::new(route.clone(), strategy, next))
         }
     }
 }
