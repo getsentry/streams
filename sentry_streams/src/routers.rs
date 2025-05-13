@@ -15,10 +15,10 @@ fn route_message(
     }
     let dest_route = call_python_function(callable, &message);
     match dest_route {
-        Ok(dest_route) => Python::with_gil(|py| {
-            let new_waypoint = dest_route.extract::<String>(py).unwrap();
+        Ok(dest_route) => {
+            let new_waypoint = Python::with_gil(|py| dest_route.extract::<String>(py).unwrap());
             message.try_map(|payload| Ok(payload.add_waypoint(new_waypoint.clone())))
-        }),
+        }
         Err(_) => match message.inner_message {
             InnerMessage::BrokerMessage(inner) => {
                 Err(SubmitError::InvalidMessage(InvalidMessage {
