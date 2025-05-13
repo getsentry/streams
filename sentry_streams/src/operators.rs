@@ -1,4 +1,5 @@
 use crate::kafka_config::PyKafkaProducerConfig;
+use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
 use crate::transformer::build_map;
@@ -36,6 +37,14 @@ pub enum RuntimeOperator {
         topic_name: String,
         kafka_config: PyKafkaProducerConfig,
     },
+
+    /// Represent a router step in the pipeline that can send messages
+    /// to one of the downstream routes.
+    #[pyo3(name = "Router")]
+    Router {
+        route: Route,
+        routing_function: Py<PyAny>,
+    },
 }
 
 pub fn build(
@@ -63,6 +72,13 @@ pub fn build(
                 next,
                 terminator_strategy,
             ))
+        }
+        RuntimeOperator::Router {
+            route,
+            routing_function,
+        } => {
+            let func_ref = Python::with_gil(|py| routing_function.clone_ref(py));
+            build_router(route, func_ref, next)
         }
     }
 }

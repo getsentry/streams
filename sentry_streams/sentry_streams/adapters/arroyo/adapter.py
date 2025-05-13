@@ -5,7 +5,6 @@ from typing import (
     Any,
     Mapping,
     MutableMapping,
-    MutableSequence,
     Self,
     cast,
 )
@@ -24,6 +23,7 @@ from sentry_streams.adapters.arroyo.consumer import (
     ArroyoConsumer,
     ArroyoStreamingFactory,
 )
+from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import (
     BroadcastStep,
@@ -260,13 +260,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         ), f"Stream starting at source {stream.source} not found when adding a broadcast step"
         self.__consumers[stream.source].add_step(BroadcastStep(route=stream, pipeline_step=step))
 
-        return {
-            branch.name: Route(
-                source=stream.source,
-                waypoints=[*stream.waypoints, branch.name],
-            )
-            for branch in step.routes
-        }
+        return build_branches(stream, step.routes)
 
     def router(
         self,
@@ -281,15 +275,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         ), f"Stream starting at source {stream.source} not found when adding a router"
         self.__consumers[stream.source].add_step(RouterStep(route=stream, pipeline_step=step))
 
-        routes_map: MutableMapping[str, Route] = {}
-        for branch in step.routing_table.values():
-            branch_waypoints = [*stream.waypoints, branch.name]
-            branch_stream = Route(
-                source=stream.source, waypoints=cast(MutableSequence[str], branch_waypoints)
-            )
-            routes_map[branch.name] = branch_stream
-
-        return routes_map
+        return build_branches(stream, step.routing_table.values())
 
     def get_processor(self, source: str) -> StreamProcessor[KafkaPayload]:
         """

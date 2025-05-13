@@ -1,20 +1,9 @@
+use crate::callers::call_python_function;
 use crate::routes::{Route, RoutedValue};
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::types::Message;
-
-/// Executes a Python callable with an Arroyo message containing Any and
-/// returns the result.
-fn call_python_function(
-    callable: &Py<PyAny>,
-    message: &Message<RoutedValue>,
-) -> Result<Py<PyAny>, PyErr> {
-    Python::with_gil(|py| {
-        let python_payload = message.payload().payload.clone_ref(py);
-        callable.call1(py, (python_payload,))
-    })
-}
 
 /// Creates an Arroyo transformer strategy that uses a Python callable to
 /// transform messages. The callable is expected to take a Message<Py<PyAny>>
@@ -109,31 +98,6 @@ mod tests {
             let actual_messages = submitted_messages_clone.lock().unwrap();
 
             assert_messages_match(py, expected_messages, actual_messages.deref());
-        });
-    }
-
-    #[test]
-    fn test_call_python_function() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            let callable = make_lambda(py, c_str!("lambda x: x + '_transformed'"));
-
-            let message = Message::new_any_message(
-                build_routed_value(
-                    py,
-                    "test_message".into_py_any(py).unwrap(),
-                    "source1",
-                    vec!["waypoint1".to_string()],
-                ),
-                BTreeMap::new(),
-            );
-
-            let result = call_python_function(&callable, &message).unwrap();
-
-            assert_eq!(
-                result.extract::<String>(py).unwrap(),
-                "test_message_transformed"
-            );
         });
     }
 }

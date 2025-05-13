@@ -9,6 +9,7 @@ from typing import (
     cast,
 )
 
+from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.config_types import (
@@ -227,7 +228,14 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a router operator for the platform the adapter supports.
         """
-        raise NotImplementedError
+        route = RustRoute(stream.source, stream.waypoints)
+
+        def routing_function(msg: Message[Any]) -> str:
+            waypoint = step.routing_function(msg)
+            return step.routing_table[waypoint].name
+
+        self.__consumers[stream.source].add_step(RuntimeOperator.Router(route, routing_function))
+        return build_branches(stream, step.routing_table.values())
 
     def run(self) -> None:
         """
