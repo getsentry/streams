@@ -1,5 +1,6 @@
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonOperator;
+use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
 use crate::transformer::build_map;
@@ -38,6 +39,13 @@ pub enum RuntimeOperator {
         topic_name: String,
         kafka_config: PyKafkaProducerConfig,
     },
+    /// Represent a router step in the pipeline that can send messages
+    /// to one of the downstream routes.
+    #[pyo3(name = "Router")]
+    Router {
+        route: Route,
+        routing_function: Py<PyAny>,
+    },
     /// Delegates messages processing to a Python operator that provides
     /// the same kind of interface as an Arroyo strategy. This is meant
     /// to simplify the porting of python strategies to Rust.
@@ -73,6 +81,13 @@ pub fn build(
                 next,
                 terminator_strategy,
             ))
+        }
+        RuntimeOperator::Router {
+            route,
+            routing_function,
+        } => {
+            let func_ref = Python::with_gil(|py| routing_function.clone_ref(py));
+            build_router(route, func_ref, next)
         }
         RuntimeOperator::PythonOperator {
             route,
