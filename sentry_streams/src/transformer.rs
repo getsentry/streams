@@ -1,4 +1,5 @@
 use crate::callers::call_python_function;
+use crate::filter_step::Filter;
 use crate::routes::{Route, RoutedValue};
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
@@ -33,6 +34,16 @@ pub fn build_map(
     };
     Box::new(RunTask::new(mapper, next))
 }
+
+pub fn build_filter(
+    route: &Route,
+    callable: Py<PyAny>,
+    next: Box<dyn ProcessingStrategy<RoutedValue>>,
+) -> Box<dyn ProcessingStrategy<RoutedValue>> {
+    let copied_route = route.clone();
+    Box::new(Filter::new(callable, next, copied_route))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
