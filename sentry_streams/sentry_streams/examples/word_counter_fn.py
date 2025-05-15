@@ -1,7 +1,7 @@
 import json
 from typing import Self
 
-from sentry_streams.pipeline.function_template import GroupBy
+from sentry_streams.pipeline.function_template import Accumulator, GroupBy
 
 
 class EventsPipelineMapFunction:
@@ -53,6 +53,9 @@ class GroupByWord(GroupBy):
 
     def get_group_by_key(self, payload: tuple[str, int]) -> str:
         return payload[0]
+
+
+class WordCounter(Accumulator[tuple[str, int], str]):
 
     def __init__(self) -> None:
         self.tup = ("", 0)
