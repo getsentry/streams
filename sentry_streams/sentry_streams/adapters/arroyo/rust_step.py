@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Generic, Iterable, TypeVar
 
-from arroyo.types import Partition, Topic
-
 from sentry_streams.pipeline.message import Message
 
 TIn = TypeVar("TIn")
@@ -82,10 +80,3 @@ class Operator(ABC, Generic[TIn, TOut]):
         used by this step.
         """
         raise NotImplementedError
-
-
-def create_partition() -> Partition:
-    return Partition(
-        Topic("topic"),
-        0,
-    )
