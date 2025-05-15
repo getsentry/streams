@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Generic, Iterable, TypeVar
 
+from arroyo.types import Partition, Topic
+
 from sentry_streams.pipeline.message import Message
 
 TIn = TypeVar("TIn")
@@ -42,11 +44,18 @@ class Operator(ABC, Generic[TIn, TOut]):
     """
 
     @abstractmethod
-    def submit(self, message: Message[TIn]) -> Iterable[Message[TOut]]:
+    def submit(self, message: Message[TIn]) -> None:
         """
         Send a message to this step for processing.
-        This method can immediately return the processed message (or
-        messages) or it can store it for asynchronous processing.
+
+        This method accumulate the message with work to be done.
+        The result of the processing is performed by the `poll` method.
+        This separation makes errors management on the Rust side.
+        Ideally we would allow submit to return results as well.
+
+        The rust code interprets MessageRejected as backpressure and
+        InvalidMessage as a message that cannot be processed to be
+        sent to DLQ.
         """
         raise NotImplementedError
 
@@ -73,3 +82,10 @@ class Operator(ABC, Generic[TIn, TOut]):
         used by this step.
         """
         raise NotImplementedError
+
+
+def create_partition() -> Partition:
+    return Partition(
+        Topic("topic"),
+        0,
+    )
