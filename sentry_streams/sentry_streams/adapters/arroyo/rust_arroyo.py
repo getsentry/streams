@@ -197,7 +197,16 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Builds a filter operator for the platform the adapter supports.
         """
-        raise NotImplementedError
+        assert (
+            stream.source in self.__consumers
+        ), f"Stream starting at source {stream.source} not found when adding a map"
+
+        def filter_msg(msg: Message[Any]) -> bool:
+            return step.resolved_function(msg)
+
+        route = RustRoute(stream.source, stream.waypoints)
+        self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+        return stream
 
     def reduce(
         self,

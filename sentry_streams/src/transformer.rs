@@ -35,6 +35,12 @@ pub fn build_map(
     Box::new(RunTask::new(mapper, next))
 }
 
+/// Creates an Arroyo-based filter step strategy that uses a Python callable to
+/// filter out messages. The callable is expected to take a Message<Py<PyAny>>
+/// as input and return a bool. The strategy is a custom Processing Strategy,
+/// defined in sentry_streams/src.
+///
+/// This function takes a `next` step to wire the Arroyo strategy to.
 pub fn build_filter(
     route: &Route,
     callable: Py<PyAny>,
