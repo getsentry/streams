@@ -117,7 +117,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         cls,
         config: PipelineConfig,
     ) -> Self:
-        steps_config = config["pipeline"]["segments"][0]["steps_config"]
+        steps_config = config["steps_config"]
 
         return cls(steps_config)
 

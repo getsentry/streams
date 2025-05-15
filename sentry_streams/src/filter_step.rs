@@ -6,14 +6,18 @@ use sentry_arroyo::processing::strategies::{
 use sentry_arroyo::types::Message;
 use std::time::Duration;
 
-pub struct Filter<N> {
+pub struct Filter {
     pub callable: Py<PyAny>,
-    pub next_step: N,
+    pub next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     pub route: Route,
 }
 
-impl<N> Filter<N> {
-    pub fn new(callable: Py<PyAny>, next_step: N, route: Route) -> Self {
+impl Filter {
+    pub fn new(
+        callable: Py<PyAny>,
+        next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
+        route: Route,
+    ) -> Self {
         Self {
             callable,
             next_step,
@@ -22,10 +26,7 @@ impl<N> Filter<N> {
     }
 }
 
-impl<N> ProcessingStrategy<RoutedValue> for Filter<N>
-where
-    N: ProcessingStrategy<RoutedValue> + 'static,
-{
+impl ProcessingStrategy<RoutedValue> for Filter {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         self.next_step.poll()
     }
@@ -34,24 +35,21 @@ where
         if self.route != message.payload().route {
             self.next_step.submit(message)
         } else {
-            Python::with_gil(|py: Python<'_>| {
+            let filtered = Python::with_gil(|py: Python<'_>| -> bool {
                 let python_payload = message.payload().payload.clone_ref(py);
-                let b = self.callable.call1(py, (python_payload,));
+                let py_res = self.callable.call1(py, (python_payload,));
 
-                match b {
-                    Ok(py_obj) => {
-                        let obj = py_obj.is_truthy(py);
+                // TODO: Create an exception for Invalid messages in Python
+                // This now crashes if the Python code fails.
+                let boolean = py_res.unwrap();
+                boolean.is_truthy(py).unwrap()
+            });
 
-                        if let Ok(boolean) = obj {
-                            if boolean {
-                                let _ = self.next_step.submit(message);
-                            }
-                        }
-                        Ok(())
-                    }
-                    Err(_) => Ok(()),
-                }
-            })
+            if filtered {
+                let _ = self.next_step.submit(message);
+            }
+
+            Ok(())
         }
     }
 

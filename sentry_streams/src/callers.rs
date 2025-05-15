@@ -8,7 +8,7 @@ pub fn call_python_function(
     callable: &Py<PyAny>,
     message: &Message<RoutedValue>,
 ) -> Result<Py<PyAny>, PyErr> {
-    Python::with_gil(|py: Python<'_>| {
+    Python::with_gil(|py| {
         let python_payload = message.payload().payload.clone_ref(py);
         callable.call1(py, (python_payload,))
     })
