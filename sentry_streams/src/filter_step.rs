@@ -13,6 +13,12 @@ pub struct Filter {
 }
 
 impl Filter {
+    /// A strategy that takes a callable, and applies it to messages
+    /// to either filter the message out or submit it to the next step.
+    /// The callable is expected to take a Message<Py<PyAny>>
+    /// as input and return a bool.
+    /// The strategy also handles messages arriving on different routes;
+    /// it simply forwards them as-is to the next step.
     pub fn new(
         callable: Py<PyAny>,
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,

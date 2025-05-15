@@ -29,6 +29,9 @@ pub enum RuntimeOperator {
     #[pyo3(name = "Map")]
     Map { route: Route, function: Py<PyAny> },
 
+    /// Represents a Filter step in the streaming pipeline.
+    /// This translates to a custom Arroyo strategy (Filter step) where a function
+    /// is provided to transform the message payload into a bool.
     #[pyo3(name = "Filter")]
     Filter { route: Route, function: Py<PyAny> },
 
