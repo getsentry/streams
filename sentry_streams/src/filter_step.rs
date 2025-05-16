@@ -5,7 +5,6 @@ use sentry_arroyo::processing::strategies::{
 };
 use sentry_arroyo::types::{InnerMessage, Message};
 use std::time::Duration;
-use tracing_subscriber::filter;
 
 pub struct Filter {
     pub callable: Py<PyAny>,

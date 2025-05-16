@@ -3,11 +3,11 @@
 //!
 //! Each arroyo consumer represents a source in the streaming pipeline
 //! and all the steps following that source.
-//! The pipeline is built by adding s to the consumer.
+//! The pipeline is built by adding RuntimeOperators to the consumer.
 
 use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::operators::build;
-use crate::operators::;
+use crate::operators::RuntimeOperator;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use pyo3::prelude::*;
@@ -32,7 +32,7 @@ use std::time::Duration;
 /// used by the Python adapter to build a pipeline and run it.
 ///
 /// The Consumer class needs the Kafka configuration to be instantiated
-/// then  are added one by one in the order a message
+/// then RuntimeOperator are added one by one in the order a message
 /// would be processed. It is needed for the consumer to be provided
 /// the whole pipeline before an Arroyo consumer can be built because
 /// arroyo primitives have to be instantiated from the end to the
@@ -46,7 +46,7 @@ pub struct ArroyoConsumer {
 
     source: String,
 
-    steps: Vec<Py<>>,
+    steps: Vec<Py<RuntimeOperator>>,
 
     /// The ProcessorHandle allows the main thread to stop the StreamingProcessor
     /// from a different thread.
@@ -73,8 +73,8 @@ impl ArroyoConsumer {
 
     /// Add a step to the Consumer pipeline at the end of it.
     /// This class is supposed to be instantiated by the Python adapter
-    /// so it takes the steps descriptor as a Py<>.
-    fn add_step(&mut self, step: Py<>) {
+    /// so it takes the steps descriptor as a Py<RuntimeOperator>.
+    fn add_step(&mut self, step: Py<RuntimeOperator>) {
         self.steps.push(step);
     }
 
@@ -138,7 +138,7 @@ fn to_routed_value(source: &str, message: Message<KafkaPayload>) -> Message<Rout
 /// be customized.
 fn build_chain(
     source: &str,
-    steps: &[Py<>],
+    steps: &[Py<RuntimeOperator>],
     ending_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
     concurrency_config: &ConcurrencyConfig,
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
@@ -163,7 +163,7 @@ fn build_chain(
 
 struct ArroyoStreamingFactory {
     source: String,
-    steps: Vec<Py<>>,
+    steps: Vec<Py<RuntimeOperator>>,
     concurrency_config: Arc<ConcurrencyConfig>,
 }
 
@@ -171,7 +171,7 @@ impl ArroyoStreamingFactory {
     /// Creates a new instance of ArroyoStreamingFactory.
     fn new(
         source: String,
-        steps: &[Py<>],
+        steps: &[Py<RuntimeOperator>],
         concurrency_config: Arc<ConcurrencyConfig>,
     ) -> Self {
         let steps_copy = Python::with_gil(|py| {
@@ -204,7 +204,7 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
-    use crate::operators::;
+    use crate::operators::RuntimeOperator;
     use crate::routes::Route;
     use crate::test_operators::make_lambda;
     use crate::test_operators::make_msg;
@@ -250,11 +250,11 @@ mod tests {
         Python::with_gil(|py| {
             let callable = make_lambda(py, c_str!("lambda x: x.decode('utf-8') + '_transformed'"));
 
-            let mut steps: Vec<Py<>> = vec![];
+            let mut steps: Vec<Py<RuntimeOperator>> = vec![];
 
             let r = Py::new(
                 py,
-                ::Map {
+                RuntimeOperator::Map {
                     route: Route::new("source".to_string(), vec![]),
                     function: callable,
                 },
