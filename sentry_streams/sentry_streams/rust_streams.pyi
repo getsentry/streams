@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Any, Callable, Mapping, Self, Sequence
 
+from sentry_streams.pipeline.message import Message
+
 class Route:
     source: str
     waypoints: Sequence[str]
@@ -38,15 +40,15 @@ class PyKafkaProducerConfig:
 
 class RuntimeOperator:
     @classmethod
-    def Map(cls, route: Route, function: Callable[[Any], Any]) -> Self: ...
+    def Map(cls, route: Route, function: Callable[[Message[Any]], Any]) -> Self: ...
     @classmethod
     def StreamSink(
         cls, route: Route, topic_name: str, kafka_config: PyKafkaProducerConfig
     ) -> Self: ...
     @classmethod
-    def Router(cls, route: Route, function: Callable[[Any], str]) -> Self: ...
+    def Router(cls, route: Route, function: Callable[[Message[Any]], str]) -> Self: ...
     @classmethod
-    def Filter(cls, route: Route, function: Callable[[Any], bool]) -> Self: ...
+    def Filter(cls, route: Route, function: Callable[[Message[Any]], bool]) -> Self: ...
 
 class ArroyoConsumer:
     def __init__(self, source: str, kafka_config: PyKafkaConsumerConfig, topic: str) -> None: ...

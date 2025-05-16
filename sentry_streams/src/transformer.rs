@@ -7,7 +7,7 @@ use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::types::Message;
 
 /// Creates an Arroyo transformer strategy that uses a Python callable to
-/// transform messages. The callable is expected to take a Message<Py<PyAny>>
+/// transform messages. The callable is expected to take a Message<RoutedValue>
 /// as input and return a transformed message. The strategy is built on top of
 /// the `RunTask` Arroyo strategy.
 ///
@@ -36,7 +36,7 @@ pub fn build_map(
 }
 
 /// Creates an Arroyo-based filter step strategy that uses a Python callable to
-/// filter out messages. The callable is expected to take a Message<Py<PyAny>>
+/// filter out messages. The callable is expected to take a Message<RoutedValue>
 /// as input and return a bool. The strategy is a custom Processing Strategy,
 /// defined in sentry_streams/src.
 ///
