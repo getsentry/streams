@@ -78,3 +78,86 @@ impl ProcessingStrategy<RoutedValue> for Filter {
         Ok(None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fake_strategy::assert_messages_match;
+    use crate::fake_strategy::FakeStrategy;
+    use crate::routes::Route;
+    use crate::test_operators::build_routed_value;
+    use crate::test_operators::make_lambda;
+    use crate::transformer::build_filter;
+    use pyo3::ffi::c_str;
+    use pyo3::IntoPyObjectExt;
+    use sentry_arroyo::processing::strategies::ProcessingStrategy;
+    use std::collections::BTreeMap;
+    use std::ops::Deref;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn test_build_filter() {
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            let callable = make_lambda(py, c_str!("lambda x: 'test' in x"));
+            let submitted_messages = Arc::new(Mutex::new(Vec::new()));
+            let submitted_messages_clone = submitted_messages.clone();
+            let next_step = FakeStrategy {
+                submitted: submitted_messages,
+            };
+
+            let mut strategy = build_filter(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                callable,
+                Box::new(next_step),
+            );
+
+            // Expected message
+            let message = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            let result = strategy.submit(message);
+            assert!(result.is_ok());
+
+            // Separate route message. Not transformed
+            let message2 = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint2".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            let result2 = strategy.submit(message2);
+            assert!(result2.is_ok());
+
+            // Message to filter out
+            let message3 = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            let result3 = strategy.submit(message3);
+            assert!(result3.is_ok());
+
+            let expected_messages = vec![
+                "test_message".into_py_any(py).unwrap(),
+                "test_message".into_py_any(py).unwrap(),
+            ];
+            let actual_messages = submitted_messages_clone.lock().unwrap();
+
+            assert_messages_match(py, expected_messages, actual_messages.deref());
+        });
+    }
+}
