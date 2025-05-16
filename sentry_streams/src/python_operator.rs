@@ -3,8 +3,9 @@
 //! python operator.
 
 use crate::routes::{Route, RoutedValue};
-use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyTuple};
 use pyo3::Python;
+use pyo3::{prelude::*, IntoPyObjectExt};
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::processing::strategies::SubmitError;
 use sentry_arroyo::processing::strategies::{
@@ -39,14 +40,17 @@ impl PythonOperator {
         }
     }
 
-    fn handle_py_return_value(&mut self, payloads: Vec<Py<PyAny>>) {
+    fn handle_py_return_value(&mut self, py: Python<'_>, payloads: Vec<Py<PyAny>>) {
         for py_payload in payloads {
+            let entry = py_payload.downcast_bound::<PyTuple>(py).unwrap();
+            let payload: Py<PyAny> = entry.get_item(0).unwrap().unbind();
+            let committable: Py<PyAny> = entry.get_item(1).unwrap().unbind();
             let message = Message::new_any_message(
                 RoutedValue {
                     route: self.route.clone(),
-                    payload: py_payload,
+                    payload,
                 },
-                BTreeMap::new(), //TODO: get the committable from python
+                convert_py_committable(py, committable),
             );
 
             self.transformed_messages.push_back(message);
@@ -64,20 +68,57 @@ fn convert_partition(partition: Bound<'_, PyAny>) -> Partition {
     }
 }
 
+fn convert_committable_to_py(py: Python<'_>, committable: BTreeMap<Partition, u64>) -> Py<PyAny> {
+    let dict = PyDict::new(py);
+    for (partition, offset) in committable {
+        let key = PyTuple::new(
+            py,
+            &[
+                partition.topic.as_str().into_py_any(py).unwrap(),
+                partition.index.into_py_any(py).unwrap(),
+            ],
+        );
+        dict.set_item(key.unwrap(), offset).unwrap();
+    }
+    dict.into()
+}
+
+fn convert_py_committable(py: Python<'_>, py_committable: Py<PyAny>) -> BTreeMap<Partition, u64> {
+    let mut committable = BTreeMap::new();
+    let dict = py_committable.downcast_bound::<PyDict>(py).unwrap();
+    for (key, value) in dict.iter() {
+        let partition = key.downcast::<PyTuple>().unwrap();
+        let topic: String = partition.get_item(0).unwrap().extract().unwrap();
+        let index: u16 = partition.get_item(1).unwrap().extract().unwrap();
+        let offset: u64 = value.extract().unwrap();
+        committable.insert(
+            Partition {
+                topic: Topic::new(&topic),
+                index,
+            },
+            offset,
+        );
+    }
+    committable
+}
+
 impl ProcessingStrategy<RoutedValue> for PythonOperator {
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
         if self.route != message.payload().route {
             self.next_strategy.submit(message)
         } else {
-            let msg_committable = message.committable().clone();
             let mut committable = BTreeMap::new();
-            for (partition, offset) in msg_committable {
+            for (partition, offset) in message.committable() {
                 committable.insert(partition, offset);
             }
 
             Python::with_gil(|py| {
                 let payload = message.payload().payload.clone_ref(py);
-                match self.processing_step.call_method1(py, "submit", (payload,)) {
+                let py_committable = convert_committable_to_py(py, committable);
+                match self
+                    .processing_step
+                    .call_method1(py, "submit", (payload, py_committable))
+                {
                     Ok(_) => Ok(()),
                     Err(err) => {
                         let error_type = err.get_type(py).name();
@@ -111,7 +152,9 @@ impl ProcessingStrategy<RoutedValue> for PythonOperator {
 
         match out_messages {
             Ok(out_messages) => {
-                self.handle_py_return_value(out_messages);
+                Python::with_gil(|py| {
+                    self.handle_py_return_value(py, out_messages);
+                });
                 while let Some(msg) = self.transformed_messages.pop_front() {
                     let commit_request = self.next_strategy.poll()?;
                     self.commit_request_carried_over = merge_commit_request(
@@ -159,7 +202,9 @@ impl ProcessingStrategy<RoutedValue> for PythonOperator {
 
         match out_messages {
             Ok(out_messages) => {
-                self.handle_py_return_value(out_messages);
+                Python::with_gil(|py| {
+                    self.handle_py_return_value(py, out_messages);
+                });
                 while let Some(msg) = self.transformed_messages.pop_front() {
                     let commit_request = self.next_strategy.poll()?;
                     self.commit_request_carried_over = merge_commit_request(
@@ -232,7 +277,7 @@ class Operator:
     def __init__(self):
         self.payload = None
 
-    def submit(self, payload):
+    def submit(self, payload, committable):
         if payload == "ok":
             self.payload = payload
             return
@@ -243,13 +288,13 @@ class Operator:
 
     def poll(self):
         return [
-            self.payload,
-            self.payload,
+            (self.payload, {("topic", 0): 0}),
+            (self.payload, {("topic", 0): 0})
         ]
 
     def flush(self, timeout: float | None = None):
         return [
-            self.payload,
+            (self.payload, {("topic", 0): 0})
         ]
     "#
         );
@@ -266,6 +311,36 @@ class Operator:
             "source1",
             vec!["waypoint1".to_string()],
         )
+    }
+
+    #[test]
+    fn test_convert_committable_to_py_and_back() {
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            // Prepare a committable with two partitions
+            let mut committable = BTreeMap::new();
+            committable.insert(
+                Partition {
+                    topic: Topic::new("topic1"),
+                    index: 0,
+                },
+                123,
+            );
+            committable.insert(
+                Partition {
+                    topic: Topic::new("topic2"),
+                    index: 1,
+                },
+                456,
+            );
+
+            // Convert to Python object and back
+            let py_obj = convert_committable_to_py(py, committable.clone());
+            let committable_back = convert_py_committable(py, py_obj);
+
+            // Assert equality
+            assert_eq!(committable, committable_back);
+        });
     }
 
     #[test]

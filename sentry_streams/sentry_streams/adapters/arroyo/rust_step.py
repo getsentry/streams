@@ -1,10 +1,19 @@
 from abc import ABC, abstractmethod
-from typing import Generic, Iterable, TypeVar
+from typing import Generic, Iterable, Tuple, TypeVar
 
 from sentry_streams.pipeline.message import Message
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
+
+
+# This represents a set of committable offsets. These have to be
+# moved between Rust and Python so we do cannot use the native
+# Arroyo objects as they are not exposed to Python.
+# We could create dedicated pyo3 objects but that would be easy
+# to confuse with the Arroyo ones. This has a different structure
+# thus harder to confuse.
+Committable = dict[Tuple[str, int], int]
 
 
 class Operator(ABC, Generic[TIn, TOut]):
@@ -42,7 +51,7 @@ class Operator(ABC, Generic[TIn, TOut]):
     """
 
     @abstractmethod
-    def submit(self, message: Message[TIn]) -> None:
+    def submit(self, message: Message[TIn], committable: Committable) -> None:
         """
         Send a message to this step for processing.
 
@@ -58,7 +67,7 @@ class Operator(ABC, Generic[TIn, TOut]):
         raise NotImplementedError
 
     @abstractmethod
-    def poll(self) -> Iterable[Message[TOut]]:
+    def poll(self) -> Iterable[Tuple[Message[TOut], Committable]]:
         """
         Triggers asynchronous processing. This method is called periodically
         every time we poll from Kafka.
@@ -73,7 +82,7 @@ class Operator(ABC, Generic[TIn, TOut]):
         raise NotImplementedError
 
     @abstractmethod
-    def flush(self, timeout: float | None = None) -> Iterable[Message[TOut]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[Message[TOut], Committable]]:
         """
         Wait for all processing to be completed and returns the results of
         the in flight processing. It also closes and clean up all the resource
