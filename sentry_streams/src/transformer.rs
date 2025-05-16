@@ -57,6 +57,7 @@ mod tests {
             let submitted_messages_clone = submitted_messages.clone();
             let next_step = FakeStrategy {
                 submitted: submitted_messages,
+                reject_message: false,
             };
 
             let mut strategy = build_map(

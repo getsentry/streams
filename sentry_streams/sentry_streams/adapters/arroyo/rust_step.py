@@ -73,7 +73,7 @@ class Operator(ABC, Generic[TIn, TOut]):
         raise NotImplementedError
 
     @abstractmethod
-    def flush(self) -> Iterable[Message[TOut]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Message[TOut]]:
         """
         Wait for all processing to be completed and returns the results of
         the in flight processing. It also closes and clean up all the resource

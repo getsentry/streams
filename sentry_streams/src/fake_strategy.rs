@@ -1,14 +1,16 @@
 use super::*;
 use crate::routes::RoutedValue;
+
 use sentry_arroyo::processing::strategies::{
-    CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
+    CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy, StrategyError, SubmitError,
 };
-use sentry_arroyo::types::Message;
+use sentry_arroyo::types::{AnyMessage, BrokerMessage, InnerMessage, Message, Partition, Topic};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub struct FakeStrategy {
     pub submitted: Arc<Mutex<Vec<Py<PyAny>>>>,
+    pub reject_message: bool,
 }
 
 impl ProcessingStrategy<RoutedValue> for FakeStrategy {
@@ -17,11 +19,28 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        self.submitted
-            .lock()
-            .unwrap()
-            .push(message.into_payload().payload);
-        Ok(())
+        if self.reject_message {
+            match message.inner_message {
+                InnerMessage::BrokerMessage(BrokerMessage { .. }) => {
+                    Err(SubmitError::MessageRejected(MessageRejected { message }))
+                }
+                InnerMessage::AnyMessage(AnyMessage { .. }) => {
+                    Err(SubmitError::InvalidMessage(InvalidMessage {
+                        offset: 0,
+                        partition: Partition {
+                            topic: Topic::new("test"),
+                            index: 0,
+                        },
+                    }))
+                }
+            }
+        } else {
+            self.submitted
+                .lock()
+                .unwrap()
+                .push(message.into_payload().payload);
+            Ok(())
+        }
     }
 
     fn terminate(&mut self) {}

@@ -77,7 +77,6 @@ impl ProcessingStrategy<RoutedValue> for PythonOperator {
 
             Python::with_gil(|py| {
                 let payload = message.payload().payload.clone_ref(py);
-                // TODO: Make this fail if the method called on python is not there.
                 match self.processing_step.call_method1(py, "submit", (payload,)) {
                     Ok(_) => Ok(()),
                     Err(err) => {
@@ -139,7 +138,7 @@ impl ProcessingStrategy<RoutedValue> for PythonOperator {
                     commit_request,
                 ))
             }
-            Err(e) => Ok(None), // TODO: Make this fail
+            Err(e) => Err(StrategyError::Other(Box::new(e))),
         }
     }
 
@@ -152,7 +151,9 @@ impl ProcessingStrategy<RoutedValue> for PythonOperator {
         let timeout_secs = timeout.map(|d| d.as_secs());
 
         let out_messages = Python::with_gil(|py| -> PyResult<Vec<Py<PyAny>>> {
-            let ret = self.processing_step.call_method0(py, "flush")?;
+            let ret = self
+                .processing_step
+                .call_method1(py, "flush", (timeout_secs,))?;
             Ok(ret.extract(py).unwrap())
         });
 
@@ -187,7 +188,7 @@ impl ProcessingStrategy<RoutedValue> for PythonOperator {
                     commit_request,
                 ))
             }
-            Err(e) => Ok(None), // TODO: Make this fail
+            Err(e) => Err(StrategyError::Other(Box::new(e))),
         }
     }
 }
@@ -197,7 +198,7 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
-    use crate::test_operators::build_routed_value;
+    use crate::test_operators::make_routed_msg;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::noop::Noop;
@@ -246,7 +247,7 @@ class Operator:
             self.payload,
         ]
 
-    def flush(self):
+    def flush(self, timeout: float | None = None):
         return [
             self.payload,
         ]
@@ -256,6 +257,15 @@ class Operator:
         py.run(class_def, Some(&scope.dict()), None).unwrap();
         let operator = scope.getattr("Operator").unwrap();
         operator.call0().unwrap()
+    }
+
+    fn make_msg(py: Python<'_>, payload: &str) -> Message<RoutedValue> {
+        make_routed_msg(
+            py,
+            payload.into_py_any(py).unwrap(),
+            "source1",
+            vec!["waypoint1".to_string()],
+        )
     }
 
     #[test]
@@ -269,44 +279,19 @@ class Operator:
                 Box::new(Noop {}),
             );
 
-            let message = Message::new_any_message(
-                build_routed_value(
-                    py,
-                    "ok".into_py_any(py).unwrap(),
-                    "source1",
-                    vec!["waypoint1".to_string()],
-                ),
-                BTreeMap::new(),
-            );
-
+            let message = make_msg(py, "ok");
             let res = operator.submit(message);
             assert!(res.is_ok());
 
-            let message = Message::new_any_message(
-                build_routed_value(
-                    py,
-                    "reject".into_py_any(py).unwrap(),
-                    "source1",
-                    vec!["waypoint1".to_string()],
-                ),
-                BTreeMap::new(),
-            );
+            let message = make_msg(py, "reject");
             let res = operator.submit(message);
             assert!(res.is_err());
             assert!(matches!(
                 res,
-                Err(SubmitError::MessageRejected(MessageRejected { message }))
+                Err(SubmitError::MessageRejected(MessageRejected { .. }))
             ));
 
-            let message = Message::new_any_message(
-                build_routed_value(
-                    py,
-                    "invalid".into_py_any(py).unwrap(),
-                    "source1",
-                    vec!["waypoint1".to_string()],
-                ),
-                BTreeMap::new(),
-            );
+            let message = make_msg(py, "invalid");
             let res = operator.submit(message);
             assert!(res.is_err());
             assert!(matches!(
@@ -329,6 +314,7 @@ class Operator:
             let submitted_messages_clone = submitted_messages.clone();
             let next_step = FakeStrategy {
                 submitted: submitted_messages,
+                reject_message: false,
             };
 
             let mut operator = PythonOperator::new(
@@ -337,16 +323,7 @@ class Operator:
                 Box::new(next_step),
             );
 
-            let message = Message::new_any_message(
-                build_routed_value(
-                    py,
-                    "ok".into_py_any(py).unwrap(),
-                    "source1",
-                    vec!["waypoint1".to_string()],
-                ),
-                BTreeMap::new(),
-            );
-
+            let message = make_msg(py, "ok");
             let res = operator.submit(message);
             assert!(res.is_ok());
 
@@ -360,7 +337,7 @@ class Operator:
                 assert_messages_match(py, expected_messages, actual_messages.deref());
             } // Unlock the MutexGuard around `actual_messages`
 
-            let commit_request = operator.join(None);
+            let commit_request = operator.join(Some(Duration::from_secs(1)));
             assert!(commit_request.is_ok());
 
             {
@@ -369,6 +346,40 @@ class Operator:
                     "ok".into_py_any(py).unwrap(),
                     "ok".into_py_any(py).unwrap(),
                 ];
+                let actual_messages = submitted_messages_clone.lock().unwrap();
+                assert_messages_match(py, expected_messages, actual_messages.deref());
+            } // Unlock the MutexGuard around `actual_messages`
+        })
+    }
+
+    #[test]
+    fn test_poll_and_fail() {
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            let instance = build_operator(py);
+
+            let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
+            let submitted_messages_clone = submitted_messages.clone();
+            let next_step = FakeStrategy {
+                submitted: submitted_messages,
+                reject_message: true,
+            };
+
+            let mut operator = PythonOperator::new(
+                Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                instance.unbind(),
+                Box::new(next_step),
+            );
+
+            let message = make_msg(py, "ok");
+            let res = operator.submit(message);
+            assert!(res.is_ok());
+
+            let commit_request = operator.poll();
+            assert!(res.is_ok());
+
+            {
+                let expected_messages = vec![];
                 let actual_messages = submitted_messages_clone.lock().unwrap();
                 assert_messages_match(py, expected_messages, actual_messages.deref());
             } // Unlock the MutexGuard around `actual_messages`
