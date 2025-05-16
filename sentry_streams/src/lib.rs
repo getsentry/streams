@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 mod callers;
 mod consumer;
+mod filter_step;
 mod kafka_config;
 mod operators;
 mod routers;
