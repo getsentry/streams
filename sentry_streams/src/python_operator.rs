@@ -243,10 +243,11 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
-    use crate::test_operators::make_routed_msg;
+    use crate::test_operators::build_routed_value;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::noop::Noop;
+    use std::collections::HashMap;
     use std::ops::Deref;
     use std::sync::Arc;
     use std::sync::Mutex as RawMutex;
@@ -276,8 +277,10 @@ class InvalidMessage(Exception):
 class Operator:
     def __init__(self):
         self.payload = None
+        self.committable = None
 
     def submit(self, payload, committable):
+        self.committable = committable
         if payload == "ok":
             self.payload = payload
             return
@@ -288,13 +291,13 @@ class Operator:
 
     def poll(self):
         return [
-            (self.payload, {("topic", 0): 0}),
-            (self.payload, {("topic", 0): 0})
+            (self.payload, self.committable),
+            (self.payload, self.committable)
         ]
 
     def flush(self, timeout: float | None = None):
         return [
-            (self.payload, {("topic", 0): 0})
+            (self.payload, self.committable)
         ]
     "#
         );
@@ -305,12 +308,21 @@ class Operator:
     }
 
     fn make_msg(py: Python<'_>, payload: &str) -> Message<RoutedValue> {
-        make_routed_msg(
+        let routed_value = build_routed_value(
             py,
             payload.into_py_any(py).unwrap(),
             "source1",
             vec!["waypoint1".to_string()],
-        )
+        );
+        let mut committable = BTreeMap::new();
+        committable.insert(
+            Partition {
+                topic: Topic::new("topic1"),
+                index: 0,
+            },
+            123,
+        );
+        Message::new_any_message(routed_value, committable)
     }
 
     #[test]
@@ -387,10 +399,7 @@ class Operator:
 
             let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy {
-                submitted: submitted_messages,
-                reject_message: false,
-            };
+            let next_step = FakeStrategy::new(submitted_messages, false);
 
             let mut operator = PythonOperator::new(
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
@@ -411,6 +420,19 @@ class Operator:
                 let actual_messages = submitted_messages_clone.lock().unwrap();
                 assert_messages_match(py, expected_messages, actual_messages.deref());
             } // Unlock the MutexGuard around `actual_messages`
+
+            assert_eq!(
+                commit_request.unwrap(),
+                Some(CommitRequest {
+                    positions: HashMap::from([(
+                        Partition {
+                            topic: Topic::new("topic1"),
+                            index: 0,
+                        },
+                        123
+                    )]),
+                })
+            );
 
             let commit_request = operator.join(Some(Duration::from_secs(1)));
             assert!(commit_request.is_ok());
@@ -435,10 +457,7 @@ class Operator:
 
             let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy {
-                submitted: submitted_messages,
-                reject_message: true,
-            };
+            let next_step = FakeStrategy::new(submitted_messages, true);
 
             let mut operator = PythonOperator::new(
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
@@ -451,7 +470,13 @@ class Operator:
             assert!(res.is_ok());
 
             let commit_request = operator.poll();
-            assert!(res.is_ok());
+            assert!(matches!(
+                commit_request,
+                Err(StrategyError::InvalidMessage(InvalidMessage {
+                    partition: Partition { .. },
+                    offset: 0
+                }))
+            ));
 
             {
                 let expected_messages = vec![];

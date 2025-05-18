@@ -2,20 +2,42 @@ use super::*;
 use crate::routes::RoutedValue;
 
 use sentry_arroyo::processing::strategies::{
-    CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy, StrategyError, SubmitError,
+    merge_commit_request, CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy,
+    StrategyError, SubmitError,
 };
 use sentry_arroyo::types::{AnyMessage, BrokerMessage, InnerMessage, Message, Partition, Topic};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub struct FakeStrategy {
     pub submitted: Arc<Mutex<Vec<Py<PyAny>>>>,
     pub reject_message: bool,
+    commit_request: Option<CommitRequest>,
+}
+
+impl FakeStrategy {
+    pub fn new(submitted: Arc<Mutex<Vec<Py<PyAny>>>>, reject_message: bool) -> Self {
+        Self {
+            submitted,
+            reject_message,
+            commit_request: None,
+        }
+    }
+}
+
+fn build_commit_request(message: &Message<RoutedValue>) -> CommitRequest {
+    let mut offsets = HashMap::new();
+    for (partition, offset) in message.committable() {
+        offsets.insert(partition, offset);
+    }
+
+    CommitRequest { positions: offsets }
 }
 
 impl ProcessingStrategy<RoutedValue> for FakeStrategy {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        Ok(None)
+        Ok(self.commit_request.take())
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
@@ -35,6 +57,10 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                 }
             }
         } else {
+            self.commit_request = merge_commit_request(
+                self.commit_request.take(),
+                Some(build_commit_request(&message)),
+            );
             self.submitted
                 .lock()
                 .unwrap()
@@ -46,7 +72,7 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
     fn terminate(&mut self) {}
 
     fn join(&mut self, _: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
-        Ok(None)
+        Ok(self.commit_request.take())
     }
 }
 

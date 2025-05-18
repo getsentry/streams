@@ -9,7 +9,6 @@ use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
-use std::sync::Arc;
 
 /// RuntimeOperator represent a translated step in the streaming pipeline the
 /// Arroyo Rust runtime know how to run.
