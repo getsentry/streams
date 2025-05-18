@@ -16,10 +16,12 @@ TOut = TypeVar("TOut")
 Committable = dict[Tuple[str, int], int]
 
 
-class Operator(ABC, Generic[TIn, TOut]):
+class RustOperatorDelegate(ABC, Generic[TIn, TOut]):
     """
     A python implementation of a streaming platform step that is run
-    by the Rust Adapter.
+    by the Rust Adapter. The Rust Arroyo Processing strategy would
+    delegate calls to the strategy method to implementations of this
+    class.
 
     This class is meant to allow people to write streaming primitives
     in Python and run them on the Rust runtime. This is not meant to
@@ -29,20 +31,15 @@ class Operator(ABC, Generic[TIn, TOut]):
     runtime to Rust. Eventually we should not have anything running with
     this interface.
 
-    This interface is meant to support multiple streaming processing
-    patterns:
-    - synchronous / asynchronous processing.
-      Submit provides a message to the step and the step can return
-      a transformed message immediately. On the other hand poll is
-      called periodically and can trigger asynchronous processing of a
-      message.
-    - 1:1 / 1:n / n:1 / n:m processing as all methods allows the implementation
-      to return multiple output messages.
+    The `submit` method receives messages to be processed. It does not
+    return anything. The `poll` method performs the processing and
+    returns the message/s for the following strategy. This separation
+    allows aggregation use cases like Reduce to work.
 
     Contrarily to Arroyo this class does not have access to the following
     processing steps to send message to.
     All the messages for the next step are supposed to be returned by
-    submit, poll or join. The Rust adapter takes care to send them to
+    poll or join. The Rust adapter takes care to send them to
     the next step in the pipeline.
 
     Following the arroyo interface and providing this class with the
@@ -57,12 +54,16 @@ class Operator(ABC, Generic[TIn, TOut]):
 
         This method accumulate the message with work to be done.
         The result of the processing is performed by the `poll` method.
-        This separation makes errors management on the Rust side.
+        This separation makes errors management on the Rust side easier.
         Ideally we would allow submit to return results as well.
 
         The rust code interprets MessageRejected as backpressure and
         InvalidMessage as a message that cannot be processed to be
         sent to DLQ.
+
+        The `committable` parameters contains the offsets represented by
+        the message. It is up to the implementation of this class to
+        decide what committable to return.
         """
         raise NotImplementedError
 
@@ -72,12 +73,9 @@ class Operator(ABC, Generic[TIn, TOut]):
         Triggers asynchronous processing. This method is called periodically
         every time we poll from Kafka.
 
-        If this step processes messages asynchronously or if it performs
-        aggregations, the result of processing a message cannot be provided
-        by the `submit` method itself.
-
         When the results are ready this method will provide the processing
-        results as a return value.
+        results as a return value together with the committable of each
+        returned message.
         """
         raise NotImplementedError
 

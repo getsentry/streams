@@ -1,4 +1,4 @@
-//! This module contains the implementation of the PythonOperator Arroyo
+//! This module contains the implementation of the PythonAdapter Arroyo
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
@@ -16,7 +16,18 @@ use sentry_arroyo::utils::timing::Deadline;
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
-pub struct PythonOperator {
+/// PythonAdapter is an Arroyo processing strategy that delegates the
+/// processing of messages to a Python class that extends the
+/// `RustOperatorDelegate` class.
+///
+/// The python delegate is passed as a `Py<PyAny>` reference.
+///
+/// Overall This struct has a ProcessingStrategy implementation so it
+/// can be wired up to other Arroyo strategies. When it receives a
+/// message iot forwards them to the `submit` method of the python
+/// delegate. The responses of the `poll` method on the python delegate
+/// are then forwarded to the next strategy.
+pub struct PythonAdapter {
     pub route: Route,
     pub processing_step: Py<PyAny>,
     transformed_messages: VecDeque<Message<RoutedValue>>,
@@ -25,7 +36,7 @@ pub struct PythonOperator {
     commit_request_carried_over: Option<CommitRequest>,
 }
 
-impl PythonOperator {
+impl PythonAdapter {
     pub fn new(
         route: Route,
         processing_step: Py<PyAny>,
@@ -40,6 +51,10 @@ impl PythonOperator {
         }
     }
 
+    /// Turn a Vector of python payloads provided by the Python delegate
+    /// into Message::AnyMessage to be used in Arroyo.
+    /// The committable of the forwarded Message are those provided by
+    /// the Python delegate.
     fn handle_py_return_value(&mut self, py: Python<'_>, payloads: Vec<Py<PyAny>>) {
         for py_payload in payloads {
             let entry = py_payload.downcast_bound::<PyTuple>(py).unwrap();
@@ -50,7 +65,7 @@ impl PythonOperator {
                     route: self.route.clone(),
                     payload,
                 },
-                convert_py_committable(py, committable),
+                convert_py_committable(py, committable).unwrap(),
             );
 
             self.transformed_messages.push_back(message);
@@ -58,39 +73,47 @@ impl PythonOperator {
     }
 }
 
-fn convert_partition(partition: Bound<'_, PyAny>) -> Partition {
-    let partition_index: u16 = partition.getattr("index").unwrap().extract().unwrap();
-    let topic = partition.getattr("topic").unwrap();
-    let topic_name: String = topic.getattr("name").unwrap().extract().unwrap();
-    Partition {
+/// Transform a Python `Partition` object into a Rust Arroyo
+/// partition object.
+fn convert_partition(partition: Bound<'_, PyAny>) -> Result<Partition, PyErr> {
+    let partition_index: u16 = partition.getattr("index")?.extract()?;
+    let topic = partition.getattr("topic")?;
+    let topic_name: String = topic.getattr("name")?.extract()?;
+    Ok(Partition {
         topic: Topic::new(&topic_name),
         index: partition_index,
-    }
+    })
 }
 
-fn convert_committable_to_py(py: Python<'_>, committable: BTreeMap<Partition, u64>) -> Py<PyAny> {
+fn convert_committable_to_py(
+    py: Python<'_>,
+    committable: BTreeMap<Partition, u64>,
+) -> Result<Py<PyAny>, PyErr> {
     let dict = PyDict::new(py);
     for (partition, offset) in committable {
         let key = PyTuple::new(
             py,
             &[
-                partition.topic.as_str().into_py_any(py).unwrap(),
-                partition.index.into_py_any(py).unwrap(),
+                partition.topic.as_str().into_py_any(py)?,
+                partition.index.into_py_any(py)?,
             ],
         );
-        dict.set_item(key.unwrap(), offset).unwrap();
+        dict.set_item(key?, offset)?;
     }
-    dict.into()
+    Ok(dict.into())
 }
 
-fn convert_py_committable(py: Python<'_>, py_committable: Py<PyAny>) -> BTreeMap<Partition, u64> {
+fn convert_py_committable(
+    py: Python<'_>,
+    py_committable: Py<PyAny>,
+) -> Result<BTreeMap<Partition, u64>, PyErr> {
     let mut committable = BTreeMap::new();
-    let dict = py_committable.downcast_bound::<PyDict>(py).unwrap();
+    let dict = py_committable.downcast_bound::<PyDict>(py)?;
     for (key, value) in dict.iter() {
-        let partition = key.downcast::<PyTuple>().unwrap();
-        let topic: String = partition.get_item(0).unwrap().extract().unwrap();
-        let index: u16 = partition.get_item(1).unwrap().extract().unwrap();
-        let offset: u64 = value.extract().unwrap();
+        let partition = key.downcast::<PyTuple>()?;
+        let topic: String = partition.get_item(0)?.extract()?;
+        let index: u16 = partition.get_item(1)?.extract()?;
+        let offset: u64 = value.extract()?;
         committable.insert(
             Partition {
                 topic: Topic::new(&topic),
@@ -99,10 +122,16 @@ fn convert_py_committable(py: Python<'_>, py_committable: Py<PyAny>) -> BTreeMap
             offset,
         );
     }
-    committable
+    Ok(committable)
 }
 
-impl ProcessingStrategy<RoutedValue> for PythonOperator {
+impl ProcessingStrategy<RoutedValue> for PythonAdapter {
+    /// Receives a message to process and forwards it to the Python delegate.
+    ///
+    /// It understand Python some exceptions returned. Specifically:
+    /// - MessageRejected is interpreted as backpressure.
+    /// - InvalidMessage is interpreted as a message for DLQ.
+    /// Any other exception is unexpected and triggers a panic.
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
         if self.route != message.payload().route {
             self.next_strategy.submit(message)
@@ -114,7 +143,7 @@ impl ProcessingStrategy<RoutedValue> for PythonOperator {
 
             Python::with_gil(|py| {
                 let payload = message.payload().payload.clone_ref(py);
-                let py_committable = convert_committable_to_py(py, committable);
+                let py_committable = convert_committable_to_py(py, committable).unwrap();
                 match self
                     .processing_step
                     .call_method1(py, "submit", (payload, py_committable))
@@ -133,7 +162,7 @@ impl ProcessingStrategy<RoutedValue> for PythonOperator {
                                 let partition = py_err_obj.getattr("partition").unwrap();
                                 Err(SubmitError::InvalidMessage(InvalidMessage {
                                     offset,
-                                    partition: convert_partition(partition),
+                                    partition: convert_partition(partition).unwrap(),
                                 }))
                             }
                             _ => panic!("Unexpected exception from submit: {}", err),
@@ -144,6 +173,9 @@ impl ProcessingStrategy<RoutedValue> for PythonOperator {
         }
     }
 
+    /// Polls messages from the Python delegate.
+    ///
+    /// This is the method that sends messages to the next ProcessingStrategy.
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         let out_messages = Python::with_gil(|py| -> PyResult<Vec<Py<PyAny>>> {
             let ret = self.processing_step.call_method0(py, "poll")?;
@@ -274,7 +306,7 @@ class InvalidMessage(Exception):
         self.partition = partition
         self.offset = offset
 
-class Operator:
+class RustOperatorDelegate:
     def __init__(self):
         self.payload = None
         self.committable = None
@@ -303,7 +335,7 @@ class Operator:
         );
         let scope = PyModule::new(py, "test_scope").unwrap();
         py.run(class_def, Some(&scope.dict()), None).unwrap();
-        let operator = scope.getattr("Operator").unwrap();
+        let operator = scope.getattr("RustOperatorDelegate").unwrap();
         operator.call0().unwrap()
     }
 
@@ -347,8 +379,8 @@ class Operator:
             );
 
             // Convert to Python object and back
-            let py_obj = convert_committable_to_py(py, committable.clone());
-            let committable_back = convert_py_committable(py, py_obj);
+            let py_obj = convert_committable_to_py(py, committable.clone()).unwrap();
+            let committable_back = convert_py_committable(py, py_obj).unwrap();
 
             // Assert equality
             assert_eq!(committable, committable_back);
@@ -360,7 +392,7 @@ class Operator:
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let instance = build_operator(py);
-            let mut operator = PythonOperator::new(
+            let mut operator = PythonAdapter::new(
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 instance.unbind(),
                 Box::new(Noop {}),
@@ -401,7 +433,7 @@ class Operator:
             let submitted_messages_clone = submitted_messages.clone();
             let next_step = FakeStrategy::new(submitted_messages, false);
 
-            let mut operator = PythonOperator::new(
+            let mut operator = PythonAdapter::new(
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 instance.unbind(),
                 Box::new(next_step),
@@ -459,7 +491,7 @@ class Operator:
             let submitted_messages_clone = submitted_messages.clone();
             let next_step = FakeStrategy::new(submitted_messages, true);
 
-            let mut operator = PythonOperator::new(
+            let mut operator = PythonAdapter::new(
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 instance.unbind(),
                 Box::new(next_step),

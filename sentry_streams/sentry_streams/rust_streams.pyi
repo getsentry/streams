@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any, Callable, Mapping, Self, Sequence, TypeVar
 
-from sentry_streams.adapters.arroyo.rust_step import Operator
+from sentry_streams.adapters.arroyo.rust_step import RustOperatorDelegate
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
@@ -51,7 +51,9 @@ class RuntimeOperator:
     @classmethod
     def Router(cls, route: Route, function: Callable[[Any], str]) -> Self: ...
     @classmethod
-    def PythonOperator(cls, route: Route, processing_step: Operator[TIn, TOut]) -> Self: ...
+    def PythonAdapter(
+        cls, route: Route, processing_step: RustOperatorDelegate[TIn, TOut]
+    ) -> Self: ...
 
 class ArroyoConsumer:
     def __init__(self, source: str, kafka_config: PyKafkaConsumerConfig, topic: str) -> None: ...

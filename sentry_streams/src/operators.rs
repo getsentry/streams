@@ -1,5 +1,5 @@
 use crate::kafka_config::PyKafkaProducerConfig;
-use crate::python_operator::PythonOperator;
+use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
@@ -48,8 +48,8 @@ pub enum RuntimeOperator {
     /// Delegates messages processing to a Python operator that provides
     /// the same kind of interface as an Arroyo strategy. This is meant
     /// to simplify the porting of python strategies to Rust.
-    #[pyo3(name = "PythonOperator")]
-    PythonOperator {
+    #[pyo3(name = "PythonAdapter")]
+    PythonAdapter {
         route: Route,
         processing_step: Py<PyAny>,
     },
@@ -88,12 +88,12 @@ pub fn build(
             let func_ref = Python::with_gil(|py| routing_function.clone_ref(py));
             build_router(route, func_ref, next)
         }
-        RuntimeOperator::PythonOperator {
+        RuntimeOperator::PythonAdapter {
             route,
             processing_step,
         } => {
             let strategy = Python::with_gil(|py| processing_step.clone_ref(py));
-            Box::new(PythonOperator::new(route.clone(), strategy, next))
+            Box::new(PythonAdapter::new(route.clone(), strategy, next))
         }
     }
 }
