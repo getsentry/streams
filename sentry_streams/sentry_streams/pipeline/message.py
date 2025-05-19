@@ -17,8 +17,8 @@ TIn = TypeVar("TIn")  # TODO: Consider naming this TPayload
 
 
 class MessageSchema(Enum):
-    protobuf = "protobuf"
-    json = "json"
+    PROTOBUF = "protobuf"
+    JSON = "json"
 
 
 # A message with a generic payload

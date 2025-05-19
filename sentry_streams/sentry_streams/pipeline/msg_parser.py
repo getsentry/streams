@@ -26,10 +26,10 @@ def msg_parser(msg: Message[bytes]) -> Any:
 def msg_serializer(msg: Message[Any], schema_type: MessageSchema) -> bytes:
     payload = msg.payload
 
-    if schema_type is MessageSchema.protobuf:
+    if schema_type is MessageSchema.PROTOBUF:
         assert isinstance(payload, ProtoMessage)
         return payload.SerializeToString()
-    elif schema_type is MessageSchema.json:
+    elif schema_type is MessageSchema.JSON:
         return json.dumps(payload).encode("utf-8")
     else:
         raise Exception(f"Unknown codec / message schema type {schema_type}")

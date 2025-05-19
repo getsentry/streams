@@ -59,7 +59,7 @@ chain2 = chain1.apply(
 
 chain3 = chain2.apply(
     "serializer",
-    Serializer(schema_type=MessageSchema.json),  # pass in the standard message serializer function
+    Serializer(schema_type=MessageSchema.JSON),  # pass in the standard message serializer function
 )  # ExtensibleChain[bytes]
 
 chain4 = chain3.sink(
