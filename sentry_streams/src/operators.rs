@@ -3,7 +3,7 @@ use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
-use crate::transformer::build_map;
+use crate::transformer::{build_filter, build_map};
 use pyo3::prelude::*;
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
@@ -29,6 +29,12 @@ pub enum RuntimeOperator {
     /// one.
     #[pyo3(name = "Map")]
     Map { route: Route, function: Py<PyAny> },
+
+    /// Represents a Filter step in the streaming pipeline.
+    /// This translates to a custom Arroyo strategy (Filter step) where a function
+    /// is provided to transform the message payload into a bool.
+    #[pyo3(name = "Filter")]
+    Filter { route: Route, function: Py<PyAny> },
 
     /// Represents a Kafka Producer as a Sink in the pipeline.
     /// It is translated to an Arroyo Kafka producer.
@@ -65,6 +71,10 @@ pub fn build(
         RuntimeOperator::Map { function, route } => {
             let func_ref = Python::with_gil(|py| function.clone_ref(py));
             build_map(route, func_ref, next)
+        }
+        RuntimeOperator::Filter { function, route } => {
+            let func_ref = Python::with_gil(|py| function.clone_ref(py));
+            build_filter(route, func_ref, next)
         }
         RuntimeOperator::StreamSink {
             route,

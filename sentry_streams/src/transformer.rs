@@ -1,4 +1,5 @@
 use crate::callers::call_python_function;
+use crate::filter_step::Filter;
 use crate::routes::{Route, RoutedValue};
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
@@ -6,7 +7,7 @@ use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::types::Message;
 
 /// Creates an Arroyo transformer strategy that uses a Python callable to
-/// transform messages. The callable is expected to take a Message<Py<PyAny>>
+/// transform messages. The callable is expected to take a Message<RoutedValue>
 /// as input and return a transformed message. The strategy is built on top of
 /// the `RunTask` Arroyo strategy.
 ///
@@ -33,6 +34,22 @@ pub fn build_map(
     };
     Box::new(RunTask::new(mapper, next))
 }
+
+/// Creates an Arroyo-based filter step strategy that uses a Python callable to
+/// filter out messages. The callable is expected to take a Message<RoutedValue>
+/// as input and return a bool. The strategy is a custom Processing Strategy,
+/// defined in sentry_streams/src.
+///
+/// This function takes a `next` step to wire the Arroyo strategy to.
+pub fn build_filter(
+    route: &Route,
+    callable: Py<PyAny>,
+    next: Box<dyn ProcessingStrategy<RoutedValue>>,
+) -> Box<dyn ProcessingStrategy<RoutedValue>> {
+    let copied_route = route.clone();
+    Box::new(Filter::new(callable, next, copied_route))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
