@@ -79,18 +79,3 @@ def make_kafka_msg(
             timestamp=datetime.now(),
         )
     )
-
-
-# def make_kafka_proto_msg(
-#     payload: str,
-#     topic: str,
-#     offset: int,
-# ) -> Message[Any]:
-#     return Message(
-#         BrokerValue(
-#             payload=KafkaPayload(None, payload, []),
-#             partition=Partition(Topic(topic), 0),
-#             offset=offset,
-#             timestamp=datetime.now(),
-#         )
-#     )
