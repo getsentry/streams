@@ -90,11 +90,11 @@ def test_single_route(
     counter_metric = deepcopy(metric)
     counter_metric["type"] = "c"
 
-    strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", 0))
+    strategy.submit(make_kafka_msg(json.dumps(metric).encode("utf-8"), "ingest-metrics", 0))
     strategy.poll()
-    strategy.submit(make_kafka_msg(json.dumps(counter_metric), "ingest-metrics", 2))
+    strategy.submit(make_kafka_msg(json.dumps(counter_metric).encode("utf-8"), "ingest-metrics", 2))
     strategy.poll()
-    strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", 3))
+    strategy.submit(make_kafka_msg(json.dumps(metric).encode("utf-8"), "ingest-metrics", 3))
     strategy.poll()
 
     topic = Topic("transformed-events")
@@ -186,11 +186,11 @@ def test_broadcast(
     commit = mock.Mock(spec=Commit)
     strategy = factory.create_with_partitions(commit, {Partition(Topic("ingest-metrics"), 0): 0})
 
-    strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", 0))
+    strategy.submit(make_kafka_msg(json.dumps(metric).encode("utf-8"), "ingest-metrics", 0))
     strategy.poll()
-    strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", 2))
+    strategy.submit(make_kafka_msg(json.dumps(metric).encode("utf-8"), "ingest-metrics", 2))
     strategy.poll()
-    strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", 3))
+    strategy.submit(make_kafka_msg(json.dumps(metric).encode("utf-8"), "ingest-metrics", 3))
     strategy.poll()
 
     topics = [Topic("transformed-events"), Topic("transformed-events-2")]
@@ -265,11 +265,11 @@ def test_multiple_routes(
     counter_metric = deepcopy(metric)
     counter_metric["type"] = "c"
 
-    strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", 0))
+    strategy.submit(make_kafka_msg(json.dumps(metric).encode("utf-8"), "ingest-metrics", 0))
     strategy.poll()
-    strategy.submit(make_kafka_msg(json.dumps(counter_metric), "ingest-metrics", 2))
+    strategy.submit(make_kafka_msg(json.dumps(counter_metric).encode("utf-8"), "ingest-metrics", 2))
     strategy.poll()
-    strategy.submit(make_kafka_msg(json.dumps(metric), "ingest-metrics", 3))
+    strategy.submit(make_kafka_msg(json.dumps(metric).encode("utf-8"), "ingest-metrics", 3))
     strategy.poll()
 
     topic = Topic("transformed-events")  # for set messages
@@ -360,7 +360,9 @@ def test_standard_reduce(
     # Accumulators: [0,1] [2,3] [4,5] [6,7] [8,9]
     for i in range(6):
         with mock.patch("time.time", return_value=cur_time + 2 * i):
-            strategy.submit(make_kafka_msg(json.dumps(messages[i]), "ingest-metrics", i))
+            strategy.submit(
+                make_kafka_msg(json.dumps(messages[i]).encode("utf-8"), "ingest-metrics", i)
+            )
 
     # Last submit was at T+10, which means we've only flushed the first 3 windows
 
@@ -418,7 +420,9 @@ def test_standard_reduce(
     # Submit data at T+24, T+26 (data comes in at a gap)
     for i in range(12, 14):
         with mock.patch("time.time", return_value=cur_time + 2 * i):
-            strategy.submit(make_kafka_msg(json.dumps(messages[i - 12]), "ingest-metrics", i))
+            strategy.submit(
+                make_kafka_msg(json.dumps(messages[i - 12]).encode("utf-8"), "ingest-metrics", i)
+            )
 
     transformed_msgs = []
     for i in range(12, 14):
@@ -563,7 +567,9 @@ def test_reduce_with_gap(
     # Accumulators: [0,1] [2,3] [4,5] [6,7] [8,9]
     for i in range(6):
         with mock.patch("time.time", return_value=cur_time + 2 * i):
-            strategy.submit(make_kafka_msg(json.dumps(messages[i]), "ingest-metrics", i))
+            strategy.submit(
+                make_kafka_msg(json.dumps(messages[i]).encode("utf-8"), "ingest-metrics", i)
+            )
 
     # Last submit was at T+10, which means we've only flushed the first 3 windows
 

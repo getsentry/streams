@@ -6,10 +6,11 @@ from sentry_streams.examples.blq_fn import (
 )
 from sentry_streams.pipeline import segment, streaming_source
 from sentry_streams.pipeline.chain import Parser, Serializer
+from sentry_streams.pipeline.message import MessageSchema
 
 storage_branch = (
     segment(name="recent", msg_type=IngestMetric)
-    .apply("serializer1", Serializer())
+    .apply("serializer1", Serializer(schema_type=MessageSchema.JSON))
     .broadcast(
         "send_message_to_DBs",
         routes=[
@@ -25,7 +26,7 @@ storage_branch = (
 
 save_delayed_message = (
     segment(name="delayed", msg_type=IngestMetric)
-    .apply("serializer2", Serializer())
+    .apply("serializer2", Serializer(schema_type=MessageSchema.JSON))
     .sink(
         "kafkasink3",
         stream_name="transformed-events-3",

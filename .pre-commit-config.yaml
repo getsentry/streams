@@ -43,7 +43,8 @@ repos:
           types-pyYAML,
           types-jsonschema,
           "sentry-kafka-schemas>=1.2.0",
-          "types-protobuf"
+          "types-protobuf",
+          "sentry-protos>=0.1.74"
         ]
         files: ^sentry_streams/.+
   - repo: https://github.com/pycqa/isort

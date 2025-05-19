@@ -8,6 +8,7 @@ from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.types import Topic
 from arroyo.utils.clock import MockedClock
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
+from sentry_protos.sentry.v1.taskworker_pb2 import TaskActivation
 
 from sentry_streams.pipeline.chain import (
     Filter,
@@ -19,12 +20,9 @@ from sentry_streams.pipeline.chain import (
     streaming_source,
 )
 from sentry_streams.pipeline.function_template import Accumulator
-from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.message import Message, MessageSchema
 from sentry_streams.pipeline.pipeline import Pipeline
 from sentry_streams.pipeline.window import SlidingWindow
-
-# def decode(msg: bytes) -> str:
-#     return msg.decode("utf-8")
 
 
 def basic_map(msg: Message[IngestMetric]) -> IngestMetric:
@@ -42,6 +40,7 @@ def broker() -> LocalBroker[KafkaPayload]:
     broker.create_topic(Topic("transformed-events"), 1)
     broker.create_topic(Topic("transformed-events-2"), 1)
     broker.create_topic(Topic("ingest-metrics"), 1)
+    broker.create_topic(Topic("taskworker-output"), 1)
     return broker
 
 
@@ -112,7 +111,7 @@ def pipeline() -> Pipeline:
         .apply("decoder", Parser(msg_type=IngestMetric))
         .apply("myfilter", Filter(lambda msg: msg.payload["type"] == "s"))
         .apply("mymap", Map(basic_map))
-        .apply("serializer", Serializer())
+        .apply("serializer", Serializer(schema_type=MessageSchema.JSON))
         .sink("kafkasink", stream_name="transformed-events")
     )
 
@@ -130,7 +129,7 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
         .apply("decoder", Parser(msg_type=IngestMetric))
         .apply("mymap", Map(basic_map))
         .apply("myreduce", Reducer(reduce_window, transformer))
-        .apply("serializer", Serializer())
+        .apply("serializer", Serializer(schema_type=MessageSchema.JSON))
         .sink("kafkasink", stream_name="transformed-events")
     )
 
@@ -141,12 +140,12 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
 def router_pipeline() -> Pipeline:
     branch_1 = (
         segment("set_branch", IngestMetric)
-        .apply("serializer", Serializer())
+        .apply("serializer", Serializer(schema_type=MessageSchema.JSON))
         .sink("kafkasink1", stream_name="transformed-events")
     )
     branch_2 = (
         segment("not_set_branch", IngestMetric)
-        .apply("serializer2", Serializer())
+        .apply("serializer2", Serializer(schema_type=MessageSchema.JSON))
         .sink("kafkasink2", stream_name="transformed-events-2")
     )
 
@@ -174,13 +173,13 @@ def broadcast_pipeline() -> Pipeline:
     branch_1 = (
         segment("even_branch", IngestMetric)
         .apply("mymap1", Map(basic_map))
-        .apply("serializer", Serializer())
+        .apply("serializer", Serializer(schema_type=MessageSchema.JSON))
         .sink("kafkasink1", stream_name="transformed-events")
     )
     branch_2 = (
         segment("odd_branch", IngestMetric)
         .apply("mymap2", Map(basic_map))
-        .apply("serializer2", Serializer())
+        .apply("serializer2", Serializer(schema_type=MessageSchema.JSON))
         .sink("kafkasink2", stream_name="transformed-events-2")
     )
 
@@ -198,5 +197,34 @@ def broadcast_pipeline() -> Pipeline:
             ],
         )
     )
+
+    return pipeline
+
+
+@pytest.fixture
+def basic_proto_pipeline() -> Pipeline:
+
+    pipeline = streaming_source(
+        name="myinput", stream_name="taskworker-ingest"
+    )  # ExtensibleChain[Message[bytes]]
+
+    chain1 = pipeline.apply(
+        "parser",
+        Parser(
+            msg_type=TaskActivation,
+        ),  # pass in the standard message parser function
+    )  # ExtensibleChain[Message[TaskActivation]]
+
+    chain2 = chain1.apply(
+        "serializer",
+        Serializer(
+            schema_type=MessageSchema.PROTOBUF
+        ),  # pass in the standard message serializer function
+    )  # ExtensibleChain[bytes]
+
+    chain2.sink(
+        "kafkasink2",
+        stream_name="taskworker-output",
+    )  # Chain
 
     return pipeline
