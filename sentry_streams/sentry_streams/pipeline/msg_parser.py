@@ -1,7 +1,9 @@
 import json
 from typing import Any
 
-from sentry_streams.pipeline.message import Message
+from google.protobuf.message import Message as ProtoMessage
+
+from sentry_streams.pipeline.message import Message, MessageSchema
 
 # TODO: Push the following to docs
 # Standard message decoders and encoders live here
@@ -21,7 +23,13 @@ def msg_parser(msg: Message[bytes]) -> Any:
     return decoded
 
 
-def msg_serializer(msg: Message[Any]) -> bytes:
+def msg_serializer(msg: Message[Any], schema_type: MessageSchema) -> bytes:
     payload = msg.payload
 
-    return json.dumps(payload).encode("utf-8")
+    if schema_type is MessageSchema.PROTOBUF:
+        assert isinstance(payload, ProtoMessage)
+        return payload.SerializeToString()
+    elif schema_type is MessageSchema.JSON:
+        return json.dumps(payload).encode("utf-8")
+    else:
+        raise Exception(f"Unknown codec / message schema type {schema_type}")

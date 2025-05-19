@@ -67,13 +67,13 @@ def make_value_msg(
 
 
 def make_kafka_msg(
-    payload: str,
+    payload: bytes,
     topic: str,
     offset: int,
 ) -> Message[Any]:
     return Message(
         BrokerValue(
-            payload=KafkaPayload(None, payload.encode("utf-8"), []),
+            payload=KafkaPayload(None, payload, []),
             partition=Partition(Topic(topic), 0),
             offset=offset,
             timestamp=datetime.now(),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import (
     Any,
     Generic,
@@ -13,6 +14,11 @@ from typing import (
 from sentry_kafka_schemas.codecs import Codec
 
 TIn = TypeVar("TIn")  # TODO: Consider naming this TPayload
+
+
+class MessageSchema(Enum):
+    PROTOBUF = "protobuf"
+    JSON = "json"
 
 
 # A message with a generic payload
