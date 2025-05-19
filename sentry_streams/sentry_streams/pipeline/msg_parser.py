@@ -2,10 +2,8 @@ import json
 from typing import Any
 
 from google.protobuf.message import Message as ProtoMessage
-from sentry_kafka_schemas.codecs.json import JsonCodec
-from sentry_kafka_schemas.codecs.protobuf import ProtobufCodec
 
-from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.message import Message, MessageSchema
 
 # TODO: Push the following to docs
 # Standard message decoders and encoders live here
@@ -25,14 +23,13 @@ def msg_parser(msg: Message[bytes]) -> Any:
     return decoded
 
 
-def msg_serializer(msg: Message[Any]) -> bytes:
-    codec = msg.schema
+def msg_serializer(msg: Message[Any], schema_type: MessageSchema) -> bytes:
     payload = msg.payload
 
-    if isinstance(codec, ProtobufCodec):
+    if schema_type is MessageSchema.protobuf:
         assert isinstance(payload, ProtoMessage)
         return payload.SerializeToString()
-    elif isinstance(codec, JsonCodec):
+    elif schema_type is MessageSchema.json:
         return json.dumps(payload).encode("utf-8")
     else:
-        raise Exception(f"Unknown codec / message schema type {codec}")
+        raise Exception(f"Unknown codec / message schema type {schema_type}")

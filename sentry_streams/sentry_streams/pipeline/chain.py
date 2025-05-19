@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import partial
 from typing import (
     Callable,
     Generic,
@@ -23,7 +24,7 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
-from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.message import Message, MessageSchema
 from sentry_streams.pipeline.msg_parser import msg_parser, msg_serializer
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
@@ -151,12 +152,14 @@ class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
     sink step which writes to Kafka.
     """
 
+    schema_type: MessageSchema
+
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return MapStep(
             name=name,
             ctx=ctx,
             inputs=[previous],
-            function=msg_serializer,
+            function=partial(msg_serializer, schema_type=self.schema_type),
         )
 
 

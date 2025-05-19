@@ -10,7 +10,7 @@ from sentry_streams.pipeline.chain import (
     Serializer,
 )
 from sentry_streams.pipeline.function_template import Accumulator
-from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.message import Message, MessageSchema
 from sentry_streams.pipeline.window import SlidingWindow
 
 # The simplest possible pipeline.
@@ -59,7 +59,7 @@ chain2 = chain1.apply(
 
 chain3 = chain2.apply(
     "serializer",
-    Serializer(),  # pass in the standard message serializer function
+    Serializer(schema_type=MessageSchema.json),  # pass in the standard message serializer function
 )  # ExtensibleChain[bytes]
 
 chain4 = chain3.sink(
