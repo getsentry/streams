@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Generic, Iterable, Tuple, TypeVar
 
+from arroyo.dlq import InvalidMessage
+from arroyo.processing.strategies.abstract import MessageRejected
+
 from sentry_streams.pipeline.message import Message
 
 TIn = TypeVar("TIn")
@@ -87,3 +90,60 @@ class RustOperatorDelegate(ABC, Generic[TIn, TOut]):
         used by this step.
         """
         raise NotImplementedError
+
+
+class SingleMessageOperatorDelegate(
+    Generic[TIn, TOut],
+    RustOperatorDelegate[TIn, TOut],
+    ABC,
+):
+    """
+    Helper class to support 1:1 synchronous message processing through
+    the RustOperatorDelegate.
+    This class is meant to implement simple strategies like filters
+    where we just need to provide a pure processing function that
+    processes one message and returns either a message or nothing.
+    """
+
+    def __init__(self) -> None:
+        self.__message: Message[TIn] | None = None
+        self.__committable: Committable | None = None
+
+    @abstractmethod
+    def _process_message(self, msg: Message[TIn], committable: Committable) -> Message[TOut] | None:
+        """
+        Processes one message at a time. It receives the offsets to commit
+        if needed by the processing but it does not allow the delegate to
+        change the returned offsets.
+
+        It can raise MessageRejected or InvalidMessage.
+        """
+        raise NotImplementedError
+
+    def __prepare_output(self) -> Iterable[Tuple[Message[TOut], Committable]]:
+        if self.__message is None:
+            return []
+        assert self.__committable is not None
+
+        try:
+            processed = self._process_message(self.__message, self.__committable)
+            if processed is None:
+                return []
+            return [(processed, self.__committable)]
+        except InvalidMessage:
+            raise
+        finally:
+            self.__message = None
+            self.__committable = None
+
+    def submit(self, message: Message[TIn], committable: Committable) -> None:
+        if self.__message is not None:
+            raise MessageRejected()
+        self.__message = message
+        self.__committable = committable
+
+    def poll(self) -> Iterable[Tuple[Message[TOut], Committable]]:
+        return self.__prepare_output()
+
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[Message[TOut], Committable]]:
+        return self.__prepare_output()
