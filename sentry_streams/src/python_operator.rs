@@ -259,7 +259,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                         Ok(_) => {}
                     }
                 }
-                let commit_request = self.next_strategy.poll()?;
+                let commit_request = self.next_strategy.join(timeout)?;
                 Ok(merge_commit_request(
                     self.commit_request_carried_over.take(),
                     commit_request,
