@@ -21,33 +21,30 @@ Committable = dict[Tuple[str, int], int]
 
 class RustOperatorDelegate(ABC, Generic[TIn, TOut]):
     """
-    A python implementation of a streaming platform step that is run
-    by the Rust Adapter. The Rust Arroyo Processing strategy would
-    delegate calls to the strategy method to implementations of this
-    class.
+    A RustOperatorDelegate is an interface to be implemented to build
+    streaming platform operators in Python and wire them up to the
+    Rust Streaming Adapter.
 
-    This class is meant to allow people to write streaming primitives
-    in Python and run them on the Rust runtime. This is not meant to
-    be implemented directly by the user of the streaming platform.
+    The `RuntimeOperator::PythonAdapter` creates a Rust Arroyo processing
+    strategy that, instead of performing its work in Rust, delegates
+    submit and poll to the python class that implements this interface.
 
-    Ideally this class could be used to facilitate the porting of the
-    runtime to Rust. Eventually we should not have anything running with
-    this interface.
+    Eventually all steps should be moved to Rust but this class facilitates
+    the migration. It also facilitates quick prototyping.
 
-    The `submit` method receives messages to be processed. It does not
-    return anything. The `poll` method performs the processing and
-    returns the message/s for the following strategy. This separation
-    allows aggregation use cases like Reduce to work.
+    This class does not provides exactly the same Arroyo strategy
+    interface. Instead it provides something easier to manage in Rust.
 
-    Contrarily to Arroyo this class does not have access to the following
-    processing steps to send message to.
-    All the messages for the next step are supposed to be returned by
-    poll or join. The Rust adapter takes care to send them to
-    the next step in the pipeline.
+    - It is not the responsibility of the methods of this class to forward
+      messages to the following steps in the pipeline. `poll` and `flush`
+      return messages to the Rust code which then forwards them to the
+      next strategy. This allows this delegate not to have access to the
+      next step which is in Rust.
 
-    Following the arroyo interface and providing this class with the
-    following step to send message to would have been considerably more
-    complex.
+    - `submit` accepts work, while `poll` performs the processing on the
+      messages accepted by `submit`. This interface allows implementations
+      to support both 1:0..1, 1:n, n:0..1 processing strategies. It is also
+      inherently asynchronous as only poll can return messages.
     """
 
     @abstractmethod
