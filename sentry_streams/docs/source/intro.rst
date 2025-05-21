@@ -63,39 +63,25 @@ runtime, follow these steps:
 .. code-block:: python
     :linenos:
 
-    from json import JSONDecodeError, dumps, loads
-    from typing import Any, Mapping, cast
-
-    from sentry_streams.pipeline import Filter, Map, streaming_source
-
-    def parse(msg: str) -> Mapping[str, Any]:
-        try:
-            parsed = loads(msg)
-        except JSONDecodeError:
-            return {"type": "invalid"}
-
-        return cast(Mapping[str, Any], parsed)
-
-
-    def filter_not_event(msg: Mapping[str, Any]) -> bool:
-        return bool(msg["type"] == "event")
+    from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
+    from sentry_streams.pipeline.chain import Parser, Serializer
+    from sentry_streams.pipeline import streaming_source
 
     pipeline = (
         streaming_source(
             name="myinput",
-            stream_name="events",
+            stream_name="ingest-metrics",
         )
-        .apply("mymap", Map(function=parse))
-        .apply("myfilter", Filter(function=filter_not_event))
-        .apply("serializer", Map(function=lambda msg: dumps(msg)))
+        .apply("parse_msg", Parser(msg_type=IngestMetric))
+        .apply("serializer", Serializer())
         .sink(
-            "myoutput",
+            "mysink",
             stream_name="transformed-events",
         )
     )
 
-This is a simple pipeline that takes a stream of JSON messages, parses them,
-filters out the ones that are not events, and serializes them back to JSON
+This is a simple pipeline that takes a stream of JSON messages that fits the schema of the "ingest-metrics" topic (from sentry-kafka-schema), parses them,
+casts them to the message type IngestMetric object, and serializes them back to JSON
 and produces the result to another topic.
 
 5. Run the pipeline
@@ -108,6 +94,7 @@ and produces the result to another topic.
     --adapter arroyo \
     <YOUR PIPELINE FILE>
 
+for the above code example, use `sentry_streams/sentry_streams/deployment_config/simple_map_filter.yaml` for the deployment config file (assuming you have two local Kafka topics for source and sink)
 
 6. Produce events on the `events` topic and consume them from the `transformed-events` topic.
 
