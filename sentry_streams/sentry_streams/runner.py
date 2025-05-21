@@ -75,12 +75,14 @@ def main() -> None:
     parser.add_argument(
         "--adapter",
         "-a",
-        type=str,
+        # remove choices list in the future when custom local adapters are widely used
+        # for now just arroyo and rust_arroyo will be commonly used
+        choices=["arroyo", "rust_arroyo"],
         # TODO: Remove the support for dynamically load the class.
         # Add a runner CLI in the flink package instead that instantiates
         # the Flink adapter.
         help=(
-            "The stream adapter to instantiate. It can one of the allowed values from "
+            "The stream adapter to instantiate. It can be one of the allowed values from "
             "the load_adapter function"
         ),
     )
