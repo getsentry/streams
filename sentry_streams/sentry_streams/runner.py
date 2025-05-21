@@ -80,9 +80,8 @@ def main() -> None:
         # Add a runner CLI in the flink package instead that instantiates
         # the Flink adapter.
         help=(
-            "The stream adapter to instantiate. It can be a value from "
-            "the AdapterType enum or a fully qualified class name to "
-            "load dynamically"
+            "The stream adapter to instantiate. It can one of the allowed values from "
+            "the load_adapter function"
         ),
     )
     parser.add_argument(
