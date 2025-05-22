@@ -52,10 +52,10 @@ class RustOperatorDelegate(ABC, Generic[TIn, TOut]):
         """
         Send a message to this step for processing.
 
-        This method accumulate the message with work to be done.
-        The result of the processing is performed by the `poll` method.
-        This separation makes errors management on the Rust side easier.
-        Ideally we would allow submit to return results as well.
+        Sending messages to process is separate from the processing itself.
+        This makes error management on the Rust side easier. So this
+        method stores messages to process, while `poll` performs the
+        processing and returns the result.
 
         The rust code interprets MessageRejected as backpressure and
         InvalidMessage as a message that cannot be processed to be
