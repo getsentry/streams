@@ -1230,6 +1230,7 @@ dependencies = [
  "rdkafka",
  "sentry_arroyo",
  "serde",
+ "tracing",
  "tracing-subscriber",
 ]
 

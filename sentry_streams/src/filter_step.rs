@@ -102,9 +102,7 @@ mod tests {
             let callable = make_lambda(py, c_str!("lambda x: 'test' in x"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy {
-                submitted: submitted_messages,
-            };
+            let next_step = FakeStrategy::new(submitted_messages, false);
 
             let mut strategy = build_filter(
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),

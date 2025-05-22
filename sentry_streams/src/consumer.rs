@@ -264,9 +264,7 @@ mod tests {
 
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy {
-                submitted: submitted_messages,
-            };
+            let next_step = FakeStrategy::new(submitted_messages, false);
 
             let concurrency_config = ConcurrencyConfig::new(1);
             let mut chain = build_chain("source", &steps, Box::new(next_step), &concurrency_config);
