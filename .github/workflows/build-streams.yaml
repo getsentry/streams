@@ -1,6 +1,7 @@
 name: build sentry_streams
 
 on:
+  pull_request:
   push:
     branches:
       - main
