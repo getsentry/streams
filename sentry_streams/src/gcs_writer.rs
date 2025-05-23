@@ -14,7 +14,9 @@ use sentry_arroyo::types::Message;
 pub struct GCSWriter {}
 
 impl GCSWriter {
-    pub fn new() {}
+    pub fn new() -> Self {
+        GCSWriter {}
+    }
 }
 
 fn to_bytes(payload: &RoutedValue) -> Vec<u8> {
