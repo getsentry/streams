@@ -21,7 +21,7 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
-from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.message import Message, PyMessage
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
     Filter,
@@ -138,7 +138,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         )
 
         def make_msg(payload: Any) -> Message[Any]:
-            return Message(payload=payload, headers=[], timestamp=0, schema=step.stream_name)
+            return PyMessage(payload=payload, headers=[], timestamp=0, schema=step.stream_name)
 
         route = RustRoute(source_name, [])
         self.__consumers[source_name].add_step(RuntimeOperator.Map(route, make_msg))
@@ -176,7 +176,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
         def transform_msg(msg: Message[Any]) -> Message[Any]:
-            return Message(
+            return PyMessage(
                 payload=step.resolved_function(msg),
                 headers=msg.headers,
                 timestamp=msg.timestamp,

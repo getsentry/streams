@@ -4,7 +4,7 @@ from typing import Any, MutableMapping
 from sentry_kafka_schemas import get_codec
 from sentry_kafka_schemas.codecs import Codec
 
-from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.message import Message, PyRawMessage
 
 # TODO: Push the following to docs
 # Standard message decoders and encoders live here
@@ -13,7 +13,7 @@ from sentry_streams.pipeline.message import Message
 CODECS: MutableMapping[str, Codec[Any]] = {}
 
 
-def msg_parser(msg: Message[bytes]) -> Any:
+def msg_parser(msg: PyRawMessage) -> Any:
     stream_schema = msg.schema
     payload = msg.payload
 

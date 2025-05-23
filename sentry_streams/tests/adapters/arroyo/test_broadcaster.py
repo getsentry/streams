@@ -9,7 +9,7 @@ from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.adapters.arroyo.broadcaster import Broadcaster
 from sentry_streams.adapters.arroyo.routes import Route
-from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.message import PyMessage
 from tests.adapters.arroyo.message_helpers import make_value_msg
 
 
@@ -21,7 +21,7 @@ def test_submit_routedvalue(metric: IngestMetric) -> None:
         next_step=next_step,
     )
 
-    msg = Message(metric, [], time.time(), None)
+    msg = PyMessage(metric, [], time.time(), None)
     message = make_value_msg(payload=msg, route=Route(source="source", waypoints=[]), offset=0)
 
     expected_calls = [
@@ -88,7 +88,7 @@ def test_message_rejected(metric: IngestMetric) -> None:
         next_step=next_step,
     )
 
-    msg = Message(metric, [], time.time(), None)
+    msg = PyMessage(metric, [], time.time(), None)
     message = make_value_msg(payload=msg, route=Route(source="source", waypoints=[]), offset=0)
 
     message_rejected_expected_call = call(

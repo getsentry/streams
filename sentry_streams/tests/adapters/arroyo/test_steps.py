@@ -29,7 +29,7 @@ from sentry_streams.adapters.arroyo.steps import (
     StreamSinkStep,
 )
 from sentry_streams.examples.transformer import TransformerBatch
-from sentry_streams.pipeline.message import Message as StreamsMessage
+from sentry_streams.pipeline.message import PyMessage as StreamsMessage
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Branch,

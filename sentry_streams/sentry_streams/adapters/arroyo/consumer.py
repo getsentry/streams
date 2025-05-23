@@ -14,7 +14,7 @@ from arroyo.types import Commit, FilteredPayload, Message, Partition
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.steps import ArroyoStep
-from sentry_streams.pipeline.message import Message as StreamsMessage
+from sentry_streams.pipeline.message import PyMessage as StreamsMessage
 
 logger = logging.getLogger(__name__)
 

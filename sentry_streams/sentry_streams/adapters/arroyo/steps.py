@@ -14,7 +14,7 @@ from sentry_streams.adapters.arroyo.forwarder import Forwarder
 from sentry_streams.adapters.arroyo.msg_wrapper import MessageWrapper
 from sentry_streams.adapters.arroyo.reduce import build_arroyo_windowed_reduce
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.pipeline.message import Message as StreamsMessage
+from sentry_streams.pipeline.message import PyMessage as StreamsMessage
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
     Filter,
