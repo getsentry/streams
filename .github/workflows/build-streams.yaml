@@ -1,6 +1,7 @@
 name: build sentry_streams
 
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -28,7 +29,7 @@ jobs:
         uses: PyO3/maturin-action@aef21716ff3dcae8a1c301d23ec3e4446972a6e3
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --find-interpreter --features=extension-module
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: "2014"
           working-directory: ./sentry_streams
