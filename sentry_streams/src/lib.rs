@@ -3,6 +3,7 @@ mod callers;
 mod consumer;
 mod filter_step;
 mod kafka_config;
+mod messages;
 mod operators;
 mod python_operator;
 mod routers;
@@ -23,5 +24,7 @@ fn rust_streams(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<kafka_config::PyKafkaProducerConfig>()?;
     m.add_class::<kafka_config::InitialOffset>()?;
     m.add_class::<consumer::ArroyoConsumer>()?;
+    m.add_class::<messages::PyAnyMessage>()?;
+    m.add_class::<messages::RawMessage>()?;
     Ok(())
 }

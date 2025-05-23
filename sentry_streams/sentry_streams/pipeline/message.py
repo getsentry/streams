@@ -1,27 +1,75 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from copy import deepcopy
 from typing import (
-    Any,
     Generic,
-    MutableSequence,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
+    cast,
 )
 
-from sentry_kafka_schemas.codecs import Codec
+from sentry_streams.rust_streams import PyAnyMessage
 
-TIn = TypeVar("TIn")  # TODO: Consider naming this TPayload
+TPayload = TypeVar("TPayload")
 
 
-# A message with a generic payload
-@dataclass(frozen=True)
-class Message(Generic[TIn]):
-    payload: TIn
-    headers: MutableSequence[Tuple[str, bytes]]
-    timestamp: float
-    schema: Optional[
-        Codec[Any]
-    ]  # The schema of incoming messages. This is optional so Messages can be flexibly initialized in any part of the pipeline. We may want to change this down the road.
-    # TODO: Add support for an event timestamp
+class Message(Generic[TPayload]):
+    """
+    A wrapper for the Rust PyAnyMessage to make the payload generic.
+    We cannot export classes via PyO3 that are generic in Python.
+    This exposes makes the Message generic.
+    """
+
+    def __init__(
+        self,
+        payload: TPayload,
+        headers: Sequence[Tuple[str, bytes]],
+        timestamp: float,
+        schema: Optional[str] = None,
+    ) -> None:
+        self.inner = PyAnyMessage(payload, headers, timestamp, schema)
+
+    @property
+    def payload(self) -> TPayload:
+        return cast(TPayload, self.inner.payload)
+
+    @property
+    def headers(self) -> Sequence[Tuple[str, bytes]]:
+        return self.inner.headers
+
+    @property
+    def timestamp(self) -> float:
+        return self.inner.timestamp
+
+    @property
+    def schema(self) -> str | None:
+        return self.inner.schema
+
+    def deepcopy(self) -> Message[TPayload]:
+        return Message(
+            deepcopy(self.inner.payload),
+            deepcopy(self.inner.headers),
+            self.inner.timestamp,
+            self.inner.schema,
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Message):
+            return False
+        return (
+            self.payload == other.payload
+            and self.headers == other.headers
+            and self.timestamp == other.timestamp
+            and self.schema == other.schema
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"payload={self.payload!r}, "
+            f"headers={self.headers!r}, "
+            f"timestamp={self.timestamp!r}, "
+            f"schema={self.schema!r})"
+        )

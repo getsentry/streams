@@ -50,7 +50,9 @@ def test_single_route(
     """
     empty_route = Route(source="source1", waypoints=[])
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
+    consumer = ArroyoConsumer(
+        source="source1", stream_name="ingest-metrics", schema="ingest-metrics"
+    )
     consumer.add_step(
         MapStep(
             route=empty_route,
@@ -130,7 +132,9 @@ def test_broadcast(
     contain a Broadcast.
     """
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
+    consumer = ArroyoConsumer(
+        source="source1", stream_name="ingest-metrics", schema="ingest-metrics"
+    )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
@@ -218,7 +222,9 @@ def test_multiple_routes(
     contain branching routes.
     """
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
+    consumer = ArroyoConsumer(
+        source="source1", stream_name="ingest-metrics", schema="ingest-metrics"
+    )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
@@ -311,7 +317,9 @@ def test_standard_reduce(
     and offset management strategy
     """
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
+    consumer = ArroyoConsumer(
+        source="source1", stream_name="ingest-metrics", schema="ingest-metrics"
+    )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
@@ -513,7 +521,9 @@ def test_reduce_with_gap(
     and offset management strategy
     """
 
-    consumer = ArroyoConsumer(source="source1", stream_name="ingest-metrics", schema=SCHEMA)
+    consumer = ArroyoConsumer(
+        source="source1", stream_name="ingest-metrics", schema="ingest-metrics"
+    )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),

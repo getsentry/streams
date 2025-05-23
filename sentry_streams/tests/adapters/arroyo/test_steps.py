@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Callable
 from unittest import mock
-from unittest.mock import ANY, call
+from unittest.mock import call
 
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka.consumer import KafkaPayload
@@ -322,26 +322,28 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch], metric: Ingest
     )
     arroyo_reduce = ReduceStep(mapped_route, pipeline_reduce)
     next_strategy = mock.Mock(spec=ProcessingStrategy)
-    strategy = arroyo_reduce.build(next_strategy, commit=mock.Mock(spec=Commit))
 
-    msg = StreamsMessage(metric, [], ANY, None)
+    start_time = datetime(2025, 1, 1, 12, 0).timestamp()
+
+    with mock.patch("time.time", return_value=start_time):
+        strategy = arroyo_reduce.build(next_strategy, commit=mock.Mock(spec=Commit))
+
+    msg = StreamsMessage(metric, [], datetime(2025, 1, 1, 12, 0).timestamp(), None)
     messages = [
         make_msg(msg, mapped_route, 0),
         make_msg(msg, other_route, 1),
         make_msg(FilteredPayload(), mapped_route, 3),  # to be filtered out
     ]
 
-    cur_time = time.time()
-
-    for message in messages:
-        strategy.submit(message)
-        strategy.poll()
-
-    with mock.patch("time.time", return_value=cur_time + 8.0):
+    with mock.patch("time.time", return_value=start_time + 7.0):
+        for message in messages:
+            strategy.submit(message)
+            strategy.poll()
+    with mock.patch("time.time", return_value=start_time + 12.0):
         strategy.poll()
 
     new_msg = StreamsMessage(
-        [metric], [], ANY, None
+        [metric], [], datetime(2025, 1, 1, 12, 0).timestamp() + 12, None
     )  # since Reduce produces a timestamp based on when the aggregate result is produced, we mock the timestamp
 
     other_route_msg = Message(
@@ -380,5 +382,8 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch], metric: Ingest
         call.poll(),
     ]
 
-    next_strategy
+    actual_calls = next_strategy.method_calls
+    for index, exp_call in enumerate(expected_calls):
+        assert exp_call == actual_calls[index], f"Call mismatch on index {index}"
+
     next_strategy.assert_has_calls(expected_calls)
