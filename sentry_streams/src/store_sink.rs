@@ -18,12 +18,12 @@ pub enum Storage {
 /// A generic WriterStep which initializes a
 /// RunTaskInThreads with the appropriate specific Writer
 pub struct WriterStep<N> {
-    inner: RunTaskInThreads<RoutedValue, (), anyhow::Error, N>,
+    inner: RunTaskInThreads<RoutedValue, RoutedValue, anyhow::Error, N>,
 }
 
 impl<N> WriterStep<N>
 where
-    N: ProcessingStrategy<()> + 'static,
+    N: ProcessingStrategy<RoutedValue> + 'static,
 {
     pub fn new(next_step: N, concurrency: &ConcurrencyConfig, storage: Storage) -> Self {
         let writer = match storage {
@@ -39,7 +39,7 @@ where
 
 impl<N> ProcessingStrategy<RoutedValue> for WriterStep<N>
 where
-    N: ProcessingStrategy<()>,
+    N: ProcessingStrategy<RoutedValue> + 'static,
 {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         self.inner.poll()

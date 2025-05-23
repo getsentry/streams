@@ -30,8 +30,8 @@ fn to_bytes(payload: &RoutedValue) -> Vec<u8> {
 }
 
 // start by supporting bytes only
-impl TaskRunner<RoutedValue, (), anyhow::Error> for GCSWriter {
-    fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<(), anyhow::Error> {
+impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
+    fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
         Box::pin(async move {
             let bucket = "arroyo-artifacts";
             let object = "uploaded-file.txt";
@@ -58,7 +58,7 @@ impl TaskRunner<RoutedValue, (), anyhow::Error> for GCSWriter {
                 .map_err(|e| anyhow!(e))
                 .map_err(RunTaskError::Other)?;
 
-            Ok(message.replace(()))
+            Ok(message)
         })
     }
 }
