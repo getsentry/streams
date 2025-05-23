@@ -21,8 +21,7 @@ fn to_bytes(payload: &RoutedValue) -> Vec<u8> {
     let payload = Python::with_gil(|py| {
         let payload = payload.payload.clone_ref(py);
         // if payload.is_none(py) {
-        //     return KafkaPayload::new(None, None, None);
-        // }
+        // prolly need to handle this case
 
         let py_bytes: &Bound<PyBytes> = payload.bind(py).downcast().unwrap();
         py_bytes.as_bytes().to_vec()
