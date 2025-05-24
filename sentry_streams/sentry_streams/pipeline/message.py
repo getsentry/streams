@@ -44,15 +44,6 @@ class Message(ABC, Generic[TPayload]):
             and self.schema == other.schema
         )
 
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"payload={self.payload!r}, "
-            f"headers={self.headers!r}, "
-            f"timestamp={self.timestamp!r}, "
-            f"schema={self.schema!r})"
-        )
-
 
 class PyMessage(Generic[TPayload], Message[TPayload]):
     """
