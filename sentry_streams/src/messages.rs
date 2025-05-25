@@ -4,18 +4,17 @@ use pyo3::Python;
 use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
 pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(String, Vec<u8>)>> {
-    Ok(headers
+    headers
         .bind(py)
-        .try_iter()
-        .unwrap()
-        .map(|item| {
-            let tuple_i = item.unwrap();
-            let tuple = tuple_i.downcast::<pyo3::types::PyTuple>().unwrap();
-            let key = tuple.get_item(0).unwrap().unbind().extract(py).unwrap();
-            let value: Vec<u8> = tuple.get_item(1).unwrap().unbind().extract(py).unwrap();
-            (key, value)
+        .try_iter()?
+        .map(|item| -> PyResult<(String, Vec<u8>)> {
+            let tuple_i = item?;
+            let tuple = tuple_i.downcast::<pyo3::types::PyTuple>()?;
+            let key = tuple.get_item(0)?.unbind().extract(py)?;
+            let value: Vec<u8> = tuple.get_item(1)?.unbind().extract(py)?;
+            Ok((key, value))
         })
-        .collect())
+        .collect()
 }
 
 pub fn headers_to_sequence(
@@ -78,18 +77,13 @@ impl PyAnyMessage {
         headers_to_sequence(py, &self.headers)
     }
 
-    fn replace_payload(
-        &self,
-        new_payload: Py<PyAny>,
-        py: Python<'_>,
-    ) -> PyResult<Py<PyAnyMessage>> {
-        let new_message = PyAnyMessage {
+    fn replace_payload(&self, new_payload: Py<PyAny>) -> PyAnyMessage {
+        PyAnyMessage {
             payload: new_payload,
             headers: self.headers.clone(),
             timestamp: self.timestamp,
             schema: self.schema.clone(),
-        };
-        into_pyany(py, new_message)
+        }
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -161,18 +155,19 @@ impl RawMessage {
         into_pyraw(py, new_message)
     }
 
-    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+    fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "RawMessage(payload={:?}, headers={:?}, timestamp={}, schema={:?})",
             self.payload, self.headers, self.timestamp, self.schema
         ))
     }
 
-    fn __str__(&self, py: Python<'_>) -> PyResult<String> {
-        self.__repr__(py)
+    fn __str__(&self) -> PyResult<String> {
+        self.__repr__()
     }
 }
 
+#[allow(unused)]
 pub fn replace_raw_payload(message: RawMessage, new_payload: Vec<u8>) -> RawMessage {
     RawMessage {
         payload: new_payload,
@@ -189,9 +184,16 @@ pub fn into_pyraw(py: Python<'_>, message: RawMessage) -> PyResult<Py<RawMessage
 
 #[derive(Debug)]
 #[pyclass]
-pub enum StreamingMessage {
+pub enum PyStreamingMessage {
     PyAnyMessage { content: Py<PyAnyMessage> },
     RawMessage { content: Py<RawMessage> },
+}
+
+#[allow(unused)]
+#[derive(Debug)]
+pub enum StreamingMessage {
+    PyAnyMessage { content: PyAnyMessage },
+    RawMessage { content: RawMessage },
 }
 
 #[cfg(test)]
@@ -228,6 +230,135 @@ mod tests {
             let py_seq2 = headers_to_sequence(py, &headers_vec).unwrap();
             let headers_vec2 = headers_to_vec(py, py_seq2.extract(py).unwrap()).unwrap();
             assert_eq!(headers_vec2, headers);
+        });
+    }
+
+    #[test]
+    fn test_pyanymessage_lifecycle() {
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            // Prepare test data
+            let payload = "payload".into_py_any(py).unwrap();
+            let headers = vec![
+                ("foo".to_string(), vec![10, 20]),
+                ("bar".to_string(), vec![30, 40]),
+            ];
+            let py_headers = headers_to_sequence(py, &headers).unwrap();
+
+            let timestamp = 42.5;
+            let schema = Some("myschema".to_string());
+
+            // Create PyAnyMessage
+            let msg = PyAnyMessage::new(
+                payload.clone_ref(py),
+                py_headers.clone_ref(py),
+                timestamp,
+                schema.clone(),
+                py,
+            )
+            .unwrap();
+
+            // Extract and assert attributes
+            assert_eq!(msg.timestamp, timestamp);
+            assert_eq!(msg.schema, schema);
+
+            // Check payload
+            let payload_val: String = msg.payload.bind(py).extract().unwrap();
+            assert_eq!(payload_val, "payload");
+
+            // Check headers
+            assert_eq!(msg.headers, headers);
+
+            let new_msg = msg.replace_payload("new_payload".into_py_any(py).unwrap());
+
+            // Ensure new_msg is not the same struct as msg by comparing their payloads
+            let old_payload: String = msg.payload.bind(py).extract().unwrap();
+            let new_payload: String = new_msg.payload.bind(py).extract().unwrap();
+            assert_ne!(old_payload, new_payload);
+
+            // test the python methods
+            let pymsg = into_pyany(py, msg).unwrap();
+
+            let repr = pymsg.call_method0(py, "__repr__").unwrap();
+            let expected_repr = format!(
+                "PyAnyMessage(payload='{}', headers={:?}, timestamp={}, schema={:?})",
+                payload_val, headers, timestamp, schema
+            );
+            assert_eq!(repr.extract::<String>(py).unwrap(), expected_repr);
+        });
+    }
+
+    #[test]
+    fn test_rawmessage_lifecycle() {
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            // Prepare test data
+            let payload_bytes = vec![100, 101, 102, 103];
+            let py_payload = PyBytes::new(py, &payload_bytes);
+            let headers = vec![
+                ("alpha".to_string(), vec![1, 2]),
+                ("beta".to_string(), vec![3, 4]),
+            ];
+            let py_headers = headers_to_sequence(py, &headers).unwrap();
+
+            let timestamp = 123.45;
+            let schema = Some("rawschema".to_string());
+
+            // Create RawMessage
+            let msg = RawMessage::new(
+                py_payload.unbind(),
+                py_headers.clone_ref(py),
+                timestamp,
+                schema.clone(),
+                py,
+            )
+            .unwrap();
+
+            // Extract and assert attributes
+            assert_eq!(msg.timestamp, timestamp);
+            assert_eq!(msg.schema, schema);
+
+            // Check payload
+            assert_eq!(msg.payload, payload_bytes);
+
+            // Check headers
+            assert_eq!(msg.headers, headers);
+
+            // Test payload getter
+            let py_payload_val = msg.payload(py).unwrap();
+            let payload_val: &[u8] = py_payload_val.bind(py).as_bytes();
+            assert_eq!(payload_val, &payload_bytes[..]);
+
+            // Test headers getter
+            let py_headers_val = msg.headers(py).unwrap();
+            let headers_val = headers_to_vec(py, py_headers_val).unwrap();
+            assert_eq!(headers_val, headers);
+
+            // Replace payload via python
+            let new_payload_bytes = vec![200, 201, 202];
+            let new_py_payload = PyBytes::new(py, &new_payload_bytes);
+            let new_msg = msg.replace_payload(new_py_payload.unbind(), py).unwrap();
+
+            let new_payload_val: Py<PyBytes> = new_msg
+                .getattr(py, "payload")
+                .unwrap()
+                .bind(py)
+                .downcast::<PyBytes>()
+                .unwrap()
+                .clone()
+                .unbind();
+            let new_payload_bytes2: &[u8] = new_payload_val.as_bytes(py);
+            assert_eq!(new_payload_bytes2, new_payload_bytes);
+
+            // test the python methods
+            let pymsg = into_pyraw(py, msg).unwrap();
+
+            let repr = pymsg.call_method0(py, "__repr__").unwrap();
+            let expected_repr = format!(
+                "RawMessage(payload={:?}, headers={:?}, timestamp={}, schema={:?})",
+                payload_bytes, headers, timestamp, schema
+            );
+            assert_eq!(repr.extract::<String>(py).unwrap(), expected_repr);
         });
     }
 }
