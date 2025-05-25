@@ -1,9 +1,48 @@
+//! This module defines the Message primitives used to move data between
+//! streaming operators.
+//!
+//! Messages have a a payload metadata. Metadata is the same for all types
+//! of messages: headers, timestamp and optional schema.
+//! The payload can be different between message types. Examples:
+//! - PyAny is a Python object that is opaque to Rust code
+//! - Bytes is a raw byte array.
+//! - ...
+//!
+//! Not all operators can handle all message types. For example a Sink expects
+//! a Message containing a byte array serialized by another step before.
+//!
+//! Message classes are pyClass if they have to be processed by Python code.
+//! This means conversion is generally required when the message is created
+//! in Rust and provided to Python code. Conversely, a message produced by
+//! a Python operator cannot be extracted from the Gil without copying in order
+//! to process the payload in Rust.
+//!
+//! Messages are immutable. They have to be consumed to replace the payload.
+//! This cannot really be enforced in the Python code if the payload object
+//! is itself mutable and python code decides to mutate it.
+//!
+//! There are a lot of TODOs at this stage:
+//! TODO: Avoid re-declaring all the metadata fields in each message type.
+//!       Create a Message class that contains the metadata and an Enum for
+//!       different payload types.
+//! TODO: Create tow variants of each of the message types that have to be
+//!       usable by both Rust and Python. The Rust variant contains a native
+//!       Rust payload. The Python variant contains a Py smart pointer to
+//!       and object in Python memory.
+//! TODO: Provide a standard translation layer between Rust and Python that
+//!       is transparent to the operator that has to process a message. This
+//!       will allow us to optimize the translation avoiding copy without
+//!       impacting each operator.
 use pyo3::types::{PyBytes, PyList, PyTuple};
 use pyo3::Python;
 
 use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
 pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(String, Vec<u8>)>> {
+    // Converts the Python consumable representation of the Message headers into
+    // the Rust native representation (which is a Vec<(String, Vec<u8>)>).
+    // This copies data. The original python representation is still usable
+    // as it is a Py smart pointer.
     headers
         .bind(py)
         .try_iter()?
@@ -21,6 +60,9 @@ pub fn headers_to_sequence(
     py: Python<'_>,
     headers: &[(String, Vec<u8>)],
 ) -> PyResult<Py<PySequence>> {
+    // Transforms the Rust native representation of the Message headers into
+    // the Python consumable representation in Python memory.
+    // This copies data.
     let py_tuples = headers
         .iter()
         .map(|(k, v)| {
@@ -34,6 +76,13 @@ pub fn headers_to_sequence(
     Ok(seq.unbind())
 }
 
+/// Represents a message with any Python object as payload. This message type
+/// is meant to be processed by Python operators. Rust operators should consider
+/// The payload as opaque and should not transform it.
+///
+/// The message can be created both by Python code or Rust code. When Rust code
+/// instantiates it, it has to convert it into a Py<PyAnyMessage> before handing
+/// it to Python code. This can be done with the `into_pyany` function.
 #[pyclass]
 #[derive(Debug)]
 pub struct PyAnyMessage {
@@ -50,6 +99,8 @@ pub struct PyAnyMessage {
 }
 
 pub fn into_pyany(py: Python<'_>, message: PyAnyMessage) -> PyResult<Py<PyAnyMessage>> {
+    // Converts a PyAnyMessage instantiated outside of Python memory into a
+    // Py<PyAnyMessage> that can be used in Python code.
     let py_obj = Py::new(py, message)?;
     Ok(py_obj)
 }
@@ -99,6 +150,12 @@ impl PyAnyMessage {
     }
 }
 
+/// Represent a message whose payload is a byte array. The payload is a Vec<u8>, not
+/// a PyBytes. Copy is needed to convert one to the other. This is meant primarily to
+/// represent the message produced by a Rust source and consumed by a Rust Sink.
+///
+/// TODO: With FFI there should be a way to share a byte array between Rust and Python
+///       without copying.
 #[pyclass]
 #[derive(Debug)]
 pub struct RawMessage {
@@ -169,6 +226,8 @@ impl RawMessage {
 
 #[allow(unused)]
 pub fn replace_raw_payload(message: RawMessage, new_payload: Vec<u8>) -> RawMessage {
+    // Replaces the payload of a `RawMessage` with a new byte array when the
+    // message is managed by Rust and is not on Python memory.
     RawMessage {
         payload: new_payload,
         headers: message.headers,
@@ -182,6 +241,12 @@ pub fn into_pyraw(py: Python<'_>, message: RawMessage) -> PyResult<Py<RawMessage
     Ok(py_obj)
 }
 
+/// Represents a generic message that is in Python memory and can be sent back and
+/// forth to Python code. This is means to be passed between between operators in
+/// the Rust code.
+///
+/// TODO: See the TODO at the module level. This is where we would put the message
+///       metadata.
 #[derive(Debug)]
 #[pyclass]
 pub enum PyStreamingMessage {
@@ -189,6 +254,11 @@ pub enum PyStreamingMessage {
     RawMessage { content: Py<RawMessage> },
 }
 
+/// Represents a generic message that is in Rust memory and can be processed by Rust
+/// code without taking the Gil.
+///
+/// TODO: See the TODO at the module level. This is where we would put the message
+///       metadata.
 #[allow(unused)]
 #[derive(Debug)]
 pub enum StreamingMessage {

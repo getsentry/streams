@@ -10,6 +10,23 @@ TPayload = TypeVar("TPayload")
 
 
 class Message(ABC, Generic[TPayload]):
+    """
+    A generic class to represent multiple types of messages in the pipeline.
+    Streaming Steps should access the message via this class.
+
+    The actual Message classes are defined in Rust and are exported to Python
+    via pyo3. This class and its subclasses wrap the Rust classes so that we
+    can make the payload time Generic. It is not possible to create, via pyo3,
+    a class that is generic to Python nor using Rust generics.
+
+    The other reason this class exists is to have a superclass for all message
+    types in Python. In rust we have a rich enum.
+
+    TODO: Find a way to avoid redeclaring all the message types in Python.
+          we should be able to only redeclare the messages where we want to
+          make payload a Python Generic.
+    """
+
     @property
     @abstractmethod
     def payload(self) -> TPayload:
@@ -48,8 +65,6 @@ class Message(ABC, Generic[TPayload]):
 class PyMessage(Generic[TPayload], Message[TPayload]):
     """
     A wrapper for the Rust PyAnyMessage to make the payload generic.
-    We cannot export classes via PyO3 that are generic in Python.
-    This exposes makes the Message generic.
     """
 
     def __init__(
@@ -87,6 +102,10 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
 
 
 class PyRawMessage(Message[bytes]):
+    """
+    A wrapper for the Rust RawMessage so `RawMessage` extends `Messasge`.
+    """
+
     def __init__(
         self,
         payload: bytes,
