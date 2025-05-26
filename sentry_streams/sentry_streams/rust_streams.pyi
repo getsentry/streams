@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import Any, Callable, Generic, Mapping, Self, Sequence, Tuple, TypeVar
+from typing import Any, Callable, Mapping, Self, Sequence, Tuple, TypeVar
 
-from sentry_streams.adapters.arroyo.rust_step import RustOperatorDelegate
+from sentry_streams.adapters.arroyo.rust_step import RustOperatorFactory
 from sentry_streams.pipeline.message import Message
 
 TIn = TypeVar("TIn")
@@ -57,7 +57,7 @@ class RuntimeOperator:
     def Router(cls, route: Route, function: Callable[[Message[Any]], str]) -> Self: ...
     @classmethod
     def PythonAdapter(
-        cls, route: Route, processing_step: RustOperatorDelegate[TIn, TOut]
+        cls, route: Route, delegate_Factory: RustOperatorFactory[TIn, TOut]
     ) -> Self: ...
 
 class ArroyoConsumer:
