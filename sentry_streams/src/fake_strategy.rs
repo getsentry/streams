@@ -1,4 +1,5 @@
 use super::*;
+use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
 
 use sentry_arroyo::processing::strategies::{
@@ -61,10 +62,19 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                 self.commit_request.take(),
                 Some(build_commit_request(&message)),
             );
-            self.submitted
-                .lock()
-                .unwrap()
-                .push(message.into_payload().payload);
+
+            Python::with_gil(|py| {
+                let msg = match message.into_payload().payload {
+                    PyStreamingMessage::PyAnyMessage { content } => {
+                        content.bind(py).getattr("payload").unwrap()
+                    }
+                    PyStreamingMessage::RawMessage { content } => {
+                        content.bind(py).getattr("payload").unwrap()
+                    }
+                };
+
+                self.submitted.lock().unwrap().push(msg.unbind());
+            });
             Ok(())
         }
     }
@@ -95,7 +105,7 @@ pub fn assert_messages_match(
     {
         assert!(
             actual.bind(py).eq(expected.bind(py)).unwrap(),
-            "Message at index {} differs",
+            "Message at index {} differs {actual} - {expected}",
             i
         );
     }

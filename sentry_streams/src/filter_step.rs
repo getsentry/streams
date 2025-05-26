@@ -1,3 +1,4 @@
+use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
 use pyo3::{Py, PyAny, Python};
 use sentry_arroyo::processing::strategies::{
@@ -42,7 +43,15 @@ impl ProcessingStrategy<RoutedValue> for Filter {
             self.next_step.submit(message)
         } else {
             Python::with_gil(|py: Python<'_>| -> Result<(), SubmitError<RoutedValue>> {
-                let python_payload = message.payload().payload.clone_ref(py);
+                let python_payload: Py<PyAny> = match message.payload().payload {
+                    PyStreamingMessage::PyAnyMessage { ref content } => {
+                        content.clone_ref(py).into_any()
+                    }
+                    PyStreamingMessage::RawMessage { ref content } => {
+                        content.clone_ref(py).into_any()
+                    }
+                };
+
                 let py_res = self.callable.call1(py, (python_payload,));
 
                 match py_res {
@@ -99,7 +108,7 @@ mod tests {
     fn test_build_filter() {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
-            let callable = make_lambda(py, c_str!("lambda x: 'test' in x"));
+            let callable = make_lambda(py, c_str!("lambda x: 'test' in x.payload"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
             let next_step = FakeStrategy::new(submitted_messages, false);

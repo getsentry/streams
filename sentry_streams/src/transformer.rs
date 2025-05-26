@@ -69,7 +69,10 @@ mod tests {
     fn test_build_map() {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
-            let callable = make_lambda(py, c_str!("lambda x: x + '_transformed'"));
+            let callable = make_lambda(
+                py,
+                c_str!("lambda x: x.replace_payload(x.payload + '_transformed')"),
+            );
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
             let next_step = FakeStrategy::new(submitted_messages, false);

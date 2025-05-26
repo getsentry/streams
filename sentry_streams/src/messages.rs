@@ -198,18 +198,13 @@ impl RawMessage {
         Ok(PyBytes::new(py, &self.payload).unbind())
     }
 
-    fn replace_payload(
-        &self,
-        new_payload: Py<PyBytes>,
-        py: Python<'_>,
-    ) -> PyResult<Py<RawMessage>> {
-        let new_message = RawMessage {
+    fn replace_payload(&self, new_payload: Py<PyBytes>, py: Python<'_>) -> RawMessage {
+        RawMessage {
             payload: new_payload.as_bytes(py).to_vec(),
             headers: self.headers.clone(),
             timestamp: self.timestamp,
             schema: self.schema.clone(),
-        };
-        into_pyraw(py, new_message)
+        }
     }
 
     fn __repr__(&self) -> PyResult<String> {
@@ -252,6 +247,30 @@ pub fn into_pyraw(py: Python<'_>, message: RawMessage) -> PyResult<Py<RawMessage
 pub enum PyStreamingMessage {
     PyAnyMessage { content: Py<PyAnyMessage> },
     RawMessage { content: Py<RawMessage> },
+}
+
+impl Into<PyStreamingMessage> for Py<PyAny> {
+    fn into(self) -> PyStreamingMessage {
+        Python::with_gil(|py| {
+            let bound = self.clone_ref(py).into_bound(py);
+            if bound.is_instance_of::<PyAnyMessage>() {
+                let content = bound.downcast::<PyAnyMessage>()?;
+                Ok(PyStreamingMessage::PyAnyMessage {
+                    content: content.clone().unbind(),
+                })
+            } else if bound.is_instance_of::<RawMessage>() {
+                let content = bound.downcast::<RawMessage>()?;
+                Ok(PyStreamingMessage::RawMessage {
+                    content: content.clone().unbind(),
+                })
+            } else {
+                Err(pyo3::exceptions::PyTypeError::new_err(
+                    "Message type is invalid",
+                ))
+            }
+        })
+        .unwrap()
+    }
 }
 
 /// Represents a generic message that is in Rust memory and can be processed by Rust
@@ -407,16 +426,9 @@ mod tests {
             // Replace payload via python
             let new_payload_bytes = vec![200, 201, 202];
             let new_py_payload = PyBytes::new(py, &new_payload_bytes);
-            let new_msg = msg.replace_payload(new_py_payload.unbind(), py).unwrap();
+            let new_msg = msg.replace_payload(new_py_payload.unbind(), py);
 
-            let new_payload_val: Py<PyBytes> = new_msg
-                .getattr(py, "payload")
-                .unwrap()
-                .bind(py)
-                .downcast::<PyBytes>()
-                .unwrap()
-                .clone()
-                .unbind();
+            let new_payload_val: Py<PyBytes> = new_msg.payload(py).unwrap();
             let new_payload_bytes2: &[u8] = new_payload_val.as_bytes(py);
             assert_eq!(new_payload_bytes2, new_payload_bytes);
 

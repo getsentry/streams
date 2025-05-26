@@ -1,3 +1,5 @@
+use crate::messages::PyAnyMessage;
+use crate::messages::{into_pyany, into_pyraw, PyStreamingMessage, RawMessage};
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use pyo3::prelude::*;
@@ -24,7 +26,7 @@ pub fn make_msg(payload: Option<Vec<u8>>) -> Message<KafkaPayload> {
 
 #[cfg(test)]
 pub fn build_routed_value(
-    _: Python<'_>,
+    py: Python<'_>,
     msg_payload: Py<PyAny>,
     source: &str,
     waypoints: Vec<String>,
@@ -32,10 +34,49 @@ pub fn build_routed_value(
     let route = Route::new(source.to_string(), waypoints);
     RoutedValue {
         route,
-        payload: msg_payload,
+        payload: PyStreamingMessage::PyAnyMessage {
+            content: into_pyany(
+                py,
+                PyAnyMessage {
+                    payload: msg_payload,
+                    headers: vec![],
+                    timestamp: 0.0,
+                    schema: None,
+                },
+            )
+            .unwrap(),
+        },
     }
 }
 
+#[cfg(test)]
+pub fn build_raw_routed_value(
+    py: Python<'_>,
+    msg_payload: Vec<u8>,
+    source: &str,
+    waypoints: Vec<String>,
+) -> RoutedValue {
+    use std::vec;
+
+    let route = Route::new(source.to_string(), waypoints);
+    RoutedValue {
+        route,
+        payload: PyStreamingMessage::RawMessage {
+            content: into_pyraw(
+                py,
+                RawMessage {
+                    payload: msg_payload,
+                    headers: vec![],
+                    timestamp: 0.0,
+                    schema: None,
+                },
+            )
+            .unwrap(),
+        },
+    }
+}
+
+#[allow(unused)]
 #[cfg(test)]
 pub fn make_routed_msg(
     py: Python<'_>,
@@ -44,5 +85,16 @@ pub fn make_routed_msg(
     waypoints: Vec<String>,
 ) -> Message<RoutedValue> {
     let routed_value = build_routed_value(py, msg_payload, source, waypoints);
+    Message::new_any_message(routed_value, std::collections::BTreeMap::new())
+}
+
+#[cfg(test)]
+pub fn make_raw_routed_msg(
+    py: Python<'_>,
+    msg_payload: Vec<u8>,
+    source: &str,
+    waypoints: Vec<String>,
+) -> Message<RoutedValue> {
+    let routed_value = build_raw_routed_value(py, msg_payload, source, waypoints);
     Message::new_any_message(routed_value, std::collections::BTreeMap::new())
 }

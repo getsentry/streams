@@ -1,3 +1,4 @@
+use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
 use pyo3::prelude::*;
 use sentry_arroyo::types::Message;
@@ -7,10 +8,31 @@ use sentry_arroyo::types::Message;
 pub fn call_python_function(
     callable: &Py<PyAny>,
     message: &Message<RoutedValue>,
+) -> Result<PyStreamingMessage, PyErr> {
+    Ok(Python::with_gil(|py| match message.payload().payload {
+        PyStreamingMessage::PyAnyMessage { ref content } => {
+            callable.call1(py, (content.clone_ref(py),))
+        }
+        PyStreamingMessage::RawMessage { ref content } => {
+            callable.call1(py, (content.clone_ref(py),))
+        }
+    })?
+    .into())
+}
+
+/// Executes a Python callable with an Arroyo message containing Any and
+/// returns the result.
+pub fn call_any_python_function(
+    callable: &Py<PyAny>,
+    message: &Message<RoutedValue>,
 ) -> Result<Py<PyAny>, PyErr> {
-    Python::with_gil(|py| {
-        let python_payload = message.payload().payload.clone_ref(py);
-        callable.call1(py, (python_payload,))
+    Python::with_gil(|py| match message.payload().payload {
+        PyStreamingMessage::PyAnyMessage { ref content } => {
+            callable.call1(py, (content.clone_ref(py),))
+        }
+        PyStreamingMessage::RawMessage { ref content } => {
+            callable.call1(py, (content.clone_ref(py),))
+        }
     })
 }
 
@@ -27,7 +49,10 @@ mod tests {
     fn test_call_python_function() {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
-            let callable = make_lambda(py, c_str!("lambda x: x + '_transformed'"));
+            let callable = make_lambda(
+                py,
+                c_str!("lambda x: x.replace_payload(x.payload + '_transformed')"),
+            );
 
             let message = Message::new_any_message(
                 build_routed_value(
@@ -41,10 +66,15 @@ mod tests {
 
             let result = call_python_function(&callable, &message).unwrap();
 
-            assert_eq!(
-                result.extract::<String>(py).unwrap(),
-                "test_message_transformed"
-            );
+            match result {
+                PyStreamingMessage::PyAnyMessage { content } => {
+                    let r = content.bind(py).getattr("payload").unwrap().unbind();
+                    assert_eq!(r.extract::<String>(py).unwrap(), "test_message_transformed");
+                }
+                PyStreamingMessage::RawMessage { .. } => {
+                    panic!("Expected PyAnyMessage, got RawMessage")
+                }
+            }
         });
     }
 }
