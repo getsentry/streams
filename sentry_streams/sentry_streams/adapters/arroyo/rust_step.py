@@ -89,6 +89,30 @@ class RustOperatorDelegate(ABC, Generic[TIn, TOut]):
         raise NotImplementedError
 
 
+class RustOperatorFactory(ABC, Generic[TIn, TOut]):
+    """
+    Like for all Arroyo processing strategies, the framework needs to be
+    able to tear down and rebuild the processing strategy on its own when
+    needed. This can happen at startup or at every rebalancing.
+
+    This is the class passed to the Rust runtime so that the runtime can
+    re-instantiate the RustOperatorDelegate without knowing which parameters
+    to pass.
+
+    This is a class rather than a function as these factory are often stateful.
+    Example of the state they may hold across multiple instantiations of
+    the RustOperatorDelegate are pre-initialized ProcessPools.
+    """
+
+    @abstractmethod
+    def build(self) -> RustOperatorDelegate[TIn, TOut]:
+        """
+        Builds a RustOperatorDelegate that can be used to process messages
+        in the Rust Streaming Adapter.
+        """
+        raise NotImplementedError
+
+
 class SingleMessageOperatorDelegate(
     Generic[TIn, TOut],
     RustOperatorDelegate[TIn, TOut],

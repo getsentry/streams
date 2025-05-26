@@ -40,16 +40,20 @@ pub struct PythonAdapter {
 impl PythonAdapter {
     pub fn new(
         route: Route,
-        processing_step: Py<PyAny>,
+        delegate_factory: Py<PyAny>,
         next_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
     ) -> Self {
-        Self {
-            route,
-            processing_step,
-            next_strategy,
-            transformed_messages: VecDeque::new(),
-            commit_request_carried_over: None,
-        }
+        Python::with_gil(|py| {
+            let processing_step = delegate_factory.call_method0(py, "build").unwrap();
+
+            Self {
+                route,
+                processing_step,
+                next_strategy,
+                transformed_messages: VecDeque::new(),
+                commit_request_carried_over: None,
+            }
+        })
     }
 
     /// Turn a Vector of python payloads provided by the Python delegate
@@ -340,11 +344,15 @@ class RustOperatorDelegate:
         return [
             (self.payload, self.committable)
         ]
+
+class RustOperatorDelegateFactory:
+    def build(self):
+        return RustOperatorDelegate()
     "#
         );
         let scope = PyModule::new(py, "test_scope").unwrap();
         py.run(class_def, Some(&scope.dict()), None).unwrap();
-        let operator = scope.getattr("RustOperatorDelegate").unwrap();
+        let operator = scope.getattr("RustOperatorDelegateFactory").unwrap();
         operator.call0().unwrap()
     }
 
