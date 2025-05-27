@@ -92,6 +92,12 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
     def schema(self) -> str | None:
         return self.inner.schema
 
+    def __repr__(self) -> str:
+        return self.inner.__repr__()
+
+    def __str__(self) -> str:
+        return self.inner.__str__()
+
     def deepcopy(self) -> PyMessage[TPayload]:
         return PyMessage(
             deepcopy(self.inner.payload),
@@ -130,6 +136,12 @@ class PyRawMessage(Message[bytes]):
     @property
     def schema(self) -> str | None:
         return self.inner.schema
+
+    def __repr__(self) -> str:
+        return self.inner.__repr__()
+
+    def __str__(self) -> str:
+        return self.inner.__str__()
 
     def deepcopy(self) -> PyRawMessage:
         return PyRawMessage(
