@@ -10,6 +10,7 @@ from typing import (
     cast,
 )
 
+from sentry_streams.adapters.arroyo.reduce_delegate import ReduceDelegateFactory
 from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
@@ -219,7 +220,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         Build a reduce operator for the platform the adapter supports.
         """
 
-        raise NotImplementedError
+        route = RustRoute(stream.source, stream.waypoints)
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
+        )
+        return stream
 
     def broadcast(
         self,

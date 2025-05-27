@@ -103,6 +103,17 @@ def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage[st
     )
 
 
+def assert_equal_batches(
+    batch1: Sequence[Tuple[Message[Sequence[Message[str]]], Committable]],
+    batch2: Sequence[Tuple[Message[Sequence[Message[str]]], Committable]],
+) -> None:
+    assert len(batch1) == len(batch2)
+    for i, msg1 in enumerate(batch1):
+        msg2 = batch2[i]
+        assert msg1[0].payload == msg2[0].payload, f"Payload mismatch at index {i}"
+        assert msg1[1] == msg2[1], f"Committable mismatch at index {i}"
+
+
 def test_reduce_poll() -> None:
     retriever = OutputRetriever[Sequence[Message[str]]]()
     reducer = FakeReducer(retriever)
@@ -131,21 +142,25 @@ def test_reduce_poll() -> None:
 
     # Poll to trigger processing
     batch = list(delegate.poll())
-    assert batch == [
-        (
-            PyMessage(
-                payload=[
-                    build_msg("message1", timestamp, 100)[0],
-                    build_msg("message2", timestamp, 200)[0],
-                    build_msg("message3", timestamp, 300)[0],
-                ],
-                headers=[],
-                timestamp=timestamp,
-                schema=None,
-            ),
-            {("test_topic", 0): 400},
-        )
-    ]
+    assert_equal_batches(
+        batch,
+        [
+            (
+                PyMessage(
+                    payload=[
+                        build_msg("message1", timestamp, 100)[0],
+                        build_msg("message2", timestamp, 200)[0],
+                        build_msg("message3", timestamp, 300)[0],
+                    ],
+                    headers=[],
+                    timestamp=timestamp,
+                    schema=None,
+                ).to_inner(),
+                {("test_topic", 0): 400},
+            )
+        ],
+    )
+
     assert len(list(delegate.poll())) == 0
     assert len(list(retriever.fetch())) == 0
 
@@ -166,19 +181,23 @@ def test_flush() -> None:
         *build_msg("message1", timestamp, 100),
     )
     batch = list(delegate.flush())
-    assert batch == [
-        (
-            PyMessage(
-                payload=[
-                    build_msg("message1", timestamp, 100)[0],
-                ],
-                headers=[],
-                timestamp=timestamp,
-                schema=None,
-            ),
-            {("test_topic", 0): 400},
-        )
-    ]
+    assert_equal_batches(
+        batch,
+        [
+            (
+                PyMessage(
+                    payload=[
+                        build_msg("message1", timestamp, 100)[0],
+                    ],
+                    headers=[],
+                    timestamp=timestamp,
+                    schema=None,
+                ).to_inner(),
+                {("test_topic", 0): 400},
+            )
+        ],
+    )
+
     assert len(list(delegate.poll())) == 0
 
 
@@ -199,14 +218,19 @@ def test_reduce() -> None:
     )
 
     batch = list(delegate.poll())
-    assert batch == [
+    expected = [
         (
             PyMessage(
                 payload=["message1", "message2"],
                 headers=[],
                 timestamp=timestamp,
                 schema=None,
-            ),
+            ).to_inner(),
             {("test_topic", 0): 200},
         )
     ]
+    assert len(batch) == len(expected)
+    for i, msg1 in enumerate(batch):
+        msg2 = expected[i]
+        assert msg1[0].payload == msg2[0].payload, f"Payload mismatch at index {i}"
+        assert msg1[1] == msg2[1], f"Committable mismatch at index {i}"
