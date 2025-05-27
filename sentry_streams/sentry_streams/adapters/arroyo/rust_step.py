@@ -192,6 +192,12 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
     In order to wrap an existing Arroyo strategy in a `RustOperatorDelegate` we
     need to provide an instance of this class to the existing strategy to
     collect the results and send it them back to Rust as `poll` return value.
+
+    the strategy wrapped by the delegate does not always provide messages in
+    a format that we can return to the Rust Runtime. For example, existing Arroyo
+    strategies may return something like ArroyoMsg[FilteredPayload, Something].
+    A transformer can be provided to this class to turn the output into
+    a Tuple of `RustMessage` and `Committable`.
     """
 
     def __init__(
@@ -204,13 +210,6 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
         self.__pending_messages: MutableSequence[Tuple[RustMessage, Committable]] = []
 
     def submit(self, message: ArroyoMessage[TStrategyOut]) -> None:
-        """
-        Accumulates messages provided by the previous step in the consumer.
-
-        Different types of reducers can provide RoutedValues or bare aggregated
-        data. So this class has to support both.
-        Messages are turned into `PyMessage` and stored in this format.
-        """
         transformed = self.__out_transformer(message)
         if transformed is not None:
             self.__pending_messages.append((transformed[0], transformed[1]))
