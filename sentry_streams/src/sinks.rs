@@ -230,9 +230,7 @@ mod tests {
 
         let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
         let submitted_messages_clone = submitted_messages.clone();
-        let next_step = FakeStrategy {
-            submitted: submitted_messages,
-        };
+        let next_step = FakeStrategy::new(submitted_messages, false);
         let terminator = Noop {};
 
         let concurrency_config = ConcurrencyConfig::new(1);

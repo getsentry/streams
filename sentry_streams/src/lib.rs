@@ -5,6 +5,7 @@ mod filter_step;
 mod gcs_writer;
 mod kafka_config;
 mod operators;
+mod python_operator;
 mod routers;
 mod routes;
 mod sinks;

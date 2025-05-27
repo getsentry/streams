@@ -9,6 +9,9 @@ from typing import (
     cast,
 )
 
+from sentry_kafka_schemas import get_codec
+from sentry_kafka_schemas.codecs import Codec
+
 from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
@@ -138,7 +141,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         )
 
         def make_msg(payload: Any) -> Message[Any]:
-            return Message(payload=payload, headers=[], timestamp=0, schema=None)
+            try:
+                schema: Codec[Any] = get_codec(step.stream_name)
+            except Exception:
+                raise ValueError(f"Kafka topic {step.stream_name} has no associated schema")
+            return Message(payload=payload, headers=[], timestamp=0, schema=schema)
 
         route = RustRoute(source_name, [])
         self.__consumers[source_name].add_step(RuntimeOperator.Map(route, make_msg))

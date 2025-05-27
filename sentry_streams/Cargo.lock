@@ -1309,6 +1309,7 @@ dependencies = [
  "sentry_arroyo",
  "serde",
  "tokio",
+ "tracing",
  "tracing-subscriber",
 ]
 
