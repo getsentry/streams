@@ -188,6 +188,12 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
     In order to wrap an existing Arroyo strategy in a `RustOperatorDelegate` we
     need to provide an instance of this class to the existing strategy to
     collect the results and send it them back to Rust as `poll` return value.
+
+    the strategy wrapped by the delegate does not always provide messages in
+    a format that we can return to the Rust Runtime. For example, existing Arroyo
+    strategies may return something like ArroyoMsg[FilteredPayload, Something].
+    A transformer can be provided to this class to turn the output into
+    a Tuple of `RustMessage` and `Committable`.
     """
 
     def __init__(
@@ -200,13 +206,6 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
         self.__pending_messages: MutableSequence[Tuple[RustMessage, Committable]] = []
 
     def submit(self, message: ArroyoMessage[TStrategyOut]) -> None:
-        """
-        Accumulates messages provided by the previous step in the consumer.
-
-        Different types of reducers can provide RoutedValues or bare aggregated
-        data. So this class has to support both.
-        Messages are turned into `PyMessage` and stored in this format.
-        """
         transformed = self.__out_transformer(message)
         if transformed is not None:
             self.__pending_messages.append((transformed[0], transformed[1]))
@@ -233,6 +232,23 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
 
 
 class ArroyoStrategyDelegate(RustOperatorDelegate[TIn], Generic[TIn, TStrategyIn, TStrategyOut]):
+    """
+    Standard RustOperatorDelegate that wraps an existing Python Arroyo strategy.
+
+    The existing strategy must be created with an` OutputRetriever` as next
+    step. The same object has to be passed to this delegate to be able to
+    fetch the output.
+
+    The sequence of operations to process a message with this delegate is:
+    1. The rust runtime provide a `RustMessage` (see message.py) to the delegate
+    2. This delegate transforms the message in a type understandable to the
+       existing Arroyo strategy. This is done with `in_transformer`.
+    3. The transformed message is submitted to the existing strategy
+    4. When the existing strategy submits messages to the `OutputRetriever`,
+       the `OutputRetriever` transforms the message into a `RustMessage`
+    5. When poll is called on this delegate, `fetch` is invoked on the
+       `OutputRetriever` and the results are passed back to Rust.
+    """
 
     def __init__(
         self,
