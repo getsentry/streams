@@ -140,10 +140,11 @@ class ReduceDelegate(RustOperatorDelegate[TIn, TOut], Generic[TIn, TOut]):
 
     def poll(self) -> Iterable[Tuple[Message[TOut], Committable]]:
         self.__inner.poll()
-        return self.__retriever.fetch()
+        ret = [(msg.to_inner(), committable) for msg, committable in self.__retriever.fetch()]
+        return ret
 
     def flush(self, timeout: float | None = None) -> Iterable[Tuple[Message[TOut], Committable]]:
         self.__inner.join(timeout)
-        ret = self.__retriever.fetch()
+        ret = [(msg.to_inner(), committable) for msg, committable in self.__retriever.fetch()]
         self.__inner.close()
         return ret

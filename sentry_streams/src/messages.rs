@@ -264,9 +264,10 @@ impl Into<PyStreamingMessage> for Py<PyAny> {
                     content: content.clone().unbind(),
                 })
             } else {
-                Err(pyo3::exceptions::PyTypeError::new_err(
-                    "Message type is invalid",
-                ))
+                Err(pyo3::exceptions::PyTypeError::new_err(format!(
+                    "Message type is invalid: expected PyAnyMessage or RawMessage, got {}",
+                    bound.get_type().name().unwrap()
+                )))
             }
         })
         .unwrap()

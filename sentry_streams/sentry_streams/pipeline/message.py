@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Generic, Optional, Sequence, Tuple, TypeVar, cast
+from typing import Any, Generic, Optional, Sequence, Tuple, TypeVar, cast
 
 from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
@@ -49,6 +49,10 @@ class Message(ABC, Generic[TPayload]):
 
     @abstractmethod
     def deepcopy(self) -> Message[TPayload]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def to_inner(self) -> Any:
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
@@ -101,10 +105,13 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
         return self.inner.schema
 
     def __repr__(self) -> str:
-        return self.inner.__repr__()
+        return f"PyMessage({self.inner.__repr__()})"
 
     def __str__(self) -> str:
         return self.inner.__str__()
+
+    def to_inner(self) -> Any:
+        return self.inner
 
     def deepcopy(self) -> PyMessage[TPayload]:
         return PyMessage(
@@ -146,10 +153,13 @@ class PyRawMessage(Message[bytes]):
         return self.inner.schema
 
     def __repr__(self) -> str:
-        return self.inner.__repr__()
+        return f"RawMessage({self.inner.__repr__()})"
 
     def __str__(self) -> str:
         return self.inner.__str__()
+
+    def to_inner(self) -> Any:
+        return self.inner
 
     def deepcopy(self) -> PyRawMessage:
         return PyRawMessage(
