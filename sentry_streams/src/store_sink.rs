@@ -9,35 +9,39 @@ use sentry_arroyo::processing::strategies::{
 use sentry_arroyo::types::Message;
 
 use crate::gcs_writer::GCSWriter;
-use crate::routes::RoutedValue;
-
-pub enum Storage {
-    GCS,
-}
+use crate::routes::{Route, RoutedValue};
 
 /// A generic WriterStep which initializes a
 /// RunTaskInThreads with the appropriate specific Writer
-pub struct WriterStep<N> {
+pub struct GCSSink<N> {
     inner: RunTaskInThreads<RoutedValue, RoutedValue, anyhow::Error, N>,
 }
 
-impl<N> WriterStep<N>
+impl<N> GCSSink<N>
 where
     N: ProcessingStrategy<RoutedValue> + 'static,
 {
-    pub fn new(next_step: N, concurrency: &ConcurrencyConfig, storage: Storage) -> Self {
-        let writer = match storage {
-            Storage::GCS => GCSWriter::new(),
-            _ => panic!("We're cooked"),
-        };
+    pub fn new(
+        route: Route,
+        next_step: N,
+        concurrency: &ConcurrencyConfig,
+        bucket: &str,
+        object_file: &str,
+    ) -> Self {
+        let next_step = next_step;
 
-        let inner = RunTaskInThreads::new(next_step, writer, concurrency, Some("store"));
+        let inner = RunTaskInThreads::new(
+            next_step,
+            GCSWriter::new(bucket, object_file, route.clone()),
+            concurrency,
+            Some("GCS"),
+        );
 
-        WriterStep { inner }
+        GCSSink { inner }
     }
 }
 
-impl<N> ProcessingStrategy<RoutedValue> for WriterStep<N>
+impl<N> ProcessingStrategy<RoutedValue> for GCSSink<N>
 where
     N: ProcessingStrategy<RoutedValue> + 'static,
 {

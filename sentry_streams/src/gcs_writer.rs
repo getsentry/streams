@@ -1,4 +1,7 @@
+use crate::routes::Route;
+use crate::routes::RoutedValue;
 use anyhow::anyhow;
+use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use pyo3::types::PyBytes;
 use pyo3::Python;
@@ -9,20 +12,15 @@ use reqwest::ClientBuilder;
 use sentry_arroyo::processing::strategies::run_task_in_threads::{
     RunTaskError, RunTaskFunc, TaskRunner,
 };
-
-use crate::routes::RoutedValue;
-use pyo3::prelude::*;
 use sentry_arroyo::types::Message;
 pub struct GCSWriter {
     client: Client,
     url: String,
+    route: Route,
 }
 
 impl GCSWriter {
-    pub fn new() -> Self {
-        let bucket = "arroyo-artifacts";
-        let object = "uploaded-file.txt";
-
+    pub fn new(bucket: &str, object: &str, route: Route) -> Self {
         let client = ClientBuilder::new();
         let url = format!(
             "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
@@ -44,7 +42,7 @@ impl GCSWriter {
 
         let client = client.default_headers(headers).build().unwrap();
 
-        GCSWriter { client, url }
+        GCSWriter { client, url, route }
     }
 }
 
@@ -61,18 +59,21 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
     fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
         let client = self.client.clone();
         let url = self.url.clone();
+        let route = message.payload().route.clone();
+        let actual_route = self.route.clone();
 
         Box::pin(async move {
-            let bytes = to_bytes(message.payload());
+            if route == actual_route {
+                let bytes = to_bytes(message.payload());
 
-            client
-                .post(&url)
-                .body(bytes)
-                .send()
-                .await
-                .map_err(|e| anyhow!(e))
-                .map_err(RunTaskError::Other)?;
-
+                client
+                    .post(&url)
+                    .body(bytes)
+                    .send()
+                    .await
+                    .map_err(|e| anyhow!(e))
+                    .map_err(RunTaskError::Other)?;
+            }
             Ok(message)
         })
     }
