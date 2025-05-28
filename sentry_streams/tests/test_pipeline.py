@@ -2,6 +2,7 @@ from typing import Any, Callable, Union
 
 import pytest
 
+from sentry_streams.pipeline.chain import StreamSink as StreamSinkStep
 from sentry_streams.pipeline.chain import streaming_source
 from sentry_streams.pipeline.pipeline import (
     Branch,
@@ -323,7 +324,9 @@ def test_add_empty_pipeline_to_empty_pipeline() -> None:
 def test_add_to_empty() -> None:
     pipeline1 = Pipeline()
 
-    pipeline2 = streaming_source("source", "events").sink("sink", "processed-events")
+    pipeline2 = streaming_source("source", "events").sink(
+        "sink", StreamSinkStep(stream_name="processed-events")
+    )
     pipeline1.add(pipeline2)
 
     assert len(pipeline1.steps) == 2
@@ -336,10 +339,14 @@ def test_add_to_empty() -> None:
 def test_add_multi_pipeline() -> None:
     pipeline1 = Pipeline()
 
-    pipeline2 = streaming_source("source1", "events").sink("sink1", "processed-events")
+    pipeline2 = streaming_source("source1", "events").sink(
+        "sink1", StreamSinkStep(stream_name="processed-events")
+    )
     pipeline1.add(pipeline2)
 
-    pipeline2 = streaming_source("source2", "events").sink("sink2", "processed-events")
+    pipeline2 = streaming_source("source2", "events").sink(
+        "sink2", StreamSinkStep(stream_name="processed-events")
+    )
     pipeline1.add(pipeline2)
 
     assert len(pipeline1.steps) == 4
@@ -354,7 +361,9 @@ def test_add_multi_pipeline() -> None:
 def test_invalid_add() -> None:
     pipeline1 = Pipeline()
 
-    pipeline2 = streaming_source("source", "events").sink("sink", "processed-events")
+    pipeline2 = streaming_source("source", "events").sink(
+        "sink", StreamSinkStep(stream_name="processed-events")
+    )
     pipeline1.add(pipeline2)
 
     with pytest.raises(AssertionError):

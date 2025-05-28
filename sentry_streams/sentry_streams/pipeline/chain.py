@@ -256,10 +256,10 @@ class ExtensibleChain(Chain, Generic[TIn]):
                 routes={
                     Routes.ROUTE1: segment(name="route1") # Creates a branch
                     .apply("transform2", Map(lambda msg: msg))
-                    .sink("myoutput1", "transformed-events-2"),
+                    .sink("myoutput1", StreamSink("transformed-events-2")),
                     Routes.ROUTE2: segment(name="route2")
                     .apply("transform3", Map(lambda msg: msg))
-                    .sink("myoutput2", "transformed-events3"),
+                    .sink("myoutput2", StreamSink("transformed-events3")),
                 }
             )
 

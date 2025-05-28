@@ -1,7 +1,7 @@
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline import Map, multi_chain, streaming_source
-from sentry_streams.pipeline.chain import Parser, Serializer
+from sentry_streams.pipeline.chain import Parser, Serializer, StreamSink
 from sentry_streams.pipeline.message import Message
 
 
@@ -17,14 +17,14 @@ pipeline = multi_chain(
         .apply("parse_msg", Parser(msg_type=IngestMetric))
         .apply("process", Map(do_something))
         .apply("serialize", Serializer())
-        .sink("eventstream", stream_name="events"),
+        .sink("eventstream", StreamSink(stream_name="events")),
         # Snuba chain to Clickhouse
         streaming_source("snuba", stream_name="ingest-metrics")
         .apply("snuba_parse_msg", Parser(msg_type=IngestMetric))
         .apply("snuba_serialize", Serializer())
         .sink(
             "clickhouse",
-            stream_name="someewhere",
+            StreamSink(stream_name="someewhere"),
         ),
         # Super Big Consumer chain
         streaming_source("sbc", stream_name="ingest-metrics")
@@ -32,7 +32,7 @@ pipeline = multi_chain(
         .apply("sbc_serialize", Serializer())
         .sink(
             "sbc_sink",
-            stream_name="someewhere",
+            StreamSink(stream_name="someewhere"),
         ),
         # Post process chain
         streaming_source("post_process", stream_name="ingest-metrics")
@@ -41,7 +41,7 @@ pipeline = multi_chain(
         .apply("postprocess_serialize", Serializer())
         .sink(
             "devnull",
-            stream_name="someewhereelse",
+            StreamSink(stream_name="someewhereelse"),
         ),
     ]
 )

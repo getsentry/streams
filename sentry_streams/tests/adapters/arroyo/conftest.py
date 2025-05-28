@@ -15,6 +15,7 @@ from sentry_streams.pipeline.chain import (
     Parser,
     Reducer,
     Serializer,
+    StreamSink,
     segment,
     streaming_source,
 )
@@ -113,7 +114,7 @@ def pipeline() -> Pipeline:
         .apply("myfilter", Filter(lambda msg: msg.payload["type"] == "s"))
         .apply("mymap", Map(basic_map))
         .apply("serializer", Serializer())
-        .sink("kafkasink", stream_name="transformed-events")
+        .sink("kafkasink", StreamSink(stream_name="transformed-events"))
     )
 
     return pipeline
@@ -131,7 +132,7 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
         .apply("mymap", Map(basic_map))
         .apply("myreduce", Reducer(reduce_window, transformer))
         .apply("serializer", Serializer())
-        .sink("kafkasink", stream_name="transformed-events")
+        .sink("kafkasink", StreamSink(stream_name="transformed-events"))
     )
 
     return pipeline
@@ -142,12 +143,12 @@ def router_pipeline() -> Pipeline:
     branch_1 = (
         segment("set_branch", IngestMetric)
         .apply("serializer", Serializer())
-        .sink("kafkasink1", stream_name="transformed-events")
+        .sink("kafkasink1", StreamSink(stream_name="transformed-events"))
     )
     branch_2 = (
         segment("not_set_branch", IngestMetric)
         .apply("serializer2", Serializer())
-        .sink("kafkasink2", stream_name="transformed-events-2")
+        .sink("kafkasink2", StreamSink(stream_name="transformed-events-2"))
     )
 
     pipeline = (
@@ -175,13 +176,13 @@ def broadcast_pipeline() -> Pipeline:
         segment("even_branch", IngestMetric)
         .apply("mymap1", Map(basic_map))
         .apply("serializer", Serializer())
-        .sink("kafkasink1", stream_name="transformed-events")
+        .sink("kafkasink1", StreamSink(stream_name="transformed-events"))
     )
     branch_2 = (
         segment("odd_branch", IngestMetric)
         .apply("mymap2", Map(basic_map))
         .apply("serializer2", Serializer())
-        .sink("kafkasink2", stream_name="transformed-events-2")
+        .sink("kafkasink2", StreamSink(stream_name="transformed-events-2"))
     )
 
     pipeline = (

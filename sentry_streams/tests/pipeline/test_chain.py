@@ -12,6 +12,7 @@ from sentry_streams.pipeline.chain import (
     FlatMap,
     Map,
     Reducer,
+    StreamSink,
     segment,
     streaming_source,
 )
@@ -27,7 +28,7 @@ def test_sequence() -> None:
     pipeline = (
         streaming_source("myinput", "events")
         .apply("transform1", Map(lambda msg: msg))
-        .sink("myoutput", "transformed-events")
+        .sink("myoutput", StreamSink(stream_name="transformed-events"))
     )
 
     assert set(pipeline.steps.keys()) == {"myinput", "transform1", "myoutput"}
@@ -59,10 +60,10 @@ def test_broadcast() -> None:
             [
                 segment(name="route1", msg_type=IngestMetric)
                 .apply("transform2", Map(lambda msg: msg))
-                .sink("myoutput1", "transformed-events-2"),
+                .sink("myoutput1", StreamSink(stream_name="transformed-events-2")),
                 segment(name="route2", msg_type=IngestMetric)
                 .apply("transform3", Map(lambda msg: msg))
-                .sink("myoutput2", "transformed-events-3"),
+                .sink("myoutput2", StreamSink(stream_name="transformed-events-3")),
             ],
         )
     )
@@ -120,10 +121,10 @@ def test_router() -> None:
             routes={
                 Routes.ROUTE1: segment(name="route1", msg_type=IngestMetric)
                 .apply("transform2", Map(lambda msg: msg))
-                .sink("myoutput1", "transformed-events-2"),
+                .sink("myoutput1", StreamSink(stream_name="transformed-events-2")),
                 Routes.ROUTE2: segment(name="route2", msg_type=IngestMetric)
                 .apply("transform3", Map(lambda msg: msg))
-                .sink("myoutput2", "transformed-events-3"),
+                .sink("myoutput2", StreamSink(stream_name="transformed-events-3")),
             },
         )
     )

@@ -5,7 +5,7 @@ from sentry_streams.examples.blq_fn import (
     should_send_to_blq,
 )
 from sentry_streams.pipeline import segment, streaming_source
-from sentry_streams.pipeline.chain import Parser, Serializer
+from sentry_streams.pipeline.chain import Parser, Serializer, StreamSink
 
 storage_branch = (
     segment(name="recent", msg_type=IngestMetric)
@@ -14,10 +14,10 @@ storage_branch = (
         "send_message_to_DBs",
         routes=[
             segment("sbc", msg_type=IngestMetric).sink(
-                "kafkasink", stream_name="transformed-events"
+                "kafkasink", StreamSink(stream_name="transformed-events")
             ),
             segment("clickhouse", msg_type=IngestMetric).sink(
-                "kafkasink2", stream_name="transformed-events-2"
+                "kafkasink2", StreamSink(stream_name="transformed-events-2")
             ),
         ],
     )
@@ -28,7 +28,7 @@ save_delayed_message = (
     .apply("serializer2", Serializer())
     .sink(
         "kafkasink3",
-        stream_name="transformed-events-3",
+        StreamSink(stream_name="transformed-events-3"),
     )
 )
 
