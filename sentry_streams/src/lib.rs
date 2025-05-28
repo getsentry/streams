@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 mod callers;
 mod consumer;
 mod filter_step;
+mod gcs_sink;
 mod gcs_writer;
 mod kafka_config;
 mod operators;
@@ -9,7 +10,6 @@ mod python_operator;
 mod routers;
 mod routes;
 mod sinks;
-mod store_sink;
 mod transformer;
 
 #[cfg(test)]

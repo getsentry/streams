@@ -2,6 +2,7 @@ from json import JSONDecodeError, dumps, loads
 from typing import Any, Mapping, cast
 
 from sentry_streams.pipeline import Filter, Map, streaming_source
+from sentry_streams.pipeline.chain import GCSSink
 from sentry_streams.pipeline.message import Message
 
 
@@ -38,5 +39,5 @@ pipeline = (
     .apply("filter", Filter(function=filter_events))
     .apply("transform", Map(function=transform_msg))
     .apply("serializer", Map(function=serialize_msg))
-    .sink("mysink", "transformed-events")
+    .sink("mysink", GCSSink(bucket="arroyo-artifacts", object_file="uploaded.txt"))
 )

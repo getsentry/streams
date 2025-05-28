@@ -169,6 +169,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers[stream.source].add_step(RuntimeOperator.Map(route, unpack_msg))
 
         if isinstance(step, GCSSink):
+            logger.info("REACHED GCS SINK IN ADAPTER")
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.GCSSink(route, step.bucket, step.object_file)
             )

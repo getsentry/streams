@@ -1,22 +1,33 @@
-use reqwest::blocking::Client;
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+use reqwest::blocking::ClientBuilder;
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bucket = "arroyo-artifacts";
     let object = "uploaded-file.txt";
 
-    // Read the access token
-    let access_token =
-        std::env::var("MY_NEW_TOKEN").expect("Set MY_NEW_TOKEN env variable with your OAuth token");
-
-    let s = String::from("Hello, world!");
-    let bytes: Vec<u8> = s.into_bytes();
-
-    let client = Client::new();
+    let client = ClientBuilder::new();
     let url = format!(
         "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
         bucket, object
     );
+
+    let access_token = std::env::var("MY_NEW_TOKEN")
+        .expect("Set MY_NEW_TOKEN env variable with GCP authorization token");
+
+    let mut headers = HeaderMap::with_capacity(2);
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {}", access_token)).unwrap(),
+    );
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_str("application/octet-stream").unwrap(),
+    );
+
+    // got client
+    let client = client.default_headers(headers).build().unwrap();
+
+    let bytes = String::from("Hello world").into_bytes();
 
     let res = client
         .post(&url)

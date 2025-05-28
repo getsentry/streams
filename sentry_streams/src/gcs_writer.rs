@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use anyhow::anyhow;
@@ -46,7 +48,7 @@ impl GCSWriter {
     }
 }
 
-fn to_bytes(payload: &RoutedValue) -> Vec<u8> {
+fn pybytes_to_bytes(payload: &RoutedValue) -> Vec<u8> {
     let payload = Python::with_gil(|py| {
         let payload = payload.payload.clone_ref(py);
         let py_bytes: &Bound<PyBytes> = payload.bind(py).downcast().unwrap();
@@ -64,7 +66,15 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 
         Box::pin(async move {
             if route == actual_route {
-                let bytes = to_bytes(message.payload());
+                let start = Instant::now();
+                // This assumes that message.payload() is a Python bytes string
+                let bytes = pybytes_to_bytes(message.payload());
+                let finish = Instant::now();
+                println!("time taken {:?}", finish - start);
+
+                if finish - start > std::time::Duration::from_secs(10) {
+                    panic!("We're cooked");
+                }
 
                 client
                     .post(&url)
@@ -73,8 +83,27 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     .await
                     .map_err(|e| anyhow!(e))
                     .map_err(RunTaskError::Other)?;
+
+                println!("FINISHED WRITE");
             }
             Ok(message)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_bytes() {
+        let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
+        let payload = Python::with_gil(|py| PyBytes::new(py, b"hello").into());
+
+        let routed_value = RoutedValue { route, payload };
+
+        let bytes = pybytes_to_bytes(&routed_value);
+
+        assert_eq!(bytes, b"hello".to_vec());
     }
 }

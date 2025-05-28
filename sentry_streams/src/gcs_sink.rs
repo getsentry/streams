@@ -11,8 +11,8 @@ use sentry_arroyo::types::Message;
 use crate::gcs_writer::GCSWriter;
 use crate::routes::{Route, RoutedValue};
 
-/// A generic WriterStep which initializes a
-/// RunTaskInThreads with the appropriate specific Writer
+/// A specific sink which initializes a
+/// RunTaskInThreads in order to write to GCS
 pub struct GCSSink<N> {
     inner: RunTaskInThreads<RoutedValue, RoutedValue, anyhow::Error, N>,
 }

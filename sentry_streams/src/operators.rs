@@ -1,9 +1,9 @@
+use crate::gcs_sink::GCSSink;
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
-use crate::store_sink::GCSSink;
 use crate::transformer::{build_filter, build_map};
 use pyo3::prelude::*;
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
