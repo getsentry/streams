@@ -55,7 +55,7 @@ impl GCSWriter {
         GCSWriter { client, url, route }
     }
 
-    pub fn get_task(
+    pub fn write_to_gcs(
         &self,
         message: Message<RoutedValue>,
     ) -> Result<Message<RoutedValue>, SubmitError<RoutedValue>> {
@@ -79,6 +79,7 @@ mod tests {
 
     #[test]
     fn test_to_bytes() {
+        pyo3::prepare_freethreaded_python();
         let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
         let payload = Python::with_gil(|py| PyBytes::new(py, b"hello").into());
 

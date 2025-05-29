@@ -18,7 +18,7 @@ pub fn build_gcs_sink(
         if message.payload().route != copied_route {
             Ok(message)
         } else {
-            writer.get_task(message)
+            writer.write_to_gcs(message)
         }
     };
     Box::new(RunTask::new(gcs_writer, next))
