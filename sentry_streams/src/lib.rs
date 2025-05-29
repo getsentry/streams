@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 mod callers;
 mod consumer;
 mod filter_step;
-mod gcs_sink;
+mod store_sinks;
 mod gcs_writer;
 mod kafka_config;
 mod operators;

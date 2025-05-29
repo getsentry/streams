@@ -1,9 +1,9 @@
-use crate::gcs_sink::GCSSink;
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
+use crate::store_sinks::build_gcs_sink;
 use crate::transformer::{build_filter, build_map};
 use pyo3::prelude::*;
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
@@ -104,13 +104,7 @@ pub fn build(
             route,
             bucket,
             object_file,
-        } => Box::new(GCSSink::new(
-            route.clone(),
-            next,
-            concurrency_config,
-            &bucket,
-            &object_file,
-        )),
+        } => build_gcs_sink(route, next, &bucket, &object_file),
 
         RuntimeOperator::Router {
             route,

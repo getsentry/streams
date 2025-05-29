@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use anyhow::anyhow;
@@ -7,18 +5,28 @@ use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use pyo3::types::PyBytes;
 use pyo3::Python;
+use reqwest::blocking::Client;
+use reqwest::blocking::ClientBuilder;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
-use reqwest::Client;
-use reqwest::ClientBuilder;
-use sentry_arroyo::processing::strategies::run_task_in_threads::{
-    RunTaskError, RunTaskFunc, TaskRunner,
-};
+use reqwest::Response;
+use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskError;
+use sentry_arroyo::processing::strategies::MessageRejected;
+use sentry_arroyo::processing::strategies::SubmitError;
 use sentry_arroyo::types::Message;
 pub struct GCSWriter {
     client: Client,
     url: String,
     route: Route,
+}
+
+fn pybytes_to_bytes(payload: &RoutedValue) -> Vec<u8> {
+    let payload = Python::with_gil(|py| {
+        let payload = payload.payload.clone_ref(py);
+        let py_bytes: &Bound<PyBytes> = payload.bind(py).downcast().unwrap();
+        py_bytes.as_bytes().to_vec()
+    });
+    payload
 }
 
 impl GCSWriter {
@@ -46,48 +54,22 @@ impl GCSWriter {
 
         GCSWriter { client, url, route }
     }
-}
 
-fn pybytes_to_bytes(payload: &RoutedValue) -> Vec<u8> {
-    let payload = Python::with_gil(|py| {
-        let payload = payload.payload.clone_ref(py);
-        let py_bytes: &Bound<PyBytes> = payload.bind(py).downcast().unwrap();
-        py_bytes.as_bytes().to_vec()
-    });
-    payload
-}
-
-impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
-    fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
+    pub fn get_task(
+        &self,
+        message: Message<RoutedValue>,
+    ) -> Result<Message<RoutedValue>, SubmitError<RoutedValue>> {
         let client = self.client.clone();
         let url = self.url.clone();
-        let route = message.payload().route.clone();
-        let actual_route = self.route.clone();
+        // This assumes that message.payload() is a Python bytes string
+        let bytes = pybytes_to_bytes(message.payload());
 
-        Box::pin(async move {
-            if route == actual_route {
-                let start = Instant::now();
-                // This assumes that message.payload() is a Python bytes string
-                let bytes = pybytes_to_bytes(message.payload());
-                let finish = Instant::now();
-                println!("time taken {:?}", finish - start);
+        let res = client.post(&url).body(bytes).send();
 
-                if finish - start > std::time::Duration::from_secs(10) {
-                    panic!("We're cooked");
-                }
-
-                client
-                    .post(&url)
-                    .body(bytes)
-                    .send()
-                    .await
-                    .map_err(|e| anyhow!(e))
-                    .map_err(RunTaskError::Other)?;
-
-                println!("FINISHED WRITE");
-            }
-            Ok(message)
-        })
+        match res {
+            Ok(_) => Ok(message),
+            _ => Err(SubmitError::MessageRejected(MessageRejected { message })),
+        }
     }
 }
 
