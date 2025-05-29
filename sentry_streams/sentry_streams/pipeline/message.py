@@ -120,7 +120,7 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
         return f"PyMessage({self.inner.__repr__()})"
 
     def __str__(self) -> str:
-        return self.inner.__str__()
+        return repr(self)
 
     def to_inner(self) -> RustMessage:
         return self.inner
@@ -184,7 +184,7 @@ class PyRawMessage(Message[bytes]):
         return f"RawMessage({self.inner.__repr__()})"
 
     def __str__(self) -> str:
-        return self.inner.__str__()
+        return repr(self)
 
     def to_inner(self) -> RustMessage:
         return self.inner

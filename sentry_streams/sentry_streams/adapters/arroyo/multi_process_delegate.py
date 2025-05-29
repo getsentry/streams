@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from functools import partial
-from typing import Callable, Generic, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, Generic, Tuple, TypeVar, Union, cast
 
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MultiprocessingPool,
@@ -29,12 +29,11 @@ from sentry_streams.pipeline.pipeline import (
 )
 from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
-# Payload of the Streaming Message that goes in the strategy
+# Payload of the streaming message the delegate receives.
+# The Delegate receives a `Message[TMapIn]`
 TMapIn = TypeVar("TMapIn")
-# Payload of the Streaming Message that goes in the strategy
+# Payload of the streaming message the delegate sends back to Rust.
 TMapOut = TypeVar("TMapOut")
-TStrategyIn = TypeVar("TStrategyIn")
-TStrategyOut = TypeVar("TStrategyOut")
 
 
 def process_message(
@@ -66,6 +65,11 @@ def process_message(
 def mapped_msg_to_rust(
     message: ArroyoMessage[Union[FilteredPayload, Message[TMapOut]]],
 ) -> Tuple[RustMessage, Committable] | None:
+    """
+    Unpack the message provided by the RunTaskInMultiprocessing step
+    and returns the payload in a form that the Rust Runtime can
+    understand.
+    """
     if isinstance(message.payload, FilteredPayload):
         return None
     else:
@@ -78,21 +82,26 @@ def mapped_msg_to_rust(
 
 
 def rust_to_arroyo_msg(
-    message: Message[TMapIn], committable: Committable
+    message: RustMessage, committable: Committable
 ) -> ArroyoMessage[Message[TMapIn]]:
+    """
+    Prepares messages for the RunTaskInMultiprocessing strategy.
+    The input is a `Message` provided by the rust runtime.
+    """
+
     arroyo_committable = {
         Partition(Topic(partition[0]), partition[1]): offset
         for partition, offset in committable.items()
     }
     if isinstance(message, PyAnyMessage):
-        to_send = PyMessage(message.payload, message.headers, message.timestamp, message.schema)
+        to_send: Message[Any] = PyMessage(
+            message.payload, message.headers, message.timestamp, message.schema
+        )
     elif isinstance(message, RawMessage):
         to_send = PyRawMessage(message.payload, message.headers, message.timestamp, message.schema)
 
     msg = ArroyoMessage(
         Value(
-            # TODO: Stop creating a `RoutedValue` and make the Reduce strategy
-            # accept `Message` directly.
             to_send,
             arroyo_committable,
             datetime.fromtimestamp(message.timestamp) if message.timestamp else None,
@@ -101,10 +110,15 @@ def rust_to_arroyo_msg(
     return msg
 
 
-class MultiprocessDelegateFactory(RustOperatorFactory[TMapIn], Generic[TMapIn, TMapOut]):
+class MultiprocessDelegateFactory(RustOperatorFactory, Generic[TMapIn, TMapOut]):
     """
-    Creates a delegate to build the RunTaskInMultiprocessing.
-    This is the class to provide to the Rust runtime.
+    Creates a delegate for the Python RunTaskWithMultiprocessing to run
+    that strategy on the Rust runtime.
+
+    We expect Message[TMapIn]. These are transformed into ArroyoMessage
+    containing the message above as payload. The output from the
+    RunTaskInMultiprocessing strategy is sent to a retriever that makes
+    the messages available to the Delegate to be sent to Rust.
     """
 
     def __init__(
@@ -133,7 +147,7 @@ class MultiprocessDelegateFactory(RustOperatorFactory[TMapIn], Generic[TMapIn, T
     def build(
         self,
     ) -> ArroyoStrategyDelegate[
-        TMapIn, FilteredPayload | Message[TMapIn], FilteredPayload | Message[TMapOut]
+        FilteredPayload | Message[TMapIn], FilteredPayload | Message[TMapOut]
     ]:
         retriever = OutputRetriever[Union[FilteredPayload, Message[TMapOut]]](mapped_msg_to_rust)
 
