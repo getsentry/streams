@@ -28,6 +28,7 @@ pub fn build_gcs_sink(
 mod tests {
     use pyo3::IntoPyObjectExt;
     use pyo3::Python;
+    use std::env;
     use std::ops::Deref;
     use std::{collections::BTreeMap, sync::Arc};
 
@@ -49,6 +50,7 @@ mod tests {
             let submitted_messages_clone = submitted_messages.clone();
             let next_step = FakeStrategy::new(submitted_messages, false);
             let mut strategy = build_gcs_sink(&route, Box::new(next_step), bucket, object_file);
+            env::set_var("GCS_ACCESS_TOKEN", "TEST_TOKEN");
 
             // Separate route message. Not put into the sink
             let message = Message::new_any_message(
