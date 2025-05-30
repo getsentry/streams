@@ -182,14 +182,9 @@ class Batch(
 @dataclass
 class Sink(ABC):
     """
-    Defines a primitive that can be applied on a stream.
-    Instances of these class represent a step in the pipeline and
-    contains the metadata needed by the adapter to add the step
-    to the pipeline itself.
-
-    This class is primarily syntactic sugar to avoid having tons
-    of methods in the `Chain` class and still allow some customization
-    of the primitives.
+    Defines a generic Sink, which can be extended by special
+    types of Sinks. See examples/ to see how different kinds
+    of Sinks are plugged into a pipeline.
     """
 
     @abstractmethod
