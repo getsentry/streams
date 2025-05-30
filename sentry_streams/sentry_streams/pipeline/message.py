@@ -16,8 +16,8 @@ class Message(ABC, Generic[TPayload]):
 
     The actual Message classes are defined in Rust and are exported to Python
     via pyo3. This class and its subclasses wrap the Rust classes so that we
-    can make the payload time Generic. It is not possible to create, via pyo3,
-    a class that is generic to Python nor using Rust generics.
+    can make the payload of the Rust classes generic. It is not possible to
+    create, via pyo3, a class that is generic to Python nor using Rust generics.
 
     The other reason this class exists is to have a superclass for all message
     types in Python. In rust we have a rich enum.
@@ -65,6 +65,14 @@ class Message(ABC, Generic[TPayload]):
 class PyMessage(Generic[TPayload], Message[TPayload]):
     """
     A wrapper for the Rust PyAnyMessage to make the payload generic.
+
+    The payload of the inner rust class is `Any` for Python,
+    but this class casts it to a Generic type.
+    This does not offer the same guarantee as if the code was all
+    in Python as the Rust code may not respect the type hint.
+    By making this type generic we can still get a lot of guarantees
+    by the type checker when wiring python primitives together as
+    it can ensure primitives are compatible with each other.
     """
 
     def __init__(

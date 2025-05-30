@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout code
-      - run: cargo check
+      - run: cargo check --all-features
         working-directory: ./sentry_streams
       - run: cargo fmt --check
         working-directory: ./sentry_streams
@@ -30,4 +30,4 @@ jobs:
         name: Checkout code
       - name: Run tests
         working-directory: ./sentry_streams
-        run: cargo test --no-default-features
+        run: cargo test

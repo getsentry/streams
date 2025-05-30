@@ -20,7 +20,6 @@ crate-type = ["cdylib"]
 
 [features]
 extension-module = ["pyo3/extension-module"]
-default = ["extension-module"]
 
 [dev-dependencies]
 parking_lot = "0.12.1"
