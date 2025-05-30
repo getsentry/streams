@@ -26,6 +26,7 @@ from sentry_streams.pipeline.pipeline import (
     Broadcast,
     Filter,
     FlatMap,
+    GCSSink,
     Map,
     Reduce,
     Router,
@@ -153,18 +154,28 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         It is possible to override the configuration by providing an
         instantiated consumer for unit testing purposes.
         """
-        assert isinstance(step, StreamSink), "Only Stream Sinks are supported"
         route = RustRoute(stream.source, stream.waypoints)
 
         def unpack_msg(msg: Message[Any]) -> Any:
             return msg.payload
 
         self.__consumers[stream.source].add_step(RuntimeOperator.Map(route, unpack_msg))
-        self.__consumers[stream.source].add_step(
-            RuntimeOperator.StreamSink(
-                route, step.stream_name, build_kafka_producer_config(step.name, self.steps_config)
+
+        if isinstance(step, GCSSink):
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.GCSSink(route, step.bucket, step.object_file)
             )
-        )
+        # Our fallback for now since there's no other Sink type
+        else:
+            assert isinstance(step, StreamSink)
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.StreamSink(
+                    route,
+                    step.stream_name,
+                    build_kafka_producer_config(step.name, self.steps_config),
+                )
+            )
+
         return stream
 
     def map(self, step: Map, stream: Route) -> Route:

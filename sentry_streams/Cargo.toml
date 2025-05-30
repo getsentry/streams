@@ -13,6 +13,9 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 ctrlc = "3.4.6"
 rdkafka = { version = "0.37.0", features = ["cmake-build", "tracing"] }
+anyhow = "1.0.98"
+reqwest = "0.12.15"
+tokio = "1.45.0"
 
 [lib]
 name = "rust_streams"

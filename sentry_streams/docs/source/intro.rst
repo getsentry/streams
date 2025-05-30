@@ -76,7 +76,7 @@ runtime, follow these steps:
         .apply("serializer", Serializer())
         .sink(
             "mysink",
-            stream_name="transformed-events",
+            StreamSink(stream_name="transformed-events"),
         )
     )
 

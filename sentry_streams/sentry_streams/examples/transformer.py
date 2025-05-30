@@ -8,6 +8,7 @@ from sentry_streams.pipeline.chain import (
     Parser,
     Reducer,
     Serializer,
+    StreamSink,
 )
 from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.message import Message
@@ -62,7 +63,4 @@ chain3 = chain2.apply(
     Serializer(),  # pass in the standard message serializer function
 )  # ExtensibleChain[bytes]
 
-chain4 = chain3.sink(
-    "kafkasink2",
-    stream_name="transformed-events",
-)  # Chain
+chain4 = chain3.sink("kafkasink2", StreamSink(stream_name="transformed-events"))  # Chain

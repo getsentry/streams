@@ -35,12 +35,15 @@ from sentry_streams.pipeline.pipeline import (
 )
 from sentry_streams.pipeline.pipeline import Filter as FilterStep
 from sentry_streams.pipeline.pipeline import FlatMap as FlatMapStep
+from sentry_streams.pipeline.pipeline import GCSSink as GCSSinkStep
 from sentry_streams.pipeline.pipeline import Map as MapStep
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
     Router,
     Step,
-    StreamSink,
+)
+from sentry_streams.pipeline.pipeline import StreamSink as StreamSinkStep
+from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit, Window
@@ -176,6 +179,43 @@ class Batch(
         )
 
 
+@dataclass
+class Sink(ABC):
+    """
+    Defines a generic Sink, which can be extended by special
+    types of Sinks. See examples/ to see how different kinds
+    of Sinks are plugged into a pipeline.
+    """
+
+    @abstractmethod
+    def build_sink(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        """
+        Build a pipeline step and wires it to the Pipeline.
+
+        This method will go away once the old syntax will be retired.
+        """
+        raise NotImplementedError
+
+
+@dataclass
+class StreamSink(Sink):
+    stream_name: str
+
+    def build_sink(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        return StreamSinkStep(name=name, ctx=ctx, inputs=[previous], stream_name=self.stream_name)
+
+
+@dataclass
+class GCSSink(Sink):
+    bucket: str
+    object_file: str
+
+    def build_sink(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        return GCSSinkStep(
+            name=name, ctx=ctx, inputs=[previous], bucket=self.bucket, object_file=self.object_file
+        )
+
+
 class Chain(Pipeline):
     """
     A pipeline that terminates with a branch or a sink. Which means a pipeline
@@ -211,10 +251,10 @@ class ExtensibleChain(Chain, Generic[TIn]):
                 routes={
                     Routes.ROUTE1: segment(name="route1") # Creates a branch
                     .apply("transform2", Map(lambda msg: msg))
-                    .sink("myoutput1", "transformed-events-2"),
+                    .sink("myoutput1", StreamSink("transformed-events-2")),
                     Routes.ROUTE2: segment(name="route2")
                     .apply("transform3", Map(lambda msg: msg))
-                    .sink("myoutput2", "transformed-events3"),
+                    .sink("myoutput2", StreamSink("transformed-events3")),
                 }
             )
 
@@ -287,7 +327,7 @@ class ExtensibleChain(Chain, Generic[TIn]):
     def sink(
         self,
         name: str,
-        stream_name: str,
+        sink: Sink,
     ) -> Chain:
         """
         Terminates the pipeline.
@@ -295,7 +335,7 @@ class ExtensibleChain(Chain, Generic[TIn]):
         TODO: support anything other than StreamSink.
         """
         assert self.__edge is not None
-        StreamSink(name=name, ctx=self, inputs=[self.__edge], stream_name=stream_name)
+        sink.build_sink(name=name, ctx=self, previous=self.__edge)
         return self
 
 
