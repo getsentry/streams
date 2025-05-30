@@ -4,7 +4,7 @@
 //! As all the strategies in the Arroyo streaming pipeline adapter,
 //! This checks whether a message should be processed or forwarded
 //! via the `Route` attribute.
-
+use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
@@ -14,6 +14,7 @@ use sentry_arroyo::backends::Producer;
 use sentry_arroyo::processing::strategies::MessageRejected;
 use sentry_arroyo::types::{Message, Topic};
 
+use core::panic;
 use sentry_arroyo::processing::strategies::produce::Produce;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
@@ -32,13 +33,17 @@ fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
     // This is a placeholder implementation
     let payload = Python::with_gil(|py| {
         let payload = &message.payload().payload;
-        if payload.is_none(py) {
-            return KafkaPayload::new(None, None, None);
+        match payload {
+            PyStreamingMessage::PyAnyMessage { .. } => {
+                panic!("PyAnyMessage is not supported in KafkaPayload conversion");
+            }
+            PyStreamingMessage::RawMessage { content } => {
+                let payload_content = content.bind(py).getattr("payload").unwrap();
+                let py_bytes: &Bound<PyBytes> = payload_content.downcast().unwrap();
+                let raw_bytes = py_bytes.as_bytes();
+                KafkaPayload::new(None, None, Some(raw_bytes.to_vec()))
+            }
         }
-
-        let py_bytes: &Bound<PyBytes> = payload.bind(py).downcast().unwrap();
-        let raw_bytes = py_bytes.as_bytes();
-        KafkaPayload::new(None, None, Some(raw_bytes.to_vec()))
     });
     message.replace(payload)
 }
@@ -179,7 +184,7 @@ mod tests {
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
     use crate::routes::Route;
-    use crate::test_operators::make_routed_msg;
+    use crate::test_operators::make_raw_routed_msg;
     use parking_lot::Mutex;
     use sentry_arroyo::backends::local::broker::LocalBroker;
 
@@ -200,9 +205,9 @@ mod tests {
     fn test_kafka_payload() {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
-            let message = make_routed_msg(
+            let message = make_raw_routed_msg(
                 py,
-                PyBytes::new(py, b"test_message").into_any().unbind(),
+                "test_message".as_bytes().to_vec(),
                 "source",
                 vec!["waypoint1".to_string()],
             );
@@ -245,12 +250,7 @@ mod tests {
 
         Python::with_gil(|py| {
             let value = b"test_message";
-            let message = make_routed_msg(
-                py,
-                PyBytes::new(py, value).into_any().unbind(),
-                "source",
-                vec![],
-            );
+            let message = make_raw_routed_msg(py, value.to_vec(), "source", vec![]);
             sink.submit(message).unwrap();
             sink.join(None).unwrap();
 
@@ -262,12 +262,8 @@ mod tests {
 
             // Try to send to the producer
             // No new message on the next strategy.
-            let message = make_routed_msg(
-                py,
-                PyBytes::new(py, value).into_any().unbind(),
-                "source",
-                vec!["wp1".to_string()],
-            );
+            let message =
+                make_raw_routed_msg(py, value.to_vec(), "source", vec!["wp1".to_string()]);
             sink.submit(message).unwrap();
             sink.poll().unwrap();
             let expected_messages = vec![PyBytes::new(py, b"test_message").into_any().unbind()];

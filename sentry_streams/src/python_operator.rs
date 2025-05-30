@@ -2,6 +2,7 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
+use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::Python;
@@ -63,7 +64,7 @@ impl PythonAdapter {
             let message = Message::new_any_message(
                 RoutedValue {
                     route: self.route.clone(),
-                    payload,
+                    payload: payload.into(),
                 },
                 convert_py_committable(py, committable).unwrap(),
             );
@@ -142,12 +143,20 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
             }
 
             Python::with_gil(|py| {
-                let payload = message.payload().payload.clone_ref(py);
+                let python_payload: Py<PyAny> = match message.payload().payload {
+                    PyStreamingMessage::PyAnyMessage { ref content } => {
+                        content.clone_ref(py).into_any()
+                    }
+                    PyStreamingMessage::RawMessage { ref content } => {
+                        content.clone_ref(py).into_any()
+                    }
+                };
                 let py_committable = convert_committable_to_py(py, committable).unwrap();
-                match self
-                    .processing_step
-                    .call_method1(py, "submit", (payload, py_committable))
-                {
+                match self.processing_step.call_method1(
+                    py,
+                    "submit",
+                    (python_payload, py_committable),
+                ) {
                     Ok(_) => Ok(()),
                     Err(err) => {
                         let error_type = err.get_type(py).name();
@@ -313,12 +322,12 @@ class RustOperatorDelegate:
 
     def submit(self, payload, committable):
         self.committable = committable
-        if payload == "ok":
+        if payload.payload == "ok":
             self.payload = payload
             return
-        elif payload == "reject":
+        elif payload.payload == "reject":
             raise MessageRejected()
-        elif payload == "invalid":
+        elif payload.payload == "invalid":
             raise InvalidMessage(Partition(Topic("topic"), 0), 42)
 
     def poll(self):

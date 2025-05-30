@@ -1,4 +1,4 @@
-use crate::callers::call_python_function;
+use crate::callers::call_any_python_function;
 use crate::routes::{Route, RoutedValue};
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
@@ -13,7 +13,7 @@ fn route_message(
     if message.payload().route != *route {
         return Ok(message);
     }
-    let dest_route = call_python_function(callable, &message);
+    let dest_route = call_any_python_function(callable, &message);
     match dest_route {
         Ok(dest_route) => {
             let new_waypoint = Python::with_gil(|py| dest_route.extract::<String>(py).unwrap());

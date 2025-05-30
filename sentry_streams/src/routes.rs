@@ -1,3 +1,5 @@
+use crate::messages::PyAnyMessage;
+use crate::messages::{into_pyany, PyStreamingMessage};
 use pyo3::prelude::*;
 use pyo3::{pyclass, pymethods};
 use serde::{Deserialize, Serialize};
@@ -50,7 +52,7 @@ impl Route {
 #[derive(Debug)]
 pub struct RoutedValue {
     pub route: Route,
-    pub payload: Py<PyAny>, // Replace Py<PyAny> with the concrete type you need
+    pub payload: PyStreamingMessage,
 }
 
 impl RoutedValue {
@@ -100,10 +102,20 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
-            let payload = PyBytes::new(py, &[1, 2, 3]).into_any();
             let routed_value = RoutedValue {
                 route: route.clone(),
-                payload: payload.unbind(),
+                payload: PyStreamingMessage::PyAnyMessage {
+                    content: into_pyany(
+                        py,
+                        PyAnyMessage {
+                            payload: PyBytes::new(py, &[1, 2, 3]).into_any().unbind(),
+                            headers: vec![],
+                            timestamp: 0.0,
+                            schema: None,
+                        },
+                    )
+                    .unwrap(),
+                },
             };
 
             assert_eq!(routed_value.route, route);
