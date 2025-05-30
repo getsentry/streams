@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Callable, Mapping, Self, Sequence, TypeVar
+from typing import Any, Callable, Generic, Mapping, Self, Sequence, Tuple, TypeVar
 
 from sentry_streams.adapters.arroyo.rust_step import RustOperatorDelegate
 from sentry_streams.pipeline.message import Message
@@ -65,3 +65,37 @@ class ArroyoConsumer:
     def add_step(self, step: RuntimeOperator) -> None: ...
     def run(self) -> None: ...
     def shutdown(self) -> None: ...
+
+class PyAnyMessage:
+    def __init__(
+        self,
+        payload: Any,
+        headers: Sequence[Tuple[str, bytes]],
+        timestamp: float,
+        schema: str | None,
+    ) -> None: ...
+    @property
+    def payload(self) -> Any: ...
+    @property
+    def headers(self) -> Sequence[Tuple[str, bytes]]: ...
+    @property
+    def timestamp(self) -> float: ...
+    @property
+    def schema(self) -> str | None: ...
+
+class RawMessage:
+    def __init__(
+        self,
+        payload: bytes,
+        headers: Sequence[Tuple[str, bytes]],
+        timestamp: float,
+        schema: str | None,
+    ) -> None: ...
+    @property
+    def payload(self) -> bytes: ...
+    @property
+    def headers(self) -> Sequence[Tuple[str, bytes]]: ...
+    @property
+    def timestamp(self) -> float: ...
+    @property
+    def schema(self) -> str | None: ...
