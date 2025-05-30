@@ -3,6 +3,7 @@ use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
+use crate::store_sinks::build_gcs_sink;
 use crate::transformer::{build_filter, build_map};
 use pyo3::prelude::*;
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
@@ -44,6 +45,14 @@ pub enum RuntimeOperator {
         topic_name: String,
         kafka_config: PyKafkaProducerConfig,
     },
+
+    #[pyo3(name = "GCSSink")]
+    GCSSink {
+        route: Route,
+        bucket: String,
+        object_file: String,
+    },
+
     /// Represent a router step in the pipeline that can send messages
     /// to one of the downstream routes.
     #[pyo3(name = "Router")]
@@ -91,6 +100,12 @@ pub fn build(
                 terminator_strategy,
             ))
         }
+        RuntimeOperator::GCSSink {
+            route,
+            bucket,
+            object_file,
+        } => build_gcs_sink(route, next, &bucket, &object_file),
+
         RuntimeOperator::Router {
             route,
             routing_function,

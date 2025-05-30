@@ -197,6 +197,17 @@ class Sink(WithInput):
 
 
 @dataclass
+class GCSSink(Sink):
+    """
+    A Sink which writes to GCS
+    """
+
+    bucket: str
+    object_file: str
+    step_type: StepType = StepType.SINK
+
+
+@dataclass
 class StreamSink(Sink):
     """
     A Sink which specifically writes to Kafka.

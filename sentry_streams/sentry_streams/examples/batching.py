@@ -2,7 +2,7 @@ from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline import Batch, FlatMap, streaming_source
 from sentry_streams.pipeline.batch import unbatch
-from sentry_streams.pipeline.chain import Parser, Serializer
+from sentry_streams.pipeline.chain import Parser, Serializer, StreamSink
 
 pipeline = streaming_source(
     name="myinput",
@@ -20,5 +20,5 @@ chain2 = chain1.apply(
 )
 
 chain3 = chain2.apply("serializer", Serializer()).sink(
-    "kafkasink2", stream_name="transformed-events"
+    "kafkasink2", StreamSink(stream_name="transformed-events")
 )  # flush the batches to the Sink
