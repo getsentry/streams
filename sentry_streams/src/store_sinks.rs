@@ -43,6 +43,7 @@ mod tests {
         pyo3::prepare_freethreaded_python();
 
         Python::with_gil(|py| {
+            env::set_var("GCS_ACCESS_TOKEN", "TEST_TOKEN");
             let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
             let bucket = "test-bucket";
             let object_file = "test-object.txt";
@@ -50,7 +51,6 @@ mod tests {
             let submitted_messages_clone = submitted_messages.clone();
             let next_step = FakeStrategy::new(submitted_messages, false);
             let mut strategy = build_gcs_sink(&route, Box::new(next_step), bucket, object_file);
-            env::set_var("GCS_ACCESS_TOKEN", "TEST_TOKEN");
 
             // Separate route message. Not put into the sink
             let message = Message::new_any_message(
