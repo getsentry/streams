@@ -1,6 +1,7 @@
 use reqwest::blocking::ClientBuilder;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
+// Just a way to test out writes to GCS
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bucket = "arroyo-artifacts";
     let object = "uploaded-file.txt";

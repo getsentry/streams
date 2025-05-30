@@ -32,6 +32,8 @@ impl GCSWriter {
             bucket, object
         );
 
+        // TODO: Avoid having this step in the pipeline pick up environment variables.
+        // Have a centralized place where all config and env vars are set
         let access_token = std::env::var("GCP_ACCESS_TOKEN")
             .expect("Set GCP_ACCESS_TOKEN env variable with GCP authorization token");
 
