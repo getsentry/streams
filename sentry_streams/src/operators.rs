@@ -66,7 +66,7 @@ pub enum RuntimeOperator {
     #[pyo3(name = "PythonAdapter")]
     PythonAdapter {
         route: Route,
-        processing_step: Py<PyAny>,
+        delegate_factory: Py<PyAny>,
     },
 }
 
@@ -115,10 +115,10 @@ pub fn build(
         }
         RuntimeOperator::PythonAdapter {
             route,
-            processing_step,
+            delegate_factory,
         } => {
-            let strategy = Python::with_gil(|py| processing_step.clone_ref(py));
-            Box::new(PythonAdapter::new(route.clone(), strategy, next))
+            let factory = Python::with_gil(|py| delegate_factory.clone_ref(py));
+            Box::new(PythonAdapter::new(route.clone(), factory, next))
         }
     }
 }
