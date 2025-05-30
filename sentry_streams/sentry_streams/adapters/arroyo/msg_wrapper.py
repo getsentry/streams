@@ -5,7 +5,7 @@ from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, Value
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.pipeline.message import Message as StreamsMessage
+from sentry_streams.pipeline.message import PyMessage as StreamsMessage
 
 TPayload = TypeVar("TPayload")
 

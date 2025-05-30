@@ -11,11 +11,10 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import Commit, FilteredPayload, Message, Partition
-from sentry_kafka_schemas.codecs import Codec
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.steps import ArroyoStep
-from sentry_streams.pipeline.message import Message as StreamsMessage
+from sentry_streams.pipeline.message import PyMessage as StreamsMessage
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ class ArroyoConsumer:
 
     source: str
     stream_name: str
-    schema: Codec[Any]
+    schema: str
     header_filter: Optional[Tuple[str, bytes]] = None
     steps: MutableSequence[ArroyoStep] = field(default_factory=list)
 
