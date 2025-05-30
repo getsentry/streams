@@ -16,7 +16,6 @@ rdkafka = { version = "0.37.0", features = ["cmake-build", "tracing"] }
 anyhow = "1.0.98"
 reqwest = "0.12.15"
 tokio = "1.45.0"
-httpmock = "0.7.0"
 
 [lib]
 name = "rust_streams"

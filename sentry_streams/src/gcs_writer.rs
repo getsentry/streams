@@ -1,6 +1,4 @@
-use crate::routes::Route;
 use crate::routes::RoutedValue;
-use anyhow::anyhow;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use pyo3::types::PyBytes;
@@ -9,28 +7,25 @@ use reqwest::blocking::Client;
 use reqwest::blocking::ClientBuilder;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
-use reqwest::Response;
-use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskError;
 use sentry_arroyo::processing::strategies::MessageRejected;
 use sentry_arroyo::processing::strategies::SubmitError;
 use sentry_arroyo::types::Message;
 pub struct GCSWriter {
     client: Client,
     url: String,
-    route: Route,
 }
 
-fn pybytes_to_bytes(payload: &RoutedValue) -> Vec<u8> {
-    let payload = Python::with_gil(|py| {
+fn pybytes_to_bytes(payload: &RoutedValue, py: Python<'_>) -> Vec<u8> {
+    let payload = {
         let payload = payload.payload.clone_ref(py);
         let py_bytes: &Bound<PyBytes> = payload.bind(py).downcast().unwrap();
         py_bytes.as_bytes().to_vec()
-    });
+    };
     payload
 }
 
 impl GCSWriter {
-    pub fn new(bucket: &str, object: &str, route: Route) -> Self {
+    pub fn new(bucket: &str, object: &str) -> Self {
         let client = ClientBuilder::new();
         let url = format!(
             "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
@@ -52,7 +47,7 @@ impl GCSWriter {
 
         let client = client.default_headers(headers).build().unwrap();
 
-        GCSWriter { client, url, route }
+        GCSWriter { client, url }
     }
 
     pub fn write_to_gcs(
@@ -62,7 +57,7 @@ impl GCSWriter {
         let client = self.client.clone();
         let url = self.url.clone();
         // This assumes that message.payload() is a Python bytes string
-        let bytes = pybytes_to_bytes(message.payload());
+        let bytes = Python::with_gil(|py| pybytes_to_bytes(message.payload(), py));
 
         let res = client.post(&url).body(bytes).send();
 
@@ -75,6 +70,8 @@ impl GCSWriter {
 
 #[cfg(test)]
 mod tests {
+    use crate::routes::Route;
+
     use super::*;
 
     #[test]
@@ -85,7 +82,7 @@ mod tests {
 
         let routed_value = RoutedValue { route, payload };
 
-        let bytes = pybytes_to_bytes(&routed_value);
+        let bytes = Python::with_gil(|py| pybytes_to_bytes(&routed_value, py));
 
         assert_eq!(bytes, b"hello".to_vec());
     }
