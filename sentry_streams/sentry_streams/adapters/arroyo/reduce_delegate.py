@@ -32,6 +32,107 @@ TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 
 
+class ReduceDelegate(RustOperatorDelegate[TIn, TOut], Generic[TIn, TOut]):
+    """
+    Wraps the various types of Python Reduce steps to be used by the
+    Rust runtime. Eventually we will move the reduce logic itself to Rust.
+
+    This logic is provided to Rust as a `RustOperatorDelegate` that is then
+    ran by a dedicated Rust Arroyo Strategy. As we cannot directly run
+    Python Arroyo Strategies in the Rust Runtime (see `RustOperatorDelegate`
+    docstring).
+
+    The message flow looks like this:
+    1. The Rust Arroyo Strategy receives a message to process.
+    2. The Rust Strategy hands it to this class via the `submit` method.
+    3. The submit message transforms the message into an Arroyo message
+       for the wrapped `Reduce` strategy to process. It then submits
+       the message to the Reduce strategy.
+    4. When the Python Reduce Strategy has results ready it sends them
+       to the next step we provided which is an instance of `OutputReceiver`.
+    5. `OutputReceiver` accumulates the message to make them available
+       to this class to return them to Rust.
+    6. When the Rust Strategy receives a call to the `poll` method it
+       delegates the call to this class (`poll` method) which fetches
+       results from the `OutputReceiver` and, if any, it returns them
+       to Rust.
+
+    This additional complexity is needed to adapt a Python Arroyo Strategy
+    (the reduce one) to the Rust Arroyo Runtime:
+    - We cannot run a Python strategy as it is on Rust. Rust `ProcessingStrategy`
+      cannot be exposed to python.
+    - The Python Reduce Strategy cannot return results directly to Rust.
+      It can only pass them to the next step (like all Arroyo strategies).
+      So it needs a next step that can provide the results to Rust.
+    - The Arroyo Reduce strategy is an Arroyo strategy, so it needs to be
+      fed with Arroyo messages, thus the adaptation logic from the
+      new Streaming platform message that the Rust code deals with.
+    """
+
+    def __init__(
+        self,
+        inner: ProcessingStrategy[Union[FilteredPayload, Any]],
+        output_retriever: OutputRetriever[TOut],
+        route: Route,
+    ) -> None:
+        super().__init__()
+        self.__inner = inner
+        self.__retriever = output_retriever
+        self.__route = route
+
+    def submit(self, message: Message[TIn], committable: Committable) -> None:
+        arroyo_committable = {
+            Partition(Topic(partition[0]), partition[1]): offset
+            for partition, offset in committable.items()
+        }
+        msg = ArroyoMessage(
+            Value(
+                # TODO: Stop creating a `RoutedValue` and make the Reduce strategy
+                # accept `Message` directly.
+                RoutedValue(self.__route, message),
+                arroyo_committable,
+                datetime.fromtimestamp(message.timestamp) if message.timestamp else None,
+            )
+        )
+        self.__inner.submit(msg)
+
+    def poll(self) -> Iterable[Tuple[Message[TOut], Committable]]:
+        self.__inner.poll()
+        ret = [(msg.to_inner(), committable) for msg, committable in self.__retriever.fetch()]
+        return ret
+
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[Message[TOut], Committable]]:
+        self.__inner.join(timeout)
+        ret = [(msg.to_inner(), committable) for msg, committable in self.__retriever.fetch()]
+        self.__inner.close()
+        return ret
+
+
+class ReduceDelegateFactory(RustOperatorFactory[TIn, TOut], Generic[TIn, TOut]):
+    """
+    Creates a `ReduceDelegate`. This is the class to provide to the Rust runtime.
+    """
+
+    def __init__(self, step: Reduce[Any, Any, Any]) -> None:
+        super().__init__()
+        self.__step = step
+
+    def build(self) -> ReduceDelegate[TIn, TOut]:
+        retriever = OutputRetriever[TOut]()
+        route = Route(source="dummy", waypoints=[])
+
+        return ReduceDelegate(
+            build_arroyo_windowed_reduce(
+                self.__step.windowing,
+                self.__step.aggregate_fn,
+                retriever,
+                route,
+            ),
+            retriever,
+            route,
+        )
+
+
 class OutputRetriever(ProcessingStrategy[Union[FilteredPayload, TIn]]):
     """
     This is an Arroyo strategy to be wired to another strategy used inside
@@ -103,81 +204,4 @@ class OutputRetriever(ProcessingStrategy[Union[FilteredPayload, TIn]]):
         """
         ret = self.__pending_messages
         self.__pending_messages = []
-        return ret
-
-
-class ReduceDelegateFactory(RustOperatorFactory[TIn, TOut], Generic[TIn, TOut]):
-    """
-    Creates a `ReduceDelegate`. This is the class to provide to the Rust runtime.
-    """
-
-    def __init__(self, step: Reduce[Any, Any, Any]) -> None:
-        super().__init__()
-        self.__step = step
-
-    def build(self) -> ReduceDelegate[TIn, TOut]:
-        retriever = OutputRetriever[TOut]()
-        route = Route(source="dummy", waypoints=[])
-
-        return ReduceDelegate(
-            build_arroyo_windowed_reduce(
-                self.__step.windowing,
-                self.__step.aggregate_fn,
-                retriever,
-                route,
-            ),
-            retriever,
-            route,
-        )
-
-
-class ReduceDelegate(RustOperatorDelegate[TIn, TOut], Generic[TIn, TOut]):
-    """
-    Wraps the various types of Python Reduce steps to be used by the
-    Rust runtime. Eventually we will move the reduce logic itself to Rust.
-
-    It receives the messages to add to the accumulator with the `submit` method.
-    These messages are directly forwarded to the Reduce strategy after
-    turning them into `RoutedValue`.
-
-    Extracts the results from `OutputRetriever` after polling on the Reduce
-    strategy.
-    """
-
-    def __init__(
-        self,
-        inner: ProcessingStrategy[Union[FilteredPayload, Any]],
-        output_retriever: OutputRetriever[TOut],
-        route: Route,
-    ) -> None:
-        super().__init__()
-        self.__inner = inner
-        self.__retriever = output_retriever
-        self.__route = route
-
-    def submit(self, message: Message[TIn], committable: Committable) -> None:
-        arroyo_committable = {
-            Partition(Topic(partition[0]), partition[1]): offset
-            for partition, offset in committable.items()
-        }
-        msg = ArroyoMessage(
-            Value(
-                # TODO: Stop creating a `RoutedValue` and make the Reduce strategy
-                # accept `Message` directly.
-                RoutedValue(self.__route, message),
-                arroyo_committable,
-                datetime.fromtimestamp(message.timestamp) if message.timestamp else None,
-            )
-        )
-        self.__inner.submit(msg)
-
-    def poll(self) -> Iterable[Tuple[Message[TOut], Committable]]:
-        self.__inner.poll()
-        ret = [(msg.to_inner(), committable) for msg, committable in self.__retriever.fetch()]
-        return ret
-
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[Message[TOut], Committable]]:
-        self.__inner.join(timeout)
-        ret = [(msg.to_inner(), committable) for msg, committable in self.__retriever.fetch()]
-        self.__inner.close()
         return ret
