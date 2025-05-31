@@ -25,12 +25,16 @@ class RustOperatorDelegate(ABC, Generic[TIn, TOut]):
     streaming platform operators in Python and wire them up to the
     Rust Streaming Adapter.
 
-    The `RuntimeOperator::PythonAdapter` creates a Rust Arroyo processing
-    strategy that, instead of performing its work in Rust, delegates
-    submit and poll to the python class that implements this interface.
-
-    Eventually all steps should be moved to Rust but this class facilitates
-    the migration. It also facilitates quick prototyping.
+    This delegate runs in a Rust Arroyo strategy which delegates message
+    processing to instances of this class following this process:
+    1. The rust strategy receives a message via `submit`
+    2. The rust strategy forwards the message to the delegate (the instance
+       of this class), which takes it over.
+    3. The StreamingProcessor calls `poll` on the Rust Arroyo strategy.
+    4. The rust strategy calls poll on the delegate that may or may
+       not return processed messages.
+    5. If the delegate returns messages, the Rust strategy forwards them
+       to the Arroyo next step.
 
     This class does not provides exactly the same Arroyo strategy
     interface. Instead it provides something easier to manage in Rust.
