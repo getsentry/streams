@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import MutableSequence, Optional, Sequence, Tuple, Union
+from typing import MutableSequence, Optional, Sequence, Tuple, TypeVar, Union
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import FilteredPayload
@@ -7,19 +7,30 @@ from arroyo.types import Message as ArroyoMessage
 from arroyo.types import Partition, Topic, Value
 
 from sentry_streams.adapters.arroyo.reduce_delegate import (
-    OutputRetriever,
-    ReduceDelegate,
     ReduceDelegateFactory,
+    reduced_msg_to_rust,
+    rust_msg_to_arroyo_reduce,
 )
-from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.adapters.arroyo.rust_step import Committable
+from sentry_streams.adapters.arroyo.routes import RoutedValue
+from sentry_streams.adapters.arroyo.rust_step import (
+    ArroyoStrategyDelegate,
+    Committable,
+    OutputRetriever,
+)
 from sentry_streams.pipeline.chain import ExtensibleChain
-from sentry_streams.pipeline.message import Message, PyMessage
+from sentry_streams.pipeline.message import (
+    Message,
+    PyMessage,
+    RustMessage,
+    rust_msg_equals,
+)
 from sentry_streams.pipeline.pipeline import Batch
+
+TStrategyOut = TypeVar("TStrategyOut")
 
 
 def test_retriever() -> None:
-    retriever = OutputRetriever[str]()
+    retriever = OutputRetriever[Union[FilteredPayload, str]](reduced_msg_to_rust)
 
     timestamp = datetime.now()
     retriever.submit(
@@ -36,19 +47,25 @@ def test_retriever() -> None:
 
     assert len(output) == 2
 
-    assert output[0][0] == PyMessage(
-        payload="payload",
-        headers=[],
-        timestamp=timestamp.timestamp(),
-        schema=None,
+    assert rust_msg_equals(
+        output[0][0],
+        PyMessage(
+            payload="payload",
+            headers=[],
+            timestamp=timestamp.timestamp(),
+            schema=None,
+        ).to_inner(),
     )
     assert output[0][1] == {("test_topic", 0): 100}
 
-    assert output[1][0] == PyMessage(
-        payload="payload2",
-        headers=[],
-        timestamp=timestamp.timestamp(),
-        schema=None,
+    assert rust_msg_equals(
+        output[1][0],
+        PyMessage(
+            payload="payload2",
+            headers=[],
+            timestamp=timestamp.timestamp(),
+            schema=None,
+        ).to_inner(),
     )
     assert output[1][1] == {("test_topic", 0): 200}
 
@@ -104,8 +121,8 @@ def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage[st
 
 
 def assert_equal_batches(
-    batch1: Sequence[Tuple[Message[Sequence[Message[str]]], Committable]],
-    batch2: Sequence[Tuple[Message[Sequence[Message[str]]], Committable]],
+    batch1: Sequence[Tuple[RustMessage, Committable]],
+    batch2: Sequence[Tuple[RustMessage, Committable]],
 ) -> None:
     assert len(batch1) == len(batch2)
     for i, msg1 in enumerate(batch1):
@@ -115,13 +132,13 @@ def assert_equal_batches(
 
 
 def test_reduce_poll() -> None:
-    retriever = OutputRetriever[Sequence[Message[str]]]()
+    retriever = OutputRetriever[Sequence[Message[str]]](reduced_msg_to_rust)
     reducer = FakeReducer(retriever)
 
-    delegate = ReduceDelegate[str, Sequence[Message[str]]](
+    delegate = ArroyoStrategyDelegate[str, RoutedValue, Sequence[Message[str]]](
         reducer,
+        rust_msg_to_arroyo_reduce,
         retriever,
-        Route("test_route", []),
     )
 
     timestamp = datetime.now().timestamp()
@@ -166,13 +183,13 @@ def test_reduce_poll() -> None:
 
 
 def test_flush() -> None:
-    retriever = OutputRetriever[Sequence[Message[str]]]()
+    retriever = OutputRetriever[Sequence[Message[str]]](reduced_msg_to_rust)
     reducer = FakeReducer(retriever)
 
-    delegate = ReduceDelegate[str, Sequence[Message[str]]](
+    delegate = ArroyoStrategyDelegate[str, RoutedValue, Sequence[Message[str]]](
         reducer,
+        rust_msg_to_arroyo_reduce,
         retriever,
-        Route("test_route", []),
     )
 
     timestamp = datetime.now().timestamp()
