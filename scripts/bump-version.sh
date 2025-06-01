@@ -14,4 +14,3 @@ function replace() {
 }
 
 replace "version = \"[0-9.]+\""  "version = \"$NEW_VERSION\"" pyproject.toml
-replace "version = \"[0-9.]+\""  "version = \"$NEW_VERSION\"" uv.lock
