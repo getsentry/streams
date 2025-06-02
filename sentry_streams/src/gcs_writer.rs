@@ -1,10 +1,6 @@
-use core::panic;
-
-use crate::messages::headers_to_sequence;
-use crate::messages::into_pyraw;
 use crate::messages::PyStreamingMessage;
-use crate::messages::RawMessage;
 use crate::routes::RoutedValue;
+use core::panic;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use pyo3::types::PyBytes;
@@ -72,16 +68,27 @@ impl GCSWriter {
 
         let res = client.post(&url).body(bytes).send();
 
-        match res {
-            Ok(_) => Ok(message),
-            _ => Err(SubmitError::MessageRejected(MessageRejected { message })),
+        let response = res.unwrap();
+        let status = response.status();
+
+        if !status.is_success() {
+            if status.is_client_error() {
+                panic!(
+                    "Client-side error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
+                    status,
+                    response.text()
+                )
+            } else {
+                Err(SubmitError::MessageRejected(MessageRejected { message }))
+            }
+        } else {
+            Ok(message)
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::routes::Route;
     use crate::test_operators::make_raw_routed_msg;
 
     use super::*;
@@ -90,9 +97,6 @@ mod tests {
     fn test_to_bytes() {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
-            let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
-            // let py_payload = PyBytes::new(py, b"hello").into_any();
-
             let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(
                 pybytes_to_bytes(&arroyo_msg, py).unwrap(),
