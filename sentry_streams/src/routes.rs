@@ -62,8 +62,10 @@ impl RoutedValue {
 
 #[cfg(test)]
 mod tests {
+    use crate::messages::{into_pyany, PyAnyMessage};
+
     use super::*;
-    use pyo3::types::PyBytes;
+    use pyo3::{types::PyBytes, Python};
 
     #[test]
     fn test_route_new() {
