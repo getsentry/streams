@@ -1,6 +1,4 @@
-use crate::messages::PyAnyMessage;
-use crate::messages::{into_pyany, PyStreamingMessage};
-use pyo3::prelude::*;
+use crate::messages::PyStreamingMessage;
 use pyo3::{pyclass, pymethods};
 use serde::{Deserialize, Serialize};
 
@@ -64,8 +62,10 @@ impl RoutedValue {
 
 #[cfg(test)]
 mod tests {
+    use crate::messages::{into_pyany, PyAnyMessage};
+
     use super::*;
-    use pyo3::types::PyBytes;
+    use pyo3::{types::PyBytes, Python};
 
     #[test]
     fn test_route_new() {
