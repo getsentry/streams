@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "sentry-streams"
-version = "0.0.18"
+version = "0.0.19"
 description = "The python Sentry Streaming API"
 readme = "README.md"
 
@@ -41,7 +41,7 @@ module-name = "sentry_streams.rust_streams"
 sentry_streams = ["py.typed", "config.json", "deployment_config/test_flink_config.yaml"]
 
 [tool.pytest.ini_options]
-minversion = "0.0.18"
+minversion = "0.0.19"
 addopts = "-ra -q"
 testpaths = ["tests"]
 
