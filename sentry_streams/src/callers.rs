@@ -15,20 +15,12 @@ pub fn call_python_function(
     Ok(
         traced_with_gil("call python fn", |py| match message.payload().payload {
             PyStreamingMessage::PyAnyMessage { ref content } => {
-                let start = Instant::now();
                 let res = callable.call1(py, (content.clone_ref(py),));
-                let finish = Instant::now();
-
-                println!("EXECUTINO TIME CALL PYTHON FN {:?}", finish - start);
                 res
             }
 
             PyStreamingMessage::RawMessage { ref content } => {
-                let start = Instant::now();
                 let res = callable.call1(py, (content.clone_ref(py),));
-                let finish = Instant::now();
-
-                println!("EXECUTINO TIME CALL PYTHON FN {:?}", finish - start);
                 res
             }
         })?

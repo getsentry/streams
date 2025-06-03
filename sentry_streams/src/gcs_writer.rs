@@ -2,7 +2,6 @@ use crate::helper::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
-use chrono::Duration;
 use core::panic;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
@@ -16,7 +15,6 @@ use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskError;
 use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskFunc;
 use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
 use sentry_arroyo::types::Message;
-use std::time::Instant;
 pub struct GCSWriter {
     client: Client,
     url: String,
@@ -24,14 +22,11 @@ pub struct GCSWriter {
 }
 
 fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<Vec<u8>> {
-    println!("We're executing bytes");
     match message.payload().payload {
         PyStreamingMessage::PyAnyMessage { .. } => {
-            println!("In pyanymessage");
             panic!("Unsupported message type: GCS writers only support RawMessage");
         }
         PyStreamingMessage::RawMessage { ref content } => {
-            println!("In rawmessage");
             let payload_content = content.bind(py).getattr("payload").unwrap();
             let py_bytes: &Bound<PyBytes> = payload_content.downcast().unwrap();
             Ok(py_bytes.as_bytes().to_vec())
