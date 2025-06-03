@@ -38,6 +38,8 @@ use pyo3::Python;
 
 use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
+use crate::helper::traced_with_gil;
+
 pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(String, Vec<u8>)>> {
     // Converts the Python consumable representation of the Message headers into
     // the Rust native representation (which is a Vec<(String, Vec<u8>)>).
@@ -251,7 +253,7 @@ pub enum PyStreamingMessage {
 
 impl Into<PyStreamingMessage> for Py<PyAny> {
     fn into(self) -> PyStreamingMessage {
-        Python::with_gil(|py| {
+        traced_with_gil("into pystreaming", |py| {
             let bound = self.clone_ref(py).into_bound(py);
             if bound.is_instance_of::<PyAnyMessage>() {
                 let content = bound.downcast::<PyAnyMessage>()?;

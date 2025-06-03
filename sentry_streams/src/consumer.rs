@@ -5,6 +5,7 @@
 //! and all the steps following that source.
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
+use crate::helper::traced_with_gil;
 use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage};
 use crate::operators::build;
@@ -24,8 +25,6 @@ use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 use std::sync::Arc;
-
-use pyo3::Python;
 use std::time::Duration;
 
 /// The class that represent the consumer.
@@ -171,7 +170,7 @@ fn to_routed_value(
         timestamp,
         schema: schema.clone(),
     };
-    let py_msg = Python::with_gil(|py| PyStreamingMessage::RawMessage {
+    let py_msg = traced_with_gil("to routed value", |py| PyStreamingMessage::RawMessage {
         content: into_pyraw(py, raw_message).unwrap(),
     });
 
@@ -232,7 +231,7 @@ impl ArroyoStreamingFactory {
         concurrency_config: Arc<ConcurrencyConfig>,
         schema: Option<String>,
     ) -> Self {
-        let steps_copy = Python::with_gil(|py| {
+        let steps_copy = traced_with_gil("copying steps for arroyo factory", |py| {
             steps
                 .iter()
                 .map(|step| step.clone_ref(py))

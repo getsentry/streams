@@ -2,6 +2,7 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
+use crate::helper::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
 use pyo3::types::{PyDict, PyTuple};
@@ -43,7 +44,7 @@ impl PythonAdapter {
         delegate_factory: Py<PyAny>,
         next_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
     ) -> Self {
-        Python::with_gil(|py| {
+        traced_with_gil("python adapter new", |py| {
             let processing_step = delegate_factory.call_method0(py, "build").unwrap();
 
             Self {
@@ -146,7 +147,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                 committable.insert(partition, offset);
             }
 
-            Python::with_gil(|py| {
+            traced_with_gil("python adapter submit", |py| {
                 let python_payload: Py<PyAny> = match message.payload().payload {
                     PyStreamingMessage::PyAnyMessage { ref content } => {
                         content.clone_ref(py).into_any()
@@ -190,14 +191,15 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     ///
     /// This is the method that sends messages to the next ProcessingStrategy.
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        let out_messages = Python::with_gil(|py| -> PyResult<Vec<Py<PyAny>>> {
-            let ret = self.processing_step.call_method0(py, "poll")?;
-            Ok(ret.extract(py).unwrap())
-        });
+        let out_messages =
+            traced_with_gil("python adapter poll", |py| -> PyResult<Vec<Py<PyAny>>> {
+                let ret = self.processing_step.call_method0(py, "poll")?;
+                Ok(ret.extract(py).unwrap())
+            });
 
         match out_messages {
             Ok(out_messages) => {
-                Python::with_gil(|py| {
+                traced_with_gil("python adapter poll match clause", |py| {
                     self.handle_py_return_value(py, out_messages);
                 });
                 while let Some(msg) = self.transformed_messages.pop_front() {
@@ -238,16 +240,17 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
         let deadline = timeout.map(Deadline::new);
         let timeout_secs = timeout.map(|d| d.as_secs());
 
-        let out_messages = Python::with_gil(|py| -> PyResult<Vec<Py<PyAny>>> {
-            let ret = self
-                .processing_step
-                .call_method1(py, "flush", (timeout_secs,))?;
-            Ok(ret.extract(py).unwrap())
-        });
+        let out_messages =
+            traced_with_gil("python adapter join", |py| -> PyResult<Vec<Py<PyAny>>> {
+                let ret = self
+                    .processing_step
+                    .call_method1(py, "flush", (timeout_secs,))?;
+                Ok(ret.extract(py).unwrap())
+            });
 
         match out_messages {
             Ok(out_messages) => {
-                Python::with_gil(|py| {
+                traced_with_gil("python adapter join match clause", |py| {
                     self.handle_py_return_value(py, out_messages);
                 });
                 while let Some(msg) = self.transformed_messages.pop_front() {

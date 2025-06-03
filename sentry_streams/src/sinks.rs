@@ -4,6 +4,7 @@
 //! As all the strategies in the Arroyo streaming pipeline adapter,
 //! This checks whether a message should be processed or forwarded
 //! via the `Route` attribute.
+use crate::helper::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
 use pyo3::prelude::*;
@@ -31,7 +32,7 @@ use std::time::Duration;
 fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
     // Convert the RoutedValue to KafkaPayload
     // This is a placeholder implementation
-    let payload = Python::with_gil(|py| {
+    let payload = traced_with_gil("to kafka payload", |py| {
         let payload = &message.payload().payload;
         match payload {
             PyStreamingMessage::PyAnyMessage { .. } => {

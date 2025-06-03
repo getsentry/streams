@@ -1,3 +1,6 @@
+use std::time::Instant;
+
+use crate::helper::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
 use pyo3::prelude::*;
@@ -9,15 +12,28 @@ pub fn call_python_function(
     callable: &Py<PyAny>,
     message: &Message<RoutedValue>,
 ) -> Result<PyStreamingMessage, PyErr> {
-    Ok(Python::with_gil(|py| match message.payload().payload {
-        PyStreamingMessage::PyAnyMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
-        }
-        PyStreamingMessage::RawMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
-        }
-    })?
-    .into())
+    Ok(
+        traced_with_gil("call python fn", |py| match message.payload().payload {
+            PyStreamingMessage::PyAnyMessage { ref content } => {
+                let start = Instant::now();
+                let res = callable.call1(py, (content.clone_ref(py),));
+                let finish = Instant::now();
+
+                println!("EXECUTINO TIME CALL PYTHON FN {:?}", finish - start);
+                res
+            }
+
+            PyStreamingMessage::RawMessage { ref content } => {
+                let start = Instant::now();
+                let res = callable.call1(py, (content.clone_ref(py),));
+                let finish = Instant::now();
+
+                println!("EXECUTINO TIME CALL PYTHON FN {:?}", finish - start);
+                res
+            }
+        })?
+        .into(),
+    )
 }
 
 /// Executes a Python callable with an Arroyo message containing Any and
@@ -26,7 +42,7 @@ pub fn call_any_python_function(
     callable: &Py<PyAny>,
     message: &Message<RoutedValue>,
 ) -> Result<Py<PyAny>, PyErr> {
-    Python::with_gil(|py| match message.payload().payload {
+    traced_with_gil("call any python fn", |py| match message.payload().payload {
         PyStreamingMessage::PyAnyMessage { ref content } => {
             callable.call1(py, (content.clone_ref(py),))
         }

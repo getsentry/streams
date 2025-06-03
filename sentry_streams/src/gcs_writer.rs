@@ -1,20 +1,26 @@
+use crate::helper::traced_with_gil;
 use crate::messages::PyStreamingMessage;
+use crate::routes::Route;
 use crate::routes::RoutedValue;
+use chrono::Duration;
 use core::panic;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use pyo3::types::PyBytes;
 use pyo3::Python;
-use reqwest::blocking::Client;
-use reqwest::blocking::ClientBuilder;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
-use sentry_arroyo::processing::strategies::MessageRejected;
-use sentry_arroyo::processing::strategies::SubmitError;
+use reqwest::Client;
+use reqwest::ClientBuilder;
+use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskError;
+use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskFunc;
+use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
 use sentry_arroyo::types::Message;
+use std::time::Instant;
 pub struct GCSWriter {
     client: Client,
     url: String,
+    route: Route,
 }
 
 fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<Vec<u8>> {
@@ -31,7 +37,7 @@ fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<
 }
 
 impl GCSWriter {
-    pub fn new(bucket: &str, object: &str) -> Self {
+    pub fn new(bucket: &str, object: &str, route: Route) -> Self {
         let client = ClientBuilder::new();
         let url = format!(
             "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
@@ -55,35 +61,52 @@ impl GCSWriter {
 
         let client = client.default_headers(headers).build().unwrap();
 
-        GCSWriter { client, url }
+        GCSWriter { client, url, route }
     }
+}
 
-    pub fn write_to_gcs(
-        &self,
-        message: Message<RoutedValue>,
-    ) -> Result<Message<RoutedValue>, SubmitError<RoutedValue>> {
+impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
+    fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
         let client = self.client.clone();
         let url = self.url.clone();
-        let bytes = Python::with_gil(|py| pybytes_to_bytes(&message, py)).unwrap();
+        let route = message.payload().route.clone();
+        let actual_route = self.route.clone();
 
-        let res = client.post(&url).body(bytes).send();
-
-        let response = res.unwrap();
-        let status = response.status();
-
-        if !status.is_success() {
-            if status.is_client_error() {
-                panic!(
-                    "Client-side error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
-                    status,
-                    response.text()
-                )
-            } else {
-                Err(SubmitError::MessageRejected(MessageRejected { message }))
+        Box::pin(async move {
+            if route != actual_route {
+                return Ok(message);
             }
-        } else {
-            Ok(message)
-        }
+
+            let start = Instant::now();
+            let bytes =
+                traced_with_gil("writing to gcs", |py| pybytes_to_bytes(&message, py)).unwrap();
+            let finish = Instant::now();
+
+            if finish - start > std::time::Duration::from_secs(10) {
+                panic!("We're cooked")
+            }
+
+            let res: Result<reqwest::Response, reqwest::Error> =
+                client.post(&url).body(bytes).send().await;
+
+            let response = res.unwrap();
+            let status = response.status();
+
+            if !status.is_success() {
+                if status.is_client_error() {
+                    let body = response.text().await;
+                    panic!(
+                        "Client-side error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
+                        status,
+                        body
+                    )
+                } else {
+                    Err(RunTaskError::RetryableError)
+                }
+            } else {
+                Ok(message)
+            }
+        })
     }
 }
 
