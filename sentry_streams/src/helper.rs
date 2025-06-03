@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use pyo3::Python;
 
-pub fn traced_with_gil<F, R>(label: &str, f: F) -> R
+pub fn traced_with_gil<F, R>(label: &str, function: F) -> R
 where
     F: FnOnce(Python) -> R,
 {
@@ -10,7 +10,6 @@ where
     println!("[{:?}] [{}] Attempting to acquire GIL...", thread_id, label);
     let start = Instant::now();
 
-    // We're getting stuck here
     let result = Python::with_gil(|py| {
         println!(
             "[{:?}] [{}] Acquired GIL after {:?}",
@@ -19,7 +18,7 @@ where
             Instant::now().duration_since(start)
         );
 
-        f(py)
+        function(py)
     });
 
     println!("[{:?}] [{}] Released GIL", thread_id, label);
