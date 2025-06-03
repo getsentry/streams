@@ -10,6 +10,7 @@ where
     println!("[{:?}] [{}] Attempting to acquire GIL...", thread_id, label);
     let start = Instant::now();
 
+    // We're getting stuck here
     let result = Python::with_gil(|py| {
         println!(
             "[{:?}] [{}] Acquired GIL after {:?}",

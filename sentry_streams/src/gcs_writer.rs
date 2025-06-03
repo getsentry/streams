@@ -24,11 +24,14 @@ pub struct GCSWriter {
 }
 
 fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<Vec<u8>> {
+    println!("We're executing bytes");
     match message.payload().payload {
         PyStreamingMessage::PyAnyMessage { .. } => {
+            println!("In pyanymessage");
             panic!("Unsupported message type: GCS writers only support RawMessage");
         }
         PyStreamingMessage::RawMessage { ref content } => {
+            println!("In rawmessage");
             let payload_content = content.bind(py).getattr("payload").unwrap();
             let py_bytes: &Bound<PyBytes> = payload_content.downcast().unwrap();
             Ok(py_bytes.as_bytes().to_vec())
@@ -72,18 +75,11 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         let route = message.payload().route.clone();
         let actual_route = self.route.clone();
 
+        let bytes = traced_with_gil("writing to gcs", |py| pybytes_to_bytes(&message, py)).unwrap();
+
         Box::pin(async move {
             if route != actual_route {
                 return Ok(message);
-            }
-
-            let start = Instant::now();
-            let bytes =
-                traced_with_gil("writing to gcs", |py| pybytes_to_bytes(&message, py)).unwrap();
-            let finish = Instant::now();
-
-            if finish - start > std::time::Duration::from_secs(10) {
-                panic!("We're cooked")
             }
 
             let res: Result<reqwest::Response, reqwest::Error> =
