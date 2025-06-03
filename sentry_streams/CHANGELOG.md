@@ -1,3 +1,34 @@
+## 0.0.20
+
+### Various fixes & improvements
+
+- fix extension-module (#125) by @fpacifici
+- fix(gcs-writer): Better Error handling  (#124) by @ayirr7
+- release: 0.0.19 (c58921b4) by @getsentry-bot
+- Avoid bumping version number in uv.lock during release (#122) by @fpacifici
+- Support Reduce in the Rust Adapter as a Python delegate (#119) by @fpacifici
+- Allow re-initialization of the RustOperatorDelegate (#118) by @fpacifici
+- Create and manage the Message in Rust (#121) by @fpacifici
+- feat: Simple Single-threaded GCSSink step (#115) by @ayirr7
+- Move the Message data structure to Rust (#116) by @fpacifici
+- ref(ci): Disable extension-module by default (#113) by @untitaker
+- Add a Python Delegate strategy to implement Streaming steps in python (#107) by @fpacifici
+- fix(ci): Bump uv.lock as part of release flow (#114) by @untitaker
+- add (#112) by @victoria-yining-huang
+- add (#109) by @victoria-yining-huang
+- try (#108) by @victoria-yining-huang
+- copy paste (#110) by @victoria-yining-huang
+- release: 0.0.18 (c65580a8) by @getsentry-bot
+- feat: Basic filter step for the Rust adapter (#105) by @ayirr7
+- Support routing in the Rust adapter (#104) by @fpacifici
+- release: 0.0.17 (0078dae8) by @getsentry-bot
+- Pypi seems not to like an empty readme (#103) by @fpacifici
+- Add workflow to build the wheel containing the rust binary (#102) by @fpacifici
+- Rust Arroyo adapter (#98) by @fpacifici
+- ref: Type out chains and steps (#99) by @ayirr7
+
+_Plus 53 more_
+
 ## 0.0.19
 
 ### Various fixes & improvements
