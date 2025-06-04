@@ -1,5 +1,5 @@
 use crate::callers::call_any_python_function;
-use crate::helper::traced_with_gil;
+use crate::utils::traced_with_gil;
 use crate::routes::{Route, RoutedValue};
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
@@ -17,7 +17,7 @@ fn route_message(
     let dest_route = call_any_python_function(callable, &message);
     match dest_route {
         Ok(dest_route) => {
-            let new_waypoint = traced_with_gil("route message", |py| {
+            let new_waypoint = traced_with_gil("route_message", |py| {
                 dest_route.extract::<String>(py).unwrap()
             });
             message.try_map(|payload| Ok(payload.add_waypoint(new_waypoint.clone())))
@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn test_route_msg() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_route_msg", |py| {
             let callable = make_lambda(py, c_str!("lambda x: 'waypoint2'"));
 
             let message = Message::new_any_message(

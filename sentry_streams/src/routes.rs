@@ -62,10 +62,13 @@ impl RoutedValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::messages::{into_pyany, PyAnyMessage};
+    use crate::{
+        utils::traced_with_gil,
+        messages::{into_pyany, PyAnyMessage},
+    };
 
     use super::*;
-    use pyo3::{types::PyBytes, Python};
+    use pyo3::types::PyBytes;
 
     #[test]
     fn test_route_new() {
@@ -100,7 +103,7 @@ mod tests {
     #[test]
     fn test_routed_value_creation() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_routed_value_creation", |py| {
             let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
             let routed_value = RoutedValue {
                 route: route.clone(),

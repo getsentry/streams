@@ -1,4 +1,4 @@
-use crate::helper::traced_with_gil;
+use crate::utils::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
 use pyo3::{Py, PyAny, Python};
@@ -43,7 +43,7 @@ impl ProcessingStrategy<RoutedValue> for Filter {
         if self.route != message.payload().route {
             self.next_step.submit(message)
         } else {
-            let res = traced_with_gil("filter submit", |py: Python<'_>| {
+            let res = traced_with_gil("FilterStrategy submit", |py: Python<'_>| {
                 let python_payload: Py<PyAny> = match message.payload().payload {
                     PyStreamingMessage::PyAnyMessage { ref content } => {
                         content.clone_ref(py).into_any()
@@ -66,7 +66,7 @@ impl ProcessingStrategy<RoutedValue> for Filter {
             match res {
                 Ok(bool) => {
                     if bool {
-                        let _ = self.next_step.submit(message);
+                        self.next_step.submit(message)?;
                     }
                     Ok(())
                 }
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn test_build_filter() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_build_filter", |py| {
             let callable = make_lambda(py, c_str!("lambda x: 'test' in x.payload"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();

@@ -38,7 +38,7 @@ use pyo3::Python;
 
 use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
-use crate::helper::traced_with_gil;
+use crate::utils::traced_with_gil;
 
 pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(String, Vec<u8>)>> {
     // Converts the Python consumable representation of the Message headers into
@@ -253,7 +253,7 @@ pub enum PyStreamingMessage {
 
 impl Into<PyStreamingMessage> for Py<PyAny> {
     fn into(self) -> PyStreamingMessage {
-        traced_with_gil("into pystreaming", |py| {
+        traced_with_gil("PyStreamingMessage Into", |py| {
             let bound = self.clone_ref(py).into_bound(py);
             if bound.is_instance_of::<PyAnyMessage>() {
                 let content = bound.downcast::<PyAnyMessage>()?;
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn test_headers_to_vec_and_sequence_roundtrip() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_headers_to_vec_and_sequence_roundtrip", |py| {
             let headers = vec![
                 ("key1".to_string(), vec![1, 2, 3]),
                 ("key2".to_string(), vec![4, 5, 6]),
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn test_pyanymessage_lifecycle() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_pyanymessage_lifecycle", |py| {
             // Prepare test data
             let payload = "payload".into_py_any(py).unwrap();
             let headers = vec![
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn test_rawmessage_lifecycle() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_rawmessage_lifecycle", |py| {
             // Prepare test data
             let payload_bytes = vec![100, 101, 102, 103];
             let py_payload = PyBytes::new(py, &payload_bytes);

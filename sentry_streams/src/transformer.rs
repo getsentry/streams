@@ -55,6 +55,7 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
+    use crate::utils::traced_with_gil;
     use crate::routes::Route;
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
@@ -68,7 +69,7 @@ mod tests {
     #[test]
     fn test_build_map() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_build_map", |py| {
             let callable = make_lambda(
                 py,
                 c_str!("lambda x: x.replace_payload(x.payload + '_transformed')"),

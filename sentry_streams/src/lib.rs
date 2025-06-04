@@ -3,7 +3,7 @@ mod callers;
 mod consumer;
 mod filter_step;
 mod gcs_writer;
-mod helper;
+mod utils;
 mod kafka_config;
 mod messages;
 mod operators;

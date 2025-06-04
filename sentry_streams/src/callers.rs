@@ -1,4 +1,4 @@
-use crate::helper::traced_with_gil;
+use crate::utils::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
 use pyo3::prelude::*;
@@ -10,20 +10,18 @@ pub fn call_python_function(
     callable: &Py<PyAny>,
     message: &Message<RoutedValue>,
 ) -> Result<PyStreamingMessage, PyErr> {
-    Ok(
-        traced_with_gil("call python fn", |py| match message.payload().payload {
+    Ok(traced_with_gil("call_python_function", |py| {
+        match message.payload().payload {
             PyStreamingMessage::PyAnyMessage { ref content } => {
-                let res = callable.call1(py, (content.clone_ref(py),));
-                res
+                callable.call1(py, (content.clone_ref(py),))
             }
 
             PyStreamingMessage::RawMessage { ref content } => {
-                let res = callable.call1(py, (content.clone_ref(py),));
-                res
+                callable.call1(py, (content.clone_ref(py),))
             }
-        })?
-        .into(),
-    )
+        }
+    })?
+    .into())
 }
 
 /// Executes a Python callable with an Arroyo message containing Any and
@@ -32,12 +30,14 @@ pub fn call_any_python_function(
     callable: &Py<PyAny>,
     message: &Message<RoutedValue>,
 ) -> Result<Py<PyAny>, PyErr> {
-    traced_with_gil("call any python fn", |py| match message.payload().payload {
-        PyStreamingMessage::PyAnyMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
-        }
-        PyStreamingMessage::RawMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
+    traced_with_gil("call_any_python_function", |py| {
+        match message.payload().payload {
+            PyStreamingMessage::PyAnyMessage { ref content } => {
+                callable.call1(py, (content.clone_ref(py),))
+            }
+            PyStreamingMessage::RawMessage { ref content } => {
+                callable.call1(py, (content.clone_ref(py),))
+            }
         }
     })
 }
@@ -54,7 +54,7 @@ mod tests {
     #[test]
     fn test_call_python_function() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_call_python_function", |py| {
             let callable = make_lambda(
                 py,
                 c_str!("lambda x: x.replace_payload(x.payload + '_transformed')"),

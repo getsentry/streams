@@ -1,7 +1,7 @@
-use crate::helper::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
+use crate::utils::traced_with_gil;
 use core::panic;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
@@ -64,13 +64,15 @@ impl GCSWriter {
 }
 
 impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
+    // Async task to write to GCS via HTTP
     fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
         let client = self.client.clone();
         let url = self.url.clone();
         let route = message.payload().route.clone();
         let actual_route = self.route.clone();
 
-        let bytes = traced_with_gil("writing to gcs", |py| pybytes_to_bytes(&message, py)).unwrap();
+        let bytes =
+            traced_with_gil("GCSWriter get_task", |py| pybytes_to_bytes(&message, py)).unwrap();
 
         Box::pin(async move {
             // TODO: This route-based forwarding does not need to be
@@ -112,7 +114,7 @@ mod tests {
     #[test]
     fn test_to_bytes() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_to_bytes", |py| {
             let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(
                 pybytes_to_bytes(&arroyo_msg, py).unwrap(),

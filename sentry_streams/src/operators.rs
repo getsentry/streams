@@ -1,4 +1,4 @@
-use crate::helper::traced_with_gil;
+use crate::utils::traced_with_gil;
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
@@ -79,11 +79,14 @@ pub fn build(
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     match step.get() {
         RuntimeOperator::Map { function, route } => {
-            let func_ref = traced_with_gil("map operator", |py| function.clone_ref(py));
+            let func_ref =
+                traced_with_gil("RuntimeOperator::Map function", |py| function.clone_ref(py));
             build_map(route, func_ref, next)
         }
         RuntimeOperator::Filter { function, route } => {
-            let func_ref = traced_with_gil("filter operator", |py| function.clone_ref(py));
+            let func_ref = traced_with_gil("RuntimeOperator::Filter function", |py| {
+                function.clone_ref(py)
+            });
             build_filter(route, func_ref, next)
         }
         RuntimeOperator::StreamSink {
@@ -117,14 +120,16 @@ pub fn build(
             route,
             routing_function,
         } => {
-            let func_ref = traced_with_gil("router operator", |py| routing_function.clone_ref(py));
+            let func_ref = traced_with_gil("RuntimeOperator::Router function", |py| {
+                routing_function.clone_ref(py)
+            });
             build_router(route, func_ref, next)
         }
         RuntimeOperator::PythonAdapter {
             route,
             delegate_factory,
         } => {
-            let factory = traced_with_gil("python adapter operator", |py| {
+            let factory = traced_with_gil("RuntimeOperator::PythonAdapter function", |py| {
                 delegate_factory.clone_ref(py)
             });
             Box::new(PythonAdapter::new(route.clone(), factory, next))

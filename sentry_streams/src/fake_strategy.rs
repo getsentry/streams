@@ -1,5 +1,5 @@
 use super::*;
-use crate::helper::traced_with_gil;
+use crate::utils::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
 
@@ -64,7 +64,7 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                 Some(build_commit_request(&message)),
             );
 
-            traced_with_gil("fake strategy submit", |py| {
+            traced_with_gil("FakeStrategy submit", |py| {
                 let msg = match message.into_payload().payload {
                     PyStreamingMessage::PyAnyMessage { content } => {
                         content.bind(py).getattr("payload").unwrap()
