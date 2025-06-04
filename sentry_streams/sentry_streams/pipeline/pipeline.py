@@ -339,9 +339,8 @@ class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
     def group_by(self) -> Optional[GroupBy]:
         raise NotImplementedError()
 
-    @property
     @abstractmethod
-    def windowing(self) -> Window[MeasurementUnit]:
+    def windowing(self, batch_size: MeasurementUnit) -> Window[MeasurementUnit]:
         raise NotImplementedError()
 
     @property
@@ -380,7 +379,6 @@ class Aggregate(Reduce[MeasurementUnit, InputType, OutputType]):
 BatchInput = TypeVar("BatchInput")
 
 
-@dataclass
 class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
     """
     A step to Batch up the results of the prior step.
@@ -391,7 +389,6 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
-    batch_size: MeasurementUnit
     step_type: StepType = StepType.REDUCE
 
     @property
@@ -399,13 +396,12 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
         return None
 
     @property
-    def windowing(self) -> Window[MeasurementUnit]:
-        return TumblingWindow(self.batch_size)
-
-    @property
     def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
         batch_acc = BatchBuilder[BatchInput]
         return cast(Callable[[], Accumulator[InputType, OutputType]], batch_acc)
+
+    def windowing(self, batch_size: MeasurementUnit) -> Window[MeasurementUnit]:
+        return TumblingWindow(batch_size)
 
 
 @dataclass

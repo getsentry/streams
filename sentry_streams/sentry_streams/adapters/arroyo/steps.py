@@ -14,6 +14,7 @@ from sentry_streams.adapters.arroyo.forwarder import Forwarder
 from sentry_streams.adapters.arroyo.msg_wrapper import MessageWrapper
 from sentry_streams.adapters.arroyo.reduce import build_arroyo_windowed_reduce
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
+from sentry_streams.config_types import ReduceConfig
 from sentry_streams.pipeline.message import PyMessage as StreamsMessage
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
@@ -247,7 +248,7 @@ class ReduceStep(ArroyoStep):
     pipeline_step: Reduce[Any, Any, Any]
 
     def build(
-        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
+        self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit, step_config: ReduceConfig
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         # TODO: Support group by keys
 
@@ -259,7 +260,7 @@ class ReduceStep(ArroyoStep):
 
         windowed_reduce: ProcessingStrategy[Union[FilteredPayload, Any]] = (
             build_arroyo_windowed_reduce(
-                self.pipeline_step.windowing,
+                self.__step.windowing(step_config.batch_size),
                 self.pipeline_step.aggregate_fn,
                 msg_wrapper,
                 self.route,
