@@ -7,6 +7,7 @@ use sentry_arroyo::processing::strategies::{
 };
 use sentry_arroyo::types::{InnerMessage, Message};
 use std::time::Duration;
+use tracing_subscriber::filter;
 
 pub struct Filter {
     pub callable: Py<PyAny>,
@@ -43,42 +44,45 @@ impl ProcessingStrategy<RoutedValue> for Filter {
         if self.route != message.payload().route {
             self.next_step.submit(message)
         } else {
-            traced_with_gil(
-                "filter submit",
-                |py: Python<'_>| -> Result<(), SubmitError<RoutedValue>> {
-                    let python_payload: Py<PyAny> = match message.payload().payload {
-                        PyStreamingMessage::PyAnyMessage { ref content } => {
-                            content.clone_ref(py).into_any()
-                        }
-                        PyStreamingMessage::RawMessage { ref content } => {
-                            content.clone_ref(py).into_any()
-                        }
-                    };
+            let res = traced_with_gil("filter submit", |py: Python<'_>| {
+                let python_payload: Py<PyAny> = match message.payload().payload {
+                    PyStreamingMessage::PyAnyMessage { ref content } => {
+                        content.clone_ref(py).into_any()
+                    }
+                    PyStreamingMessage::RawMessage { ref content } => {
+                        content.clone_ref(py).into_any()
+                    }
+                };
 
-                    let py_res = self.callable.call1(py, (python_payload,));
+                let py_res = self.callable.call1(py, (python_payload,));
 
-                    match py_res {
-                        Ok(boolean) => {
-                            let filtered = boolean.is_truthy(py).unwrap();
-                            if filtered {
-                                let _ = self.next_step.submit(message);
-                            }
-                            Ok(())
-                        }
-                        Err(_) => match message.inner_message {
-                            InnerMessage::BrokerMessage(inner) => {
-                                Err(SubmitError::<RoutedValue>::InvalidMessage(InvalidMessage {
-                                    partition: inner.partition,
-                                    offset: inner.offset,
-                                }))
-                            }
-                            InnerMessage::AnyMessage(inner) => {
-                                panic!("Unexpected message type: {:?}", inner)
-                            }
-                        },
+                match py_res {
+                    Ok(boolean) => {
+                        let filtered = boolean.is_truthy(py).unwrap();
+                        Ok(filtered)
+                    }
+                    Err(e) => return Err(e),
+                }
+            });
+            match res {
+                Ok(bool) => {
+                    if bool {
+                        let _ = self.next_step.submit(message);
+                    }
+                    Ok(())
+                }
+                Err(_) => match message.inner_message {
+                    InnerMessage::BrokerMessage(inner) => {
+                        Err(SubmitError::<RoutedValue>::InvalidMessage(InvalidMessage {
+                            partition: inner.partition,
+                            offset: inner.offset,
+                        }))
+                    }
+                    InnerMessage::AnyMessage(inner) => {
+                        panic!("Unexpected message type: {:?}", inner)
                     }
                 },
-            )
+            }
         }
     }
 
