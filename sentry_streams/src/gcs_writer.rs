@@ -73,6 +73,8 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         let bytes = traced_with_gil("writing to gcs", |py| pybytes_to_bytes(&message, py)).unwrap();
 
         Box::pin(async move {
+            // TODO: This route-based forwarding does not need to be
+            // run with multiple threads. Look into removing this from the async task.
             if route != actual_route {
                 return Ok(message);
             }
