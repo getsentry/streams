@@ -15,10 +15,7 @@ from sentry_streams.pipeline.message import Message, PyRawMessage
 CODECS: MutableMapping[str, Codec[Any]] = {}
 
 
-def msg_parser(msg: PyRawMessage) -> Any:
-    stream_schema = msg.schema
-    payload = msg.payload
-
+def _get_codec_from_msg(stream_schema: str) -> Codec:
     assert (
         stream_schema is not None
     )  # Message cannot be deserialized without a schema, it is automatically inferred from the stream source
@@ -27,11 +24,23 @@ def msg_parser(msg: PyRawMessage) -> Any:
         codec = CODECS.get(stream_schema, get_codec(stream_schema))
     except Exception:
         raise ValueError(f"Kafka topic {stream_schema} has no associated schema")
+    return codec
 
+
+def msg_parser(msg: PyRawMessage) -> Any:
+    stream_schema = msg.schema
+    payload = msg.payload
+    codec = _get_codec_from_msg(stream_schema)
     decoded = codec.decode(payload, True)
 
     return decoded
 
+
+def batch_msg_parser(msg: Message[Sequence[bytes]]) -> Sequence[Any]:
+    payloads = msg.payload
+    stream_schema = msg.schema
+    codec = _get_codec_from_msg(stream_schema)
+    return [codec.decode(payload, True) for payload in payloads]
 
 def msg_serializer(msg: Message[Any], dt_format: Optional[str] = None) -> bytes:
     payload = msg.payload
