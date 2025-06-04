@@ -1,7 +1,6 @@
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
-from sentry_streams.pipeline import Batch, FlatMap, streaming_source
-from sentry_streams.pipeline.batch import unbatch
+from sentry_streams.pipeline import Batch, streaming_source
 from sentry_streams.pipeline.chain import BatchParser, Serializer, StreamSink
 
 pipeline = streaming_source(
@@ -13,11 +12,6 @@ pipeline = streaming_source(
 chain1 = pipeline.apply(
     "mybatch", Batch(batch_size=2)
 ).apply("batch_parser", BatchParser(msg_type=IngestMetric))  # User simply provides the batch size
-
-# chain2 = chain1.apply(
-#     "myunbatch",
-#     FlatMap(function=unbatch),
-# )
 
 chain3 = chain1.apply("serializer", Serializer()).sink(
     "mysink", StreamSink(stream_name="transformed-events")
