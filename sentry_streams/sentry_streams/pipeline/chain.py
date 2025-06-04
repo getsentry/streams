@@ -24,7 +24,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.message import Message
-from sentry_streams.pipeline.msg_parser import msg_parser, msg_serializer
+from sentry_streams.pipeline.msg_parser import batch_msg_parser, msg_parser, msg_serializer
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
 )
@@ -143,6 +143,21 @@ class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
             ctx=ctx,
             inputs=[previous],
             function=msg_parser,
+        )
+
+@dataclass
+class BatchParser(Applier[Message[Sequence[bytes]], Message[TOut]], Generic[TOut]):
+    msg_type: Type[TOut]
+
+    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        print("1")
+        print(type(previous))
+        print(previous)
+        return MapStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            function=batch_msg_parser,
         )
 
 

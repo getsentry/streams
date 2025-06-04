@@ -2,7 +2,7 @@ from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline import Batch, FlatMap, streaming_source
 from sentry_streams.pipeline.batch import unbatch
-from sentry_streams.pipeline.chain import Parser, Serializer, StreamSink
+from sentry_streams.pipeline.chain import BatchParser, Serializer, StreamSink
 
 pipeline = streaming_source(
     name="myinput",
@@ -10,15 +10,15 @@ pipeline = streaming_source(
 )
 
 # TODO: Figure out why the concrete type of InputType is not showing up in the type hint of chain1
-chain1 = pipeline.apply("parser", Parser(msg_type=IngestMetric)).apply(
-    "mybatch", Batch(batch_size=5)
-)  # User simply provides the batch size
+chain1 = pipeline.apply(
+    "mybatch", Batch(batch_size=2)
+).apply("batch_parser", BatchParser(msg_type=IngestMetric))  # User simply provides the batch size
 
-chain2 = chain1.apply(
-    "myunbatch",
-    FlatMap(function=unbatch),
-)
+# chain2 = chain1.apply(
+#     "myunbatch",
+#     FlatMap(function=unbatch),
+# )
 
-chain3 = chain2.apply("serializer", Serializer()).sink(
-    "kafkasink2", StreamSink(stream_name="transformed-events")
+chain3 = chain1.apply("serializer", Serializer()).sink(
+    "mysink", StreamSink(stream_name="transformed-events")
 )  # flush the batches to the Sink
