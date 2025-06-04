@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from typing import Any, MutableMapping
 
 from sentry_kafka_schemas import get_codec
@@ -34,4 +35,9 @@ def msg_parser(msg: PyRawMessage) -> Any:
 def msg_serializer(msg: Message[Any]) -> bytes:
     payload = msg.payload
 
-    return json.dumps(payload).encode("utf-8")
+    def custom_serializer(obj: Any) -> str:
+        if isinstance(obj, datetime):
+            return obj.isoformat()  # e.g., '2025-05-30T14:32:00.123456'
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    return json.dumps(payload, default=custom_serializer).encode("utf-8")
