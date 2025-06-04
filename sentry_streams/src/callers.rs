@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::helper::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
