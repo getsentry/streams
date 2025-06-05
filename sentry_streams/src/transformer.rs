@@ -55,10 +55,10 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
-    use crate::utils::traced_with_gil;
     use crate::routes::Route;
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
+    use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
