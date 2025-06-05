@@ -11,6 +11,7 @@ use crate::operators::build;
 use crate::operators::RuntimeOperator;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
+use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
@@ -24,8 +25,6 @@ use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 use std::sync::Arc;
-
-use pyo3::Python;
 use std::time::Duration;
 
 /// The class that represent the consumer.
@@ -171,7 +170,7 @@ fn to_routed_value(
         timestamp,
         schema: schema.clone(),
     };
-    let py_msg = Python::with_gil(|py| PyStreamingMessage::RawMessage {
+    let py_msg = traced_with_gil("to_routed_value", |py| PyStreamingMessage::RawMessage {
         content: into_pyraw(py, raw_message).unwrap(),
     });
 
@@ -232,7 +231,7 @@ impl ArroyoStreamingFactory {
         concurrency_config: Arc<ConcurrencyConfig>,
         schema: Option<String>,
     ) -> Self {
-        let steps_copy = Python::with_gil(|py| {
+        let steps_copy = traced_with_gil("ArroyoStreamingFactory::new", |py| {
             steps
                 .iter()
                 .map(|step| step.clone_ref(py))
@@ -277,7 +276,7 @@ mod tests {
     #[test]
     fn test_to_routed_value() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_to_routed_value", |py| {
             let payload_data = b"test_payload";
             let message = make_msg(Some(payload_data.to_vec()));
 
@@ -302,7 +301,7 @@ mod tests {
     #[test]
     fn test_to_none_python() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_to_none_python", |py| {
             let message = make_msg(None);
             let python_message = to_routed_value("source", message, &Some("schema".to_string()));
             let py_payload = &python_message.payload().payload;
@@ -326,7 +325,7 @@ mod tests {
     #[test]
     fn test_build_chain() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_build_chain", |py| {
             let callable = make_lambda(
                 py,
                 c_str!("lambda x: x.replace_payload((x.payload.decode('utf-8') + '_transformed').encode())"),

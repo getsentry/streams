@@ -1,24 +1,24 @@
-use core::panic;
-
-use crate::messages::headers_to_sequence;
-use crate::messages::into_pyraw;
 use crate::messages::PyStreamingMessage;
-use crate::messages::RawMessage;
+use crate::routes::Route;
 use crate::routes::RoutedValue;
+use crate::utils::traced_with_gil;
+use core::panic;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use pyo3::types::PyBytes;
 use pyo3::Python;
-use reqwest::blocking::Client;
-use reqwest::blocking::ClientBuilder;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
-use sentry_arroyo::processing::strategies::MessageRejected;
-use sentry_arroyo::processing::strategies::SubmitError;
+use reqwest::Client;
+use reqwest::ClientBuilder;
+use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskError;
+use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskFunc;
+use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
 use sentry_arroyo::types::Message;
 pub struct GCSWriter {
     client: Client,
     url: String,
+    route: Route,
 }
 
 fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<Vec<u8>> {
@@ -35,7 +35,7 @@ fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<
 }
 
 impl GCSWriter {
-    pub fn new(bucket: &str, object: &str) -> Self {
+    pub fn new(bucket: &str, object: &str, route: Route) -> Self {
         let client = ClientBuilder::new();
         let url = format!(
             "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
@@ -59,29 +59,54 @@ impl GCSWriter {
 
         let client = client.default_headers(headers).build().unwrap();
 
-        GCSWriter { client, url }
+        GCSWriter { client, url, route }
     }
+}
 
-    pub fn write_to_gcs(
-        &self,
-        message: Message<RoutedValue>,
-    ) -> Result<Message<RoutedValue>, SubmitError<RoutedValue>> {
+impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
+    // Async task to write to GCS via HTTP
+    fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
         let client = self.client.clone();
         let url = self.url.clone();
-        let bytes = Python::with_gil(|py| pybytes_to_bytes(&message, py)).unwrap();
+        let route = message.payload().route.clone();
+        let actual_route = self.route.clone();
 
-        let res = client.post(&url).body(bytes).send();
+        let bytes =
+            traced_with_gil("GCSWriter get_task", |py| pybytes_to_bytes(&message, py)).unwrap();
 
-        match res {
-            Ok(_) => Ok(message),
-            _ => Err(SubmitError::MessageRejected(MessageRejected { message })),
-        }
+        Box::pin(async move {
+            // TODO: This route-based forwarding does not need to be
+            // run with multiple threads. Look into removing this from the async task.
+            if route != actual_route {
+                return Ok(message);
+            }
+
+            let res: Result<reqwest::Response, reqwest::Error> =
+                client.post(&url).body(bytes).send().await;
+
+            let response = res.unwrap();
+            let status = response.status();
+
+            if !status.is_success() {
+                if status.is_client_error() {
+                    let body = response.text().await;
+                    panic!(
+                        "Client-side error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
+                        status,
+                        body
+                    )
+                } else {
+                    Err(RunTaskError::RetryableError)
+                }
+            } else {
+                Ok(message)
+            }
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::routes::Route;
     use crate::test_operators::make_raw_routed_msg;
 
     use super::*;
@@ -89,10 +114,7 @@ mod tests {
     #[test]
     fn test_to_bytes() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
-            // let py_payload = PyBytes::new(py, b"hello").into_any();
-
+        traced_with_gil("test_to_bytes", |py| {
             let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(
                 pybytes_to_bytes(&arroyo_msg, py).unwrap(),

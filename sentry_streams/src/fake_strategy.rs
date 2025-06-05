@@ -1,6 +1,7 @@
 use super::*;
 use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
+use crate::utils::traced_with_gil;
 
 use sentry_arroyo::processing::strategies::{
     merge_commit_request, CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy,
@@ -63,7 +64,7 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                 Some(build_commit_request(&message)),
             );
 
-            Python::with_gil(|py| {
+            traced_with_gil("FakeStrategy submit", |py| {
                 let msg = match message.into_payload().payload {
                     PyStreamingMessage::PyAnyMessage { content } => {
                         content.bind(py).getattr("payload").unwrap()

@@ -6,6 +6,7 @@
 //! via the `Route` attribute.
 use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use pyo3::types::PyBytes;
@@ -31,7 +32,7 @@ use std::time::Duration;
 fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
     // Convert the RoutedValue to KafkaPayload
     // This is a placeholder implementation
-    let payload = Python::with_gil(|py| {
+    let payload = traced_with_gil("to_kafka_payload", |py| {
         let payload = &message.payload().payload;
         match payload {
             PyStreamingMessage::PyAnyMessage { .. } => {
@@ -185,6 +186,7 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::routes::Route;
     use crate::test_operators::make_raw_routed_msg;
+    use crate::utils::traced_with_gil;
     use parking_lot::Mutex;
     use sentry_arroyo::backends::local::broker::LocalBroker;
 
@@ -204,7 +206,7 @@ mod tests {
     #[test]
     fn test_kafka_payload() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_kafka_payload", |py| {
             let message = make_raw_routed_msg(
                 py,
                 "test_message".as_bytes().to_vec(),
@@ -248,7 +250,7 @@ mod tests {
             Box::new(terminator),
         );
 
-        Python::with_gil(|py| {
+        traced_with_gil("test_route", |py| {
             let value = b"test_message";
             let message = make_raw_routed_msg(py, value.to_vec(), "source", vec![]);
             sink.submit(message).unwrap();

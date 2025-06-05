@@ -1,6 +1,4 @@
-use crate::messages::PyAnyMessage;
-use crate::messages::{into_pyany, PyStreamingMessage};
-use pyo3::prelude::*;
+use crate::messages::PyStreamingMessage;
 use pyo3::{pyclass, pymethods};
 use serde::{Deserialize, Serialize};
 
@@ -64,6 +62,11 @@ impl RoutedValue {
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        messages::{into_pyany, PyAnyMessage},
+        utils::traced_with_gil,
+    };
+
     use super::*;
     use pyo3::types::PyBytes;
 
@@ -100,7 +103,7 @@ mod tests {
     #[test]
     fn test_routed_value_creation() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_routed_value_creation", |py| {
             let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
             let routed_value = RoutedValue {
                 route: route.clone(),

@@ -1,5 +1,6 @@
 use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
 use pyo3::{Py, PyAny, Python};
 use sentry_arroyo::processing::strategies::{
     CommitRequest, InvalidMessage, ProcessingStrategy, StrategyError, SubmitError,
@@ -42,7 +43,7 @@ impl ProcessingStrategy<RoutedValue> for Filter {
         if self.route != message.payload().route {
             self.next_step.submit(message)
         } else {
-            Python::with_gil(|py: Python<'_>| -> Result<(), SubmitError<RoutedValue>> {
+            let res = traced_with_gil("FilterStrategy submit", |py: Python<'_>| {
                 let python_payload: Py<PyAny> = match message.payload().payload {
                     PyStreamingMessage::PyAnyMessage { ref content } => {
                         content.clone_ref(py).into_any()
@@ -57,24 +58,30 @@ impl ProcessingStrategy<RoutedValue> for Filter {
                 match py_res {
                     Ok(boolean) => {
                         let filtered = boolean.is_truthy(py).unwrap();
-                        if filtered {
-                            let _ = self.next_step.submit(message);
-                        }
-                        Ok(())
+                        Ok(filtered)
                     }
-                    Err(_) => match message.inner_message {
-                        InnerMessage::BrokerMessage(inner) => {
-                            Err(SubmitError::<RoutedValue>::InvalidMessage(InvalidMessage {
-                                partition: inner.partition,
-                                offset: inner.offset,
-                            }))
-                        }
-                        InnerMessage::AnyMessage(inner) => {
-                            panic!("Unexpected message type: {:?}", inner)
-                        }
-                    },
+                    Err(e) => return Err(e),
                 }
-            })
+            });
+            match res {
+                Ok(bool) => {
+                    if bool {
+                        self.next_step.submit(message)?;
+                    }
+                    Ok(())
+                }
+                Err(_) => match message.inner_message {
+                    InnerMessage::BrokerMessage(inner) => {
+                        Err(SubmitError::<RoutedValue>::InvalidMessage(InvalidMessage {
+                            partition: inner.partition,
+                            offset: inner.offset,
+                        }))
+                    }
+                    InnerMessage::AnyMessage(inner) => {
+                        panic!("Unexpected message type: {:?}", inner)
+                    }
+                },
+            }
         }
     }
 
@@ -97,6 +104,7 @@ mod tests {
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
     use crate::transformer::build_filter;
+    use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
@@ -107,7 +115,7 @@ mod tests {
     #[test]
     fn test_build_filter() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_build_filter", |py| {
             let callable = make_lambda(py, c_str!("lambda x: 'test' in x.payload"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();

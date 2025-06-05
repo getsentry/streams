@@ -1,5 +1,6 @@
 use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
+use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use sentry_arroyo::types::Message;
 
@@ -9,12 +10,15 @@ pub fn call_python_function(
     callable: &Py<PyAny>,
     message: &Message<RoutedValue>,
 ) -> Result<PyStreamingMessage, PyErr> {
-    Ok(Python::with_gil(|py| match message.payload().payload {
-        PyStreamingMessage::PyAnyMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
-        }
-        PyStreamingMessage::RawMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
+    Ok(traced_with_gil("call_python_function", |py| {
+        match message.payload().payload {
+            PyStreamingMessage::PyAnyMessage { ref content } => {
+                callable.call1(py, (content.clone_ref(py),))
+            }
+
+            PyStreamingMessage::RawMessage { ref content } => {
+                callable.call1(py, (content.clone_ref(py),))
+            }
         }
     })?
     .into())
@@ -26,12 +30,14 @@ pub fn call_any_python_function(
     callable: &Py<PyAny>,
     message: &Message<RoutedValue>,
 ) -> Result<Py<PyAny>, PyErr> {
-    Python::with_gil(|py| match message.payload().payload {
-        PyStreamingMessage::PyAnyMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
-        }
-        PyStreamingMessage::RawMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
+    traced_with_gil("call_any_python_function", |py| {
+        match message.payload().payload {
+            PyStreamingMessage::PyAnyMessage { ref content } => {
+                callable.call1(py, (content.clone_ref(py),))
+            }
+            PyStreamingMessage::RawMessage { ref content } => {
+                callable.call1(py, (content.clone_ref(py),))
+            }
         }
     })
 }
@@ -48,7 +54,7 @@ mod tests {
     #[test]
     fn test_call_python_function() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_call_python_function", |py| {
             let callable = make_lambda(
                 py,
                 c_str!("lambda x: x.replace_payload(x.payload + '_transformed')"),

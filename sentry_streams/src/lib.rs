@@ -12,6 +12,7 @@ mod routes;
 mod sinks;
 mod store_sinks;
 mod transformer;
+mod utils;
 
 #[cfg(test)]
 mod fake_strategy;

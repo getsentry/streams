@@ -1302,6 +1302,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "ctrlc",
+ "log",
  "parking_lot",
  "pyo3",
  "rdkafka",
