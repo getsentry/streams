@@ -1,6 +1,6 @@
 use crate::callers::call_any_python_function;
-use crate::utils::traced_with_gil;
 use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
 use sentry_arroyo::processing::strategies::{InvalidMessage, ProcessingStrategy, SubmitError};
@@ -55,6 +55,7 @@ mod tests {
     use super::*;
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
+    use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use std::collections::BTreeMap;

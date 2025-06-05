@@ -1,7 +1,7 @@
 use super::*;
-use crate::utils::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
+use crate::utils::traced_with_gil;
 
 use sentry_arroyo::processing::strategies::{
     merge_commit_request, CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy,

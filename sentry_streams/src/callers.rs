@@ -1,6 +1,6 @@
-use crate::utils::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::RoutedValue;
+use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use sentry_arroyo::types::Message;
 

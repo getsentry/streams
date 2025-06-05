@@ -4,9 +4,9 @@
 //! As all the strategies in the Arroyo streaming pipeline adapter,
 //! This checks whether a message should be processed or forwarded
 //! via the `Route` attribute.
-use crate::utils::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use pyo3::types::PyBytes;
@@ -186,6 +186,7 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::routes::Route;
     use crate::test_operators::make_raw_routed_msg;
+    use crate::utils::traced_with_gil;
     use parking_lot::Mutex;
     use sentry_arroyo::backends::local::broker::LocalBroker;
 

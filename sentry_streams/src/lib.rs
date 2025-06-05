@@ -3,7 +3,6 @@ mod callers;
 mod consumer;
 mod filter_step;
 mod gcs_writer;
-mod utils;
 mod kafka_config;
 mod messages;
 mod operators;
@@ -13,6 +12,7 @@ mod routes;
 mod sinks;
 mod store_sinks;
 mod transformer;
+mod utils;
 
 #[cfg(test)]
 mod fake_strategy;

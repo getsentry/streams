@@ -5,13 +5,13 @@
 //! and all the steps following that source.
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
-use crate::utils::traced_with_gil;
 use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage};
 use crate::operators::build;
 use crate::operators::RuntimeOperator;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
+use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::types::KafkaPayload;

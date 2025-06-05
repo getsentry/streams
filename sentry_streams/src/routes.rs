@@ -63,8 +63,8 @@ impl RoutedValue {
 #[cfg(test)]
 mod tests {
     use crate::{
-        utils::traced_with_gil,
         messages::{into_pyany, PyAnyMessage},
+        utils::traced_with_gil,
     };
 
     use super::*;

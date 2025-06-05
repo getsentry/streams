@@ -1,4 +1,3 @@
-use crate::utils::traced_with_gil;
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
@@ -6,6 +5,7 @@ use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
 use crate::store_sinks::GCSSink;
 use crate::transformer::{build_filter, build_map};
+use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;

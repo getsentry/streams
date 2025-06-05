@@ -2,9 +2,9 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
-use crate::utils::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::Python;
 use pyo3::{prelude::*, IntoPyObjectExt};

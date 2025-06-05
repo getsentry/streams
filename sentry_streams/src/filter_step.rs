@@ -1,6 +1,6 @@
-use crate::utils::traced_with_gil;
 use crate::messages::PyStreamingMessage;
 use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
 use pyo3::{Py, PyAny, Python};
 use sentry_arroyo::processing::strategies::{
     CommitRequest, InvalidMessage, ProcessingStrategy, StrategyError, SubmitError,
@@ -104,6 +104,7 @@ mod tests {
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
     use crate::transformer::build_filter;
+    use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
