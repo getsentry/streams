@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import partial
 from typing import (
     Callable,
     Generic,
@@ -154,12 +155,15 @@ class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
     sink step which writes to Kafka.
     """
 
+    dt_format: Optional[str] = None
+
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        serializer_fn = partial(msg_serializer, dt_format=self.dt_format)
         return MapStep(
             name=name,
             ctx=ctx,
             inputs=[previous],
-            function=msg_serializer,
+            function=serializer_fn,
         )
 
 
