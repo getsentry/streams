@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
-from typing import Any, MutableMapping
+from functools import partial
+from typing import Any, MutableMapping, Optional
 
 from sentry_kafka_schemas import get_codec
 from sentry_kafka_schemas.codecs import Codec
@@ -32,12 +33,18 @@ def msg_parser(msg: PyRawMessage) -> Any:
     return decoded
 
 
-def msg_serializer(msg: Message[Any]) -> bytes:
+def msg_serializer(msg: Message[Any], dt_format: Optional[str] = None) -> bytes:
     payload = msg.payload
 
-    def custom_serializer(obj: Any) -> str:
+    def custom_serializer(obj: Any, dt_format: Optional[str] = None) -> str:
         if isinstance(obj, datetime):
-            return obj.isoformat()  # e.g., '2025-05-30T14:32:00.123456'
+            if dt_format:
+                try:
+                    return obj.strftime(dt_format)
+                except Exception as e:
+                    raise ValueError(f"Invalid datetime format '{dt_format}': {e}") from e
+            return obj.isoformat()
         raise TypeError(f"Type {type(obj)} not serializable")
 
-    return json.dumps(payload, default=custom_serializer).encode("utf-8")
+    serializer = partial(custom_serializer, dt_format=dt_format)
+    return json.dumps(payload, default=serializer).encode("utf-8")
