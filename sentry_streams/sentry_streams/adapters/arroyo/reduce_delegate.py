@@ -11,6 +11,7 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    cast,
 )
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
@@ -165,6 +166,7 @@ class OutputRetriever(ProcessingStrategy[Union[FilteredPayload, TIn]]):
             return
         else:
             if isinstance(message.payload, RoutedValue):
+                # this is the actual raw payload
                 payload: Any = message.payload.payload
             else:
                 payload = message.payload
@@ -172,19 +174,28 @@ class OutputRetriever(ProcessingStrategy[Union[FilteredPayload, TIn]]):
             timestamp = (
                 message.timestamp.timestamp() if message.timestamp is not None else time.time()
             )
-            msg = PyMessage(
-                payload=payload,
-                headers=[],
-                timestamp=timestamp,
-                schema=None,
-            )
+
+            if isinstance(payload, MutableSequence) and isinstance(payload[0], tuple):
+                msg = PyMessage(
+                    payload=payload,
+                    headers=[],
+                    timestamp=timestamp,
+                    schema=payload[0][1],
+                )
+            else:
+                msg = PyMessage(
+                    payload=payload,
+                    headers=[],
+                    timestamp=timestamp,
+                    schema=None,
+                )
 
             committable = {
                 (partition.topic.name, partition.index): offset
                 for partition, offset in message.committable.items()
             }
 
-            self.__pending_messages.append((msg, committable))
+            self.__pending_messages.append((cast(Message[TIn], msg), committable))
 
     def poll(self) -> None:
         pass
