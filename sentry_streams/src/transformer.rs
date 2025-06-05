@@ -58,6 +58,7 @@ mod tests {
     use crate::routes::Route;
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
+    use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
@@ -68,7 +69,7 @@ mod tests {
     #[test]
     fn test_build_map() {
         pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        traced_with_gil("test_build_map", |py| {
             let callable = make_lambda(
                 py,
                 c_str!("lambda x: x.replace_payload(x.payload + '_transformed')"),
