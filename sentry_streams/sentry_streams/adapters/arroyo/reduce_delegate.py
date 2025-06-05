@@ -176,11 +176,18 @@ class OutputRetriever(ProcessingStrategy[Union[FilteredPayload, TIn]]):
             )
 
             if isinstance(payload, MutableSequence) and isinstance(payload[0], tuple):
+                batch = []
+                schema = None
+                for tup in payload:
+                    batch.append(tup[0])
+
+                schema = payload[0][1]
+
                 msg = PyMessage(
-                    payload=payload,
+                    payload=batch,
                     headers=[],
                     timestamp=timestamp,
-                    schema=payload[0][1],
+                    schema=schema,
                 )
             else:
                 msg = PyMessage(
