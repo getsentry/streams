@@ -108,7 +108,12 @@ class FakeReducer(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
         self.__next.terminate()
 
 
-def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage[str], Committable]:
+def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[RustMessage, Committable]:
+    msg, committable = build_py_msg(payload, timestamp, offset)
+    return (msg.to_inner(), committable)
+
+
+def build_py_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage[str], Committable]:
     return (
         PyMessage(
             payload=payload,
@@ -135,7 +140,7 @@ def test_reduce_poll() -> None:
     retriever = OutputRetriever[Sequence[Message[str]]](reduced_msg_to_rust)
     reducer = FakeReducer(retriever)
 
-    delegate = ArroyoStrategyDelegate[str, RoutedValue, Sequence[Message[str]]](
+    delegate = ArroyoStrategyDelegate[RoutedValue, Sequence[Message[str]]](
         reducer,
         rust_msg_to_arroyo_reduce,
         retriever,
@@ -165,9 +170,9 @@ def test_reduce_poll() -> None:
             (
                 PyMessage(
                     payload=[
-                        build_msg("message1", timestamp, 100)[0],
-                        build_msg("message2", timestamp, 200)[0],
-                        build_msg("message3", timestamp, 300)[0],
+                        build_py_msg("message1", timestamp, 100)[0],
+                        build_py_msg("message2", timestamp, 200)[0],
+                        build_py_msg("message3", timestamp, 300)[0],
                     ],
                     headers=[],
                     timestamp=timestamp,
@@ -186,7 +191,7 @@ def test_flush() -> None:
     retriever = OutputRetriever[Sequence[Message[str]]](reduced_msg_to_rust)
     reducer = FakeReducer(retriever)
 
-    delegate = ArroyoStrategyDelegate[str, RoutedValue, Sequence[Message[str]]](
+    delegate = ArroyoStrategyDelegate[RoutedValue, Sequence[Message[str]]](
         reducer,
         rust_msg_to_arroyo_reduce,
         retriever,
@@ -204,7 +209,7 @@ def test_flush() -> None:
             (
                 PyMessage(
                     payload=[
-                        build_msg("message1", timestamp, 100)[0],
+                        build_py_msg("message1", timestamp, 100)[0],
                     ],
                     headers=[],
                     timestamp=timestamp,
@@ -220,7 +225,7 @@ def test_flush() -> None:
 
 def test_reduce() -> None:
     pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain("root")
-    factory = ReduceDelegateFactory[str, Sequence[str]](Batch("batch", pipeline, [], 2))
+    factory = ReduceDelegateFactory[Sequence[str]](Batch("batch", pipeline, [], 2))
     delegate = factory.build()
 
     timestamp = datetime.now().timestamp()

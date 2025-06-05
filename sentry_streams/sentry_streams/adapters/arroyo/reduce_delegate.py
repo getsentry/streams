@@ -17,25 +17,39 @@ from sentry_streams.adapters.arroyo.rust_step import (
     OutputRetriever,
     RustOperatorFactory,
 )
-from sentry_streams.pipeline.message import Message, PyMessage, RustMessage
+from sentry_streams.pipeline.message import (
+    Message,
+    PyMessage,
+    PyRawMessage,
+    RustMessage,
+)
 from sentry_streams.pipeline.pipeline import Reduce
+from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 
 
 def rust_msg_to_arroyo_reduce(
-    message: Message[TIn], committable: Committable
+    message: RustMessage, committable: Committable
 ) -> ArroyoMessage[RoutedValue]:
     arroyo_committable = {
         Partition(Topic(partition[0]), partition[1]): offset
         for partition, offset in committable.items()
     }
+
+    if isinstance(message, PyAnyMessage):
+        to_send: Message[Any] = PyMessage(
+            message.payload, message.headers, message.timestamp, message.schema
+        )
+    elif isinstance(message, RawMessage):
+        to_send = PyRawMessage(message.payload, message.headers, message.timestamp, message.schema)
+
     msg = ArroyoMessage(
         Value(
             # TODO: Stop creating a `RoutedValue` and make the Reduce strategy
             # accept `Message` directly.
-            RoutedValue(Route(source="dummy", waypoints=[]), message),
+            RoutedValue(Route(source="dummy", waypoints=[]), to_send),
             arroyo_committable,
             datetime.fromtimestamp(message.timestamp) if message.timestamp else None,
         )
@@ -74,7 +88,7 @@ TStrategyIn = TypeVar("TStrategyIn")
 TStrategyOut = TypeVar("TStrategyOut")
 
 
-class ReduceDelegateFactory(RustOperatorFactory[TIn], Generic[TIn, TStrategyOut]):
+class ReduceDelegateFactory(RustOperatorFactory, Generic[TStrategyOut]):
     """
     Creates a `ReduceDelegate`. This is the class to provide to the Rust runtime.
     """
@@ -86,7 +100,7 @@ class ReduceDelegateFactory(RustOperatorFactory[TIn], Generic[TIn, TStrategyOut]
     def build(
         self,
     ) -> ArroyoStrategyDelegate[
-        TIn, Union[FilteredPayload, RoutedValue], Union[FilteredPayload, TStrategyOut]
+        Union[FilteredPayload, RoutedValue], Union[FilteredPayload, TStrategyOut]
     ]:
         retriever = OutputRetriever[Union[FilteredPayload, TStrategyOut]](reduced_msg_to_rust)
         route = Route(source="dummy", waypoints=[])

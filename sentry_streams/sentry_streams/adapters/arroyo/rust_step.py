@@ -5,7 +5,7 @@ from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Message as ArroyoMessage
 
-from sentry_streams.pipeline.message import Message, RustMessage
+from sentry_streams.pipeline.message import RustMessage
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
@@ -20,7 +20,7 @@ TOut = TypeVar("TOut")
 Committable = dict[Tuple[str, int], int]
 
 
-class RustOperatorDelegate(ABC, Generic[TIn]):
+class RustOperatorDelegate(ABC):
     """
     A RustOperatorDelegate is an interface to be implemented to build
     streaming platform operators in Python and wire them up to the
@@ -53,7 +53,7 @@ class RustOperatorDelegate(ABC, Generic[TIn]):
     """
 
     @abstractmethod
-    def submit(self, message: Message[TIn], committable: Committable) -> None:
+    def submit(self, message: RustMessage, committable: Committable) -> None:
         """
         Send a message to this step for processing.
 
@@ -94,7 +94,7 @@ class RustOperatorDelegate(ABC, Generic[TIn]):
         raise NotImplementedError
 
 
-class RustOperatorFactory(ABC, Generic[TIn]):
+class RustOperatorFactory(ABC):
     """
     Like for all Arroyo processing strategies, the framework needs to be
     able to tear down and rebuild the processing strategy on its own when
@@ -110,7 +110,7 @@ class RustOperatorFactory(ABC, Generic[TIn]):
     """
 
     @abstractmethod
-    def build(self) -> RustOperatorDelegate[TIn]:
+    def build(self) -> RustOperatorDelegate:
         """
         Builds a RustOperatorDelegate that can be used to process messages
         in the Rust Streaming Adapter.
@@ -119,8 +119,7 @@ class RustOperatorFactory(ABC, Generic[TIn]):
 
 
 class SingleMessageOperatorDelegate(
-    Generic[TIn],
-    RustOperatorDelegate[TIn],
+    RustOperatorDelegate,
     ABC,
 ):
     """
@@ -132,11 +131,11 @@ class SingleMessageOperatorDelegate(
     """
 
     def __init__(self) -> None:
-        self.__message: Message[TIn] | None = None
+        self.__message: RustMessage | None = None
         self.__committable: Committable | None = None
 
     @abstractmethod
-    def _process_message(self, msg: Message[TIn], committable: Committable) -> RustMessage | None:
+    def _process_message(self, msg: RustMessage, committable: Committable) -> RustMessage | None:
         """
         Processes one message at a time. It receives the offsets to commit
         if needed by the processing but it does not allow the delegate to
@@ -162,7 +161,7 @@ class SingleMessageOperatorDelegate(
             self.__message = None
             self.__committable = None
 
-    def submit(self, message: Message[TIn], committable: Committable) -> None:
+    def submit(self, message: RustMessage, committable: Committable) -> None:
         if self.__message is not None:
             raise MessageRejected()
         self.__message = message
@@ -235,7 +234,7 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
         return ret
 
 
-class ArroyoStrategyDelegate(RustOperatorDelegate[TIn], Generic[TIn, TStrategyIn, TStrategyOut]):
+class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrategyOut]):
     """
     This logic is provided to Rust as a `RustOperatorDelegate` that is then
     ran by a dedicated Rust Arroyo Strategy. As we cannot directly run
@@ -272,14 +271,14 @@ class ArroyoStrategyDelegate(RustOperatorDelegate[TIn], Generic[TIn, TStrategyIn
     def __init__(
         self,
         inner: ProcessingStrategy[TStrategyIn],
-        in_transformer: Callable[[Message[TIn], Committable], ArroyoMessage[TStrategyIn]],
+        in_transformer: Callable[[RustMessage, Committable], ArroyoMessage[TStrategyIn]],
         retriever: OutputRetriever[TStrategyOut],
     ) -> None:
         self.__inner = inner
         self.__in_transformer = in_transformer
         self.__retriever = retriever
 
-    def submit(self, message: Message[TIn], committable: Committable) -> None:
+    def submit(self, message: RustMessage, committable: Committable) -> None:
         arroyo_msg = self.__in_transformer(message, committable)
         self.__inner.submit(arroyo_msg)
 
