@@ -39,10 +39,7 @@ def msg_serializer(msg: Message[Any], dt_format: Optional[str] = None) -> bytes:
     def custom_serializer(obj: Any, dt_format: Optional[str] = None) -> str:
         if isinstance(obj, datetime):
             if dt_format:
-                try:
-                    return obj.strftime(dt_format)
-                except Exception as e:
-                    raise ValueError(f"Invalid datetime format '{dt_format}': {e}") from e
+                return obj.strftime(dt_format)
             return obj.isoformat()
         raise TypeError(f"Type {type(obj)} not serializable")
 
