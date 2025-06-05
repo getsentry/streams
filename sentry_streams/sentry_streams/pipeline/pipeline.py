@@ -381,7 +381,7 @@ BatchInput = TypeVar("BatchInput")
 
 
 @dataclass
-class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
+class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[Tuple[InputType, Optional[str]]]]):
     """
     A step to Batch up the results of the prior step.
 

@@ -221,7 +221,7 @@ def test_reduce() -> None:
     expected = [
         (
             PyMessage(
-                payload=["message1", "message2"],
+                payload=[("message1", None), ("message2", None)],
                 headers=[],
                 timestamp=timestamp,
                 schema=None,
