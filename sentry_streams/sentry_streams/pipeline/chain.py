@@ -169,7 +169,7 @@ class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
 
 @dataclass
 class Batch(
-    Applier[Message[InputType], Message[MutableSequence[InputType]]],
+    Applier[Message[InputType], Message[MutableSequence[Tuple[InputType, Optional[str]]]]],
     Generic[MeasurementUnit, InputType],
 ):
     batch_size: MeasurementUnit

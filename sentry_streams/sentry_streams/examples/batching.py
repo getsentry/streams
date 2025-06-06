@@ -10,15 +10,15 @@ pipeline = streaming_source(
 )
 
 # TODO: Figure out why the concrete type of InputType is not showing up in the type hint of chain1
-chain1 = pipeline.apply("parser", Parser(msg_type=IngestMetric)).apply(
-    "mybatch", Batch(batch_size=5)
-)  # User simply provides the batch size
+parsed = pipeline.apply("parser", Parser(msg_type=IngestMetric))
 
-chain2 = chain1.apply(
+batched = parsed.apply("mybatch", Batch(batch_size=5))  # User simply provides the batch size
+
+unbatched = batched.apply(
     "myunbatch",
     FlatMap(function=unbatch),
 )
 
-chain3 = chain2.apply("serializer", Serializer()).sink(
+sinked = unbatched.apply("serializer", Serializer()).sink(
     "kafkasink2", StreamSink(stream_name="transformed-events")
 )  # flush the batches to the Sink
