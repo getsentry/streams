@@ -24,3 +24,13 @@ class KafkaProducerConfig(TypedDict, StepConfig):
 class SegmentConfig(TypedDict):
     parallelism: int
     steps_config: Mapping[str, StepConfig]
+
+
+class MultiProcessConfig(TypedDict):
+    processes: int
+    batch_size: int
+    batch_time: float
+    input_block_size: int | None
+    output_block_size: int | None
+    max_input_block_size: int | None
+    max_output_block_size: int | None
