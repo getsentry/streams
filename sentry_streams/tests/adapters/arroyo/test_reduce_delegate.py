@@ -97,7 +97,7 @@ def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage[st
             payload=payload,
             headers=[],
             timestamp=timestamp,
-            schema=None,
+            schema="ingest-metrics",
         ),
         {("test_topic", 0): offset},
     )
@@ -221,10 +221,10 @@ def test_reduce() -> None:
     expected = [
         (
             PyMessage(
-                payload=[("message1", None), ("message2", None)],
+                payload=["message1", "message2"],
                 headers=[],
                 timestamp=timestamp,
-                schema=None,
+                schema="ingest-metrics",
             ).to_inner(),
             {("test_topic", 0): 200},
         )
@@ -233,4 +233,5 @@ def test_reduce() -> None:
     for i, msg1 in enumerate(batch):
         msg2 = expected[i]
         assert msg1[0].payload == msg2[0].payload, f"Payload mismatch at index {i}"
+        assert msg1[0].schema == msg2[0].schema, "Missing schema after batch"
         assert msg1[1] == msg2[1], f"Committable mismatch at index {i}"
