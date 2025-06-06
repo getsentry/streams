@@ -187,23 +187,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
-        def transform_msg(msg: Message[Any]) -> Union[PyAnyMessage, RawMessage]:
-            ret = step.resolved_function(msg)
-            if isinstance(ret, bytes):
-                return PyRawMessage(
-                    payload=ret,
-                    headers=msg.headers,
-                    timestamp=msg.timestamp,
-                    schema=msg.schema,
-                ).inner
-
-            return PyMessage(
-                payload=step.resolved_function(msg),
-                headers=msg.headers,
-                timestamp=msg.timestamp,
-                schema=msg.schema,
-            ).inner
-
         route = RustRoute(stream.source, stream.waypoints)
 
         step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
@@ -230,6 +213,25 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             )
         else:
             logger.info(f"Initializing map {step.name} single threaded")
+
+            def transform_msg(msg: Message[Any]) -> Union[PyAnyMessage, RawMessage]:
+                # TODO: move this logic to Rust
+                ret = step.resolved_function(msg)
+                if isinstance(ret, bytes):
+                    return PyRawMessage(
+                        payload=ret,
+                        headers=msg.headers,
+                        timestamp=msg.timestamp,
+                        schema=msg.schema,
+                    ).inner
+
+                return PyMessage(
+                    payload=step.resolved_function(msg),
+                    headers=msg.headers,
+                    timestamp=msg.timestamp,
+                    schema=msg.schema,
+                ).inner
+
             self.__consumers[stream.source].add_step(RuntimeOperator.Map(route, transform_msg))
         return stream
 

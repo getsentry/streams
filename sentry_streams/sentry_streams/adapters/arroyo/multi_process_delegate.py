@@ -29,16 +29,22 @@ from sentry_streams.pipeline.pipeline import (
 )
 from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
-# Payload of the streaming message the delegate receives.
-# The Delegate receives a `Message[TMapIn]`
 TMapIn = TypeVar("TMapIn")
-# Payload of the streaming message the delegate sends back to Rust.
 TMapOut = TypeVar("TMapOut")
 
 
 def process_message(
     function: Callable[[Message[TMapIn]], TMapOut], msg: ArroyoMessage[Message[TMapIn]]
 ) -> Message[TMapOut]:
+    """
+    This function is the one we run on each process to perform the
+    transformation.
+
+    Its job is to call the transformation function provided by the
+    user and make the output a `Message` (as the user only provides
+    the payload) preserving headers, timestamp and schema.
+    """
+
     in_payload = msg.payload
     ret = function(msg.payload)
     if isinstance(ret, bytes):
@@ -119,6 +125,11 @@ class MultiprocessDelegateFactory(RustOperatorFactory, Generic[TMapIn, TMapOut])
     containing the message above as payload. The output from the
     RunTaskInMultiprocessing strategy is sent to a retriever that makes
     the messages available to the Delegate to be sent to Rust.
+
+    We cannot pass directly Rust Messages to the multi process
+    step as they cannot be pickled which is how we store messages
+    in the shared memory. So we use the wrapping Message[TMapIn] to make
+    pickling possible.
     """
 
     def __init__(
