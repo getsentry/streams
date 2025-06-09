@@ -233,8 +233,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
         name = step.name
         reduce_config = self.steps_config.get(name)
-        step.loaded_config = reduce_config
-        step.app_config = step.apply_config(step.app_config)
+        step.config = reduce_config
+        step.apply_config(step.app_config)
         self.__consumers[stream.source].add_step(
             RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
         )

@@ -395,8 +395,8 @@ def test_batch_step_apply_config(
     step: BatchStep = BatchStep(
         name="test-batch", ctx=pipeline, inputs=[source], batch_size=default_batch_size
     )
-    step.loaded_config = loaded_batch_size
+    step.config = loaded_batch_size
 
-    step.app_config = step.apply_config(app_config=default_batch_size)
+    step.apply_config(app_config=default_batch_size)
 
-    assert step.app_config == expected
+    assert step.config == expected

@@ -147,7 +147,7 @@ class Step:
 
     name: str
     ctx: Pipeline
-    loaded_config: Optional[Any] = field(default=None, init=False)
+    config: Optional[Any] = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.ctx.register(self)
@@ -156,8 +156,8 @@ class Step:
         """
         A step's config in the application would be overriden by
         its config value loaded from the file
-        """
-        return self.loaded_config if self.loaded_config else app_config
+        # """
+        self.config = self.config if self.config else app_config
 
 
 @dataclass
@@ -415,7 +415,7 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
 
     @property
     def windowing(self) -> Window[MeasurementUnit]:
-        return TumblingWindow(self.batch_size)
+        return TumblingWindow(self.config)
 
     @property
     def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
