@@ -397,9 +397,9 @@ def test_batch_step_apply_config(
     )
     step.config = loaded_batch_size
 
-    step.apply_config(app_config=default_batch_size)
+    step.app_config = step.apply_config(app_config=default_batch_size)
 
-    assert step.config == expected
+    assert step.config == step.app_config == expected
 
 
 def test_batch_step_no_config() -> None:
@@ -409,7 +409,7 @@ def test_batch_step_no_config() -> None:
         ctx=pipeline,
         stream_name="name",
     )
-    try:
+    with pytest.raises(AssertionError) as excinfo:
         BatchStep(name="test-batch", ctx=pipeline, inputs=[source]).windowing
-    except Exception as e:
-        assert "config must be set before windowing is accessed" in str(e)
+
+    assert "config must be set before windowing is accessed" in str(excinfo.value)

@@ -156,8 +156,10 @@ class Step:
         """
         A step's config in the application would be overriden by
         its config value loaded from the file
-        #"""
-        self.config = self.config if self.config else app_config
+        """
+        value = self.config if self.config else app_config
+        self.config = value
+        return value
 
 
 @dataclass
@@ -341,6 +343,10 @@ class Broadcast(WithInput):
 class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
     """
     A generic Step for a Reduce (or Accumulator-based) operation
+
+    app_config: this is the config being passed in from the application code
+        where the class is instantiated. This usually means it's the default value
+        when there is no overriding value defined in the config file
     """
 
     app_config: Optional[Any] = field(default=None, init=False)
@@ -416,9 +422,9 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
     @property
     def windowing(self) -> Window[MeasurementUnit]:
         assert (
-            self.config is not None
+            self.app_config is not None
         ), f"{self.name} config must be set before windowing is accessed"
-        return TumblingWindow(cast(MeasurementUnit, self.config))
+        return TumblingWindow(cast(MeasurementUnit, self.app_config))
 
     @property
     def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
