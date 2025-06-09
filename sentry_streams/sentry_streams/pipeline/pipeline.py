@@ -337,10 +337,13 @@ class Broadcast(WithInput):
             self.ctx.register_edge(self, branch_step)
 
 
+@dataclass
 class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
     """
     A generic Step for a Reduce (or Accumulator-based) operation
     """
+
+    app_config: Optional[Any] = field(default=None, init=False)
 
     @property
     @abstractmethod
@@ -399,12 +402,12 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
-    batch_size: MeasurementUnit
+    batch_size: Optional[MeasurementUnit]
     step_type: StepType = StepType.REDUCE
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        self.batch_size = self.apply_config(self.batch_size)
+        self.app_config = self.batch_size
 
     @property
     def group_by(self) -> Optional[GroupBy]:

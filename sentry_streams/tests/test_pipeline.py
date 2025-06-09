@@ -2,9 +2,9 @@ from typing import Any, Callable, Union
 
 import pytest
 
-from sentry_streams.pipeline.chain import Batch, StreamSink as StreamSinkStep
-from sentry_streams.pipeline.pipeline import Batch as BatchStep
+from sentry_streams.pipeline.chain import StreamSink as StreamSinkStep
 from sentry_streams.pipeline.chain import streaming_source
+from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
     Broadcast,
@@ -19,6 +19,7 @@ from sentry_streams.pipeline.pipeline import (
     TransformStep,
     make_edge_sets,
 )
+from sentry_streams.pipeline.window import MeasurementUnit
 
 
 @pytest.fixture
@@ -370,29 +371,28 @@ def test_invalid_add() -> None:
     with pytest.raises(AssertionError):
         pipeline1.add(pipeline2)
 
-def test_batch_step_uses_loaded_config():
+
+@pytest.mark.parametrize(
+    "loaded_batch_size, default_batch_size, expected",
+    [
+        pytest.param(50, 100, 50, id="Have both loaded and default values"),
+        pytest.param(50, None, 50, id="Only has loaded config file value"),
+        pytest.param(None, 100, 100, id="Only has default app value"),
+    ],
+)
+def test_batch_step_apply_config(loaded_batch_size: MeasurementUnit, default_batch_size: MeasurementUnit, expected: MeasurementUnit) -> None:
     pipeline = Pipeline()
     source = StreamSource(
         name="mysource",
         ctx=pipeline,
         stream_name="name",
     )
-    # ret = Batch(batch_size=default_batch_size).build_step('s', pipeline, source)
 
-    loaded_batch_size = 100
-    default_batch_size = 50
-
-    # Create a BatchStep and set loaded_config manually
-    step = BatchStep(
-        name="test-batch",
-        ctx=pipeline,
-        inputs=[source],
-        batch_size=default_batch_size
+    step: BatchStep = BatchStep(
+        name="test-batch", ctx=pipeline, inputs=[source], batch_size=default_batch_size
     )
-    print(pipeline)
-    # step.loaded_config = loaded_batch_size
+    step.loaded_config = loaded_batch_size
 
-    object.__setattr__(step, "loaded_config", loaded_batch_size)
-    # step.__post_init__()  # manually call since dataclass won't rerun it
+    step.batch_size = step.apply_config(app_config=default_batch_size)
 
-    assert step.batch_size == loaded_batch_size
+    assert step.batch_size == expected
