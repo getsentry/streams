@@ -152,7 +152,7 @@ class Step:
     def __post_init__(self) -> None:
         self.ctx.register(self)
 
-    def apply_config(self, app_config: Any) -> Any:
+    def override_config(self, app_config: Any) -> Any:
         """
         A step's config in the application would be overriden by
         its config value loaded from the file
@@ -345,8 +345,8 @@ class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
     A generic Step for a Reduce (or Accumulator-based) operation
 
     app_config: this is the config being passed in from the application code
-        where the class is instantiated. This usually means it's the default value
-        when there is no overriding value defined in the config file
+        where the class is instantiated. This is the default value
+        when there is no overriding value defined in the config file.
     """
 
     app_config: Optional[Any] = field(default=None, init=False)

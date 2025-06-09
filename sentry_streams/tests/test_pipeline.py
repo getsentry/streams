@@ -380,7 +380,7 @@ def test_invalid_add() -> None:
         pytest.param(None, 100, 100, id="Only has default app value"),
     ],
 )
-def test_batch_step_apply_config(
+def test_batch_step_override_config(
     loaded_batch_size: MeasurementUnit,
     default_batch_size: MeasurementUnit,
     expected: MeasurementUnit,
@@ -397,7 +397,7 @@ def test_batch_step_apply_config(
     )
     step.config = loaded_batch_size
 
-    step.app_config = step.apply_config(app_config=default_batch_size)
+    step.app_config = step.override_config(app_config=default_batch_size)
 
     assert step.config == step.app_config == expected
 
