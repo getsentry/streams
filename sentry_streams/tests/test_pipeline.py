@@ -392,7 +392,7 @@ def test_batch_step_apply_config(
         stream_name="name",
     )
 
-    step: BatchStep = BatchStep(
+    step: BatchStep = BatchStep(  # type: ignore
         name="test-batch", ctx=pipeline, inputs=[source], batch_size=default_batch_size
     )
     step.config = loaded_batch_size
@@ -400,3 +400,16 @@ def test_batch_step_apply_config(
     step.apply_config(app_config=default_batch_size)
 
     assert step.config == expected
+
+
+def test_batch_step_no_config() -> None:
+    pipeline = Pipeline()
+    source = StreamSource(
+        name="mysource",
+        ctx=pipeline,
+        stream_name="name",
+    )
+    try:
+        BatchStep(name="test-batch", ctx=pipeline, inputs=[source]).windowing
+    except Exception as e:
+        assert "config must be set before windowing is accessed" in str(e)

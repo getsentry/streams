@@ -402,7 +402,7 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
-    batch_size: Optional[MeasurementUnit]
+    batch_size: Optional[MeasurementUnit] = None
     step_type: StepType = StepType.REDUCE
 
     def __post_init__(self) -> None:
