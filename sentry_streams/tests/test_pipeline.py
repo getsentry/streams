@@ -380,7 +380,11 @@ def test_invalid_add() -> None:
         pytest.param(None, 100, 100, id="Only has default app value"),
     ],
 )
-def test_batch_step_apply_config(loaded_batch_size: MeasurementUnit, default_batch_size: MeasurementUnit, expected: MeasurementUnit) -> None:
+def test_batch_step_apply_config(
+    loaded_batch_size: MeasurementUnit,
+    default_batch_size: MeasurementUnit,
+    expected: MeasurementUnit,
+) -> None:
     pipeline = Pipeline()
     source = StreamSource(
         name="mysource",
@@ -393,6 +397,6 @@ def test_batch_step_apply_config(loaded_batch_size: MeasurementUnit, default_bat
     )
     step.loaded_config = loaded_batch_size
 
-    step.batch_size = step.apply_config(app_config=default_batch_size)
+    step.app_config = step.apply_config(app_config=default_batch_size)
 
-    assert step.batch_size == expected
+    assert step.app_config == expected
