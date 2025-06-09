@@ -1,5 +1,4 @@
-from datetime import timedelta
-from typing import Any, Mapping, Optional, Sequence, TypedDict, Union
+from typing import Any, Mapping, Optional, Sequence, TypedDict
 
 
 class StepConfig(TypedDict):
@@ -25,7 +24,3 @@ class KafkaProducerConfig(TypedDict, StepConfig):
 class SegmentConfig(TypedDict):
     parallelism: int
     steps_config: Mapping[str, StepConfig]
-
-
-class ReduceConfig(TypedDict):
-    batch_size: Union[int, timedelta]
