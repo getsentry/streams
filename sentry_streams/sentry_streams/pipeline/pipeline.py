@@ -156,7 +156,7 @@ class Step:
         """
         A step's config in the application would be overriden by
         its config value loaded from the file
-        # """
+        #"""
         self.config = self.config if self.config else app_config
 
 
@@ -415,7 +415,10 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
 
     @property
     def windowing(self) -> Window[MeasurementUnit]:
-        return TumblingWindow(self.config)
+        assert (
+            self.config is not None
+        ), f"{self.name} config must be set before windowing is accessed"
+        return TumblingWindow(cast(MeasurementUnit, self.config))
 
     @property
     def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
