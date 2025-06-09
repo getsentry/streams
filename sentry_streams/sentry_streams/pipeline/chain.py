@@ -172,8 +172,15 @@ class Batch(
     Applier[Message[InputType], Message[MutableSequence[InputType]]],
     Generic[MeasurementUnit, InputType],
 ):
+    batch_size: MeasurementUnit
+
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
-        return BatchStep(name=name, ctx=ctx, inputs=[previous])
+        return BatchStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            batch_size=self.batch_size,
+        )
 
 
 @dataclass

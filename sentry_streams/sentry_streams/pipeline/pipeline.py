@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
     Any,
@@ -147,9 +147,17 @@ class Step:
 
     name: str
     ctx: Pipeline
+    loaded_config: Optional[Any] = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.ctx.register(self)
+
+    def apply_config(self, app_config: Any) -> Any:
+        """
+        A step's config in the application would be overriden by
+        its config value loaded from the file
+        """
+        return self.loaded_config if self.loaded_config else app_config
 
 
 @dataclass
@@ -339,8 +347,9 @@ class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
     def group_by(self) -> Optional[GroupBy]:
         raise NotImplementedError()
 
+    @property
     @abstractmethod
-    def windowing(self, batch_size: MeasurementUnit) -> Window[MeasurementUnit]:
+    def windowing(self) -> Window[MeasurementUnit]:
         raise NotImplementedError()
 
     @property
@@ -379,6 +388,7 @@ class Aggregate(Reduce[MeasurementUnit, InputType, OutputType]):
 BatchInput = TypeVar("BatchInput")
 
 
+@dataclass
 class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
     """
     A step to Batch up the results of the prior step.
@@ -389,19 +399,25 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
+    batch_size: MeasurementUnit
     step_type: StepType = StepType.REDUCE
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.batch_size = self.apply_config(self.batch_size)
 
     @property
     def group_by(self) -> Optional[GroupBy]:
         return None
 
     @property
+    def windowing(self) -> Window[MeasurementUnit]:
+        return TumblingWindow(self.batch_size)
+
+    @property
     def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
         batch_acc = BatchBuilder[BatchInput]
         return cast(Callable[[], Accumulator[InputType, OutputType]], batch_acc)
-
-    def windowing(self, batch_size: MeasurementUnit) -> Window[MeasurementUnit]:
-        return TumblingWindow(batch_size)
 
 
 @dataclass

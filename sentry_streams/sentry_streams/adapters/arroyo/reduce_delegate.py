@@ -25,7 +25,6 @@ from sentry_streams.adapters.arroyo.rust_step import (
     RustOperatorDelegate,
     RustOperatorFactory,
 )
-from sentry_streams.config_types import ReduceConfig
 from sentry_streams.pipeline.message import Message, PyMessage
 from sentry_streams.pipeline.pipeline import Reduce
 
@@ -114,10 +113,9 @@ class ReduceDelegateFactory(RustOperatorFactory[TIn, TOut], Generic[TIn, TOut]):
     Creates a `ReduceDelegate`. This is the class to provide to the Rust runtime.
     """
 
-    def __init__(self, step: Reduce[Any, Any, Any], step_config: ReduceConfig) -> None:
+    def __init__(self, step: Reduce[Any, Any, Any]) -> None:
         super().__init__()
         self.__step = step
-        self.__step_config = step_config
 
     def build(self) -> ReduceDelegate[TIn, TOut]:
         retriever = OutputRetriever[TOut]()
@@ -125,7 +123,7 @@ class ReduceDelegateFactory(RustOperatorFactory[TIn, TOut], Generic[TIn, TOut]):
 
         return ReduceDelegate(
             build_arroyo_windowed_reduce(
-                self.__step.windowing(self.__step_config.batch_size),
+                self.__step.windowing,
                 self.__step.aggregate_fn,
                 retriever,
                 route,
