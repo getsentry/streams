@@ -33,7 +33,7 @@
 //!       is transparent to the operator that has to process a message. This
 //!       will allow us to optimize the translation avoiding copy without
 //!       impacting each operator.
-use pyo3::types::{PyBytes, PyList, PyTuple, PyFloat};
+use pyo3::types::{PyBytes, PyList, PyTuple};
 use pyo3::Python;
 
 use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
@@ -90,25 +90,6 @@ pub struct WatermarkMessage {
 impl WatermarkMessage {
     pub fn new(
         timestamp: f64,
-    ) -> Self {
-        Self {
-            timestamp,
-        }
-    }
-}
-
-/// PyWatermarkMessage is passed ot python code via the PythonAdapter step
-#[pyclass]
-#[derive(Debug)]
-pub struct PyWatermarkMessage {
-    pub timestamp: Py<PyFloat>,
-}
-
-#[pymethods]
-impl PyWatermarkMessage {
-    #[new]
-    pub fn new(
-        timestamp: Py<PyFloat>,
     ) -> Self {
         Self {
             timestamp,

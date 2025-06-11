@@ -1,4 +1,4 @@
-use crate::messages::{PyStreamingMessage, RoutedValuePayload};
+use crate::messages::RoutedValuePayload;
 use pyo3::{pyclass, pymethods};
 use serde::{Deserialize, Serialize};
 
@@ -63,7 +63,7 @@ impl RoutedValue {
 #[cfg(test)]
 mod tests {
     use crate::{
-        messages::{into_pyany, PyAnyMessage},
+        messages::{into_pyany, PyAnyMessage, PyStreamingMessage},
         utils::traced_with_gil,
     };
 

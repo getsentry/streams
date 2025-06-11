@@ -2,10 +2,10 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
-use crate::messages::{PyStreamingMessage, RoutedValuePayload, PyWatermarkMessage};
+use crate::messages::{PyStreamingMessage, RoutedValuePayload};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
-use pyo3::types::{PyDict, PyFloat, PyTuple};
+use pyo3::types::{PyDict, PyTuple};
 use pyo3::Python;
 use pyo3::{prelude::*, IntoPyObjectExt};
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
