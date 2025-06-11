@@ -1,4 +1,4 @@
-from typing import Any, Callable, Union
+from typing import Any, Callable, Mapping, Union
 
 import pytest
 
@@ -375,14 +375,14 @@ def test_invalid_add() -> None:
 @pytest.mark.parametrize(
     "loaded_batch_size, default_batch_size, expected",
     [
-        pytest.param(50, 100, 50, id="Have both loaded and default values"),
-        pytest.param(50, None, 50, id="Only has loaded config file value"),
+        pytest.param({"batch_size": 50}, 100, 50, id="Have both loaded and default values"),
+        pytest.param({"batch_size": 50}, None, 50, id="Only has loaded config file value"),
         pytest.param(None, 100, 100, id="Only has default app value"),
     ],
 )
 def test_batch_step_override_config(
-    loaded_batch_size: MeasurementUnit,
-    default_batch_size: MeasurementUnit,
+    loaded_batch_size: Mapping[str, int] | None,
+    default_batch_size: MeasurementUnit | None,
     expected: MeasurementUnit,
 ) -> None:
     pipeline = Pipeline()
@@ -395,11 +395,21 @@ def test_batch_step_override_config(
     step: BatchStep = BatchStep(  # type: ignore
         name="test-batch", ctx=pipeline, inputs=[source], batch_size=default_batch_size
     )
-    step.config = loaded_batch_size
 
-    step.app_config = step.override_config(app_config=default_batch_size)
+    step.override_config(loaded_config=loaded_batch_size)
 
-    assert step.config == step.app_config == expected
+    assert step.batch_size == expected
+
+
+def test_step_override_config_without_any_config() -> None:
+    pipeline = Pipeline()
+    source = StreamSource(
+        name="mysource",
+        ctx=pipeline,
+        stream_name="name",
+    )
+
+    assert source.override_config(loaded_config=None) is None
 
 
 def test_batch_step_no_config() -> None:
