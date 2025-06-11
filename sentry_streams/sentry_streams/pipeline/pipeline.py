@@ -401,9 +401,6 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
     batch_size: Optional[MeasurementUnit] = None
     step_type: StepType = StepType.REDUCE
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
-
     @property
     def group_by(self) -> Optional[GroupBy]:
         return None
