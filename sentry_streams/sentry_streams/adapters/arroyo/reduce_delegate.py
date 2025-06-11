@@ -8,6 +8,7 @@ from typing import (
     Iterable,
     MutableSequence,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -175,7 +176,7 @@ class OutputRetriever(ProcessingStrategy[Union[FilteredPayload, TIn]]):
                 message.timestamp.timestamp() if message.timestamp is not None else time.time()
             )
 
-            if isinstance(payload, MutableSequence) and isinstance(payload[0], tuple):
+            if isinstance(payload, Sequence) and isinstance(payload[0], tuple):
                 batch = []
                 schema = None
                 for tup in payload:
