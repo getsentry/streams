@@ -151,7 +151,7 @@ class Step:
     def __post_init__(self) -> None:
         self.ctx.register(self)
 
-    def override_config(self, loaded_config: Any) -> Any:
+    def override_config(self, loaded_config: Mapping[str, Any] | None) -> Any:
         """
         Steps can implement custom overriding logic
         """
