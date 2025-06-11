@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import (
     Any,
@@ -147,19 +147,15 @@ class Step:
 
     name: str
     ctx: Pipeline
-    config: Optional[Any] = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.ctx.register(self)
 
-    def override_config(self, app_config: Any) -> Any:
+    def override_config(self, loaded_config: Any) -> Any:
         """
-        A step's config in the application would be overriden by
-        its config value loaded from the file
+        Different steps can implement custom overriding logic
         """
-        value = self.config if self.config else app_config
-        self.config = value
-        return value
+        pass
 
 
 @dataclass
@@ -343,13 +339,7 @@ class Broadcast(WithInput):
 class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
     """
     A generic Step for a Reduce (or Accumulator-based) operation
-
-    app_config: this is the config being passed in from the application code
-        where the class is instantiated. This is the default value
-        when there is no overriding value defined in the config file.
     """
-
-    app_config: Optional[Any] = field(default=None, init=False)
 
     @property
     @abstractmethod
@@ -413,7 +403,6 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        self.app_config = self.batch_size
 
     @property
     def group_by(self) -> Optional[GroupBy]:
@@ -422,14 +411,22 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
     @property
     def windowing(self) -> Window[MeasurementUnit]:
         assert (
-            self.app_config is not None
+            self.batch_size is not None
         ), f"{self.name} config must be set before windowing is accessed"
-        return TumblingWindow(cast(MeasurementUnit, self.app_config))
+        return TumblingWindow(self.batch_size)
 
     @property
     def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
         batch_acc = BatchBuilder[BatchInput]
         return cast(Callable[[], Accumulator[InputType, OutputType]], batch_acc)
+
+    def override_config(self, loaded_config: Mapping[str, Any] | None) -> None:
+        if loaded_config:
+            self.batch_size = (
+                loaded_config.get("batch_size")
+                if loaded_config.get("batch_size")
+                else self.batch_size
+            )
 
 
 @dataclass
