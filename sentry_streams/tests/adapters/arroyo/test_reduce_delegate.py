@@ -203,7 +203,7 @@ def test_flush() -> None:
 
 def test_reduce() -> None:
     pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain("root")
-    factory = ReduceDelegateFactory[str, Sequence[str]](Batch("batch", pipeline, [], 2))
+    factory = ReduceDelegateFactory[str, Sequence[str]](Batch("batch", pipeline, [], 4))
     delegate = factory.build()
 
     timestamp = datetime.now().timestamp()
@@ -217,16 +217,26 @@ def test_reduce() -> None:
         *build_msg("message2", timestamp, 200),
     )
 
+    assert len(list(delegate.poll())) == 0
+
+    delegate.submit(
+        *build_msg("message3", timestamp, 300),
+    )
+
+    delegate.submit(
+        *build_msg("message4", timestamp, 400),
+    )
+
     batch = list(delegate.poll())
     expected = [
         (
             PyMessage(
-                payload=["message1", "message2"],
+                payload=["message1", "message2", "message3", "message4"],
                 headers=[],
                 timestamp=timestamp,
                 schema="ingest-metrics",
             ).to_inner(),
-            {("test_topic", 0): 200},
+            {("test_topic", 0): 400},
         )
     ]
     assert len(batch) == len(expected)
