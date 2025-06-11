@@ -20,7 +20,11 @@ pub struct FakeStrategy {
 }
 
 impl FakeStrategy {
-    pub fn new(submitted: Arc<Mutex<Vec<Py<PyAny>>>>, submitted_watermarks: Arc<Mutex<Vec<WatermarkMessage>>>, reject_message: bool) -> Self {
+    pub fn new(
+        submitted: Arc<Mutex<Vec<Py<PyAny>>>>,
+        submitted_watermarks: Arc<Mutex<Vec<WatermarkMessage>>>,
+        reject_message: bool,
+    ) -> Self {
         Self {
             submitted,
             submitted_watermarks,
@@ -70,7 +74,7 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
             match msg_payload {
                 RoutedValuePayload::WatermarkMessage(watermark) => {
                     self.submitted_watermarks.lock().unwrap().push(watermark);
-                },
+                }
                 RoutedValuePayload::PyStreamingMessage(py_payload) => {
                     traced_with_gil("FakeStrategy submit", |py| {
                         let msg = match py_payload {
@@ -83,7 +87,7 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                         };
                         self.submitted.lock().unwrap().push(msg.unbind());
                     });
-                },
+                }
             }
             Ok(())
         }

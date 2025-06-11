@@ -10,9 +10,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// Returns the current Unix epoch
 fn current_epoch() -> u64 {
     SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }
 
 pub struct Watermark {
@@ -34,7 +34,7 @@ impl Watermark {
     ) -> Self {
         let period = match period {
             Some(p) => p,
-            None => 10
+            None => 10,
         };
         let last_timestamp = current_epoch();
         Self {
@@ -53,15 +53,11 @@ impl Watermark {
         let timestamp = current_epoch();
         let watermark_msg = RoutedValue {
             route: self.route.clone(),
-            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new( timestamp as f64)),
+            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(timestamp as f64)),
         };
         self.last_timestamp = timestamp;
-        self.next_step.submit(
-            Message::new_any_message(
-                watermark_msg,
-                BTreeMap::new(),
-            )
-        )
+        self.next_step
+            .submit(Message::new_any_message(watermark_msg, BTreeMap::new()))
     }
 }
 
@@ -97,51 +93,52 @@ impl ProcessingStrategy<RoutedValue> for Watermark {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
     use crate::routes::Route;
     use crate::test_operators::build_routed_value;
+    use crate::utils::traced_with_gil;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
     use std::collections::BTreeMap;
-    use std::sync::{Arc, Mutex};
-    use crate::utils::traced_with_gil;
     use std::ops::Deref;
-    use crate::fake_strategy::assert_messages_match;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_watermark_submit() {
         pyo3::prepare_freethreaded_python();
         traced_with_gil("test_submit_watermark", |py| {
-                let submitted_messages = Arc::new(Mutex::new(Vec::new()));
-                let submitted_messages_clone = submitted_messages.clone();
-                let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
-                let submitted_watermarks_clone = submitted_watermarks.clone();
-                let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
-                let mut watermark = Watermark::new(
-                    Box::new(next_step),
-                    Route {source: String::from("source"), waypoints: vec![]},
-                    None,
-                );
-                watermark.last_timestamp = 0;
-                let msg = Message::new_any_message(
-                        build_routed_value(
-                            py,
-                            "test_message".into_py_any(py).unwrap(),
-                            "source1",
-                            vec!["waypoint1".to_string()],
-                        ),
-                        BTreeMap::new(),
-                    );
-                watermark.submit(msg);
-
-                let expected_messages = vec![
+            let submitted_messages = Arc::new(Mutex::new(Vec::new()));
+            let submitted_messages_clone = submitted_messages.clone();
+            let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
+            let submitted_watermarks_clone = submitted_watermarks.clone();
+            let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
+            let mut watermark = Watermark::new(
+                Box::new(next_step),
+                Route {
+                    source: String::from("source"),
+                    waypoints: vec![],
+                },
+                None,
+            );
+            watermark.last_timestamp = 0;
+            let msg = Message::new_any_message(
+                build_routed_value(
+                    py,
                     "test_message".into_py_any(py).unwrap(),
-                ];
-                let actual_messages = submitted_messages_clone.lock().unwrap();
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            watermark.submit(msg);
 
-                assert_messages_match(py, expected_messages, actual_messages.deref());
+            let expected_messages = vec!["test_message".into_py_any(py).unwrap()];
+            let actual_messages = submitted_messages_clone.lock().unwrap();
 
-                assert!(submitted_watermarks_clone.lock().unwrap().len() == 1);
-            });
+            assert_messages_match(py, expected_messages, actual_messages.deref());
+
+            assert!(submitted_watermarks_clone.lock().unwrap().len() == 1);
+        });
     }
 }

@@ -208,7 +208,10 @@ fn build_chain(
     }
     let watermark_step = Box::new(Watermark::new(
         next,
-        Route {source: source.to_string(), waypoints: vec![]},
+        Route {
+            source: source.to_string(),
+            waypoints: vec![],
+        },
         None,
     ));
 

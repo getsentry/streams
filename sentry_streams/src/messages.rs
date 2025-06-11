@@ -88,12 +88,8 @@ pub struct WatermarkMessage {
 }
 
 impl WatermarkMessage {
-    pub fn new(
-        timestamp: f64,
-    ) -> Self {
-        Self {
-            timestamp,
-        }
+    pub fn new(timestamp: f64) -> Self {
+        Self { timestamp }
     }
 }
 
@@ -289,10 +285,10 @@ impl RoutedValuePayload {
     /// If the payload is a `WatermarkMessage` this panics.
     pub fn unwrap_payload(&self) -> &PyStreamingMessage {
         match &self {
-            RoutedValuePayload::PyStreamingMessage(payload) => {
-                &payload
-            },
-            RoutedValuePayload::WatermarkMessage(..) => panic!("Invalid message payload, expected PyStreamingMessage but got WatermarkPayload."),
+            RoutedValuePayload::PyStreamingMessage(payload) => &payload,
+            RoutedValuePayload::WatermarkMessage(..) => panic!(
+                "Invalid message payload, expected PyStreamingMessage but got WatermarkPayload."
+            ),
         }
     }
 }

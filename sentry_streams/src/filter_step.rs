@@ -43,10 +43,10 @@ impl ProcessingStrategy<RoutedValue> for Filter {
         if self.route != message.payload().route {
             self.next_step.submit(message)
         } else {
-            let res: Result<bool, pyo3::PyErr> =  match message.payload().payload {
+            let res: Result<bool, pyo3::PyErr> = match message.payload().payload {
                 RoutedValuePayload::WatermarkMessage(..) => {
                     self.next_step.submit(message);
-                    return Ok(())
+                    return Ok(());
                 }
                 RoutedValuePayload::PyStreamingMessage(ref py_payload) => {
                     traced_with_gil("FilterStrategy submit", |py: Python<'_>| {
@@ -64,7 +64,7 @@ impl ProcessingStrategy<RoutedValue> for Filter {
                                 let filtered = boolean.is_truthy(py).unwrap();
                                 Ok(filtered)
                             }
-                            Err(e) =>  Err(e),
+                            Err(e) => Err(e),
                         }
                     })
                 }

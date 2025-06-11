@@ -152,17 +152,15 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                 let python_payload: Py<PyAny> = match message.payload().payload {
                     RoutedValuePayload::WatermarkMessage(ref watermark) => {
                         watermark.clone().into_py_any(py).unwrap()
-                    },
-                    RoutedValuePayload::PyStreamingMessage(ref payload) => {
-                        match payload {
-                            PyStreamingMessage::PyAnyMessage { ref content } => {
-                                content.clone_ref(py).into_any()
-                            }
-                            PyStreamingMessage::RawMessage { ref content } => {
-                                content.clone_ref(py).into_any()
-                            }
-                        }
                     }
+                    RoutedValuePayload::PyStreamingMessage(ref payload) => match payload {
+                        PyStreamingMessage::PyAnyMessage { ref content } => {
+                            content.clone_ref(py).into_any()
+                        }
+                        PyStreamingMessage::RawMessage { ref content } => {
+                            content.clone_ref(py).into_any()
+                        }
+                    },
                 };
                 let py_committable = convert_committable_to_py(py, committable).unwrap();
                 match self.processing_step.call_method1(

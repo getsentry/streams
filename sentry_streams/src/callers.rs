@@ -11,8 +11,8 @@ pub fn call_python_function(
     message: &Message<RoutedValue>,
 ) -> Result<PyStreamingMessage, PyErr> {
     let py_payload = message.payload().payload.unwrap_payload();
-    Ok(traced_with_gil("call_python_function", |py| {
-        match py_payload {
+    Ok(
+        traced_with_gil("call_python_function", |py| match py_payload {
             PyStreamingMessage::PyAnyMessage { ref content } => {
                 callable.call1(py, (content.clone_ref(py),))
             }
@@ -20,9 +20,9 @@ pub fn call_python_function(
             PyStreamingMessage::RawMessage { ref content } => {
                 callable.call1(py, (content.clone_ref(py),))
             }
-        }
-    })?
-    .into())
+        })?
+        .into(),
+    )
 }
 
 /// Executes a Python callable with an Arroyo message containing Any and
@@ -32,14 +32,12 @@ pub fn call_any_python_function(
     message: &Message<RoutedValue>,
 ) -> Result<Py<PyAny>, PyErr> {
     let py_payload = message.payload().payload.unwrap_payload();
-    traced_with_gil("call_any_python_function", |py| {
-        match py_payload {
-            PyStreamingMessage::PyAnyMessage { ref content } => {
-                callable.call1(py, (content.clone_ref(py),))
-            }
-            PyStreamingMessage::RawMessage { ref content } => {
-                callable.call1(py, (content.clone_ref(py),))
-            }
+    traced_with_gil("call_any_python_function", |py| match py_payload {
+        PyStreamingMessage::PyAnyMessage { ref content } => {
+            callable.call1(py, (content.clone_ref(py),))
+        }
+        PyStreamingMessage::RawMessage { ref content } => {
+            callable.call1(py, (content.clone_ref(py),))
         }
     })
 }
