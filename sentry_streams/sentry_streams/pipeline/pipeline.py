@@ -153,7 +153,7 @@ class Step:
 
     def override_config(self, loaded_config: Any) -> Any:
         """
-        Different steps can implement custom overriding logic
+        Steps can implement custom overriding logic
         """
         pass
 
