@@ -2,10 +2,10 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
-use crate::messages::PyStreamingMessage;
+use crate::messages::{PyStreamingMessage, RoutedValuePayload, PyWatermarkMessage};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::{PyDict, PyFloat, PyTuple};
 use pyo3::Python;
 use pyo3::{prelude::*, IntoPyObjectExt};
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
@@ -26,7 +26,7 @@ use std::time::Duration;
 ///
 /// Overall This struct has a ProcessingStrategy implementation so it
 /// can be wired up to other Arroyo strategies. When it receives a
-/// message iot forwards them to the `submit` method of the python
+/// message it forwards them to the `submit` method of the python
 /// delegate. The responses of the `poll` method on the python delegate
 /// are then forwarded to the next strategy.
 pub struct PythonAdapter {
@@ -69,7 +69,7 @@ impl PythonAdapter {
             let message = Message::new_any_message(
                 RoutedValue {
                     route: self.route.clone(),
-                    payload: payload.into(),
+                    payload: RoutedValuePayload::PyStreamingMessage(payload.into()),
                 },
                 convert_py_committable(py, committable).unwrap(),
             );
@@ -139,7 +139,8 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     /// - InvalidMessage is interpreted as a message for DLQ.
     /// Any other exception is unexpected and triggers a panic.
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        if self.route != message.payload().route {
+        // TODO: forward watermark messages to python code
+        if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             self.next_strategy.submit(message)
         } else {
             let mut committable = BTreeMap::new();
@@ -149,11 +150,18 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
 
             traced_with_gil("PythonAdapter::submit", |py| {
                 let python_payload: Py<PyAny> = match message.payload().payload {
-                    PyStreamingMessage::PyAnyMessage { ref content } => {
-                        content.clone_ref(py).into_any()
-                    }
-                    PyStreamingMessage::RawMessage { ref content } => {
-                        content.clone_ref(py).into_any()
+                    RoutedValuePayload::WatermarkMessage(ref watermark) => {
+                        watermark.clone().into_py_any(py).unwrap()
+                    },
+                    RoutedValuePayload::PyStreamingMessage(ref payload) => {
+                        match payload {
+                            PyStreamingMessage::PyAnyMessage { ref content } => {
+                                content.clone_ref(py).into_any()
+                            }
+                            PyStreamingMessage::RawMessage { ref content } => {
+                                content.clone_ref(py).into_any()
+                            }
+                        }
                     }
                 };
                 let py_committable = convert_committable_to_py(py, committable).unwrap();
@@ -451,7 +459,8 @@ class RustOperatorDelegateFactory:
 
             let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy::new(submitted_messages, false);
+            let submitted_watermarks = Arc::new(RawMutex::new(Vec::new()));
+            let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
             let mut operator = PythonAdapter::new(
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
@@ -509,7 +518,8 @@ class RustOperatorDelegateFactory:
 
             let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy::new(submitted_messages, true);
+            let submitted_watermarks = Arc::new(RawMutex::new(Vec::new()));
+            let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, true);
 
             let mut operator = PythonAdapter::new(
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),

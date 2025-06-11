@@ -1,5 +1,5 @@
 use super::*;
-use crate::messages::PyStreamingMessage;
+use crate::messages::{PyStreamingMessage, RoutedValuePayload, WatermarkMessage};
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
 
@@ -14,14 +14,16 @@ use std::time::Duration;
 
 pub struct FakeStrategy {
     pub submitted: Arc<Mutex<Vec<Py<PyAny>>>>,
+    pub submitted_watermarks: Arc<Mutex<Vec<WatermarkMessage>>>,
     pub reject_message: bool,
     commit_request: Option<CommitRequest>,
 }
 
 impl FakeStrategy {
-    pub fn new(submitted: Arc<Mutex<Vec<Py<PyAny>>>>, reject_message: bool) -> Self {
+    pub fn new(submitted: Arc<Mutex<Vec<Py<PyAny>>>>, submitted_watermarks: Arc<Mutex<Vec<WatermarkMessage>>>, reject_message: bool) -> Self {
         Self {
             submitted,
+            submitted_watermarks,
             reject_message,
             commit_request: None,
         }
@@ -64,18 +66,25 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                 Some(build_commit_request(&message)),
             );
 
-            traced_with_gil("FakeStrategy submit", |py| {
-                let msg = match message.into_payload().payload {
-                    PyStreamingMessage::PyAnyMessage { content } => {
-                        content.bind(py).getattr("payload").unwrap()
-                    }
-                    PyStreamingMessage::RawMessage { content } => {
-                        content.bind(py).getattr("payload").unwrap()
-                    }
-                };
-
-                self.submitted.lock().unwrap().push(msg.unbind());
-            });
+            let msg_payload = message.into_payload().payload;
+            match msg_payload {
+                RoutedValuePayload::WatermarkMessage(watermark) => {
+                    self.submitted_watermarks.lock().unwrap().push(watermark);
+                },
+                RoutedValuePayload::PyStreamingMessage(py_payload) => {
+                    traced_with_gil("FakeStrategy submit", |py| {
+                        let msg = match py_payload {
+                            PyStreamingMessage::PyAnyMessage { content } => {
+                                content.bind(py).getattr("payload").unwrap()
+                            }
+                            PyStreamingMessage::RawMessage { content } => {
+                                content.bind(py).getattr("payload").unwrap()
+                            }
+                        };
+                        self.submitted.lock().unwrap().push(msg.unbind());
+                    });
+                },
+            }
             Ok(())
         }
     }

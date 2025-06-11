@@ -1,4 +1,4 @@
-use crate::messages::PyStreamingMessage;
+use crate::messages::{PyStreamingMessage, RoutedValuePayload};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::{Py, PyAny, Python};
@@ -43,26 +43,33 @@ impl ProcessingStrategy<RoutedValue> for Filter {
         if self.route != message.payload().route {
             self.next_step.submit(message)
         } else {
-            let res = traced_with_gil("FilterStrategy submit", |py: Python<'_>| {
-                let python_payload: Py<PyAny> = match message.payload().payload {
-                    PyStreamingMessage::PyAnyMessage { ref content } => {
-                        content.clone_ref(py).into_any()
-                    }
-                    PyStreamingMessage::RawMessage { ref content } => {
-                        content.clone_ref(py).into_any()
-                    }
-                };
-
-                let py_res = self.callable.call1(py, (python_payload,));
-
-                match py_res {
-                    Ok(boolean) => {
-                        let filtered = boolean.is_truthy(py).unwrap();
-                        Ok(filtered)
-                    }
-                    Err(e) => return Err(e),
+            let res: Result<bool, pyo3::PyErr> =  match message.payload().payload {
+                RoutedValuePayload::WatermarkMessage(..) => {
+                    self.next_step.submit(message);
+                    return Ok(())
                 }
-            });
+                RoutedValuePayload::PyStreamingMessage(ref py_payload) => {
+                    traced_with_gil("FilterStrategy submit", |py: Python<'_>| {
+                        let python_payload: Py<PyAny> = match py_payload {
+                            PyStreamingMessage::PyAnyMessage { ref content } => {
+                                content.clone_ref(py).into_any()
+                            }
+                            PyStreamingMessage::RawMessage { ref content } => {
+                                content.clone_ref(py).into_any()
+                            }
+                        };
+                        let py_res = self.callable.call1(py, (python_payload,));
+                        match py_res {
+                            Ok(boolean) => {
+                                let filtered = boolean.is_truthy(py).unwrap();
+                                Ok(filtered)
+                            }
+                            Err(e) =>  Err(e),
+                        }
+                    })
+                }
+            };
+
             match res {
                 Ok(bool) => {
                     if bool {
@@ -119,7 +126,8 @@ mod tests {
             let callable = make_lambda(py, c_str!("lambda x: 'test' in x.payload"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy::new(submitted_messages, false);
+            let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
+            let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
             let mut strategy = build_filter(
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),

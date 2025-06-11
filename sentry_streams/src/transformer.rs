@@ -1,5 +1,6 @@
 use crate::callers::call_python_function;
 use crate::filter_step::Filter;
+use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
@@ -19,7 +20,7 @@ pub fn build_map(
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     let copied_route = route.clone();
     let mapper = move |message: Message<RoutedValue>| {
-        if message.payload().route != copied_route {
+        if message.payload().route != copied_route || message.payload().payload.is_watermark_msg() {
             Ok(message)
         } else {
             let transformed = call_python_function(&callable, &message);
@@ -28,7 +29,7 @@ pub fn build_map(
             let route = message.payload().route.clone();
             Ok(message.replace(RoutedValue {
                 route,
-                payload: transformed.unwrap(),
+                payload: RoutedValuePayload::PyStreamingMessage(transformed.unwrap()),
             }))
         }
     };
@@ -76,7 +77,8 @@ mod tests {
             );
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy::new(submitted_messages, false);
+            let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
+            let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
             let mut strategy = build_map(
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),

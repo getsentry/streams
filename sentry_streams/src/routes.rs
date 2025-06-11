@@ -1,4 +1,4 @@
-use crate::messages::PyStreamingMessage;
+use crate::messages::{PyStreamingMessage, RoutedValuePayload};
 use pyo3::{pyclass, pymethods};
 use serde::{Deserialize, Serialize};
 
@@ -50,7 +50,7 @@ impl Route {
 #[derive(Debug)]
 pub struct RoutedValue {
     pub route: Route,
-    pub payload: PyStreamingMessage,
+    pub payload: RoutedValuePayload,
 }
 
 impl RoutedValue {
@@ -107,18 +107,20 @@ mod tests {
             let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
             let routed_value = RoutedValue {
                 route: route.clone(),
-                payload: PyStreamingMessage::PyAnyMessage {
-                    content: into_pyany(
-                        py,
-                        PyAnyMessage {
-                            payload: PyBytes::new(py, &[1, 2, 3]).into_any().unbind(),
-                            headers: vec![],
-                            timestamp: 0.0,
-                            schema: None,
-                        },
-                    )
-                    .unwrap(),
-                },
+                payload: RoutedValuePayload::PyStreamingMessage(
+                    PyStreamingMessage::PyAnyMessage {
+                        content: into_pyany(
+                            py,
+                            PyAnyMessage {
+                                payload: PyBytes::new(py, &[1, 2, 3]).into_any().unbind(),
+                                headers: vec![],
+                                timestamp: 0.0,
+                                schema: None,
+                            },
+                        )
+                        .unwrap(),
+                    },
+                )
             };
 
             assert_eq!(routed_value.route, route);

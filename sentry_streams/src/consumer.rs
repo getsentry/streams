@@ -6,12 +6,13 @@
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
 use crate::kafka_config::PyKafkaConsumerConfig;
-use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage};
+use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::operators::build;
 use crate::operators::RuntimeOperator;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
+use crate::watermark::Watermark;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
@@ -177,7 +178,7 @@ fn to_routed_value(
     let route = Route::new(source.to_string(), vec![]);
     message.replace(RoutedValue {
         route,
-        payload: py_msg,
+        payload: RoutedValuePayload::PyStreamingMessage(py_msg),
     })
 }
 
@@ -188,6 +189,7 @@ fn to_routed_value(
 /// to a Message<RoutedValue> and it adds a termination step provided
 /// by the caller. This is generally a CommitOffsets step but it can
 /// be customized.
+/// It also adds a Watermark step which periodically sends watermark messages downstream.
 fn build_chain(
     source: &str,
     steps: &[Py<RuntimeOperator>],
@@ -204,6 +206,11 @@ fn build_chain(
             concurrency_config,
         );
     }
+    let watermark_step = Box::new(Watermark::new(
+        next,
+        Route {source: source.to_string(), waypoints: vec![]},
+        None,
+    ));
 
     let copied_source = source.to_string();
     let copied_schema = schema.clone();
@@ -211,7 +218,7 @@ fn build_chain(
         Ok(to_routed_value(&copied_source, message, &copied_schema))
     };
 
-    let converter = RunTask::new(conversion_function, next);
+    let converter = RunTask::new(conversion_function, watermark_step);
 
     Box::new(converter)
 }
@@ -282,9 +289,10 @@ mod tests {
 
             let python_message = to_routed_value("source", message, &Some("schema".to_string()));
 
-            let py_payload = python_message.payload();
+            let msg_payload = python_message.payload();
+            let py_payload = msg_payload.payload.unwrap_payload();
 
-            if let PyStreamingMessage::RawMessage { ref content } = py_payload.payload {
+            if let PyStreamingMessage::RawMessage { ref content } = py_payload {
                 let payload = content.getattr(py, "payload").unwrap();
                 let down: &Bound<PyBytes> = payload.bind(py).downcast().unwrap();
                 let payload_bytes: &[u8] = down.as_bytes();
@@ -293,8 +301,8 @@ mod tests {
                 panic!("Expected RawMessage, got PyAnyMessage");
             }
 
-            assert_eq!(py_payload.route.source, "source");
-            assert_eq!(py_payload.route.waypoints.len(), 0);
+            assert_eq!(msg_payload.route.source, "source");
+            assert_eq!(msg_payload.route.waypoints.len(), 0);
         });
     }
 
@@ -304,7 +312,8 @@ mod tests {
         traced_with_gil("test_to_none_python", |py| {
             let message = make_msg(None);
             let python_message = to_routed_value("source", message, &Some("schema".to_string()));
-            let py_payload = &python_message.payload().payload;
+            let msg_payload = &python_message.payload();
+            let py_payload = msg_payload.payload.unwrap_payload();
 
             if let PyStreamingMessage::RawMessage { content } = py_payload {
                 let bytes = content
@@ -345,7 +354,8 @@ mod tests {
 
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy::new(submitted_messages, false);
+            let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
+            let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
             let concurrency_config = ConcurrencyConfig::new(1);
             let mut chain = build_chain(
