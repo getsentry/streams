@@ -9,9 +9,9 @@ pipeline = streaming_source(
 )
 
 # TODO: Figure out why the concrete type of InputType is not showing up in the type hint of chain1
-chain1 = pipeline.apply(
-    "mybatch", Batch(batch_size=2)
-).apply("batch_parser", BatchParser(msg_type=IngestMetric))  # User simply provides the batch size
+chain1 = pipeline.apply("mybatch", Batch(batch_size=2)).apply(
+    "batch_parser", BatchParser(msg_type=IngestMetric))
+    # User simply provides the batch size
 
 chain3 = chain1.apply("serializer", Serializer()).sink(
     "mysink", StreamSink(stream_name="transformed-events")
