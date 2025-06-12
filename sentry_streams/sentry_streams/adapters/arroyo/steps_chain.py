@@ -1,7 +1,9 @@
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, Callable, MutableMapping, MutableSequence, Sequence, Tuple
 
 from sentry_streams.adapters.arroyo.routes import Route
+from sentry_streams.config_types import MultiProcessConfig
 from sentry_streams.pipeline.message import Message, PyMessage, PyRawMessage
 from sentry_streams.pipeline.pipeline import Map
 
@@ -43,10 +45,16 @@ def _hashable_route(route: Route) -> HashableRoute:
     return (route.source, tuple(route.waypoints))
 
 
+@dataclass
+class ChainConfig:
+    steps: MutableSequence[Map]
+    parallelism: MultiProcessConfig
+
+
 class StepsChains:
     """
     Builds chains of transformations to be executed in the same
-    Arroyo strategy.
+    Arroyo strategy in parallel.
 
     The main use case is to execute multiple sequential transformations
     like parse, process, serialize, in the same multi process step.
@@ -59,19 +67,29 @@ class StepsChains:
     """
 
     def __init__(self) -> None:
-        self.__chains: MutableMapping[HashableRoute, MutableSequence[Map]] = {}
+        self.__chains: MutableMapping[HashableRoute, ChainConfig] = {}
+
+    def init_chain(self, route: Route, config: MultiProcessConfig) -> None:
+        hashable_route = _hashable_route(route)
+        if hashable_route in self.__chains:
+            raise ValueError(f"Chain {route} already initialized")
+        self.__chains[hashable_route] = ChainConfig([], config)
 
     def add_map(self, route: Route, step: Map) -> None:
         hashable_route = _hashable_route(route)
         if hashable_route not in self.__chains:
-            self.__chains[hashable_route] = []
-        self.__chains[hashable_route].append(step)
+            raise ValueError(f"Chain {route} not initialized")
+        self.__chains[hashable_route].steps.append(step)
 
-    def finalize(self, route: Route) -> Callable[[Message[Any]], Message[Any]]:
+    def finalize(
+        self, route: Route
+    ) -> Tuple[MultiProcessConfig, Callable[[Message[Any]], Message[Any]]]:
         hashable_route = _hashable_route(route)
+        if hashable_route not in self.__chains:
+            raise ValueError(f"Chain {route} not initialized")
         chain = self.__chains[hashable_route]
         del self.__chains[hashable_route]
-        return partial(transform, chain)
+        return (chain.parallelism, partial(transform, chain.steps))
 
     def exists(self, route: Route) -> bool:
         return _hashable_route(route) in self.__chains
