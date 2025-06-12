@@ -152,7 +152,9 @@ class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
 
 
 @dataclass
-class BatchParser(Applier[Message[Sequence[bytes]], Message[TOut]], Generic[TOut]):
+class BatchParser(
+    Applier[Message[MutableSequence[tuple[bytes, str | None]]], Message[TOut]], Generic[TOut]
+):
     msg_type: Type[TOut]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
