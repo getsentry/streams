@@ -151,7 +151,7 @@ class Step:
     def __post_init__(self) -> None:
         self.ctx.register(self)
 
-    def override_config(self, loaded_config: Mapping[str, Any] | None) -> Any:
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
         """
         Steps can implement custom overriding logic
         """
@@ -398,7 +398,7 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
-    batch_size: Optional[MeasurementUnit] = None
+    batch_size: MeasurementUnit
     step_type: StepType = StepType.REDUCE
 
     @property
@@ -407,9 +407,6 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
 
     @property
     def windowing(self) -> Window[MeasurementUnit]:
-        assert (
-            self.batch_size is not None
-        ), f"{self.name} config must be set before windowing is accessed"
         return TumblingWindow(self.batch_size)
 
     @property
@@ -417,13 +414,13 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
         batch_acc = BatchBuilder[BatchInput]
         return cast(Callable[[], Accumulator[InputType, OutputType]], batch_acc)
 
-    def override_config(self, loaded_config: Mapping[str, Any] | None) -> None:
-        if loaded_config:
-            self.batch_size = (
-                loaded_config.get("batch_size")
-                if loaded_config.get("batch_size")
-                else self.batch_size
-            )
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
+        merged_config = (
+            loaded_config.get("batch_size")
+            if loaded_config.get("batch_size") is not None
+            else self.batch_size
+        )
+        self.batch_size = cast(MeasurementUnit, merged_config)
 
 
 @dataclass

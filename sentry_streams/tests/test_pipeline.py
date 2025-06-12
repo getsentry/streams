@@ -376,13 +376,12 @@ def test_invalid_add() -> None:
     "loaded_batch_size, default_batch_size, expected",
     [
         pytest.param({"batch_size": 50}, 100, 50, id="Have both loaded and default values"),
-        pytest.param({"batch_size": 50}, None, 50, id="Only has loaded config file value"),
-        pytest.param(None, 100, 100, id="Only has default app value"),
+        pytest.param({}, 100, 100, id="Only has default app value"),
     ],
 )
 def test_batch_step_override_config(
-    loaded_batch_size: Mapping[str, int] | None,
-    default_batch_size: MeasurementUnit | None,
+    loaded_batch_size: Mapping[str, int],
+    default_batch_size: MeasurementUnit,
     expected: MeasurementUnit,
 ) -> None:
     pipeline = Pipeline()
@@ -399,27 +398,3 @@ def test_batch_step_override_config(
     step.override_config(loaded_config=loaded_batch_size)
 
     assert step.batch_size == expected
-
-
-def test_step_override_config_without_any_config() -> None:
-    pipeline = Pipeline()
-    source = StreamSource(
-        name="mysource",
-        ctx=pipeline,
-        stream_name="name",
-    )
-
-    assert source.override_config(loaded_config=None) is None
-
-
-def test_batch_step_no_config() -> None:
-    pipeline = Pipeline()
-    source = StreamSource(
-        name="mysource",
-        ctx=pipeline,
-        stream_name="name",
-    )
-    with pytest.raises(AssertionError) as excinfo:
-        BatchStep(name="test-batch", ctx=pipeline, inputs=[source]).windowing
-
-    assert "config must be set before windowing is accessed" in str(excinfo.value)
