@@ -97,7 +97,7 @@ def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage[st
             payload=payload,
             headers=[],
             timestamp=timestamp,
-            schema=None,
+            schema="ingest-metrics",
         ),
         {("test_topic", 0): offset},
     )
@@ -203,7 +203,7 @@ def test_flush() -> None:
 
 def test_reduce() -> None:
     pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain("root")
-    factory = ReduceDelegateFactory[str, Sequence[str]](Batch("batch", pipeline, [], 2))
+    factory = ReduceDelegateFactory[str, Sequence[str]](Batch("batch", pipeline, [], 4))
     delegate = factory.build()
 
     timestamp = datetime.now().timestamp()
@@ -217,20 +217,31 @@ def test_reduce() -> None:
         *build_msg("message2", timestamp, 200),
     )
 
+    assert len(list(delegate.poll())) == 0
+
+    delegate.submit(
+        *build_msg("message3", timestamp, 300),
+    )
+
+    delegate.submit(
+        *build_msg("message4", timestamp, 400),
+    )
+
     batch = list(delegate.poll())
     expected = [
         (
             PyMessage(
-                payload=["message1", "message2"],
+                payload=["message1", "message2", "message3", "message4"],
                 headers=[],
                 timestamp=timestamp,
-                schema=None,
+                schema="ingest-metrics",
             ).to_inner(),
-            {("test_topic", 0): 200},
+            {("test_topic", 0): 400},
         )
     ]
     assert len(batch) == len(expected)
     for i, msg1 in enumerate(batch):
         msg2 = expected[i]
         assert msg1[0].payload == msg2[0].payload, f"Payload mismatch at index {i}"
+        assert msg1[0].schema == msg2[0].schema, "Missing schema after batch"
         assert msg1[1] == msg2[1], f"Committable mismatch at index {i}"
