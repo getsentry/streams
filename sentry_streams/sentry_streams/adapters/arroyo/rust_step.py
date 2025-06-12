@@ -236,34 +236,35 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
 
 class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrategyOut]):
     """
-    This logic is provided to Rust as a `RustOperatorDelegate` that is then
-    ran by a dedicated Rust Arroyo Strategy. As we cannot directly run
-    Python Arroyo Strategies in the Rust Runtime (see `RustOperatorDelegate`
-    docstring).
+    This delegate wraps an existing Python Arroyo strategy so that it can be
+    used as it is in a Rust consumer.
+    Objects of this class are provided a strategy to wrap, a Callable to
+    transform input messages if a transformation is needed and an
+    `OutputRetriever` to collect the results from the inner strategy and
+    make them available to rust.
 
     The message flow looks like this:
-    1. The Rust Arroyo Strategy receives a message to process.
+    1. The Rust Arroyo Strategy receives a streaming message to process.
     2. The Rust Strategy hands it to this class via the `submit` method.
-    3. The submit message transforms the message into an Arroyo message
-       for the wrapped `Reduce` strategy to process. It then submits
-       the message to the Reduce strategy.
-    4. When the Python Reduce Strategy has results ready it sends them
-       to the next step we provided which is an instance of `OutputReceiver`.
-    5. `OutputReceiver` accumulates the message to make them available
-       to this class to return them to Rust.
-    6. When the Rust Strategy receives a call to the `poll` method it
-       delegates the call to this class (`poll` method) which fetches
-       results from the `OutputReceiver` and, if any, it returns them
-       to Rust.
+    3. The `submit` method transforms the input message into a Python
+       Arroyo message for the wrapped strategy via the `in_transformer`.
+    4. The transformed message is passed to the wrapped strategy via the
+       `submit` method.
+    5. The inner strategy does the processing and sends the results to the
+       next step, which is the `OutputRetriever`.
+    6. The `OutputRetriever` transforms the results into a format that
+       can be managed by the Rust consumer.
+    7. The rust code fetches the transformed results via the `poll` method
+       of this class.
 
     This additional complexity is needed to adapt a Python Arroyo Strategy
     (the reduce one) to the Rust Arroyo Runtime:
     - We cannot run a Python strategy as it is on Rust. Rust `ProcessingStrategy`
       cannot be exposed to python.
-    - The Python Reduce Strategy cannot return results directly to Rust.
+    - The Python Strategy cannot return results directly to Rust.
       It can only pass them to the next step (like all Arroyo strategies).
       So it needs a next step that can provide the results to Rust.
-    - The Arroyo Reduce strategy is an Arroyo strategy, so it needs to be
+    - The Arroyo strategy is an Arroyo strategy, so it needs to be
       fed with Arroyo messages, thus the adaptation logic from the
       new Streaming platform message that the Rust code deals with.
     """
