@@ -11,7 +11,8 @@ fn route_message(
     callable: &Py<PyAny>,
     message: Message<RoutedValue>,
 ) -> Result<Message<RoutedValue>, SubmitError<RoutedValue>> {
-    if message.payload().route != *route {
+    // TODO(benm): clone msg for each route with updated Route field
+    if message.payload().route != *route || message.payload().payload.is_watermark_msg() {
         return Ok(message);
     }
     let dest_route = call_any_python_function(callable, &message);

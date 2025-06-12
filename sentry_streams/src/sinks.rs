@@ -33,7 +33,7 @@ fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
     // Convert the RoutedValue to KafkaPayload
     // This is a placeholder implementation
     let payload = traced_with_gil("to_kafka_payload", |py| {
-        let payload = &message.payload().payload;
+        let payload = &message.payload().payload.unwrap_payload();
         match payload {
             PyStreamingMessage::PyAnyMessage { .. } => {
                 panic!("PyAnyMessage is not supported in KafkaPayload conversion");
@@ -145,7 +145,7 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
-        if self.route != message.payload().route {
+        if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             self.next_strategy.submit(message)
         } else {
             match self.produce_strategy.submit(to_kafka_payload(message)) {
@@ -237,7 +237,8 @@ mod tests {
 
         let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
         let submitted_messages_clone = submitted_messages.clone();
-        let next_step = FakeStrategy::new(submitted_messages, false);
+        let submitted_watermarks = Arc::new(RawMutex::new(Vec::new()));
+        let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
         let terminator = Noop {};
 
         let concurrency_config = ConcurrencyConfig::new(1);

@@ -22,7 +22,8 @@ pub struct GCSWriter {
 }
 
 fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<Vec<u8>> {
-    match message.payload().payload {
+    let py_payload = message.payload().payload.unwrap_payload();
+    match py_payload {
         PyStreamingMessage::PyAnyMessage { .. } => {
             panic!("Unsupported message type: GCS writers only support RawMessage");
         }
@@ -77,7 +78,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         Box::pin(async move {
             // TODO: This route-based forwarding does not need to be
             // run with multiple threads. Look into removing this from the async task.
-            if route != actual_route {
+            if route != actual_route || message.payload().payload.is_watermark_msg() {
                 return Ok(message);
             }
 

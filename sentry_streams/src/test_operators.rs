@@ -1,5 +1,5 @@
 use crate::messages::PyAnyMessage;
-use crate::messages::{into_pyany, into_pyraw, PyStreamingMessage, RawMessage};
+use crate::messages::{into_pyany, into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use pyo3::prelude::*;
@@ -32,20 +32,21 @@ pub fn build_routed_value(
     waypoints: Vec<String>,
 ) -> RoutedValue {
     let route = Route::new(source.to_string(), waypoints);
+    let payload = PyStreamingMessage::PyAnyMessage {
+        content: into_pyany(
+            py,
+            PyAnyMessage {
+                payload: msg_payload,
+                headers: vec![],
+                timestamp: 0.0,
+                schema: None,
+            },
+        )
+        .unwrap(),
+    };
     RoutedValue {
         route,
-        payload: PyStreamingMessage::PyAnyMessage {
-            content: into_pyany(
-                py,
-                PyAnyMessage {
-                    payload: msg_payload,
-                    headers: vec![],
-                    timestamp: 0.0,
-                    schema: None,
-                },
-            )
-            .unwrap(),
-        },
+        payload: RoutedValuePayload::PyStreamingMessage(payload),
     }
 }
 
@@ -59,20 +60,21 @@ pub fn build_raw_routed_value(
     use std::vec;
 
     let route = Route::new(source.to_string(), waypoints);
+    let payload = PyStreamingMessage::RawMessage {
+        content: into_pyraw(
+            py,
+            RawMessage {
+                payload: msg_payload,
+                headers: vec![],
+                timestamp: 0.0,
+                schema: None,
+            },
+        )
+        .unwrap(),
+    };
     RoutedValue {
         route,
-        payload: PyStreamingMessage::RawMessage {
-            content: into_pyraw(
-                py,
-                RawMessage {
-                    payload: msg_payload,
-                    headers: vec![],
-                    timestamp: 0.0,
-                    schema: None,
-                },
-            )
-            .unwrap(),
-        },
+        payload: RoutedValuePayload::PyStreamingMessage(payload),
     }
 }
 
