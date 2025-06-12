@@ -48,7 +48,7 @@ def process_message(
     in_payload = msg.payload
     ret = function(msg.payload)
     if isinstance(ret, bytes):
-        # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
+        # If `ret` is bytes then function is Callable[Message[TMapIn], bytes].
         # Thus TMapOut = bytes.
         return cast(
             Message[TMapOut],

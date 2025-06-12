@@ -151,6 +151,12 @@ class Step:
     def __post_init__(self) -> None:
         self.ctx.register(self)
 
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
+        """
+        Steps can implement custom overriding logic
+        """
+        pass
+
 
 @dataclass
 class Source(Step):
@@ -329,6 +335,7 @@ class Broadcast(WithInput):
             self.ctx.register_edge(self, branch_step)
 
 
+@dataclass
 class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
     """
     A generic Step for a Reduce (or Accumulator-based) operation
@@ -381,7 +388,7 @@ BatchInput = TypeVar("BatchInput")
 
 
 @dataclass
-class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
+class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[Tuple[InputType, Optional[str]]]]):
     """
     A step to Batch up the results of the prior step.
 
@@ -406,6 +413,14 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[InputType]]):
     def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
         batch_acc = BatchBuilder[BatchInput]
         return cast(Callable[[], Accumulator[InputType, OutputType]], batch_acc)
+
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
+        merged_config = (
+            loaded_config.get("batch_size")
+            if loaded_config.get("batch_size") is not None
+            else self.batch_size
+        )
+        self.batch_size = cast(MeasurementUnit, merged_config)
 
 
 @dataclass
