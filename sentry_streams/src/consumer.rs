@@ -212,7 +212,7 @@ fn build_chain(
             source: source.to_string(),
             waypoints: vec![],
         },
-        None,
+        10,
     ));
 
     let copied_source = source.to_string();
