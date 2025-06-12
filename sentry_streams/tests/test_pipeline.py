@@ -1,9 +1,10 @@
-from typing import Any, Callable, Union
+from typing import Any, Callable, Mapping, Union
 
 import pytest
 
 from sentry_streams.pipeline.chain import StreamSink as StreamSinkStep
 from sentry_streams.pipeline.chain import streaming_source
+from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
     Broadcast,
@@ -18,6 +19,7 @@ from sentry_streams.pipeline.pipeline import (
     TransformStep,
     make_edge_sets,
 )
+from sentry_streams.pipeline.window import MeasurementUnit
 
 
 @pytest.fixture
@@ -368,3 +370,31 @@ def test_invalid_add() -> None:
 
     with pytest.raises(AssertionError):
         pipeline1.add(pipeline2)
+
+
+@pytest.mark.parametrize(
+    "loaded_batch_size, default_batch_size, expected",
+    [
+        pytest.param({"batch_size": 50}, 100, 50, id="Have both loaded and default values"),
+        pytest.param({}, 100, 100, id="Only has default app value"),
+    ],
+)
+def test_batch_step_override_config(
+    loaded_batch_size: Mapping[str, int],
+    default_batch_size: MeasurementUnit,
+    expected: MeasurementUnit,
+) -> None:
+    pipeline = Pipeline()
+    source = StreamSource(
+        name="mysource",
+        ctx=pipeline,
+        stream_name="name",
+    )
+
+    step: BatchStep = BatchStep(  # type: ignore
+        name="test-batch", ctx=pipeline, inputs=[source], batch_size=default_batch_size
+    )
+
+    step.override_config(loaded_config=loaded_batch_size)
+
+    assert step.batch_size == expected
