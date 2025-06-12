@@ -24,9 +24,6 @@ from sentry_streams.pipeline.message import (
     PyRawMessage,
     RustMessage,
 )
-from sentry_streams.pipeline.pipeline import (
-    Map,
-)
 from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
 TMapIn = TypeVar("TMapIn")
@@ -134,7 +131,7 @@ class MultiprocessDelegateFactory(RustOperatorFactory, Generic[TMapIn, TMapOut])
 
     def __init__(
         self,
-        step: Map,
+        processing_function: Callable[[Message[TMapIn]], TMapOut],
         max_batch_size: int,
         max_batch_time: float,
         pool: MultiprocessingPool,
@@ -145,7 +142,7 @@ class MultiprocessDelegateFactory(RustOperatorFactory, Generic[TMapIn, TMapOut])
         prefetch_batches: bool = False,
     ) -> None:
         super().__init__()
-        self.__step = step
+        self.__processing_function = processing_function
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
         self.__pool = pool
@@ -163,7 +160,7 @@ class MultiprocessDelegateFactory(RustOperatorFactory, Generic[TMapIn, TMapOut])
         retriever = OutputRetriever[Union[FilteredPayload, Message[TMapOut]]](mapped_msg_to_rust)
 
         processor = RunTaskWithMultiprocessing(
-            partial(process_message, self.__step.resolved_function),
+            partial(process_message, self.__processing_function),
             next_step=retriever,
             max_batch_size=self.__max_batch_size,
             max_batch_time=self.__max_batch_time,

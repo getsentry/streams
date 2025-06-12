@@ -202,7 +202,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 RuntimeOperator.PythonAdapter(
                     route,
                     MultiprocessDelegateFactory(
-                        step,
+                        step.resolved_function,
                         multi_process_config["batch_size"],
                         multi_process_config["batch_time"],
                         MultiprocessingPool(
