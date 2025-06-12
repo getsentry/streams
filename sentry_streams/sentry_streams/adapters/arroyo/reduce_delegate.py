@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
-from typing import Any, Generic, Tuple, TypeVar, Union, cast
+from typing import Any, Generic, Sequence, Tuple, TypeVar, Union, cast
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import FilteredPayload
@@ -64,17 +64,33 @@ def reduced_msg_to_rust(
         return None
     else:
         if isinstance(message.payload, RoutedValue):
+            # this is the actual raw payload
             payload: Any = message.payload.payload
         else:
             payload = message.payload
 
         timestamp = message.timestamp.timestamp() if message.timestamp is not None else time.time()
-        msg = PyMessage(
-            payload=payload,
-            headers=[],
-            timestamp=timestamp,
-            schema=None,
-        )
+        if isinstance(payload, Sequence) and isinstance(payload[0], tuple):
+            batch = []
+            schema = None
+            for tup in payload:
+                batch.append(tup[0])
+
+            schema = payload[0][1]
+
+            msg = PyMessage(
+                payload=batch,
+                headers=[],
+                timestamp=timestamp,
+                schema=schema,
+            )
+        else:
+            msg = PyMessage(
+                payload=payload,
+                headers=[],
+                timestamp=timestamp,
+                schema=None,
+            )
 
         committable = {
             (partition.topic.name, partition.index): offset
