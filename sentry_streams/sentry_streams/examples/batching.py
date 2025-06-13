@@ -16,8 +16,7 @@ pipeline = streaming_source(
 parsed_batch = pipeline.apply("mybatch", Batch(batch_size=2)).apply(
     "batch_parser", BatchParser(msg_type=IngestMetric)
 )
-# User simply provides the batch size
 
 parsed_batch.apply("serializer", Serializer()).sink(
     "mysink", StreamSink(stream_name="transformed-events")
-)  # flush the batches to the Sink
+)
