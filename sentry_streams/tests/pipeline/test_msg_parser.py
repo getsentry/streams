@@ -42,7 +42,7 @@ def test_batch_msg_parser_nominal_case(monkeypatch: MonkeyPatch) -> None:
     expected_output = [{"a": 1}, {"b": 2}]
 
     class FakeCodec:
-        def decode(self, payload: bytes) -> Mapping[str, int]:
+        def decode(self, payload: bytes, _: Any) -> Mapping[str, int]:
             if payload == b'{"a": 1}':
                 return {"a": 1}
             else:
