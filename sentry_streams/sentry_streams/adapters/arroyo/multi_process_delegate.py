@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from functools import partial
-from typing import Any, Callable, Generic, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, Generic, Tuple, TypeVar, Union
 
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MultiprocessingPool,
@@ -31,38 +31,16 @@ TMapOut = TypeVar("TMapOut")
 
 
 def process_message(
-    function: Callable[[Message[TMapIn]], TMapOut], msg: ArroyoMessage[Message[TMapIn]]
+    function: Callable[[Message[TMapIn]], Message[TMapOut]], msg: ArroyoMessage[Message[TMapIn]]
 ) -> Message[TMapOut]:
     """
     This function is the one we run on each process to perform the
     transformation.
 
-    Its job is to call the transformation function provided by the
-    user and make the output a `Message` (as the user only provides
-    the payload) preserving headers, timestamp and schema.
+    Its only job is to unpack the arroyo message.
     """
 
-    in_payload = msg.payload
-    ret = function(msg.payload)
-    if isinstance(ret, bytes):
-        # If `ret` is bytes then function is Callable[Message[TMapIn], bytes].
-        # Thus TMapOut = bytes.
-        return cast(
-            Message[TMapOut],
-            PyRawMessage(
-                payload=ret,
-                headers=in_payload.headers,
-                timestamp=in_payload.timestamp,
-                schema=in_payload.schema,
-            ),
-        )
-
-    return PyMessage(
-        payload=ret,
-        headers=in_payload.headers,
-        timestamp=in_payload.timestamp,
-        schema=in_payload.schema,
-    )
+    return function(msg.payload)
 
 
 def mapped_msg_to_rust(
@@ -131,7 +109,7 @@ class MultiprocessDelegateFactory(RustOperatorFactory, Generic[TMapIn, TMapOut])
 
     def __init__(
         self,
-        processing_function: Callable[[Message[TMapIn]], TMapOut],
+        processing_function: Callable[[Message[TMapIn]], Message[TMapOut]],
         max_batch_size: int,
         max_batch_time: float,
         pool: MultiprocessingPool,

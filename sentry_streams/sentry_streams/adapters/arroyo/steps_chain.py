@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, Callable, MutableMapping, MutableSequence, Sequence, Tuple
@@ -6,6 +7,8 @@ from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.config_types import MultiProcessConfig
 from sentry_streams.pipeline.message import Message, PyMessage, PyRawMessage
 from sentry_streams.pipeline.pipeline import Map
+
+logger = logging.getLogger(__name__)
 
 
 def transform(chain: Sequence[Map], message: Message[Any]) -> Message[Any]:
@@ -48,10 +51,13 @@ def _hashable_route(route: Route) -> HashableRoute:
 @dataclass
 class ChainConfig:
     steps: MutableSequence[Map]
-    parallelism: MultiProcessConfig
+    # TODO: Support abstract config for multi threading and
+    # single threaded. As of writing there is nothing to configure
+    # for those cases.
+    parallelism: MultiProcessConfig | None
 
 
-class StepsChains:
+class TransformChains:
     """
     Builds chains of transformations to be executed in the same
     Arroyo strategy in parallel.
@@ -69,13 +75,15 @@ class StepsChains:
     def __init__(self) -> None:
         self.__chains: MutableMapping[HashableRoute, ChainConfig] = {}
 
-    def init_chain(self, route: Route, config: MultiProcessConfig) -> None:
+    def init_chain(self, route: Route, config: MultiProcessConfig | None) -> None:
+        logger.info(f"Initializing chain {route}")
         hashable_route = _hashable_route(route)
         if hashable_route in self.__chains:
             raise ValueError(f"Chain {route} already initialized")
         self.__chains[hashable_route] = ChainConfig([], config)
 
     def add_map(self, route: Route, step: Map) -> None:
+        logger.info(f"Chaining map {step.name} to parallel chain")
         hashable_route = _hashable_route(route)
         if hashable_route not in self.__chains:
             raise ValueError(f"Chain {route} not initialized")
@@ -83,7 +91,7 @@ class StepsChains:
 
     def finalize(
         self, route: Route
-    ) -> Tuple[MultiProcessConfig, Callable[[Message[Any]], Message[Any]]]:
+    ) -> Tuple[MultiProcessConfig | None, Callable[[Message[Any]], Message[Any]]]:
         hashable_route = _hashable_route(route)
         if hashable_route not in self.__chains:
             raise ValueError(f"Chain {route} not initialized")
