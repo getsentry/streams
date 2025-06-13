@@ -76,15 +76,10 @@ def build_initial_offset(offset_reset: str) -> InitialOffset:
         raise ValueError(f"Invalid offset reset value: {offset_reset}")
 
 
-def build_kafka_consumer_config(
-    source: str, steps_config: Mapping[str, StepConfig]
-) -> PyKafkaConsumerConfig:
+def build_kafka_consumer_config(source: str, source_config: StepConfig) -> PyKafkaConsumerConfig:
     """
     Build the Kafka consumer configuration for the source.
     """
-    source_config = steps_config.get(source)
-    assert source_config is not None, f"Config not provided for source {source}"
-
     consumer_config = cast(KafkaConsumerConfig, source_config)
     bootstrap_servers = consumer_config["bootstrap_servers"]
     group_id = f"pipeline-{source}"
@@ -175,9 +170,16 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         """
         assert isinstance(step, StreamSource)
         source_name = step.name
+        source_config = self.steps_config.get(source_name)
+        assert source_config is not None, f"Config not provided for source {source_name}"
+        parallelism = source_config.get("parallelism", 1)
+        assert (
+            parallelism == 1
+        ), "A single Rust Arroyo instance can only run one replica of each consumer."
+
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
-            kafka_config=build_kafka_consumer_config(source_name, self.steps_config),
+            kafka_config=build_kafka_consumer_config(source_name, source_config),
             topic=step.stream_name,
             schema=step.stream_name,
         )
