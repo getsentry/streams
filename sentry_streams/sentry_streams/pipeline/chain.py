@@ -153,7 +153,8 @@ class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
 
 @dataclass
 class BatchParser(
-    Applier[Message[MutableSequence[Tuple[bytes, Optional[str]]]], Message[TOut]], Generic[TOut]
+    Message[MutableSequence[bytes]],
+    Message[MutableSequence[TOut]],
 ):
     msg_type: Type[TOut]
 
