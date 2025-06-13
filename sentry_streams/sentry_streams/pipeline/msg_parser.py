@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from functools import partial
-from typing import Any, MutableMapping, Optional
+from typing import Any, MutableMapping, Optional, Sequence
 
 from sentry_kafka_schemas import get_codec
 from sentry_kafka_schemas.codecs import Codec
@@ -15,22 +15,36 @@ from sentry_streams.pipeline.message import Message, PyRawMessage
 CODECS: MutableMapping[str, Codec[Any]] = {}
 
 
-def msg_parser(msg: PyRawMessage) -> Any:
-    stream_schema = msg.schema
-    payload = msg.payload
-
-    assert (
-        stream_schema is not None
-    )  # Message cannot be deserialized without a schema, it is automatically inferred from the stream source
-
+def _get_codec_from_msg(stream_schema: str) -> Codec[Any]:
     try:
         codec = CODECS.get(stream_schema, get_codec(stream_schema))
     except Exception:
         raise ValueError(f"Kafka topic {stream_schema} has no associated schema")
+    return codec
 
+
+def msg_parser(msg: PyRawMessage) -> Any:
+    stream_schema = msg.schema
+    assert (
+        stream_schema is not None
+    )  # Message cannot be deserialized without a schema, it is automatically inferred from the stream source
+
+    payload = msg.payload
+    codec = _get_codec_from_msg(stream_schema)
     decoded = codec.decode(payload, True)
 
     return decoded
+
+
+def batch_msg_parser(msg: Message[Sequence[bytes]]) -> Sequence[Any]:
+    stream_schema = msg.schema
+    assert (
+        stream_schema is not None
+    )  # Message cannot be deserialized without a schema, it is automatically inferred from the stream source
+
+    payloads = msg.payload
+    codec = _get_codec_from_msg(stream_schema)
+    return [codec.decode(payload, True) for payload in payloads]
 
 
 def msg_serializer(msg: Message[Any], dt_format: Optional[str] = None) -> bytes:
