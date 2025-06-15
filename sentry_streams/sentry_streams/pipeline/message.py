@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Any, Generic, Optional, Sequence, Tuple, TypeVar, cast
+from typing import Generic, Optional, Sequence, Tuple, TypeVar, Union, cast
 
 from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
 TPayload = TypeVar("TPayload")
+
+RustMessage = Union[PyAnyMessage, RawMessage]
 
 
 class Message(ABC, Generic[TPayload]):
@@ -52,7 +54,7 @@ class Message(ABC, Generic[TPayload]):
         raise NotImplementedError
 
     @abstractmethod
-    def to_inner(self) -> Any:
+    def to_inner(self) -> RustMessage:
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
@@ -110,7 +112,7 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
     def __str__(self) -> str:
         return self.inner.__str__()
 
-    def to_inner(self) -> Any:
+    def to_inner(self) -> RustMessage:
         return self.inner
 
     def deepcopy(self) -> PyMessage[TPayload]:
@@ -158,7 +160,7 @@ class PyRawMessage(Message[bytes]):
     def __str__(self) -> str:
         return self.inner.__str__()
 
-    def to_inner(self) -> Any:
+    def to_inner(self) -> RustMessage:
         return self.inner
 
     def deepcopy(self) -> PyRawMessage:
@@ -168,3 +170,17 @@ class PyRawMessage(Message[bytes]):
             self.inner.timestamp,
             self.inner.schema,
         )
+
+
+def rust_msg_equals(msg: RustMessage, other: RustMessage) -> bool:
+    """
+    PyAnyMessage/RawMessage are exposed by Rust and do not have an __eq__ method
+    as of now. That would require delegating equality to python anyway
+    as the payload is a PyAny
+    """
+    return (
+        msg.payload == other.payload
+        and msg.headers == other.headers
+        and msg.timestamp == other.timestamp
+        and msg.schema == other.schema
+    )
