@@ -258,7 +258,10 @@ mod tests {
         let watermark_res = sink.submit(watermark_msg);
         assert!(watermark_res.is_ok());
         let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-        assert_eq!(watermark_messages[0], WatermarkMessage::new(BTreeMap::new()));
+        assert_eq!(
+            watermark_messages[0],
+            WatermarkMessage::new(BTreeMap::new())
+        );
     }
 
     #[test]

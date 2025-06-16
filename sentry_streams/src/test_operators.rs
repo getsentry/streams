@@ -105,14 +105,14 @@ pub fn make_raw_routed_msg(
 }
 
 #[cfg(test)]
-pub fn make_committable(
-    num_partitions: u64,
-    starting_offset: u64,
-) -> BTreeMap<Partition, u64> {
+pub fn make_committable(num_partitions: u64, starting_offset: u64) -> BTreeMap<Partition, u64> {
     let mut committable = BTreeMap::new();
     for i in 0..num_partitions {
         let val = i + starting_offset;
-        committable.insert(Partition::new(Topic::new(format!("t{val}").as_str()), val as u16), val);
-    };
+        committable.insert(
+            Partition::new(Topic::new(format!("t{val}").as_str()), val as u16),
+            val,
+        );
+    }
     committable
 }

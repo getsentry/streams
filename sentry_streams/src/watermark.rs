@@ -54,7 +54,9 @@ impl Watermark {
         let timestamp = current_epoch();
         let watermark_msg = RoutedValue {
             route: self.route.clone(),
-            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(self.last_seen_committable.clone())),
+            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
+                self.last_seen_committable.clone(),
+            )),
         };
         let result = self
             .next_step
@@ -114,7 +116,7 @@ mod tests {
     use crate::test_operators::{build_routed_value, make_committable};
     use crate::utils::traced_with_gil;
     use pyo3::IntoPyObjectExt;
-    use sentry_arroyo::{processing::strategies::ProcessingStrategy};
+    use sentry_arroyo::processing::strategies::ProcessingStrategy;
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -165,7 +167,10 @@ mod tests {
             // submitted WatermarkMessage contains the last seen committable
             watermark.last_sent_timestamp = 0;
             let _ = watermark.poll();
-            assert_eq!(submitted_watermarks_clone.lock().unwrap()[0], WatermarkMessage::new(committable));
+            assert_eq!(
+                submitted_watermarks_clone.lock().unwrap()[0],
+                WatermarkMessage::new(committable)
+            );
         })
     }
 }
