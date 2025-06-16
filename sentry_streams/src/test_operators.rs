@@ -6,7 +6,9 @@ use pyo3::prelude::*;
 use pyo3::IntoPyObjectExt;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 #[cfg(test)]
-use sentry_arroyo::types::Message;
+use sentry_arroyo::types::{Message, Partition, Topic};
+#[cfg(test)]
+use std::collections::BTreeMap;
 use std::ffi::CStr;
 
 #[cfg(test)]
@@ -100,4 +102,17 @@ pub fn make_raw_routed_msg(
 ) -> Message<RoutedValue> {
     let routed_value = build_raw_routed_value(py, msg_payload, source, waypoints);
     Message::new_any_message(routed_value, std::collections::BTreeMap::new())
+}
+
+#[cfg(test)]
+pub fn make_committable(
+    num_partitions: u64,
+    starting_offset: u64,
+) -> BTreeMap<Partition, u64> {
+    let mut committable = BTreeMap::new();
+    for i in 0..num_partitions {
+        let val = i + starting_offset;
+        committable.insert(Partition::new(Topic::new(format!("t{val}").as_str()), val as u16), val);
+    };
+    committable
 }

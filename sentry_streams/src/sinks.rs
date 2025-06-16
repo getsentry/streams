@@ -252,13 +252,13 @@ mod tests {
 
         let watermark_val = RoutedValue {
             route: Route::new(String::from("source"), vec![]),
-            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(BTreeMap::new())),
         };
         let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
         let watermark_res = sink.submit(watermark_msg);
         assert!(watermark_res.is_ok());
         let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-        assert_eq!(watermark_messages.len(), 1);
+        assert_eq!(watermark_messages[0], WatermarkMessage::new(BTreeMap::new()));
     }
 
     #[test]
