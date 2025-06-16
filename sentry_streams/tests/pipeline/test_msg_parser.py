@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from sentry_streams.pipeline.msg_parser import msg_serializer
+from sentry_streams.pipeline.msg_codecs import msg_serializer
 
 
 def test_msg_serializer_default_isoformat() -> None:
