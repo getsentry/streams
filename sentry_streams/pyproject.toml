@@ -15,6 +15,11 @@ dependencies = [
     "pyyaml>=6.0.2",
     "jsonschema>=4.23.0",
     "sentry-kafka-schemas>=1.2.0",
+    "polars==1.30.0",
+    "pyarrow==19.0.0",
+    "pyarrow-stubs==19.0",
+    "pandas==2.2.3",
+    "pandas-stubs"
 ]
 
 [dependency-groups]
