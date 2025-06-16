@@ -1,3 +1,34 @@
+## 0.0.23
+
+### Various fixes & improvements
+
+- Support parallelism in python (#132) by @fpacifici
+- add example config (#138) by @victoria-yining-huang
+- rename file (#139) by @victoria-yining-huang
+- Generalize ReduceDelegate (#120) by @fpacifici
+- quick-fix: Ensure schema is retained after a batching step (#131) by @ayirr7
+- expose batch_size in config (#129) by @victoria-yining-huang
+- release: 0.0.22 (e47bd9fb) by @getsentry-bot
+- remove except (#130) by @victoria-yining-huang
+- add datetime serilaizer (#128) by @victoria-yining-huang
+- release: 0.0.21 (3f22b125) by @getsentry-bot
+- feat(GCS-sink): Use RunTaskInThreads to write to GCS (#126) by @ayirr7
+- release: 0.0.20 (0525b706) by @getsentry-bot
+- fix extension-module (#125) by @fpacifici
+- fix(gcs-writer): Better Error handling  (#124) by @ayirr7
+- release: 0.0.19 (c58921b4) by @getsentry-bot
+- Avoid bumping version number in uv.lock during release (#122) by @fpacifici
+- Support Reduce in the Rust Adapter as a Python delegate (#119) by @fpacifici
+- Allow re-initialization of the RustOperatorDelegate (#118) by @fpacifici
+- Create and manage the Message in Rust (#121) by @fpacifici
+- feat: Simple Single-threaded GCSSink step (#115) by @ayirr7
+- Move the Message data structure to Rust (#116) by @fpacifici
+- ref(ci): Disable extension-module by default (#113) by @untitaker
+- Add a Python Delegate strategy to implement Streaming steps in python (#107) by @fpacifici
+- fix(ci): Bump uv.lock as part of release flow (#114) by @untitaker
+
+_Plus 65 more_
+
 ## 0.0.22
 
 ### Various fixes & improvements
