@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import partial
 from typing import (
+    Any,
     Callable,
     Generic,
     Mapping,
@@ -27,9 +28,11 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.msg_codecs import (
+    ParquetCompression,
     batch_msg_parser,
     msg_parser,
     msg_serializer,
+    parquet_serializer,
 )
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
@@ -182,6 +185,23 @@ class Serializer(Applier[Message[TIn], bytes]):
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         serializer_fn = partial(msg_serializer, dt_format=self.dt_format)
+        return MapStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            function=serializer_fn,
+        )
+
+
+@dataclass
+class ParquetSerializer(Applier[Message[TIn], bytes]):
+    schema_fields: Mapping[str, Any]
+    compression: Optional[ParquetCompression] = "snappy"
+
+    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        serializer_fn = partial(
+            parquet_serializer, schema_fields=self.schema_fields, compression=self.compression
+        )
         return MapStep(
             name=name,
             ctx=ctx,

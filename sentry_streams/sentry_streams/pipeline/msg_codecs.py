@@ -1,11 +1,29 @@
+import io
 import json
 from datetime import datetime
 from functools import partial
-from typing import Any, MutableMapping, Optional, Sequence
+from typing import (
+    Any,
+    Literal,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Sequence,
+    Union,
+)
 
+import polars as pl
+from polars import Schema as PolarsSchema
 from sentry_kafka_schemas import get_codec
 from sentry_kafka_schemas.codecs import Codec
 
+from sentry_streams.pipeline.datatypes import (
+    DataType,
+    Field,
+    List,
+    StreamsDataType,
+    Struct,
+)
 from sentry_streams.pipeline.message import Message
 
 # TODO: Push the following to docs
@@ -54,3 +72,51 @@ def msg_serializer(msg: Message[Any], dt_format: Optional[str] = None) -> bytes:
 
     serializer = partial(custom_serializer, dt_format=dt_format)
     return json.dumps(payload, default=serializer).encode("utf-8")
+
+
+ParquetCompression = Literal["lz4", "uncompressed", "snappy", "gzip", "lzo", "brotli", "zstd"]
+
+
+def _get_parquet(
+    msg: Message[Any],
+    schema_fields: PolarsSchema,
+    compression: Union[ParquetCompression, None] = "snappy",
+) -> bytes:
+    df = pl.DataFrame([i for i in msg.payload if i is not None], schema=schema_fields)
+    buffer = io.BytesIO()
+    assert compression is not None
+    df.write_parquet(buffer, compression=compression, statistics=False, use_pyarrow=False)
+    return bytes(buffer.getvalue())
+
+
+def _validate_schema(schema: Mapping[str, StreamsDataType]) -> bool:
+    def _check_dtype(k: str, dtype: StreamsDataType) -> bool:
+        if isinstance(dtype, Struct):
+            return all(_check_dtype(k, field.dtype) for field in dtype.fields)
+        elif isinstance(dtype, List):
+            return _check_dtype(k, dtype.inner)
+        elif isinstance(dtype, Field):
+            return _check_dtype(k, dtype.dtype)
+
+        if not isinstance(dtype, StreamsDataType):
+            raise TypeError(f"Field {k} has type {dtype} and it is not a valid Streams DataType.")
+        return True
+
+    return all(_check_dtype(k, dtype) for k, dtype in schema.items())
+
+
+def _resolve_polars_schema(schema_fields: Mapping[str, Any]) -> PolarsSchema:
+    resolved_schema = {key: dtype.resolve() for key, dtype in schema_fields.items()}
+    polars_schema = pl.Schema(resolved_schema)
+    assert isinstance(polars_schema, PolarsSchema)
+    return polars_schema
+
+
+def parquet_serializer(
+    msg: Message[Any],
+    schema_fields: Mapping[str, DataType],
+    compression: Optional[ParquetCompression] = "snappy",
+) -> bytes:
+    assert _validate_schema(schema_fields)
+    polars_schema = _resolve_polars_schema(schema_fields)
+    return _get_parquet(msg, polars_schema, compression)
