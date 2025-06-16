@@ -28,6 +28,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout code
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.11
+      - name: Make environment
+        run: |
+          make install-dev
       - name: Run tests
         working-directory: ./sentry_streams
-        run: cargo test
+        run: |
+          . .venv/bin/activate
+          cargo test
