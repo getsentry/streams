@@ -56,6 +56,15 @@ repos:
         name: isort (python)
         files: ^sentry_flink/.+
         args: [--settings-path=./sentry_flink/pyproject.toml]
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: format rust code
+        language: system
+        # keep in sync with Cargo.toml. There is no way to run cargo fmt for specific files
+        # https://github.com/rust-lang/rustfmt/issues/4485
+        entry: rustfmt --edition 2021
+        files: ^sentry-streams/.*\.rs$
 
 default_language_version:
   python: python3.11
