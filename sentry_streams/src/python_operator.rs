@@ -139,7 +139,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     /// - InvalidMessage is interpreted as a message for DLQ.
     /// Any other exception is unexpected and triggers a panic.
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        // TODO: forward watermark messages to python code
+        // TODO: forward watermark messages to python code instead of gating here
         if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             self.next_strategy.submit(message)
         } else {
@@ -151,6 +151,8 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
             traced_with_gil("PythonAdapter::submit", |py| {
                 let python_payload: Py<PyAny> = match message.payload().payload {
                     RoutedValuePayload::WatermarkMessage(ref watermark) => {
+                        // TODO: this code is unreachable, future PR will allow forwarding WatermarkMessages
+                        // to python code which will use this branch.
                         watermark.clone().into_py_any(py).unwrap()
                     }
                     RoutedValuePayload::PyStreamingMessage(ref payload) => match payload {

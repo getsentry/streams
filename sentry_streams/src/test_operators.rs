@@ -5,6 +5,7 @@ use crate::routes::RoutedValue;
 use pyo3::prelude::*;
 use pyo3::IntoPyObjectExt;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
+#[cfg(test)]
 use sentry_arroyo::types::Message;
 use std::ffi::CStr;
 

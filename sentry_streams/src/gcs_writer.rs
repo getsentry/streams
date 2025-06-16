@@ -1,4 +1,5 @@
 use crate::messages::PyStreamingMessage;
+use crate::messages::RoutedValuePayload;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
@@ -21,9 +22,8 @@ pub struct GCSWriter {
     route: Route,
 }
 
-fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<Vec<u8>> {
-    let py_payload = message.payload().payload.unwrap_payload();
-    match py_payload {
+fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Vec<u8>> {
+    match message {
         PyStreamingMessage::PyAnyMessage { .. } => {
             panic!("Unsupported message type: GCS writers only support RawMessage");
         }
@@ -72,13 +72,20 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         let route = message.payload().route.clone();
         let actual_route = self.route.clone();
 
-        let bytes =
-            traced_with_gil("GCSWriter get_task", |py| pybytes_to_bytes(&message, py)).unwrap();
+        let bytes = match message.payload().payload {
+            RoutedValuePayload::PyStreamingMessage(ref py_message) => {
+                traced_with_gil("GCSWriter get_task", |py| pybytes_to_bytes(&py_message, py))
+                    .unwrap()
+            }
+            RoutedValuePayload::WatermarkMessage(..) => {
+                return Box::pin(async move { Ok(message) })
+            }
+        };
 
         Box::pin(async move {
             // TODO: This route-based forwarding does not need to be
             // run with multiple threads. Look into removing this from the async task.
-            if route != actual_route || message.payload().payload.is_watermark_msg() {
+            if route != actual_route {
                 return Ok(message);
             }
 
@@ -118,7 +125,7 @@ mod tests {
         traced_with_gil("test_to_bytes", |py| {
             let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(
-                pybytes_to_bytes(&arroyo_msg, py).unwrap(),
+                pybytes_to_bytes(&arroyo_msg.payload().payload.unwrap_payload(), py).unwrap(),
                 b"hello".to_vec()
             );
         });

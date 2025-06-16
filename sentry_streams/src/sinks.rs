@@ -145,6 +145,7 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
+        // TODO: pass watermark message on to produce step instead of next step here
         if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             self.next_strategy.submit(message)
         } else {
@@ -184,10 +185,10 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
+    use crate::messages::{RoutedValuePayload, WatermarkMessage};
     use crate::routes::Route;
     use crate::test_operators::make_raw_routed_msg;
     use crate::utils::traced_with_gil;
-    use parking_lot::Mutex;
     use sentry_arroyo::backends::local::broker::LocalBroker;
 
     use sentry_arroyo::backends::local::LocalProducer;
@@ -198,6 +199,8 @@ mod tests {
     use sentry_arroyo::types::Topic;
     use sentry_arroyo::utils::clock::TestingClock;
 
+    use parking_lot::Mutex;
+    use std::collections::BTreeMap;
     use std::ops::Deref;
     use std::sync::Arc;
     use std::sync::Mutex as RawMutex;
@@ -220,6 +223,42 @@ mod tests {
             assert!(kafka_payload.is_some());
             assert_eq!(kafka_payload.unwrap(), b"test_message");
         });
+    }
+
+    #[test]
+    fn test_watermark_message() {
+        let result_topic = Topic::new("result-topic");
+        let mut broker = LocalBroker::new(
+            Box::new(MemoryMessageStorage::default()),
+            Box::new(TestingClock::new(SystemTime::now())),
+        );
+        broker.create_topic(result_topic, 1).unwrap();
+        let broker = Arc::new(Mutex::new(broker));
+        let producer = LocalProducer::new(broker.clone());
+
+        let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
+        let submitted_watermarks = Arc::new(RawMutex::new(Vec::new()));
+        let submitted_watermarks_clone = submitted_watermarks.clone();
+        let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
+
+        let mut sink = StreamSink::new(
+            Route::new("source".to_string(), vec!["wp1".to_string()]),
+            producer,
+            &ConcurrencyConfig::new(1),
+            "result-topic",
+            Box::new(next_step),
+            Box::new(Noop {}),
+        );
+
+        let watermark_val = RoutedValue {
+            route: Route::new(String::from("source"), vec![]),
+            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+        };
+        let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
+        let watermark_res = sink.submit(watermark_msg);
+        assert!(watermark_res.is_ok());
+        let watermark_messages = submitted_watermarks_clone.lock().unwrap();
+        assert_eq!(watermark_messages.len(), 1);
     }
 
     #[test]

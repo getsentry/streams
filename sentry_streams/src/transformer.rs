@@ -20,10 +20,15 @@ pub fn build_map(
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     let copied_route = route.clone();
     let mapper = move |message: Message<RoutedValue>| {
-        if message.payload().route != copied_route || message.payload().payload.is_watermark_msg() {
+        if message.payload().route != copied_route {
             Ok(message)
         } else {
-            let transformed = call_python_function(&callable, &message);
+            let transformed = match message.payload().payload {
+                RoutedValuePayload::PyStreamingMessage(ref msg) => {
+                    call_python_function(&callable, &msg)
+                }
+                RoutedValuePayload::WatermarkMessage(..) => return Ok(message),
+            };
             // TODO: Create an exception for Invalid messages in Python
             // This now crashes if the Python code fails.
             let route = message.payload().route.clone();
@@ -56,6 +61,7 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
+    use crate::messages::WatermarkMessage;
     use crate::routes::Route;
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
@@ -78,6 +84,7 @@ mod tests {
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
             let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
+            let submitted_watermarks_clone = submitted_watermarks.clone();
             let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
             let mut strategy = build_map(
@@ -119,6 +126,16 @@ mod tests {
             let actual_messages = submitted_messages_clone.lock().unwrap();
 
             assert_messages_match(py, expected_messages, actual_messages.deref());
+
+            let watermark_val = RoutedValue {
+                route: Route::new(String::from("source"), vec![]),
+                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+            };
+            let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
+            let watermark_res = strategy.submit(watermark_msg);
+            assert!(watermark_res.is_ok());
+            let watermark_messages = submitted_watermarks_clone.lock().unwrap();
+            assert_eq!(watermark_messages.len(), 1);
         });
     }
 }

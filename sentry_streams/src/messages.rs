@@ -78,9 +78,15 @@ pub fn headers_to_sequence(
     Ok(seq.unbind())
 }
 
-/// WatermarkMessages are sent by the Watermark step periodically to ensure
-/// the consumer's commit policy functions even when the consumer strategy
-/// contains multiple branching routes.
+/// WatermarkMessages are sent by the Watermark step.
+/// The Watermark step is at the top of the pipeline and sends these messages on poll() calls
+/// with a given frequency.
+/// The purpose of WatermarkMessages is to ensure we only commit a message once all processing
+/// is completed for that message. The Broadcast step creates multiple copies of a message
+/// (each with a different Route), meaning that we can only commit once all message copies
+/// reach the end of the pipeline. WatermarkMessages help us accomplish that by also being
+/// copied by the Broadcast step, at which point the Commit policy will count the # of received
+/// WatermarkMessages and decide if we should commit.
 #[derive(Debug, Copy, Clone)]
 #[pyclass]
 pub struct WatermarkMessage {
@@ -504,26 +510,23 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         traced_with_gil("test_rawmessage_lifecycle", |py| {
             let headers = vec![
-                    ("alpha".to_string(), vec![1, 2]),
-                    ("beta".to_string(), vec![3, 4]),
-                ];
+                ("alpha".to_string(), vec![1, 2]),
+                ("beta".to_string(), vec![3, 4]),
+            ];
             let py_headers = headers_to_sequence(py, &headers).unwrap();
             let payload_bytes = vec![100, 101, 102, 103];
             let py_payload = PyBytes::new(py, &payload_bytes);
-            let raw_msg = RawMessage::new(
-                    py_payload.unbind(),
-                    py_headers.clone_ref(py),
-                    0.,
-                    None,
-                    py,
-                )
-                .unwrap();
+            let raw_msg =
+                RawMessage::new(py_payload.unbind(), py_headers.clone_ref(py), 0., None, py)
+                    .unwrap();
             let py_raw_msg = raw_msg.into_pyobject(py).unwrap().unbind();
-            let msg = PyStreamingMessage::RawMessage {content: py_raw_msg};
+            let msg = PyStreamingMessage::RawMessage {
+                content: py_raw_msg,
+            };
             let payload_msg = RoutedValuePayload::PyStreamingMessage(msg);
             match payload_msg.unwrap_payload() {
                 PyStreamingMessage::RawMessage { content: _ } => (),
-                x => panic!()
+                _ => panic!(),
             }
         })
     }
