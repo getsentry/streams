@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import MutableSequence, Self
+from typing import MutableSequence, Optional, Self, Tuple
 
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
@@ -22,17 +22,19 @@ from sentry_streams.pipeline.window import SlidingWindow
 # - produces the event on Kafka
 
 
-class TransformerBatch(Accumulator[Message[IngestMetric], MutableSequence[IngestMetric]]):
+class TransformerBatch(
+    Accumulator[Message[IngestMetric], MutableSequence[Tuple[IngestMetric, Optional[str]]]]
+):
 
     def __init__(self) -> None:
-        self.batch: MutableSequence[IngestMetric] = []
+        self.batch: MutableSequence[Tuple[IngestMetric, Optional[str]]] = []
 
     def add(self, value: Message[IngestMetric]) -> Self:
-        self.batch.append(value.payload)
+        self.batch.append((value.payload, value.schema))
 
         return self
 
-    def get_value(self) -> MutableSequence[IngestMetric]:
+    def get_value(self) -> MutableSequence[Tuple[IngestMetric, Optional[str]]]:
         return self.batch
 
     def merge(self, other: Self) -> Self:
