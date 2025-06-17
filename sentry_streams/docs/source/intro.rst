@@ -57,8 +57,15 @@ runtime, follow these steps:
 
     pip install sentry_streams
 
+For local development, instead of using pip, install the package from the source code:
 
-4. Create a new Pyhon module for your streaming application:
+.. code-block::
+
+    make install-dev
+    source sentry_streams/.venv/bin/activate
+
+
+4. Create a new Python module for your streaming application, or use one of the examples from the `sentry_streams/examples` folder:
 
 .. code-block:: python
     :linenos:
@@ -81,8 +88,15 @@ runtime, follow these steps:
     )
 
 This is a simple pipeline that takes a stream of JSON messages that fits the schema of the "ingest-metrics" topic (from sentry-kafka-schema), parses them,
-casts them to the message type IngestMetric object, and serializes them back to JSON
-and produces the result to another topic.
+casts them to the message type IngestMetric object, and serializes them back to JSON and produces the result to another topic.
+
+Note that if these topics don't exist, they will need to be created. With docker:
+
+.. code-block::
+
+    docker exec -it <YOUR KAFKA CONTAINER NAME> kafka-topics --bootstrap-server 127.0.0.1:9092 --create --topic ingest-metrics --partitions 1 --replication-factor 1
+    docker exec -it <YOUR KAFKA CONTAINER NAME> kafka-topics --bootstrap-server 127.0.0.1:9092 --create --topic transformed-events --partitions 1 --replication-factor 1
+
 
 5. Run the pipeline
 
@@ -91,16 +105,16 @@ and produces the result to another topic.
     SEGMENT_ID=0 python -m sentry_streams.runner \
     -n Batch \
     --config sentry_streams/deployment_config/<YOUR CONFIG FILE>.yaml \
-    --adapter arroyo \
+    --adapter rust-arroyo \
     <YOUR PIPELINE FILE>
 
 for the above code example, use `sentry_streams/sentry_streams/deployment_config/simple_map_filter.yaml` for the deployment config file (assuming you have two local Kafka topics for source and sink)
 
-6. Produce events on the `events` topic and consume them from the `transformed-events` topic.
+6. Produce events on the `ingest-metrics` topic and consume them from the `transformed-events` topic.
 
 .. code-block::
 
-    echo '{"type": "event", "data": {"foo": "bar"}}' | kcat -b localhost:9092 -P -t events
+    echo '{"org_id": 420, "project_id": 420, "name": "c:sessions/session@none", "tags": {}, "timestamp": 1111111111111111, "retention_days": 90, "type": "c", "value": 1}' | kcat -b localhost:9092 -P -t ingest-metrics
 
 .. code-block::
 
