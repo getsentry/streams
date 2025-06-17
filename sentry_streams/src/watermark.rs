@@ -116,6 +116,10 @@ mod tests {
         );
         watermark.last_timestamp = 0;
         let _ = watermark.poll();
-        assert!(submitted_watermarks_clone.lock().unwrap().len() == 1);
+        assert_eq!(submitted_watermarks_clone.lock().unwrap().len(), 1);
+
+        // immediately polling again shouldn't send a watermark because period hasn't elapsed
+        let _ = watermark.poll();
+        assert_eq!(submitted_watermarks_clone.lock().unwrap().len(), 1);
     }
 }
