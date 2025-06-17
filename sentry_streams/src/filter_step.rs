@@ -1,4 +1,4 @@
-use crate::messages::PyStreamingMessage;
+use crate::messages::{PyStreamingMessage, RoutedValuePayload};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::{Py, PyAny, Python};
@@ -40,29 +40,36 @@ impl ProcessingStrategy<RoutedValue> for Filter {
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        if self.route != message.payload().route {
+        // WatermarkMessages are submitted to next_step immediately so they aren't passed to the filter function
+        if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             self.next_step.submit(message)
         } else {
-            let res = traced_with_gil("FilterStrategy submit", |py: Python<'_>| {
-                let python_payload: Py<PyAny> = match message.payload().payload {
-                    PyStreamingMessage::PyAnyMessage { ref content } => {
-                        content.clone_ref(py).into_any()
-                    }
-                    PyStreamingMessage::RawMessage { ref content } => {
-                        content.clone_ref(py).into_any()
-                    }
-                };
-
-                let py_res = self.callable.call1(py, (python_payload,));
-
-                match py_res {
-                    Ok(boolean) => {
-                        let filtered = boolean.is_truthy(py).unwrap();
-                        Ok(filtered)
-                    }
-                    Err(e) => return Err(e),
+            let res: Result<bool, pyo3::PyErr> = match message.payload().payload {
+                RoutedValuePayload::PyStreamingMessage(ref py_payload) => {
+                    traced_with_gil("FilterStrategy submit", |py: Python<'_>| {
+                        let python_payload: Py<PyAny> = match py_payload {
+                            PyStreamingMessage::PyAnyMessage { ref content } => {
+                                content.clone_ref(py).into_any()
+                            }
+                            PyStreamingMessage::RawMessage { ref content } => {
+                                content.clone_ref(py).into_any()
+                            }
+                        };
+                        let py_res = self.callable.call1(py, (python_payload,));
+                        match py_res {
+                            Ok(boolean) => {
+                                let filtered = boolean.is_truthy(py).unwrap();
+                                Ok(filtered)
+                            }
+                            Err(e) => Err(e),
+                        }
+                    })
                 }
-            });
+                RoutedValuePayload::WatermarkMessage(..) => {
+                    unreachable!("Watermark message trying to be passed to filter function.")
+                }
+            };
+
             match res {
                 Ok(bool) => {
                     if bool {
@@ -100,6 +107,7 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
+    use crate::messages::WatermarkMessage;
     use crate::routes::Route;
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
@@ -119,7 +127,9 @@ mod tests {
             let callable = make_lambda(py, c_str!("lambda x: 'test' in x.payload"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
-            let next_step = FakeStrategy::new(submitted_messages, false);
+            let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
+            let submitted_watermarks_clone = submitted_watermarks.clone();
+            let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
             let mut strategy = build_filter(
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
@@ -173,6 +183,16 @@ mod tests {
             let actual_messages = submitted_messages_clone.lock().unwrap();
 
             assert_messages_match(py, expected_messages, actual_messages.deref());
+
+            let watermark_val = RoutedValue {
+                route: Route::new(String::from("source"), vec![]),
+                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+            };
+            let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
+            let watermark_res = strategy.submit(watermark_msg);
+            assert!(watermark_res.is_ok());
+            let watermark_messages = submitted_watermarks_clone.lock().unwrap();
+            assert_eq!(watermark_messages.len(), 1);
         });
     }
 }

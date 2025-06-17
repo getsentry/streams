@@ -4,7 +4,6 @@ from typing import Any, Callable, Mapping, Self, Sequence, Tuple, TypeVar
 from sentry_streams.adapters.arroyo.rust_step import RustOperatorFactory
 from sentry_streams.pipeline.message import Message
 
-TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 
 class Route:
@@ -56,9 +55,7 @@ class RuntimeOperator:
     @classmethod
     def Router(cls, route: Route, function: Callable[[Message[Any]], str]) -> Self: ...
     @classmethod
-    def PythonAdapter(
-        cls, route: Route, delegate_Factory: RustOperatorFactory[TIn, TOut]
-    ) -> Self: ...
+    def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
 
 class ArroyoConsumer:
     def __init__(
