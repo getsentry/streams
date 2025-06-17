@@ -15,6 +15,10 @@ def transform_msg(msg: Message[IngestMetric]) -> Mapping[str, Any]:
     return {**msg.payload, "transformed": True}
 
 
+def generate_files() -> str:
+    return "uploaded_file.txt"
+
+
 # A pipline with a few transformations
 pipeline = (
     streaming_source(
@@ -30,5 +34,5 @@ pipeline = (
     .apply("filter", Filter(function=filter_events))
     .apply("transform", Map(function=transform_msg))
     .apply("serializer", Serializer())
-    .sink("mysink", GCSSink(bucket="arroyo-artifacts", object_file="uploaded.txt"))
+    .sink("mysink", GCSSink(bucket="arroyo-artifacts", object_generator=generate_files))
 )
