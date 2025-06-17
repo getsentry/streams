@@ -10,6 +10,13 @@ from typing import (
     cast,
 )
 
+from arroyo.processing.strategies.run_task_with_multiprocessing import (
+    MultiprocessingPool,
+)
+
+from sentry_streams.adapters.arroyo.multi_process_delegate import (
+    MultiprocessDelegateFactory,
+)
 from sentry_streams.adapters.arroyo.reduce_delegate import ReduceDelegateFactory
 from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
@@ -17,6 +24,7 @@ from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.config_types import (
     KafkaConsumerConfig,
     KafkaProducerConfig,
+    MultiProcessConfig,
     StepConfig,
 )
 from sentry_streams.pipeline.function_template import (
@@ -179,25 +187,52 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
-        def transform_msg(msg: Message[Any]) -> Union[PyAnyMessage, RawMessage]:
-            ret = step.resolved_function(msg)
-            if isinstance(ret, bytes):
-                return PyRawMessage(
-                    payload=ret,
+        route = RustRoute(stream.source, stream.waypoints)
+
+        step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
+        parallelism_config = step_config.get("parallelism")
+
+        if parallelism_config:
+            multi_process_config = cast(MultiProcessConfig, parallelism_config["multi_process"])
+
+            logger.info(
+                f"Initializing map {step.name} with {multi_process_config['processes']} processes"
+            )
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.PythonAdapter(
+                    route,
+                    MultiprocessDelegateFactory(
+                        step,
+                        multi_process_config["batch_size"],
+                        multi_process_config["batch_time"],
+                        MultiprocessingPool(
+                            num_processes=multi_process_config["processes"],
+                        ),
+                    ),
+                )
+            )
+        else:
+            logger.info(f"Initializing map {step.name} single threaded")
+
+            def transform_msg(msg: Message[Any]) -> Union[PyAnyMessage, RawMessage]:
+                # TODO: move this logic to Rust
+                ret = step.resolved_function(msg)
+                if isinstance(ret, bytes):
+                    return PyRawMessage(
+                        payload=ret,
+                        headers=msg.headers,
+                        timestamp=msg.timestamp,
+                        schema=msg.schema,
+                    ).inner
+
+                return PyMessage(
+                    payload=step.resolved_function(msg),
                     headers=msg.headers,
                     timestamp=msg.timestamp,
                     schema=msg.schema,
                 ).inner
 
-            return PyMessage(
-                payload=step.resolved_function(msg),
-                headers=msg.headers,
-                timestamp=msg.timestamp,
-                schema=msg.schema,
-            ).inner
-
-        route = RustRoute(stream.source, stream.waypoints)
-        self.__consumers[stream.source].add_step(RuntimeOperator.Map(route, transform_msg))
+            self.__consumers[stream.source].add_step(RuntimeOperator.Map(route, transform_msg))
         return stream
 
     def flat_map(self, step: FlatMap, stream: Route) -> Route:

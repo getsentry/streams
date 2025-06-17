@@ -25,7 +25,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.message import Message
-from sentry_streams.pipeline.msg_parser import msg_parser, msg_serializer
+from sentry_streams.pipeline.msg_codecs import msg_parser, msg_serializer
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
 )
