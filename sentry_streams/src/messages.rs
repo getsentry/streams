@@ -91,21 +91,19 @@ pub fn headers_to_sequence(
 /// copied by the Broadcast step, at which point the Commit policy will count the # of received
 /// WatermarkMessages and decide if we should commit.
 ///
-/// TODO: expected_copies needs to be updated by Broadcast steps to signify the number
-///       of downstream routes that the watermark has been copied to.
+/// TODO:
+/// - reduce/broadcast/router steps need to handle WatermarkMessages instead of just forwarding them downstream immediately
+/// - comit policy needs to be aware of the total # of broadcast branches so it knows how many copies of a given WatermarkMessage
+///   to anticipate before it sends a CommitRequest
 #[derive(Debug, Clone, PartialEq)]
 #[pyclass]
 pub struct WatermarkMessage {
-    pub expected_copies: usize,
     pub committable: BTreeMap<Partition, u64>,
 }
 
 impl WatermarkMessage {
     pub fn new(committable: BTreeMap<Partition, u64>) -> Self {
-        Self {
-            expected_copies: 1,
-            committable,
-        }
+        Self { committable }
     }
 }
 

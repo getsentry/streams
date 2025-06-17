@@ -104,6 +104,8 @@ pub fn make_raw_routed_msg(
     Message::new_any_message(routed_value, std::collections::BTreeMap::new())
 }
 
+/// Returns a BTreeMap of {Partition: Offset}. Topic name and offset starts at `starting_offset`,
+/// while `num_partitions` is the total number of entries in the BTreeMap.
 #[cfg(test)]
 pub fn make_committable(num_partitions: u64, starting_offset: u64) -> BTreeMap<Partition, u64> {
     let mut committable = BTreeMap::new();

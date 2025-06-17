@@ -25,7 +25,7 @@ pub struct Watermark {
     pub next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     pub route: Route,
     pub period: u64,
-    pub last_seen_committable: BTreeMap<Partition, u64>,
+    pub watermark_committable: BTreeMap<Partition, u64>,
     last_sent_timestamp: u64,
 }
 
@@ -41,7 +41,7 @@ impl Watermark {
             next_step,
             route,
             period,
-            last_seen_committable: empty_committable,
+            watermark_committable: empty_committable,
             last_sent_timestamp: current_timestamp,
         }
     }
@@ -55,7 +55,7 @@ impl Watermark {
         let watermark_msg = RoutedValue {
             route: self.route.clone(),
             payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
-                self.last_seen_committable.clone(),
+                self.watermark_committable.clone(),
             )),
         };
         let result = self
@@ -64,6 +64,7 @@ impl Watermark {
         match result {
             Ok(..) => {
                 self.last_sent_timestamp = timestamp;
+                self.watermark_committable = BTreeMap::new();
                 Ok(())
             }
             Err(err) => match err {
@@ -73,12 +74,10 @@ impl Watermark {
         }
     }
 
-    fn update_last_seen_committable(&mut self, message: &Message<RoutedValue>) {
-        let mut committable = BTreeMap::new();
+    fn merge_watermark_committable(&mut self, message: &Message<RoutedValue>) {
         for (partition, offset) in message.committable() {
-            committable.insert(partition, offset);
+            self.watermark_committable.insert(partition, offset);
         }
-        self.last_seen_committable = committable;
     }
 }
 
@@ -91,7 +90,7 @@ impl ProcessingStrategy<RoutedValue> for Watermark {
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        self.update_last_seen_committable(&message);
+        self.merge_watermark_committable(&message);
         self.next_step.submit(message)
     }
 
@@ -148,9 +147,9 @@ mod tests {
                 committable.clone(),
             );
             let _ = watermark.submit(message);
-            assert_eq!(watermark.last_seen_committable, committable);
+            assert_eq!(watermark.watermark_committable, committable);
 
-            // Watermark step updates committable
+            // Watermark step merges committables
             let committable = make_committable(3, 2);
             let message = Message::new_any_message(
                 build_routed_value(
@@ -162,14 +161,15 @@ mod tests {
                 committable.clone(),
             );
             let _ = watermark.submit(message);
-            assert_eq!(watermark.last_seen_committable, committable);
+            let expected_committable = make_committable(4, 1);
+            assert_eq!(watermark.watermark_committable, expected_committable);
 
             // submitted WatermarkMessage contains the last seen committable
             watermark.last_sent_timestamp = 0;
             let _ = watermark.poll();
             assert_eq!(
                 submitted_watermarks_clone.lock().unwrap()[0],
-                WatermarkMessage::new(committable)
+                WatermarkMessage::new(expected_committable)
             );
         })
     }

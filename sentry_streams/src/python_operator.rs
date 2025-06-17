@@ -512,7 +512,9 @@ class RustOperatorDelegateFactory:
 
             let watermark_val = RoutedValue {
                 route: Route::new(String::from("source"), vec![]),
-                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
+                    BTreeMap::new(),
+                )),
             };
             let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
             let watermark_res = operator.submit(watermark_msg);
