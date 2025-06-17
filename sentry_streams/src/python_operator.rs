@@ -299,6 +299,7 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
+    use crate::messages::WatermarkMessage;
     use crate::test_operators::build_routed_value;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
@@ -460,6 +461,7 @@ class RustOperatorDelegateFactory:
             let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
             let submitted_watermarks = Arc::new(RawMutex::new(Vec::new()));
+            let submitted_watermarks_clone = submitted_watermarks.clone();
             let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
             let mut operator = PythonAdapter::new(
@@ -507,6 +509,16 @@ class RustOperatorDelegateFactory:
                 let actual_messages = submitted_messages_clone.lock().unwrap();
                 assert_messages_match(py, expected_messages, actual_messages.deref());
             } // Unlock the MutexGuard around `actual_messages`
+
+            let watermark_val = RoutedValue {
+                route: Route::new(String::from("source"), vec![]),
+                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+            };
+            let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
+            let watermark_res = operator.submit(watermark_msg);
+            assert!(watermark_res.is_ok());
+            let watermark_messages = submitted_watermarks_clone.lock().unwrap();
+            assert_eq!(watermark_messages.len(), 1);
         })
     }
 
