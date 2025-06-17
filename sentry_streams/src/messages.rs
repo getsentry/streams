@@ -78,6 +78,27 @@ pub fn headers_to_sequence(
     Ok(seq.unbind())
 }
 
+/// WatermarkMessages are sent by the Watermark step.
+/// The Watermark step is at the top of the pipeline and sends these messages on poll() calls
+/// with a given frequency.
+/// The purpose of WatermarkMessages is to ensure we only commit a message once all processing
+/// is completed for that message. The Broadcast step creates multiple copies of a message
+/// (each with a different Route), meaning that we can only commit once all message copies
+/// reach the end of the pipeline. WatermarkMessages help us accomplish that by also being
+/// copied by the Broadcast step, at which point the Commit policy will count the # of received
+/// WatermarkMessages and decide if we should commit.
+#[derive(Debug, Copy, Clone)]
+#[pyclass]
+pub struct WatermarkMessage {
+    pub timestamp: f64,
+}
+
+impl WatermarkMessage {
+    pub fn new(timestamp: f64) -> Self {
+        Self { timestamp }
+    }
+}
+
 /// Represents a message with any Python object as payload. This message type
 /// is meant to be processed by Python operators. Rust operators should consider
 /// The payload as opaque and should not transform it.
@@ -249,6 +270,36 @@ pub fn into_pyraw(py: Python<'_>, message: RawMessage) -> PyResult<Py<RawMessage
 pub enum PyStreamingMessage {
     PyAnyMessage { content: Py<PyAnyMessage> },
     RawMessage { content: Py<RawMessage> },
+}
+
+/// RoutedValuePayload is an enum type to describe the 2 possible payload values of a RoutedValue:
+/// - PyStreamingMessage: a message containing data that will be processed by the pipeline
+/// - WatermarkMessage: a message emitted by the Watermark step which is propagated down the pipeline
+///   to ensure we only commit messages which have completed all pipeline processing
+#[derive(Debug)]
+pub enum RoutedValuePayload {
+    PyStreamingMessage(PyStreamingMessage),
+    WatermarkMessage(WatermarkMessage),
+}
+
+impl RoutedValuePayload {
+    pub fn is_watermark_msg(&self) -> bool {
+        match self {
+            RoutedValuePayload::PyStreamingMessage(..) => false,
+            RoutedValuePayload::WatermarkMessage(..) => true,
+        }
+    }
+
+    /// Unwraps the `PyStreamingMessage` within the `RoutedValue` payload.
+    /// If the payload is a `WatermarkMessage` this panics.
+    pub fn unwrap_payload(&self) -> &PyStreamingMessage {
+        match &self {
+            RoutedValuePayload::PyStreamingMessage(payload) => &payload,
+            RoutedValuePayload::WatermarkMessage(..) => panic!(
+                "Invalid message payload, expected PyStreamingMessage but got WatermarkPayload."
+            ),
+        }
+    }
 }
 
 impl Into<PyStreamingMessage> for Py<PyAny> {
@@ -445,5 +496,46 @@ mod tests {
             );
             assert_eq!(repr.extract::<String>(py).unwrap(), expected_repr);
         });
+    }
+
+    #[test]
+    fn test_is_watermark_message() {
+        let wmsg = WatermarkMessage::new(0.);
+        let payload_wmsg = RoutedValuePayload::WatermarkMessage(wmsg);
+        assert!(payload_wmsg.is_watermark_msg());
+    }
+
+    #[test]
+    fn test_unwrap_payload_py_msg() {
+        pyo3::prepare_freethreaded_python();
+        traced_with_gil("test_rawmessage_lifecycle", |py| {
+            let headers = vec![
+                ("alpha".to_string(), vec![1, 2]),
+                ("beta".to_string(), vec![3, 4]),
+            ];
+            let py_headers = headers_to_sequence(py, &headers).unwrap();
+            let payload_bytes = vec![100, 101, 102, 103];
+            let py_payload = PyBytes::new(py, &payload_bytes);
+            let raw_msg =
+                RawMessage::new(py_payload.unbind(), py_headers.clone_ref(py), 0., None, py)
+                    .unwrap();
+            let py_raw_msg = raw_msg.into_pyobject(py).unwrap().unbind();
+            let msg = PyStreamingMessage::RawMessage {
+                content: py_raw_msg,
+            };
+            let payload_msg = RoutedValuePayload::PyStreamingMessage(msg);
+            match payload_msg.unwrap_payload() {
+                PyStreamingMessage::RawMessage { content: _ } => (),
+                _ => panic!(),
+            }
+        })
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_unwrap_payload_watermark_msg() {
+        let wmsg = WatermarkMessage::new(0.);
+        let payload_wmsg = RoutedValuePayload::WatermarkMessage(wmsg);
+        payload_wmsg.unwrap_payload();
     }
 }

@@ -4,7 +4,6 @@ from typing import Any, Callable, Mapping, Self, Sequence, Tuple, TypeVar
 from sentry_streams.adapters.arroyo.rust_step import RustOperatorFactory
 from sentry_streams.pipeline.message import Message
 
-TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 
 class Route:

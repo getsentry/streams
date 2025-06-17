@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Generic, Optional, Sequence, Tuple, TypeVar, Union, cast
+from typing import (
+    Any,
+    Generic,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
@@ -110,7 +120,7 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
         return f"PyMessage({self.inner.__repr__()})"
 
     def __str__(self) -> str:
-        return self.inner.__str__()
+        return repr(self)
 
     def to_inner(self) -> RustMessage:
         return self.inner
@@ -121,6 +131,22 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
             deepcopy(self.inner.headers),
             self.inner.timestamp,
             self.inner.schema,
+        )
+
+    def __getstate__(self) -> Mapping[str, Any]:
+        return {
+            "payload": self.payload,
+            "headers": self.headers,
+            "timestamp": self.timestamp,
+            "schema": self.schema,
+        }
+
+    def __setstate__(self, state: Mapping[str, Any]) -> None:
+        self.inner = PyAnyMessage(
+            state["payload"],
+            state["headers"],
+            state["timestamp"],
+            state.get("schema"),
         )
 
 
@@ -158,7 +184,7 @@ class PyRawMessage(Message[bytes]):
         return f"RawMessage({self.inner.__repr__()})"
 
     def __str__(self) -> str:
-        return self.inner.__str__()
+        return repr(self)
 
     def to_inner(self) -> RustMessage:
         return self.inner
@@ -169,6 +195,22 @@ class PyRawMessage(Message[bytes]):
             deepcopy(self.inner.headers),
             self.inner.timestamp,
             self.inner.schema,
+        )
+
+    def __getstate__(self) -> Mapping[str, Any]:
+        return {
+            "payload": self.payload,
+            "headers": self.headers,
+            "timestamp": self.timestamp,
+            "schema": self.schema,
+        }
+
+    def __setstate__(self, state: Mapping[str, Any]) -> None:
+        self.inner = RawMessage(
+            state["payload"],
+            state["headers"],
+            state["timestamp"],
+            state.get("schema"),
         )
 
 

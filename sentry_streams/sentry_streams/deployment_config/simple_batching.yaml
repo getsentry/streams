@@ -1,6 +1,3 @@
-# Default configuration
-# As of now, the assumption is that local adapters (like Arroyo)
-# do not require overrides of this file
 env: {}
 
 pipeline:
@@ -9,5 +6,7 @@ pipeline:
         myinput:
           starts_segment: True
           bootstrap_servers: ["127.0.0.1:9092"]
+        mybatch:
+          batch_size: 2
         mysink:
           bootstrap_servers: ["127.0.0.1:9092"]

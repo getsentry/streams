@@ -1,4 +1,5 @@
 use crate::callers::call_any_python_function;
+use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
@@ -14,7 +15,11 @@ fn route_message(
     if message.payload().route != *route {
         return Ok(message);
     }
-    let dest_route = call_any_python_function(callable, &message);
+    let dest_route = match message.payload().payload {
+        RoutedValuePayload::PyStreamingMessage(ref msg) => call_any_python_function(callable, &msg),
+        // TODO: a future PR will remove this gate on WatermarkMessage and duplicate it for each downstream route.
+        RoutedValuePayload::WatermarkMessage(..) => return Ok(message),
+    };
     match dest_route {
         Ok(dest_route) => {
             let new_waypoint = traced_with_gil("route_message", |py| {

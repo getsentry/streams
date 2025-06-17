@@ -13,6 +13,7 @@ mod sinks;
 mod store_sinks;
 mod transformer;
 mod utils;
+mod watermark;
 
 #[cfg(test)]
 mod fake_strategy;
