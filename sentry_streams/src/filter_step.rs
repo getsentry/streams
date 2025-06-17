@@ -40,6 +40,7 @@ impl ProcessingStrategy<RoutedValue> for Filter {
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
+        // WatermarkMessages are submitted to next_step immediately so they aren't passed to the filter function
         if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             self.next_step.submit(message)
         } else {
