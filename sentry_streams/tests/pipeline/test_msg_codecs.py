@@ -1,11 +1,17 @@
 import json
 from datetime import datetime
 from importlib import resources
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 from unittest.mock import MagicMock
 
-from sentry_streams.pipeline.message import PyMessage
-from sentry_streams.pipeline.msg_codecs import batch_msg_parser, msg_serializer
+import pytest
+
+from sentry_streams.pipeline.message import Message, PyMessage
+from sentry_streams.pipeline.msg_codecs import (
+    _get_codec_from_msg,
+    batch_msg_parser,
+    msg_serializer,
+)
 
 
 def test_msg_serializer_default_isoformat() -> None:
@@ -49,3 +55,26 @@ def test_batch_msg_parser_nominal_case() -> None:
 
     result = batch_msg_parser(msg)
     assert result == expected
+
+
+def test_msg_no_schema() -> None:
+    msg: Message[Mapping[Any, Any]] = PyMessage(
+        payload={},
+        schema=None,
+        headers=[],
+        timestamp=0.0,
+    )
+    with pytest.raises(AssertionError):
+        _get_codec_from_msg(msg)
+
+
+def test_msg_no_found_schema() -> None:
+    msg: Message[Mapping[Any, Any]] = PyMessage(
+        payload={},
+        schema="invalid-schema",
+        headers=[],
+        timestamp=0.0,
+    )
+    with pytest.raises(ValueError) as e:
+        _get_codec_from_msg(msg)
+    assert "Kafka topic invalid-schema has no associated schema" in str(e.value)
