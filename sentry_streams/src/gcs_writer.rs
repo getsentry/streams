@@ -67,7 +67,7 @@ impl GCSWriter {
     }
 }
 
-fn str_python_fn(object_generator: Py<PyAny>, py: Python<'_>) -> PyResult<String> {
+fn object_gen_fn(object_generator: Py<PyAny>, py: Python<'_>) -> PyResult<String> {
     let res: Py<PyAny> = object_generator.call0(py)?;
     let output: String = res.extract(py)?;
 
@@ -79,7 +79,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
     fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
         let client = self.client.clone();
         let object = traced_with_gil("call_GCS_object_generator", |py| {
-            str_python_fn(self.object_generator.clone_ref(py), py)
+            object_gen_fn(self.object_generator.clone_ref(py), py)
         })
         .unwrap();
 
