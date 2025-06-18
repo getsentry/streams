@@ -62,7 +62,6 @@ For local development, instead of using pip, install the package from the source
 .. code-block::
 
     make install-dev
-    source sentry_streams/.venv/bin/activate
 
 
 4. Create a new Python module for your streaming application, or use one of the examples from the `sentry_streams/examples` folder:
