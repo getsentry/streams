@@ -69,9 +69,7 @@ impl GCSWriter {
 
 fn object_gen_fn(object_generator: Py<PyAny>, py: Python<'_>) -> PyResult<String> {
     let res: Py<PyAny> = object_generator.call0(py)?;
-    let output: String = res.extract(py)?;
-
-    Ok(output)
+    res.extract(py)
 }
 
 impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
