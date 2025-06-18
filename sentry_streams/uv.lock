@@ -1,5 +1,4 @@
 version = 1
-revision = 1
 requires-python = ">=3.11"
 
 [[package]]
@@ -749,7 +748,7 @@ wheels = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.21"
+version = "0.0.23"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },

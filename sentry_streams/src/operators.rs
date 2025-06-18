@@ -51,7 +51,7 @@ pub enum RuntimeOperator {
     GCSSink {
         route: Route,
         bucket: String,
-        object_file: String,
+        object_generator: Py<PyAny>,
     },
 
     /// Represent a router step in the pipeline that can send messages
@@ -107,14 +107,20 @@ pub fn build(
         RuntimeOperator::GCSSink {
             route,
             bucket,
-            object_file,
-        } => Box::new(GCSSink::new(
-            route.clone(),
-            next,
-            concurrency_config,
-            &bucket,
-            &object_file,
-        )),
+            object_generator,
+        } => {
+            let func_ref = traced_with_gil("RuntimeOperator::Map function", |py| {
+                object_generator.clone_ref(py)
+            });
+
+            Box::new(GCSSink::new(
+                route.clone(),
+                next,
+                concurrency_config,
+                &bucket,
+                func_ref,
+            ))
+        }
 
         RuntimeOperator::Router {
             route,
