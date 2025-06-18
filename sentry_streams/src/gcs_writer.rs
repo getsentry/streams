@@ -18,8 +18,9 @@ use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
 use sentry_arroyo::types::Message;
 pub struct GCSWriter {
     client: Client,
-    url: String,
+    bucket: String,
     route: Route,
+    object_generator: Py<PyAny>,
 }
 
 fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Vec<u8>> {
@@ -36,12 +37,8 @@ fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Ve
 }
 
 impl GCSWriter {
-    pub fn new(bucket: &str, object: &str, route: Route) -> Self {
+    pub fn new(bucket: &str, object_generator: Py<PyAny>, route: Route) -> Self {
         let client = ClientBuilder::new();
-        let url = format!(
-            "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
-            bucket, object
-        );
 
         // TODO: Avoid having this step in the pipeline pick up environment variables.
         // Have a centralized place where all config and env vars are set
@@ -59,16 +56,37 @@ impl GCSWriter {
         );
 
         let client = client.default_headers(headers).build().unwrap();
+        let bucket = bucket.to_string();
 
-        GCSWriter { client, url, route }
+        GCSWriter {
+            client,
+            bucket,
+            route,
+            object_generator,
+        }
     }
+}
+
+fn object_gen_fn(object_generator: Py<PyAny>, py: Python<'_>) -> PyResult<String> {
+    let res: Py<PyAny> = object_generator.call0(py)?;
+    res.extract(py)
 }
 
 impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
     // Async task to write to GCS via HTTP
     fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
         let client = self.client.clone();
-        let url = self.url.clone();
+        let object = traced_with_gil("call_GCS_object_generator", |py| {
+            object_gen_fn(self.object_generator.clone_ref(py), py)
+        })
+        .unwrap();
+
+        let url = format!(
+            "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
+            self.bucket.clone(),
+            object
+        );
+
         let route = message.payload().route.clone();
         let actual_route = self.route.clone();
 

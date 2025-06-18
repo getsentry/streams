@@ -212,11 +212,15 @@ class StreamSink(Sink):
 @dataclass
 class GCSSink(Sink):
     bucket: str
-    object_file: str
+    object_generator: Callable[[], str]
 
     def build_sink(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return GCSSinkStep(
-            name=name, ctx=ctx, inputs=[previous], bucket=self.bucket, object_file=self.object_file
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            bucket=self.bucket,
+            object_generator=self.object_generator,
         )
 
 
