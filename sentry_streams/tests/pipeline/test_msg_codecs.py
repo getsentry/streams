@@ -4,9 +4,6 @@ from importlib import resources
 from typing import Sequence
 from unittest.mock import MagicMock
 
-from pytest import MonkeyPatch
-from sentry_kafka_schemas.codecs.json import JsonCodec
-
 from sentry_streams.pipeline.message import PyMessage
 from sentry_streams.pipeline.msg_codecs import batch_msg_parser, msg_serializer
 
@@ -32,7 +29,7 @@ def test_msg_serializer_custom_dt_format() -> None:
     assert json.loads(result_str) == {"timestamp": dt.strftime(dt_format)}
 
 
-def test_batch_msg_parser_nominal_case(monkeypatch: MonkeyPatch) -> None:
+def test_batch_msg_parser_nominal_case() -> None:
     with (
         resources.files("sentry_kafka_schemas.examples.ingest-metrics.1")
         .joinpath("base64-set.json")
@@ -43,21 +40,9 @@ def test_batch_msg_parser_nominal_case(monkeypatch: MonkeyPatch) -> None:
 
     payload: Sequence[bytes] = [json.dumps(data).encode("utf-8")]
 
-    with (
-        resources.files("sentry_kafka_schemas.schemas")
-        .joinpath("ingest-metrics.v1.schema.json")
-        .open("r") as f
-    ):
-        json_schema = json.load(f)
-
-    monkeypatch.setattr(
-        "sentry_streams.pipeline.msg_codecs._get_codec_from_msg",
-        lambda _: JsonCodec(json_schema=json_schema),
-    )
-
     msg = PyMessage(
         payload=payload,
-        schema="test-schema",
+        schema="ingest-metrics",
         headers=[],
         timestamp=0.0,
     )
