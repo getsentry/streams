@@ -209,7 +209,7 @@ class GCSSink(Sink):
     """
 
     bucket: str
-    object_file: str
+    object_generator: Callable[[], str]
     step_type: StepType = StepType.SINK
 
 
