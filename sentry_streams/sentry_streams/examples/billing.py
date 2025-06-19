@@ -1,17 +1,16 @@
-import json
 from typing import Optional, Self
 
+from sentry_kafka_schemas.schema_types.outcomes_v1 import Outcome
+
 from sentry_streams.pipeline import (
-    Map,
+    Parser,
     Reducer,
+    StreamSink,
     streaming_source,
 )
-from sentry_streams.pipeline.chain import StreamSink
 from sentry_streams.pipeline.function_template import KVAccumulator
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.window import TumblingWindow
-
-Outcome = dict[str, str]
 
 
 class OutcomesBuffer(KVAccumulator[Message[Outcome]]):
@@ -33,11 +32,11 @@ class OutcomesBuffer(KVAccumulator[Message[Outcome]]):
         value = message.payload
         outcome_type = ""
 
-        if "state" in value:
-            outcome_type += value["state"]
+        if "reason" in value:
+            outcome_type += value["reason"] or ""
 
-        if "data_cat" in value:
-            outcome_type += "-" + value["data_cat"]
+        if "category" in value:
+            outcome_type += str(value["category"])
 
         if outcome_type in self.map:
             self.map[outcome_type] += 1
@@ -67,18 +66,12 @@ class OutcomesBuffer(KVAccumulator[Message[Outcome]]):
         return self
 
 
-def build_outcome(value: Message[bytes]) -> Outcome:
-    d: Outcome = json.loads(value.payload.decode("utf-8"))
-
-    return d
-
-
 pipeline = (
     streaming_source(
         name="myinput",
         stream_name="events",
     )
-    .apply("mymap", Map(function=build_outcome))
+    .apply("myparser", Parser(msg_type=Outcome))
     .apply(
         "myreduce",
         Reducer(aggregate_func=lambda: OutcomesBuffer(), window=TumblingWindow(window_size=3)),
