@@ -1,4 +1,5 @@
 use crate::messages::PyStreamingMessage;
+use crate::messages::RoutedValuePayload;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
@@ -17,12 +18,13 @@ use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
 use sentry_arroyo::types::Message;
 pub struct GCSWriter {
     client: Client,
-    url: String,
+    bucket: String,
     route: Route,
+    object_generator: Py<PyAny>,
 }
 
-fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<Vec<u8>> {
-    match message.payload().payload {
+fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Vec<u8>> {
+    match message {
         PyStreamingMessage::PyAnyMessage { .. } => {
             panic!("Unsupported message type: GCS writers only support RawMessage");
         }
@@ -35,12 +37,8 @@ fn pybytes_to_bytes(message: &Message<RoutedValue>, py: Python<'_>) -> PyResult<
 }
 
 impl GCSWriter {
-    pub fn new(bucket: &str, object: &str, route: Route) -> Self {
+    pub fn new(bucket: &str, object_generator: Py<PyAny>, route: Route) -> Self {
         let client = ClientBuilder::new();
-        let url = format!(
-            "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
-            bucket, object
-        );
 
         // TODO: Avoid having this step in the pipeline pick up environment variables.
         // Have a centralized place where all config and env vars are set
@@ -58,21 +56,49 @@ impl GCSWriter {
         );
 
         let client = client.default_headers(headers).build().unwrap();
+        let bucket = bucket.to_string();
 
-        GCSWriter { client, url, route }
+        GCSWriter {
+            client,
+            bucket,
+            route,
+            object_generator,
+        }
     }
+}
+
+fn object_gen_fn(object_generator: Py<PyAny>, py: Python<'_>) -> PyResult<String> {
+    let res: Py<PyAny> = object_generator.call0(py)?;
+    res.extract(py)
 }
 
 impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
     // Async task to write to GCS via HTTP
     fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
         let client = self.client.clone();
-        let url = self.url.clone();
+        let object = traced_with_gil("call_GCS_object_generator", |py| {
+            object_gen_fn(self.object_generator.clone_ref(py), py)
+        })
+        .unwrap();
+
+        let url = format!(
+            "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
+            self.bucket.clone(),
+            object
+        );
+
         let route = message.payload().route.clone();
         let actual_route = self.route.clone();
 
-        let bytes =
-            traced_with_gil("GCSWriter get_task", |py| pybytes_to_bytes(&message, py)).unwrap();
+        let bytes = match message.payload().payload {
+            RoutedValuePayload::PyStreamingMessage(ref py_message) => {
+                traced_with_gil("GCSWriter get_task", |py| pybytes_to_bytes(&py_message, py))
+                    .unwrap()
+            }
+            RoutedValuePayload::WatermarkMessage(..) => {
+                return Box::pin(async move { Ok(message) })
+            }
+        };
 
         Box::pin(async move {
             // TODO: This route-based forwarding does not need to be
@@ -117,7 +143,7 @@ mod tests {
         traced_with_gil("test_to_bytes", |py| {
             let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(
-                pybytes_to_bytes(&arroyo_msg, py).unwrap(),
+                pybytes_to_bytes(&arroyo_msg.payload().payload.unwrap_payload(), py).unwrap(),
                 b"hello".to_vec()
             );
         });

@@ -1,11 +1,14 @@
 use crate::messages::PyAnyMessage;
-use crate::messages::{into_pyany, into_pyraw, PyStreamingMessage, RawMessage};
+use crate::messages::{into_pyany, into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use pyo3::prelude::*;
 use pyo3::IntoPyObjectExt;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
-use sentry_arroyo::types::Message;
+#[cfg(test)]
+use sentry_arroyo::types::{Message, Partition, Topic};
+#[cfg(test)]
+use std::collections::BTreeMap;
 use std::ffi::CStr;
 
 #[cfg(test)]
@@ -32,20 +35,21 @@ pub fn build_routed_value(
     waypoints: Vec<String>,
 ) -> RoutedValue {
     let route = Route::new(source.to_string(), waypoints);
+    let payload = PyStreamingMessage::PyAnyMessage {
+        content: into_pyany(
+            py,
+            PyAnyMessage {
+                payload: msg_payload,
+                headers: vec![],
+                timestamp: 0.0,
+                schema: None,
+            },
+        )
+        .unwrap(),
+    };
     RoutedValue {
         route,
-        payload: PyStreamingMessage::PyAnyMessage {
-            content: into_pyany(
-                py,
-                PyAnyMessage {
-                    payload: msg_payload,
-                    headers: vec![],
-                    timestamp: 0.0,
-                    schema: None,
-                },
-            )
-            .unwrap(),
-        },
+        payload: RoutedValuePayload::PyStreamingMessage(payload),
     }
 }
 
@@ -59,20 +63,21 @@ pub fn build_raw_routed_value(
     use std::vec;
 
     let route = Route::new(source.to_string(), waypoints);
+    let payload = PyStreamingMessage::RawMessage {
+        content: into_pyraw(
+            py,
+            RawMessage {
+                payload: msg_payload,
+                headers: vec![],
+                timestamp: 0.0,
+                schema: None,
+            },
+        )
+        .unwrap(),
+    };
     RoutedValue {
         route,
-        payload: PyStreamingMessage::RawMessage {
-            content: into_pyraw(
-                py,
-                RawMessage {
-                    payload: msg_payload,
-                    headers: vec![],
-                    timestamp: 0.0,
-                    schema: None,
-                },
-            )
-            .unwrap(),
-        },
+        payload: RoutedValuePayload::PyStreamingMessage(payload),
     }
 }
 
@@ -97,4 +102,19 @@ pub fn make_raw_routed_msg(
 ) -> Message<RoutedValue> {
     let routed_value = build_raw_routed_value(py, msg_payload, source, waypoints);
     Message::new_any_message(routed_value, std::collections::BTreeMap::new())
+}
+
+/// Returns a BTreeMap of {Partition: Offset}. Topic name and offset starts at `starting_offset`,
+/// while `num_partitions` is the total number of entries in the BTreeMap.
+#[cfg(test)]
+pub fn make_committable(num_partitions: u64, starting_offset: u64) -> BTreeMap<Partition, u64> {
+    let mut committable = BTreeMap::new();
+    for i in 0..num_partitions {
+        let val = i + starting_offset;
+        committable.insert(
+            Partition::new(Topic::new(format!("t{val}").as_str()), val as u16),
+            val,
+        );
+    }
+    committable
 }

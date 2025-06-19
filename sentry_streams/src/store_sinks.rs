@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use pyo3::{Py, PyAny};
 use sentry_arroyo::processing::strategies::run_task_in_threads::{
     ConcurrencyConfig, RunTaskInThreads,
 };
@@ -26,13 +27,13 @@ where
         next_step: N,
         concurrency: &ConcurrencyConfig,
         bucket: &str,
-        object_file: &str,
+        object_generator: Py<PyAny>,
     ) -> Self {
         let next_step = next_step;
 
         let inner = RunTaskInThreads::new(
             next_step,
-            GCSWriter::new(bucket, object_file, route.clone()),
+            GCSWriter::new(bucket, object_generator, route.clone()),
             concurrency,
             Some("GCS"),
         );

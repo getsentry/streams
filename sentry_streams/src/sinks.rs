@@ -33,7 +33,7 @@ fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
     // Convert the RoutedValue to KafkaPayload
     // This is a placeholder implementation
     let payload = traced_with_gil("to_kafka_payload", |py| {
-        let payload = &message.payload().payload;
+        let payload = &message.payload().payload.unwrap_payload();
         match payload {
             PyStreamingMessage::PyAnyMessage { .. } => {
                 panic!("PyAnyMessage is not supported in KafkaPayload conversion");
@@ -145,7 +145,8 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
-        if self.route != message.payload().route {
+        // TODO: pass watermark message on to produce step instead of next step here
+        if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             self.next_strategy.submit(message)
         } else {
             match self.produce_strategy.submit(to_kafka_payload(message)) {
@@ -184,10 +185,10 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
+    use crate::messages::{RoutedValuePayload, WatermarkMessage};
     use crate::routes::Route;
     use crate::test_operators::make_raw_routed_msg;
     use crate::utils::traced_with_gil;
-    use parking_lot::Mutex;
     use sentry_arroyo::backends::local::broker::LocalBroker;
 
     use sentry_arroyo::backends::local::LocalProducer;
@@ -198,6 +199,8 @@ mod tests {
     use sentry_arroyo::types::Topic;
     use sentry_arroyo::utils::clock::TestingClock;
 
+    use parking_lot::Mutex;
+    use std::collections::BTreeMap;
     use std::ops::Deref;
     use std::sync::Arc;
     use std::sync::Mutex as RawMutex;
@@ -223,6 +226,45 @@ mod tests {
     }
 
     #[test]
+    fn test_watermark_message() {
+        let result_topic = Topic::new("result-topic");
+        let mut broker = LocalBroker::new(
+            Box::new(MemoryMessageStorage::default()),
+            Box::new(TestingClock::new(SystemTime::now())),
+        );
+        broker.create_topic(result_topic, 1).unwrap();
+        let broker = Arc::new(Mutex::new(broker));
+        let producer = LocalProducer::new(broker.clone());
+
+        let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
+        let submitted_watermarks = Arc::new(RawMutex::new(Vec::new()));
+        let submitted_watermarks_clone = submitted_watermarks.clone();
+        let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
+
+        let mut sink = StreamSink::new(
+            Route::new("source".to_string(), vec!["wp1".to_string()]),
+            producer,
+            &ConcurrencyConfig::new(1),
+            "result-topic",
+            Box::new(next_step),
+            Box::new(Noop {}),
+        );
+
+        let watermark_val = RoutedValue {
+            route: Route::new(String::from("source"), vec![]),
+            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(BTreeMap::new())),
+        };
+        let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
+        let watermark_res = sink.submit(watermark_msg);
+        assert!(watermark_res.is_ok());
+        let watermark_messages = submitted_watermarks_clone.lock().unwrap();
+        assert_eq!(
+            watermark_messages[0],
+            WatermarkMessage::new(BTreeMap::new())
+        );
+    }
+
+    #[test]
     fn test_route() {
         pyo3::prepare_freethreaded_python();
         let result_topic = Topic::new("result-topic");
@@ -237,7 +279,8 @@ mod tests {
 
         let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
         let submitted_messages_clone = submitted_messages.clone();
-        let next_step = FakeStrategy::new(submitted_messages, false);
+        let submitted_watermarks = Arc::new(RawMutex::new(Vec::new()));
+        let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
         let terminator = Noop {};
 
         let concurrency_config = ConcurrencyConfig::new(1);
