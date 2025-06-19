@@ -15,6 +15,7 @@ from typing import (
     Sequence,
     Set,
     Tuple,
+    Type,
     TypeVar,
     Union,
     cast,
@@ -29,6 +30,7 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
+from sentry_streams.pipeline.msg_codecs import msg_parser, msg_serializer
 from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
 
 
@@ -59,6 +61,7 @@ class Pipeline:
         self.incoming_edges: MutableMapping[str, list[str]] = defaultdict(list)
         self.outgoing_edges: MutableMapping[str, list[str]] = defaultdict(list)
         self.sources: list[Source] = []
+        self.__previous_step: Optional[Step] = None
 
     def register(self, step: Step) -> None:
         assert step.name not in self.steps, f"Step {step.name} already exists in the pipeline"
@@ -136,6 +139,24 @@ class Pipeline:
         for source, dests in other.outgoing_edges.items():
             self.outgoing_edges[source] = dests
 
+    def start(self, step: Source) -> Pipeline:
+        assert not self.__previous_step, "Cannot start a pipeline with multiple sources"
+        step.register(self)
+        self.__previous_step = step
+        return self
+
+    def apply(self, step: Step) -> Pipeline:
+        assert self.__previous_step, "Cannot apply a step without starting first"
+        step.register(self, self.__previous_step)
+        self.__previous_step = step
+        return self
+
+    def sink(self, step: Sink) -> Pipeline:
+        assert self.__previous_step, "Cannot create a sink a step without starting first"
+        step.register(self, self.__previous_step)
+        self.__previous_step = None
+        return self
+
 
 @dataclass
 class Step:
@@ -146,10 +167,9 @@ class Step:
     """
 
     name: str
-    ctx: Pipeline
 
-    def __post_init__(self) -> None:
-        self.ctx.register(self)
+    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+        ctx.register(self)
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
         """
@@ -175,9 +195,9 @@ class StreamSource(Source):
     header_filter: Optional[Tuple[str, bytes]] = None
     step_type: StepType = StepType.SOURCE
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.ctx.register_source(self)
+    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+        super().register(ctx)
+        ctx.register_source(self)
 
 
 @dataclass
@@ -187,12 +207,10 @@ class WithInput(Step):
     step which has inputs.
     """
 
-    inputs: list[Step]
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        for input in self.inputs:
-            self.ctx.register_edge(input, self)
+    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+        super().register(ctx)
+        assert previous, "Cannot register a step with no previous step"
+        ctx.register_edge(previous, self)
 
 
 @dataclass
@@ -266,7 +284,7 @@ class TransformStep(WithInput, TransformFunction[TransformFuncReturnType]):
 
 
 @dataclass
-class Map(TransformStep[Any]):
+class Map(TransformStep[TransformFuncReturnType]):
     """
     A simple 1:1 Map, taking a single input to single output.
     """
@@ -314,10 +332,10 @@ class Router(WithInput, Generic[RoutingFuncReturnType]):
     routing_table: Mapping[RoutingFuncReturnType, Branch]
     step_type: StepType = StepType.ROUTER
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
+    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+        super().register(ctx, previous)
         for branch_step in self.routing_table.values():
-            self.ctx.register_edge(self, branch_step)
+            ctx.register_edge(self, branch_step)
 
 
 @dataclass
@@ -329,10 +347,10 @@ class Broadcast(WithInput):
     routes: Sequence[Branch]
     step_type: StepType = StepType.BROADCAST
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
+    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+        super().register(ctx, previous)
         for branch_step in self.routes:
-            self.ctx.register_edge(self, branch_step)
+            ctx.register_edge(self, branch_step)
 
 
 @dataclass
@@ -431,3 +449,47 @@ class FlatMap(TransformStep[Any]):
     """
 
     step_type: StepType = StepType.FLAT_MAP
+
+
+######################
+# Complex Primitives #
+######################
+
+
+@dataclass
+class Parser(Step, Generic[TransformFuncReturnType]):
+    """
+    A step to decode bytes, deserialize the resulting message and validate it against the schema
+    which corresponds to the message type provided. The message type should be one which
+    is supported by sentry-kafka-schemas. See examples/ for usage, this step can be plugged in
+    flexibly into a pipeline. Keep in mind, data up until this step will simply be bytes.
+
+    Supports both JSON and protobuf.
+    """
+
+    msg_type: Type[TransformFuncReturnType]
+
+    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+        step = Map(
+            name=self.name,
+            function=msg_parser,
+        )
+        step.register(ctx, previous)
+
+
+@dataclass
+class Serializer(Step):
+    """
+    A step to serialize and encode messages into bytes. These bytes can be written
+    to sink data to a Kafka topic, for example. This step will need to precede a
+    sink step which writes to Kafka.
+    """
+
+    dt_format: Optional[str] = None
+
+    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+        step = Map(
+            name=self.name,
+            function=msg_serializer,
+        )
+        step.register(ctx, previous)
