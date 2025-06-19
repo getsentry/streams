@@ -33,10 +33,13 @@
 //!       is transparent to the operator that has to process a message. This
 //!       will allow us to optimize the translation avoiding copy without
 //!       impacting each operator.
+use std::collections::BTreeMap;
+
 use pyo3::types::{PyBytes, PyList, PyTuple};
 use pyo3::Python;
-
 use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
+
+use sentry_arroyo::types::Partition;
 
 use crate::utils::traced_with_gil;
 
@@ -87,15 +90,20 @@ pub fn headers_to_sequence(
 /// reach the end of the pipeline. WatermarkMessages help us accomplish that by also being
 /// copied by the Broadcast step, at which point the Commit policy will count the # of received
 /// WatermarkMessages and decide if we should commit.
-#[derive(Debug, Copy, Clone)]
+///
+/// TODO:
+/// - reduce/broadcast/router steps need to handle WatermarkMessages instead of just forwarding them downstream immediately
+/// - comit policy needs to be aware of the total # of broadcast branches so it knows how many copies of a given WatermarkMessage
+///   to anticipate before it sends a CommitRequest
+#[derive(Debug, Clone, PartialEq)]
 #[pyclass]
 pub struct WatermarkMessage {
-    pub timestamp: f64,
+    pub committable: BTreeMap<Partition, u64>,
 }
 
 impl WatermarkMessage {
-    pub fn new(timestamp: f64) -> Self {
-        Self { timestamp }
+    pub fn new(committable: BTreeMap<Partition, u64>) -> Self {
+        Self { committable }
     }
 }
 
@@ -500,7 +508,7 @@ mod tests {
 
     #[test]
     fn test_is_watermark_message() {
-        let wmsg = WatermarkMessage::new(0.);
+        let wmsg = WatermarkMessage::new(BTreeMap::new());
         let payload_wmsg = RoutedValuePayload::WatermarkMessage(wmsg);
         assert!(payload_wmsg.is_watermark_msg());
     }
@@ -534,7 +542,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_unwrap_payload_watermark_msg() {
-        let wmsg = WatermarkMessage::new(0.);
+        let wmsg = WatermarkMessage::new(BTreeMap::new());
         let payload_wmsg = RoutedValuePayload::WatermarkMessage(wmsg);
         payload_wmsg.unwrap_payload();
     }
