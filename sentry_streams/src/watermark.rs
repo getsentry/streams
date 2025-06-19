@@ -6,6 +6,7 @@ use sentry_arroyo::processing::strategies::{
 use sentry_arroyo::types::{Message, Partition};
 use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tracing::warn;
 
 /// Returns the current Unix epoch
 fn current_epoch() -> u64 {
@@ -76,7 +77,13 @@ impl Watermark {
 
     fn merge_watermark_committable(&mut self, message: &Message<RoutedValue>) {
         for (partition, offset) in message.committable() {
-            self.watermark_committable.insert(partition, offset);
+            let current_offset = self.watermark_committable.get(&partition).unwrap_or(&0);
+            // Message offsets should always be increasing
+            if &offset >= current_offset {
+                self.watermark_committable.insert(partition, offset);
+            } else {
+                warn!("Received offset lower than current offset for partition {partition}: {offset} vs {current_offset}");
+            }
         }
     }
 }
