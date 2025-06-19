@@ -164,7 +164,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         if isinstance(step, GCSSink):
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, step.bucket, step.object_file)
+                RuntimeOperator.GCSSink(route, step.bucket, step.object_generator)
             )
         # Our fallback for now since there's no other Sink type
         else:
