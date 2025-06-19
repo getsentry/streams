@@ -2,10 +2,14 @@ use crate::callers::call_python_function;
 use crate::filter_step::Filter;
 use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
+use pyo3::import_exception;
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
-use sentry_arroyo::processing::strategies::ProcessingStrategy;
+use sentry_arroyo::processing::strategies::{ProcessingStrategy, SubmitError};
 use sentry_arroyo::types::Message;
+
+import_exception!(sentry_streams.pipeline.exception, InvalidMessageError);
 
 /// Creates an Arroyo transformer strategy that uses a Python callable to
 /// transform messages. The callable is expected to take a Message<RoutedValue>
@@ -21,22 +25,42 @@ pub fn build_map(
     let copied_route = route.clone();
     let mapper = move |message: Message<RoutedValue>| {
         if message.payload().route != copied_route {
-            Ok(message)
-        } else {
-            let transformed = match message.payload().payload {
-                RoutedValuePayload::PyStreamingMessage(ref msg) => {
-                    call_python_function(&callable, &msg)
-                }
-                RoutedValuePayload::WatermarkMessage(..) => return Ok(message),
-            };
-            // TODO: Create an exception for Invalid messages in Python
-            // This now crashes if the Python code fails.
-            let route = message.payload().route.clone();
-            Ok(message.replace(RoutedValue {
-                route,
-                payload: RoutedValuePayload::PyStreamingMessage(transformed.unwrap()),
-            }))
+            return Ok(message);
         }
+
+        let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) =
+            message.payload().payload
+        else {
+            return Ok(message);
+        };
+
+        let route = message.payload().route.clone();
+
+        let transformed = call_python_function(&callable, py_streaming_msg).map_err(|py_err| {
+            // TODO: Ideally this should be built into an abstraction like
+            // call_python_function, where someone can call it and it handles
+            // things like printing the stacktrace and returns a custom variant
+            // if the exception is a InvalidMessageError
+            if !traced_with_gil("build_map::RunTask::py_err", |py| {
+                py_err.print(py);
+                py_err.is_instance(py, &py.get_type::<InvalidMessageError>())
+            }) {
+                 panic!("Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError")
+            }
+
+            let sentry_arroyo::types::InnerMessage::BrokerMessage(ref broker_message) =
+                message.inner_message
+            else {
+                panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage")
+            };
+
+            SubmitError::InvalidMessage(broker_message.into())
+        })?;
+
+        Ok(message.replace(RoutedValue {
+            route,
+            payload: RoutedValuePayload::PyStreamingMessage(transformed),
+        }))
     };
     Box::new(RunTask::new(mapper, next))
 }
@@ -66,12 +90,135 @@ mod tests {
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_lambda;
     use crate::utils::traced_with_gil;
+    use chrono::Utc;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
+    use sentry_arroyo::processing::strategies::noop::Noop;
+    use sentry_arroyo::processing::strategies::InvalidMessage;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
+    use sentry_arroyo::types::Partition;
+    use sentry_arroyo::types::Topic;
     use std::collections::BTreeMap;
+    use std::ffi::CStr;
+    use std::ffi::CString;
     use std::ops::Deref;
     use std::sync::{Arc, Mutex};
+
+    fn import_py_dep(module: &str, attr: &str) {
+        let stmt = format!("from {} import {}", module, attr);
+        traced_with_gil("import_py_dep", |py| {
+            py.run(
+                &CString::new(stmt).expect("Unable to convert import statement into Cstr"),
+                None,
+                None,
+            )
+            .expect("Unable to import");
+        });
+    }
+
+    fn create_simple_transform_step<T>(
+        lambda_body: &CStr,
+        next_step: T,
+    ) -> Box<dyn ProcessingStrategy<RoutedValue>>
+    where
+        T: ProcessingStrategy<RoutedValue> + 'static,
+    {
+        traced_with_gil("create_simple_transform_step", |py| {
+            py.run(lambda_body, None, None).expect("Unable to import");
+            let callable = make_lambda(py, lambda_body);
+
+            build_map(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                callable,
+                Box::new(next_step),
+            )
+        })
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
+    )]
+    fn test_transform_crashes_on_any_msg() {
+        pyo3::prepare_freethreaded_python();
+
+        import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
+
+        let mut transform = create_simple_transform_step(
+            c_str!("lambda x: (_ for _ in ()).throw(InvalidMessageError())"),
+            Noop {},
+        );
+
+        traced_with_gil("test_transform_crashes_on_any_msg", |py| {
+            let message = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            let _ = transform.submit(message);
+        });
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
+    )]
+    fn test_transform_crashes_on_normal_exceptions() {
+        pyo3::prepare_freethreaded_python();
+
+        let mut transform = create_simple_transform_step(c_str!("lambda x: {}[0]"), Noop {});
+
+        traced_with_gil("test_transform_crashes_on_normal_exceptions", |py| {
+            let message = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            let _ = transform.submit(message);
+        });
+    }
+
+    #[test]
+    fn test_transform_handles_msg_invalid_exception() {
+        pyo3::prepare_freethreaded_python();
+
+        import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
+
+        let mut transform = create_simple_transform_step(
+            c_str!("lambda x: (_ for _ in ()).throw(InvalidMessageError())"),
+            Noop {},
+        );
+
+        traced_with_gil("test_transform_handles_msg_invalid_exception", |py| {
+            let message = Message::new_broker_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                Partition::new(Topic::new("topic"), 2),
+                10,
+                Utc::now(),
+            );
+            let SubmitError::InvalidMessage(InvalidMessage { partition, offset }) =
+                transform.submit(message).unwrap_err()
+            else {
+                panic!("Expected SubmitError::InvalidMessage")
+            };
+
+            assert_eq!(partition, Partition::new(Topic::new("topic"), 2));
+            assert_eq!(offset, 10);
+        });
+    }
 
     #[test]
     fn test_build_map() {

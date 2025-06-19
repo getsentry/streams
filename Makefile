@@ -1,6 +1,6 @@
 install-dev:
 	./scripts/flink-jar-download.sh
-	which uv || (curl -LsSf https://astral.sh/uv/install.sh | sh)
+	which uv || (curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh)
 	uv sync --project ./sentry_streams
 	PROJECT_ROOT=`pwd`/sentry_flink uv sync --project ./sentry_flink
 .PHONY: install-dev
