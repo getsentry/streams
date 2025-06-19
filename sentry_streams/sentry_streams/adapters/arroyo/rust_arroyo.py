@@ -172,10 +172,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         source_name = step.name
         source_config = self.steps_config.get(source_name)
         assert source_config is not None, f"Config not provided for source {source_name}"
-        parallelism = source_config.get("parallelism", 1)
-        assert (
-            parallelism == 1
-        ), "A single Rust Arroyo instance can only run one replica of each consumer."
 
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
