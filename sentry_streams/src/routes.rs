@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn test_routed_value_creation() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_routed_value_creation", |py| {
+        traced_with_gil!(|py| {
             let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
             let routed_value = RoutedValue {
                 route: route.clone(),

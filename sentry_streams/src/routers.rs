@@ -22,9 +22,7 @@ fn route_message(
     };
     match dest_route {
         Ok(dest_route) => {
-            let new_waypoint = traced_with_gil("route_message", |py| {
-                dest_route.extract::<String>(py).unwrap()
-            });
+            let new_waypoint = traced_with_gil!(|py| { dest_route.extract::<String>(py).unwrap() });
             message.try_map(|payload| Ok(payload.add_waypoint(new_waypoint.clone())))
         }
         Err(_) => match message.inner_message {
@@ -68,7 +66,7 @@ mod tests {
     #[test]
     fn test_route_msg() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_route_msg", |py| {
+        traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: 'waypoint2'"));
 
             let message = Message::new_any_message(
