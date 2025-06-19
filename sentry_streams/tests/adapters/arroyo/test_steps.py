@@ -37,6 +37,7 @@ from sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
     Pipeline,
+    StreamSource,
     Router,
 )
 from sentry_streams.pipeline.window import SlidingWindow
@@ -51,8 +52,9 @@ def test_map_step(metric: IngestMetric) -> None:
 
     mapped_route = Route(source="source1", waypoints=["branch1"])
     other_route = Route(source="source1", waypoints=["branch2"])
-    pipeline = Pipeline()
-    pipeline_map = Map(name="mymap", ctx=pipeline, inputs=[], function=lambda msg: msg.payload)
+    pipeline = Pipeline().start(StreamSource(name="source", stream_name="events"))
+    pipeline_map = Map(name="mymap", function=lambda msg: msg.payload)
+    pipeline.apply(pipeline_map)
     arroyo_map = MapStep(mapped_route, pipeline_map)
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
@@ -96,14 +98,13 @@ def test_filter_step(metric: IngestMetric, transformed_metric: IngestMetric) -> 
     """
     mapped_route = Route(source="source1", waypoints=["branch1"])
     other_route = Route(source="source1", waypoints=["branch2"])
-    pipeline = Pipeline()
+    pipeline = Pipeline().start(StreamSource(name="source", stream_name="events"))
 
     pipeline_filter = Filter(
         name="myfilter",
-        ctx=pipeline,
-        inputs=[],
         function=lambda msg: msg.payload["name"] != "new_metric",
     )
+    pipeline.apply(pipeline_filter)
     arroyo_filter = FilterStep(mapped_route, pipeline_filter)
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
@@ -148,21 +149,20 @@ def test_router(metric: IngestMetric, transformed_metric: IngestMetric) -> None:
     """
     mapped_route = Route(source="source1", waypoints=["map_branch"])
     other_route = Route(source="source1", waypoints=["other_branch"])
-    pipeline = Pipeline()
+    pipeline = Pipeline().start(StreamSource(name="source", stream_name="events"))
 
     def dummy_routing_func(message: StreamsMessage[IngestMetric]) -> str:
         return "map" if message.payload["name"] != "new_metric" else "other"
 
     pipeline_router = Router(
         name="myrouter",
-        ctx=pipeline,
-        inputs=[],
         routing_function=dummy_routing_func,
         routing_table={
-            "map": Branch(name="map_branch", ctx=pipeline),
-            "other": Branch(name="other_branch", ctx=pipeline),
+            "map": Pipeline().start(Branch(name="map_branch")),
+            "other": Pipeline().start(Branch(name="other_branch")),
         },
     )
+    pipeline.apply(pipeline_router)
     arroyo_router = RouterStep(Route(source="source1", waypoints=[]), pipeline_router)
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
@@ -208,17 +208,16 @@ def test_broadcast(metric: IngestMetric, transformed_metric: IngestMetric) -> No
     """
     mapped_route = Route(source="source1", waypoints=["map_branch"])
     other_route = Route(source="source1", waypoints=["other_branch"])
-    pipeline = Pipeline()
+    pipeline = Pipeline().start(StreamSource(name="source", stream_name="events"))
 
     pipeline_router = Broadcast(
         name="mybroadcast",
-        ctx=pipeline,
-        inputs=[],
         routes=[
-            Branch(name="map_branch", ctx=pipeline),
-            Branch(name="other_branch", ctx=pipeline),
+            Pipeline().start(Branch(name="map_branch")),
+            Pipeline().start(Branch(name="other_branch")),
         ],
     )
+    pipeline.apply(pipeline_router)
     arroyo_broadcast = BroadcastStep(Route(source="source1", waypoints=[]), pipeline_router)
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
@@ -307,7 +306,7 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch], metric: Ingest
 
     mapped_route = Route(source="source1", waypoints=["branch1"])
     other_route = Route(source="source1", waypoints=["branch2"])
-    pipeline = Pipeline()
+    pipeline = Pipeline().start(StreamSource(name="source", stream_name="events"))
 
     reduce_window = SlidingWindow(
         window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2)
@@ -315,11 +314,10 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch], metric: Ingest
 
     pipeline_reduce = Aggregate(
         name="myreduce",
-        ctx=pipeline,
-        inputs=[],
         window=reduce_window,
         aggregate_func=transformer,
     )
+    pipeline.apply(pipeline_reduce)
     arroyo_reduce = ReduceStep(mapped_route, pipeline_reduce)
     next_strategy = mock.Mock(spec=ProcessingStrategy)
 

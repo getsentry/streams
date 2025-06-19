@@ -1,4 +1,4 @@
-from typing import Any, MutableMapping, Optional, Self, Sequence, Set, TypeVar
+from typing import Any, Callable, Optional, Self, Sequence, TypeVar, cast
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import (
@@ -8,6 +8,7 @@ from sentry_streams.pipeline.function_template import (
 from sentry_streams.pipeline.pipeline import (
     Branch,
     Broadcast,
+    ComplexStep,
     Filter,
     FlatMap,
     Map,
@@ -32,75 +33,64 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
     """
 
     def __init__(self, _: PipelineConfig) -> None:
-        self.input_streams: MutableMapping[str, Set[str]] = {}
+        self.input_streams: list[str] = []
+        self.branches: list[str] = []
+
+    def complex_step_override(self) -> dict[str, Callable[[ComplexStep], Any]]:
+        return {}
 
     def track_input_streams(
         self, step: WithInput, branches: Optional[Sequence[Branch]] = None
     ) -> None:
-        """
-        Tracks the streams that each step receives as input.
-        This can be used in tests to verify that steps downstream from a split in
-        the stream (such as a Router) are being applied to the correct stream.
-
-        For example, if we have:
-        Source --> Router --> Branch1 --> Map1
-                        |
-                        --> Branch2 --> Map2
-
-        We can verify that:
-        input_streams["Map1"] == ["Source", "Router", "Branch1"]
-        input_streams["Map2"] == ["Source", "Router", "Branch2"]
-        """
-        # TODO: update to support multiple inputs to a step
-        # once we implement Union
-        assert (
-            len(step.inputs) == 1
-        ), "Only steps with a single input are supported for DummyAdapter."
-
-        input_step = step.inputs[0]
-        input_step_name = input_step.name
-        input_step_stream = self.input_streams[input_step_name]
-        self.input_streams[step.name] = input_step_stream.union({input_step_name})
+        self.input_streams.append(step.name)
+        if branches:
+            self.branches.extend(branch.name for branch in branches)
 
     @classmethod
     def build(cls, config: PipelineConfig) -> Self:
         return cls(config)
 
     def source(self, step: Step) -> Any:
-        self.input_streams[step.name] = set()
+        self.track_input_streams(cast(WithInput, step))
         return self
 
     def sink(self, step: Sink, stream: Any) -> Any:
-        self.track_input_streams(step)
+        self.track_input_streams(cast(WithInput, step))
         return self
 
     def map(self, step: Map, stream: Any) -> Any:
-        self.track_input_streams(step)
+        self.track_input_streams(cast(WithInput, step))
         return self
 
     def filter(self, step: Filter, stream: Any) -> Any:
-        self.track_input_streams(step)
+        self.track_input_streams(cast(WithInput, step))
         return self
 
     def reduce(self, step: Reduce[MeasurementUnit, InputType, OutputType], stream: Any) -> Any:
-        self.track_input_streams(step)
+        self.track_input_streams(cast(WithInput, step))
         return self
 
     def flat_map(self, step: FlatMap, stream: Any) -> Any:
-        self.track_input_streams(step)
+        self.track_input_streams(cast(WithInput, step))
         return self
 
     def broadcast(self, step: Broadcast, stream: Any) -> Any:
-        self.track_input_streams(step, step.routes)
-        for branch in step.routes:
-            self.input_streams[branch.name] = self.input_streams[step.name].union({step.name})
-        return {branch.name: branch for branch in step.routes}
+        self.track_input_streams(cast(WithInput, step), [cast(Branch, r.root) for r in step.routes])
+        ret = {}
+        for segment_branch in step.routes:
+            assert segment_branch.root is not None
+            self.branches.append(segment_branch.root.name)
+            ret[segment_branch.root.name] = segment_branch
+        return ret
 
     def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> Any:
-        self.track_input_streams(step)
+        self.track_input_streams(cast(WithInput, step))
+        ret = {}
         for branch in step.routing_table.values():
-            self.input_streams[branch.name] = self.input_streams[step.name].union({step.name})
-        return {branch.name: branch for branch in step.routing_table.values()}
+            assert branch.root is not None
+            self.branches.append(branch.root.name)
+            ret[branch.root.name] = branch
+        return ret
 
     def run(self) -> None:
         pass

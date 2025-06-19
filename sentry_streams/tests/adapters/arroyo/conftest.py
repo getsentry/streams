@@ -110,11 +110,11 @@ def transformer() -> Callable[[], TestTransformerBatch]:
 def pipeline() -> Pipeline:
     pipeline = (
         streaming_source("myinput", stream_name="ingest-metrics")
-        .apply("decoder", Parser(msg_type=IngestMetric))
-        .apply("myfilter", Filter(lambda msg: msg.payload["type"] == "s"))
-        .apply("mymap", Map(basic_map))
-        .apply("serializer", Serializer())
-        .sink("kafkasink", StreamSink(stream_name="transformed-events"))
+        .apply_step("decoder", Parser(msg_type=IngestMetric))
+        .apply_step("myfilter", Filter(lambda msg: msg.payload["type"] == "s"))
+        .apply_step("mymap", Map(basic_map))
+        .apply_step("serializer", Serializer())
+        .add_sink("kafkasink", StreamSink(stream_name="transformed-events"))
     )
 
     return pipeline
@@ -128,11 +128,11 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
 
     pipeline = (
         streaming_source("myinput", stream_name="ingest-metrics")
-        .apply("decoder", Parser(msg_type=IngestMetric))
-        .apply("mymap", Map(basic_map))
-        .apply("myreduce", Reducer(reduce_window, transformer))
-        .apply("serializer", Serializer())
-        .sink("kafkasink", StreamSink(stream_name="transformed-events"))
+        .apply_step("decoder", Parser(msg_type=IngestMetric))
+        .apply_step("mymap", Map(basic_map))
+        .apply_step("myreduce", Reducer(reduce_window, transformer))
+        .apply_step("serializer", Serializer())
+        .add_sink("kafkasink", StreamSink(stream_name="transformed-events"))
     )
 
     return pipeline
@@ -142,13 +142,13 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
 def router_pipeline() -> Pipeline:
     branch_1 = (
         segment("set_branch", IngestMetric)
-        .apply("serializer", Serializer())
-        .sink("kafkasink1", StreamSink(stream_name="transformed-events"))
+        .apply_step("serializer", Serializer())
+        .add_sink("kafkasink1", StreamSink(stream_name="transformed-events"))
     )
     branch_2 = (
         segment("not_set_branch", IngestMetric)
-        .apply("serializer2", Serializer())
-        .sink("kafkasink2", StreamSink(stream_name="transformed-events-2"))
+        .apply_step("serializer2", Serializer())
+        .add_sink("kafkasink2", StreamSink(stream_name="transformed-events-2"))
     )
 
     pipeline = (
@@ -156,7 +156,7 @@ def router_pipeline() -> Pipeline:
             name="ingest",
             stream_name="ingest-metrics",
         )
-        .apply("decoder", Parser(msg_type=IngestMetric))
+        .apply_step("decoder", Parser(msg_type=IngestMetric))
         .route(
             "router",
             routing_function=lambda msg: "set" if msg.payload["type"] == "s" else "not_set",
@@ -174,15 +174,15 @@ def router_pipeline() -> Pipeline:
 def broadcast_pipeline() -> Pipeline:
     branch_1 = (
         segment("even_branch", IngestMetric)
-        .apply("mymap1", Map(basic_map))
-        .apply("serializer", Serializer())
-        .sink("kafkasink1", StreamSink(stream_name="transformed-events"))
+        .apply_step("mymap1", Map(basic_map))
+        .apply_step("serializer", Serializer())
+        .add_sink("kafkasink1", StreamSink(stream_name="transformed-events"))
     )
     branch_2 = (
         segment("odd_branch", IngestMetric)
-        .apply("mymap2", Map(basic_map))
-        .apply("serializer2", Serializer())
-        .sink("kafkasink2", StreamSink(stream_name="transformed-events-2"))
+        .apply_step("mymap2", Map(basic_map))
+        .apply_step("serializer2", Serializer())
+        .add_sink("kafkasink2", StreamSink(stream_name="transformed-events-2"))
     )
 
     pipeline = (
@@ -190,7 +190,7 @@ def broadcast_pipeline() -> Pipeline:
             name="ingest",
             stream_name="ingest-metrics",
         )
-        .apply("decoder", Parser(msg_type=IngestMetric))
+        .apply_step("decoder", Parser(msg_type=IngestMetric))
         .broadcast(
             "broadcast",
             routes=[
