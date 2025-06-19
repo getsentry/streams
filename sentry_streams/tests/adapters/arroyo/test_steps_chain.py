@@ -1,7 +1,9 @@
-from typing import Union
+from typing import Any, Union
 
 import pytest
+from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import FilteredPayload
+from arroyo.types import Message as ArroyoMessage
 
 from sentry_streams.adapters.arroyo.multi_process_delegate import (
     mapped_msg_to_rust,
@@ -26,9 +28,6 @@ from sentry_streams.pipeline.pipeline import (
     Pipeline,
 )
 from sentry_streams.rust_streams import PyAnyMessage
-from tests.adapters.arroyo.test_multi_process_delegate import (
-    FakeRunTaskInProcesses,
-)
 
 
 def make_message(payload: str) -> PyMessage[str]:
@@ -134,8 +133,12 @@ def test_integration() -> None:
     _, fn = sc.finalize(route)
 
     retriever = OutputRetriever[Union[FilteredPayload, Message[str]]](mapped_msg_to_rust)
+
+    def transformer(msg: ArroyoMessage[Message[Any]]) -> Message[Any]:
+        return fn(msg.payload)
+
     delegate = ArroyoStrategyDelegate(
-        FakeRunTaskInProcesses(fn, retriever), rust_to_arroyo_msg, retriever
+        RunTask(transformer, retriever), rust_to_arroyo_msg, retriever
     )
 
     delegate.submit(

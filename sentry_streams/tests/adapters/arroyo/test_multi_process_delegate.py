@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any, Callable, Union
+from typing import Any, Union
 
-from arroyo.processing.strategies.abstract import ProcessingStrategy
+from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import FilteredPayload
 from arroyo.types import Message as ArroyoMessage
 from arroyo.types import Partition, Topic, Value
@@ -85,48 +85,22 @@ def test_rust_to_arroyo_msg_with_pyanymessage() -> None:
     assert arroyo_msg.committable[Partition(Topic("topic"), 0)] == 123
 
 
-class FakeRunTaskInProcesses(ProcessingStrategy[Message[str]]):
-    def __init__(
-        self,
-        processing_function: Callable[[Message[str]], Message[str]],
-        next_step: OutputRetriever[Union[FilteredPayload, Message[str]]],
-    ) -> None:
-        self.__processing_function = processing_function
-        self.__next_step = next_step
-
-    def submit(self, message: ArroyoMessage[Message[str]]) -> None:
-        self.__next_step.submit(
-            ArroyoMessage(
-                Value(
-                    self.__processing_function(message.payload),
-                    {Partition(Topic("topic1"), 0): 0},
-                )
-            )
-        )
-
-    def poll(self) -> None:
-        self.__next_step.poll()
-
-    def join(self, timeout: float | None = None) -> None:
-        self.__next_step.join()
-
-    def close(self) -> None:
-        self.__next_step.close()
-
-    def terminate(self) -> None:
-        self.__next_step.terminate
-
-
-def str_transformer(msg: Message[str]) -> Message[str]:
-    return PyMessage(f"transformed {msg.payload}", msg.headers, msg.timestamp, msg.schema)
+def str_transformer(msg: ArroyoMessage[Message[str]]) -> Message[str]:
+    return PyMessage(
+        f"transformed {msg.payload.payload}",
+        msg.payload.headers,
+        msg.payload.timestamp,
+        msg.payload.schema,
+    )
 
 
 def test_integration() -> None:
     # TODO: Figure out a way to run the proper multi process strategy
     # in a stable way in a unit test.
     retriever = OutputRetriever[Union[FilteredPayload, Message[str]]](mapped_msg_to_rust)
+
     delegate = ArroyoStrategyDelegate(
-        FakeRunTaskInProcesses(str_transformer, retriever), rust_to_arroyo_msg, retriever
+        RunTask(str_transformer, retriever), rust_to_arroyo_msg, retriever
     )
 
     delegate.submit(
