@@ -32,6 +32,7 @@ dev = [
     "maturin>=1.5.1",
     "types-PyYAML>=6.0.12",
     "types-jsonschema>=4.23.0",
+    "py-spy",
 ]
 
 [tool.maturin]
