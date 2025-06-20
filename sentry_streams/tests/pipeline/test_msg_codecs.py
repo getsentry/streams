@@ -262,8 +262,8 @@ def test_parquet_parser_nominal_case() -> None:
 
     # for testing purposes, only compare the contents of the parquet tables
     expected_table = pq.read_table(pa.BufferReader(expected))
-    expected_table = pq.read_table(pa.BufferReader(result))
-    assert expected_table == expected_table
+    result_table = pq.read_table(pa.BufferReader(result))
+    assert expected_table == result_table
 
 
 def test_msg_no_schema() -> None:
