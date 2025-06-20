@@ -1,5 +1,4 @@
 import json
-from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Self, Union
 
@@ -68,9 +67,7 @@ def build_alert_json(message: Message[Union[p95AlertData, CountAlertData]]) -> b
     return json.dumps(d).encode("utf-8")
 
 
-class AlertsBuffer(
-    Accumulator[Message[Iterable[TimeSeriesDataPoint]], Union[p95AlertData, CountAlertData]]
-):
+class AlertsBuffer(Accumulator[Message[TimeSeriesDataPoint], Union[p95AlertData, CountAlertData]]):
     """
     An AlertsBuffer, which is created per-alert ID. Manages the aggregation of event data
     that pertains to each particular registered alert ID.
@@ -82,18 +79,17 @@ class AlertsBuffer(
         self.alert_type: str
         self.alert_id: int
 
-    def add(self, message: Message[Iterable[TimeSeriesDataPoint]]) -> Self:
-        values = message.payload
-        for value in values:
-            if value.alert_type == "count":
-                self.count += 1
-                self.alert_type = value.alert_type
-                self.alert_id = value.alert_id
+    def add(self, message: Message[TimeSeriesDataPoint]) -> Self:
+        value = message.payload
+        if value.alert_type == "count":
+            self.count += 1
+            self.alert_type = value.alert_type
+            self.alert_id = value.alert_id
 
-            if value.alert_type == "p95":
-                self.latencies.append(value.latency)
-                self.alert_type = value.alert_type
-                self.alert_id = value.alert_id
+        if value.alert_type == "p95":
+            self.latencies.append(value.latency)
+            self.alert_type = value.alert_type
+            self.alert_id = value.alert_id
 
         return self
 

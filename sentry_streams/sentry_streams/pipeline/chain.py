@@ -99,7 +99,7 @@ class Filter(Applier[Message[TIn], Message[TIn]]):
 
 
 @dataclass
-class FlatMap(Applier[Message[TIn], Message[Iterable[TOut]]], Generic[TIn, TOut]):
+class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
     """
     A flatmap is used to map a single input to multiple outputs. In practice in can be used to flatten
     batches of messages into multiple single messages.
