@@ -32,7 +32,7 @@ use std::time::Duration;
 fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
     // Convert the RoutedValue to KafkaPayload
     // This is a placeholder implementation
-    let payload = traced_with_gil("to_kafka_payload", |py| {
+    let payload = traced_with_gil!(|py| {
         let payload = &message.payload().payload.unwrap_payload();
         match payload {
             PyStreamingMessage::PyAnyMessage { .. } => {
@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn test_kafka_payload() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_kafka_payload", |py| {
+        traced_with_gil!(|py| {
             let message = make_raw_routed_msg(
                 py,
                 "test_message".as_bytes().to_vec(),
@@ -252,13 +252,16 @@ mod tests {
 
         let watermark_val = RoutedValue {
             route: Route::new(String::from("source"), vec![]),
-            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(BTreeMap::new())),
         };
         let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
         let watermark_res = sink.submit(watermark_msg);
         assert!(watermark_res.is_ok());
         let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-        assert_eq!(watermark_messages.len(), 1);
+        assert_eq!(
+            watermark_messages[0],
+            WatermarkMessage::new(BTreeMap::new())
+        );
     }
 
     #[test]
@@ -290,7 +293,7 @@ mod tests {
             Box::new(terminator),
         );
 
-        traced_with_gil("test_route", |py| {
+        traced_with_gil!(|py| {
             let value = b"test_message";
             let message = make_raw_routed_msg(py, value.to_vec(), "source", vec![]);
             sink.submit(message).unwrap();

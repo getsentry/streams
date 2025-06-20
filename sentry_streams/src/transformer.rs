@@ -41,7 +41,7 @@ pub fn build_map(
             // call_python_function, where someone can call it and it handles
             // things like printing the stacktrace and returns a custom variant
             // if the exception is a InvalidMessageError
-            if !traced_with_gil("build_map::RunTask::py_err", |py| {
+            if !traced_with_gil!(|py| {
                 py_err.print(py);
                 py_err.is_instance(py, &py.get_type::<InvalidMessageError>())
             }) {
@@ -106,7 +106,7 @@ mod tests {
 
     fn import_py_dep(module: &str, attr: &str) {
         let stmt = format!("from {} import {}", module, attr);
-        traced_with_gil("import_py_dep", |py| {
+        traced_with_gil!(|py| {
             py.run(
                 &CString::new(stmt).expect("Unable to convert import statement into Cstr"),
                 None,
@@ -123,7 +123,7 @@ mod tests {
     where
         T: ProcessingStrategy<RoutedValue> + 'static,
     {
-        traced_with_gil("create_simple_transform_step", |py| {
+        traced_with_gil!(|py| {
             py.run(lambda_body, None, None).expect("Unable to import");
             let callable = make_lambda(py, lambda_body);
 
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn test_build_map() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_build_map", |py| {
+        traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,
                 c_str!("lambda x: x.replace_payload(x.payload + '_transformed')"),
@@ -276,13 +276,18 @@ mod tests {
 
             let watermark_val = RoutedValue {
                 route: Route::new(String::from("source"), vec![]),
-                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
+                    BTreeMap::new(),
+                )),
             };
             let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
             let watermark_res = strategy.submit(watermark_msg);
             assert!(watermark_res.is_ok());
             let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-            assert_eq!(watermark_messages.len(), 1);
+            assert_eq!(
+                watermark_messages[0],
+                WatermarkMessage::new(BTreeMap::new())
+            );
         });
     }
 }
