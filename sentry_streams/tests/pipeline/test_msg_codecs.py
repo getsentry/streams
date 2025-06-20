@@ -1,19 +1,21 @@
 import json
 from datetime import datetime
 from importlib import resources
-from typing import Sequence
+from typing import Any, Mapping, Sequence, Tuple
 from unittest.mock import MagicMock
 
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pytest
 
-from sentry_streams.pipeline.message import PyMessage
+from sentry_streams.pipeline.message import Message, PyMessage
 from sentry_streams.pipeline.msg_codecs import (
+    _get_codec_from_msg,
+    batch_msg_parser,
     msg_serializer,
+    parquet_serializer,
 )
-
-from unittest.mock import MagicMock
-
-from sentry_streams.pipeline.message import PyMessage
-from sentry_streams.pipeline.msg_codecs import msg_serializer
 
 
 def test_msg_serializer_default_isoformat() -> None:
@@ -37,7 +39,6 @@ def test_msg_serializer_custom_dt_format() -> None:
     assert json.loads(result_str) == {"timestamp": dt.strftime(dt_format)}
 
 
-<<<<<<< HEAD
 def test_batch_msg_parser_nominal_case() -> None:
     with (
         resources.files("sentry_kafka_schemas.examples.ingest-metrics.1")
@@ -52,7 +53,14 @@ def test_batch_msg_parser_nominal_case() -> None:
     msg = PyMessage(
         payload=payload,
         schema="ingest-metrics",
-=======
+        headers=[],
+        timestamp=0.0,
+    )
+
+    result = batch_msg_parser(msg)
+    assert result == expected
+
+
 def test_parquet_parser_nominal_case() -> None:
     schema_fields: Sequence[Tuple[str, Any]] = [
         ("deleted", pa.int64()),
@@ -235,14 +243,27 @@ def test_parquet_parser_nominal_case() -> None:
     msg = PyMessage(
         payload=[data],
         schema="test-schema",
->>>>>>> e26754f (everyone happy)
         headers=[],
         timestamp=0.0,
     )
+    payload = msg.payload
+    df = pd.DataFrame([i for i in payload if i is not None])
+    pa_schema_fields = pa.schema(schema_fields).remove_metadata()
+    table = pa.Table.from_pandas(
+        df, pa_schema_fields, preserve_index=False
+    ).replace_schema_metadata()
 
-<<<<<<< HEAD
-    result = batch_msg_parser(msg)
-    assert result == expected
+    writer = pa.BufferOutputStream()
+    pq.write_table(table, writer, use_compliant_nested_type=True)
+    expected = bytes(writer.getvalue())
+    # code snippet ends
+
+    result = parquet_serializer(msg=msg, schema_fields=schema_fields)
+
+    # for testing purposes, only compare the contents of the parquet tables
+    expected_table = pq.read_table(pa.BufferReader(expected))
+    expected_table = pq.read_table(pa.BufferReader(result))
+    assert expected_table == expected_table
 
 
 def test_msg_no_schema() -> None:
@@ -266,25 +287,3 @@ def test_msg_no_found_schema() -> None:
     with pytest.raises(ValueError) as e:
         _get_codec_from_msg(msg)
     assert "Kafka topic invalid-schema has no associated schema" in str(e.value)
-=======
-    # this is another way to get a parquet file, this test asserts if the two outcomes are the same
-    # code snippet starts
-    payload = msg.payload
-    df = pd.DataFrame([i for i in payload if i is not None])
-    pa_schema_fields = pa.schema(schema_fields).remove_metadata()
-    table = pa.Table.from_pandas(
-        df, pa_schema_fields, preserve_index=False
-    ).replace_schema_metadata()
-
-    writer = pa.BufferOutputStream()
-    pq.write_table(table, writer, use_compliant_nested_type=True)
-    expected = bytes(writer.getvalue())
-    # code snippet ends
-
-    result = parquet_serializer(msg=msg, schema_fields=schema_fields)
-
-    # for testing purposes, only compare the contents of the parquet tables
-    expected_table = pq.read_table(pa.BufferReader(expected))
-    expected_table = pq.read_table(pa.BufferReader(result))
-    assert expected_table == expected_table
->>>>>>> e26754f (everyone happy)
