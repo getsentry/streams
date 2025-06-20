@@ -107,7 +107,7 @@ def build_kafka_producer_config(
     sink: str, steps_config: Mapping[str, StepConfig]
 ) -> PyKafkaProducerConfig:
     sink_config = steps_config.get(sink)
-    assert sink_config is not None, f"Config not provided for source {sink}"
+    assert sink_config is not None, f"Config not provided for StreamSink {sink}"
 
     producer_config = cast(KafkaProducerConfig, sink_config)
     return PyKafkaProducerConfig(
@@ -163,9 +163,23 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
 
         if isinstance(step, GCSSink):
+            if sink_config := self.steps_config.get(step.name):
+                bucket = (
+                    step.bucket if not sink_config.get("bucket") else str(sink_config.get("bucket"))
+                )
+                object_generator = (
+                    step.object_generator
+                    if not sink_config.get("object_file")
+                    else lambda: str(sink_config.get("object_file"))
+                )
+            else:
+                bucket = step.bucket
+                object_generator = step.object_generator
+
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, step.bucket, step.object_generator)
+                RuntimeOperator.GCSSink(route, bucket, object_generator)
             )
+
         # Our fallback for now since there's no other Sink type
         else:
             assert isinstance(step, StreamSink)
