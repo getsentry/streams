@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import partial
 from typing import (
@@ -98,10 +99,13 @@ class Filter(Applier[Message[TIn], Message[TIn]]):
 
 
 @dataclass
-class FlatMap(Applier[Message[MutableSequence[TIn]], Message[TOut]]):
-    function: Union[
-        Callable[[Message[MutableSequence[TIn]]], TOut], str
-    ]  # TODO: Consider making this type an Iterable rather than MutableSequence
+class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
+    """
+    A flatmap is used to map a single input to multiple outputs. In practice in can be used to flatten
+    batches of messages into multiple single messages.
+    """
+
+    function: Union[Callable[[Message[TIn]], Iterable[TOut]], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
