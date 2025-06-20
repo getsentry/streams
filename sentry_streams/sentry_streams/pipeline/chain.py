@@ -25,7 +25,11 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.message import Message
-from sentry_streams.pipeline.msg_codecs import msg_parser, msg_serializer
+from sentry_streams.pipeline.msg_codecs import (
+    batch_msg_parser,
+    msg_parser,
+    msg_serializer,
+)
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
 )
@@ -78,7 +82,7 @@ class Applier(ABC, Generic[TIn, TOut]):
 
 
 @dataclass
-class Map(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
+class Map(Applier[Message[TIn], Message[TOut]]):
     function: Union[Callable[[Message[TIn]], TOut], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -86,7 +90,7 @@ class Map(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
 
 
 @dataclass
-class Filter(Applier[Message[TIn], Message[TIn]], Generic[TIn]):
+class Filter(Applier[Message[TIn], Message[TIn]]):
     function: Union[Callable[[Message[TIn]], bool], str]
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
@@ -94,7 +98,7 @@ class Filter(Applier[Message[TIn], Message[TIn]], Generic[TIn]):
 
 
 @dataclass
-class FlatMap(Applier[Message[MutableSequence[TIn]], Message[TOut]], Generic[TIn, TOut]):
+class FlatMap(Applier[Message[MutableSequence[TIn]], Message[TOut]]):
     function: Union[
         Callable[[Message[MutableSequence[TIn]]], TOut], str
     ]  # TODO: Consider making this type an Iterable rather than MutableSequence
@@ -126,7 +130,7 @@ class Reducer(
 
 
 @dataclass
-class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
+class Parser(Applier[Message[bytes], Message[TOut]]):
     """
     A step to decode bytes, deserialize the resulting message and validate it against the schema
     which corresponds to the message type provided. The message type should be one which
@@ -148,7 +152,22 @@ class Parser(Applier[Message[bytes], Message[TOut]], Generic[TOut]):
 
 
 @dataclass
-class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
+class BatchParser(
+    Applier[Message[MutableSequence[bytes]], Message[MutableSequence[TOut]]],
+):
+    msg_type: Type[TOut]
+
+    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        return MapStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            function=batch_msg_parser,
+        )
+
+
+@dataclass
+class Serializer(Applier[Message[TIn], bytes]):
     """
     A step to serialize and encode messages into bytes. These bytes can be written
     to sink data to a Kafka topic, for example. This step will need to precede a
@@ -169,7 +188,7 @@ class Serializer(Applier[Message[TIn], bytes], Generic[TIn]):
 
 @dataclass
 class Batch(
-    Applier[Message[InputType], Message[MutableSequence[Tuple[InputType, Optional[str]]]]],
+    Applier[Message[InputType], Message[MutableSequence[InputType]]],
     Generic[MeasurementUnit, InputType],
 ):
     batch_size: MeasurementUnit
