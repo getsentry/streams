@@ -12,9 +12,8 @@ from sentry_streams.pipeline.pipeline import (
     GCSSink,
     Map,
     Parser,
-    Pipeline,
     Serializer,
-    StreamSource,
+    streaming_source,
 )
 
 
@@ -29,15 +28,10 @@ def generate_files() -> str:
     return f"file_{cur_time}.txt"
 
 
-pipeline = (
-    Pipeline()
-    .start(
-        StreamSource(
-            name="myinput",
-            stream_name="ingest-metrics",
-        )
-    )
-    .apply(Parser("parser", msg_type=IngestMetric))
+pipeline = streaming_source(name="myinput", stream_name="ingest-metrics")
+
+(
+    pipeline.apply(Parser("parser", msg_type=IngestMetric))
     .apply(Filter("filter", function=filter_events))
     .apply(Map("transform", function=transform_msg))
     .apply(Serializer("serializer"))

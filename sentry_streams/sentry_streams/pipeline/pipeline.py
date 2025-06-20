@@ -151,11 +151,14 @@ class Pipeline:
         self.__previous_step = step
         return self
 
-    def sink(self, step: Sink) -> Pipeline:
+    def sink(self, step: Sink) -> None:
         assert self.__previous_step, "Cannot create a sink a step without starting first"
         step.register(self, self.__previous_step)
         self.__previous_step = None
-        return self
+
+
+def streaming_source(name: str, stream_name: str) -> Pipeline:
+    return Pipeline().start(StreamSource(name=name, stream_name=stream_name))
 
 
 @dataclass
