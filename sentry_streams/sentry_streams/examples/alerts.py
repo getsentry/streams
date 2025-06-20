@@ -1,13 +1,15 @@
+from sentry_kafka_schemas.schema_types.events_v1 import InsertEvent
+
 from sentry_streams.examples.events import (
     AlertsBuffer,
     GroupByAlertID,
     build_alert_json,
-    build_event,
     materialize_alerts,
 )
 from sentry_streams.pipeline import (
     FlatMap,
     Map,
+    Parser,
     Reducer,
     streaming_source,
 )
@@ -19,7 +21,7 @@ pipeline = (
         name="myinput",
         stream_name="events",
     )
-    .apply("mymap", Map(function=build_event))
+    .apply("parser", Parser(msg_type=InsertEvent))
     # We add a FlatMap so that we can take a stream of events (as above)
     # And then materialize (potentially multiple) time series data points per
     # event. A time series point is materialized per alert rule that the event

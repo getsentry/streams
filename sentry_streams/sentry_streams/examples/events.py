@@ -1,18 +1,12 @@
 import json
 from dataclasses import dataclass
-from typing import Any, Self, Union
+from datetime import datetime
+from typing import Generator, Self, Union
+
+from sentry_kafka_schemas.schema_types.events_v1 import InsertEvent
 
 from sentry_streams.pipeline.function_template import Accumulator, GroupBy
 from sentry_streams.pipeline.message import Message
-
-
-@dataclass
-class Event:
-    project_id: int
-    latency: int
-    timestamp: int
-    tags: list[str]
-    value: int
 
 
 @dataclass
@@ -48,16 +42,6 @@ class CountAlertData:
             "alert_name": self.name,
             "event_count": self.event_count,
         }
-
-
-def build_event(value: Message[bytes]) -> Event:
-    """
-    Build a Span object from a JSON str
-    """
-
-    d: dict[str, Any] = json.loads(value.payload)
-
-    return Event(d["project_id"], d["latency"], d["timestamp"], d["tags"], d["value"])
 
 
 def build_alert_json(message: Message[Union[p95AlertData, CountAlertData]]) -> bytes:
@@ -120,8 +104,8 @@ REGISTERED_PROJECT_ALERTS = {2: {"tag_a": 4, "tag_b": 6}, 1: 6}
 
 
 def materialize_alerts(
-    message: Message[Event],
-) -> list[TimeSeriesDataPoint]:
+    message: Message[InsertEvent],
+) -> Generator[TimeSeriesDataPoint, None, None]:
     """
     Generates (potentially multiple) time series data points per event data point.
     Looks up attributes of the event data point (in this case, project_id) to determine
@@ -129,12 +113,12 @@ def materialize_alerts(
     with multiple alert rules.
     """
     event = message.payload
-    project_id = message.payload.project_id
+    project_id = event["project_id"]
     alerts_for_project = REGISTERED_PROJECT_ALERTS[project_id]
-
+    now = datetime.now().timestamp()
+    latency = int(now - event["data"]["received"])
     if isinstance(alerts_for_project, dict):
-        tags = event.tags
-        alerting_events = []
+        tags = event["data"]["tags"] or []
         for tag in tags:
             alert_id = alerts_for_project[tag]
             alert_rule = REGISTERED_ALERTS[alert_id]
@@ -143,11 +127,10 @@ def materialize_alerts(
 
             alerting_event = TimeSeriesDataPoint(
                 alert_id=alert_id,
-                latency=event.latency,
+                latency=latency,
                 alert_type=alert_type,
             )
-            alerting_events.append(alerting_event)
-        return alerting_events
+            yield alerting_event
     else:
         assert isinstance(alerts_for_project, int)
         alert_rule = REGISTERED_ALERTS[alerts_for_project]
@@ -156,10 +139,10 @@ def materialize_alerts(
 
         alerting_event = TimeSeriesDataPoint(
             alert_id=alerts_for_project,
-            latency=event.latency,
+            latency=latency,
             alert_type=alert_type,
         )
-        return [alerting_event]
+        yield alerting_event
 
 
 class GroupByAlertID(GroupBy):
