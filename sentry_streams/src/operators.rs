@@ -112,7 +112,7 @@ pub fn build(
                 route.clone(),
                 next,
                 concurrency_config,
-                &bucket,
+                bucket,
                 func_ref,
             ))
         }

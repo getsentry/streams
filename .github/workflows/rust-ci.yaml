@@ -20,6 +20,8 @@ jobs:
         working-directory: ./sentry_streams
       - run: cargo fmt --check
         working-directory: ./sentry_streams
+      - run: cargo clippy --no-deps --all-features
+        working-directory: ./sentry_streams
 
   test:
     name: "Tests"
