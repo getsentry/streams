@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Generator, Self, Union
 
 from sentry_streams.pipeline.function_template import Accumulator, GroupBy
+from sentry_streams.pipeline.message import Message
 
 
 @dataclass
@@ -49,21 +50,21 @@ class CountAlertData:
         }
 
 
-def build_event(value: str) -> Event:
+def build_event(value: Message[bytes]) -> Event:
     """
     Build a Span object from a JSON str
     """
 
-    d: dict[str, Any] = json.loads(value)
+    d: dict[str, Any] = json.loads(value.payload)
 
     return Event(d["project_id"], d["latency"], d["timestamp"], d["tags"], d["value"])
 
 
-def build_alert_json(alert: Union[p95AlertData, CountAlertData]) -> str:
+def build_alert_json(message: Union[p95AlertData, CountAlertData]) -> bytes:
 
-    d = alert.to_dict()
+    d = message.to_dict()
 
-    return json.dumps(d)
+    return json.dumps(d).encode("utf-8")
 
 
 class AlertsBuffer(Accumulator[TimeSeriesDataPoint, Union[p95AlertData, CountAlertData]]):
@@ -117,14 +118,15 @@ REGISTERED_ALERTS = {
 REGISTERED_PROJECT_ALERTS = {2: {"tag_a": 4, "tag_b": 6}, 1: 6}
 
 
-def materialize_alerts(event: Event) -> Generator[TimeSeriesDataPoint, None, None]:
+def materialize_alerts(
+    event: Event,
+) -> Generator[TimeSeriesDataPoint, None, None]:
     """
     Generates (potentially multiple) time series data points per event data point.
     Looks up attributes of the event data point (in this case, project_id) to determine
     which registered alert(s) correspond to the current event. One event may be registered
     with multiple alert rules.
     """
-
     project_id = event.project_id
     alerts_for_project = REGISTERED_PROJECT_ALERTS[project_id]
 
@@ -142,7 +144,6 @@ def materialize_alerts(event: Event) -> Generator[TimeSeriesDataPoint, None, Non
                 alert_type=alert_type,
             )
             yield alerting_event
-
     else:
         assert isinstance(alerts_for_project, int)
         alert_rule = REGISTERED_ALERTS[alerts_for_project]
