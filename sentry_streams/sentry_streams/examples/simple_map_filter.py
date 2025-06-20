@@ -34,5 +34,5 @@ pipeline = (
     .apply("filter", Filter(function=filter_events))
     .apply("transform", Map(function=transform_msg))
     .apply("serializer", Serializer())
-    .sink("mysink", GCSSink(bucket="arroyo-artifacts", object_generator=generate_files))
+    .sink("mysink", GCSSink(bucket="dummy-bucket", object_generator=generate_files))
 )
