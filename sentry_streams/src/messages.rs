@@ -312,7 +312,7 @@ impl RoutedValuePayload {
 
 impl Into<PyStreamingMessage> for Py<PyAny> {
     fn into(self) -> PyStreamingMessage {
-        traced_with_gil("PyStreamingMessage Into", |py| {
+        traced_with_gil!(|py| {
             let bound = self.clone_ref(py).into_bound(py);
             if bound.is_instance_of::<PyAnyMessage>() {
                 let content = bound.downcast::<PyAnyMessage>()?;
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn test_headers_to_vec_and_sequence_roundtrip() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_headers_to_vec_and_sequence_roundtrip", |py| {
+        traced_with_gil!(|py| {
             let headers = vec![
                 ("key1".to_string(), vec![1, 2, 3]),
                 ("key2".to_string(), vec![4, 5, 6]),
@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn test_pyanymessage_lifecycle() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_pyanymessage_lifecycle", |py| {
+        traced_with_gil!(|py| {
             // Prepare test data
             let payload = "payload".into_py_any(py).unwrap();
             let headers = vec![
@@ -442,7 +442,7 @@ mod tests {
     #[test]
     fn test_rawmessage_lifecycle() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_rawmessage_lifecycle", |py| {
+        traced_with_gil!(|py| {
             // Prepare test data
             let payload_bytes = vec![100, 101, 102, 103];
             let py_payload = PyBytes::new(py, &payload_bytes);
@@ -516,7 +516,7 @@ mod tests {
     #[test]
     fn test_unwrap_payload_py_msg() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_rawmessage_lifecycle", |py| {
+        traced_with_gil!(|py| {
             let headers = vec![
                 ("alpha".to_string(), vec![1, 2]),
                 ("beta".to_string(), vec![3, 4]),

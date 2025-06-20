@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn test_watermark_poll() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_call_python_function", |py| {
+        traced_with_gil!(|py| {
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
             let submitted_watermarks_clone = submitted_watermarks.clone();

@@ -76,7 +76,7 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                     self.submitted_watermarks.lock().unwrap().push(watermark);
                 }
                 RoutedValuePayload::PyStreamingMessage(py_payload) => {
-                    traced_with_gil("FakeStrategy submit", |py| {
+                    traced_with_gil!(|py| {
                         let msg = match py_payload {
                             PyStreamingMessage::PyAnyMessage { content } => {
                                 content.bind(py).getattr("payload").unwrap()
