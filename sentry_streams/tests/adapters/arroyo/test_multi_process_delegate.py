@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Union
 
+from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import FilteredPayload
 from arroyo.types import Message as ArroyoMessage
 from arroyo.types import Partition, Topic, Value
@@ -10,6 +11,10 @@ from sentry_streams.adapters.arroyo.multi_process_delegate import (
     process_message,
     rust_to_arroyo_msg,
 )
+from sentry_streams.adapters.arroyo.rust_step import (
+    ArroyoStrategyDelegate,
+    OutputRetriever,
+)
 from sentry_streams.pipeline.message import (
     Message,
     PyMessage,
@@ -17,10 +22,13 @@ from sentry_streams.pipeline.message import (
 from sentry_streams.rust_streams import PyAnyMessage
 
 
-def test_process_message() -> None:
-    def transformer(msg: Message[bytes]) -> str:
-        return f"transformed {msg.payload.decode('utf-8')}"
+def transformer(msg: Message[bytes]) -> Message[str]:
+    return PyMessage(
+        f"transformed {msg.payload.decode('utf-8')}", msg.headers, msg.timestamp, msg.schema
+    )
 
+
+def test_process_message() -> None:
     msg = ArroyoMessage(
         Value(
             PyMessage(
@@ -75,3 +83,41 @@ def test_rust_to_arroyo_msg_with_pyanymessage() -> None:
     assert arroyo_msg.payload.schema == "s"
     assert Partition(Topic("topic"), 0) in arroyo_msg.committable
     assert arroyo_msg.committable[Partition(Topic("topic"), 0)] == 123
+
+
+def str_transformer(msg: ArroyoMessage[Message[str]]) -> Message[str]:
+    return PyMessage(
+        f"transformed {msg.payload.payload}",
+        msg.payload.headers,
+        msg.payload.timestamp,
+        msg.payload.schema,
+    )
+
+
+def test_integration() -> None:
+    # TODO: Figure out a way to run the proper multi process strategy
+    # in a stable way in a unit test.
+    retriever = OutputRetriever[Union[FilteredPayload, Message[str]]](mapped_msg_to_rust)
+
+    delegate = ArroyoStrategyDelegate(
+        RunTask(str_transformer, retriever), rust_to_arroyo_msg, retriever
+    )
+
+    delegate.submit(
+        PyAnyMessage(payload="foo", headers=[("h", "v".encode())], timestamp=123, schema="s"),
+        committable={
+            ("t", 1): 42,
+        },
+    )
+    ret = list(delegate.poll())
+    assert len(ret) == 1
+    ret_msg, committable = ret[0]
+
+    expected = PyMessage(
+        "transformed foo", headers=[("h", "v".encode())], timestamp=123, schema="s"
+    ).inner
+
+    assert ret_msg.payload == expected.payload
+    assert ret_msg.headers == expected.headers
+    assert ret_msg.timestamp == expected.timestamp
+    assert ret_msg.schema == expected.schema

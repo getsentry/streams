@@ -1,0 +1,31 @@
+# Chained parallel processing.
+# This pipeline has three chained transformation steps.
+# Steps in the same Segment are executed in the same
+# process. Though chains are parallelized over multiple
+# processes.
+env: {}
+
+pipeline:
+  segments:
+    - steps_config:
+        myinput:
+          starts_segment: True
+          bootstrap_servers: ["127.0.0.1:9092"]
+          parallelism: 1
+        parser:
+          # Parser is the beginning of the segment.
+          # All Map steps in the same segment are chained
+          # together in the same process.
+          #
+          # When adding a step to the segment that is not
+          # a map we need to create a new segment as these
+          # cannot be ran in a multi process step.
+          starts_segment: True
+          parallelism:
+            multi_process:
+              processes: 4
+              batch_size: 1000
+              batch_time: 0.2
+        mysink:
+          starts_segment: True
+          bootstrap_servers: ["127.0.0.1:9092"]
