@@ -17,6 +17,8 @@ from typing import (
     cast,
 )
 
+from pyarrow import DataType as PADataType
+
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -29,6 +31,7 @@ from sentry_streams.pipeline.msg_codecs import (
     batch_msg_parser,
     msg_parser,
     msg_serializer,
+    parquet_serializer,
 )
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
@@ -178,6 +181,20 @@ class Serializer(Applier[Message[TIn], bytes]):
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         serializer_fn = partial(msg_serializer, dt_format=self.dt_format)
+        return MapStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            function=serializer_fn,
+        )
+
+
+@dataclass
+class ParquetSerializer(Applier[Message[TIn], bytes], Generic[TIn]):
+    schema_fields: Sequence[Tuple[str, PADataType]]
+
+    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        serializer_fn = partial(parquet_serializer, schema_fields=self.schema_fields)
         return MapStep(
             name=name,
             ctx=ctx,
