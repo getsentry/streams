@@ -1,23 +1,37 @@
 use crate::messages::PyStreamingMessage;
 use crate::utils::traced_with_gil;
-use pyo3::prelude::*;
+use pyo3::{import_exception, prelude::*};
 
-/// Executes a Python callable with an Arroyo message containing Any and
-/// returns the result.
-pub fn call_python_function(
-    callable: &Py<PyAny>,
-    message: &PyStreamingMessage,
-) -> Result<PyStreamingMessage, PyErr> {
-    Ok(traced_with_gil!(|py| match message {
-        PyStreamingMessage::PyAnyMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
-        }
+import_exception!(sentry_streams.pipeline.exception, InvalidMessageError);
 
-        PyStreamingMessage::RawMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
+pub type ApplyResut<T> = Result<T, ApplyError>;
+
+#[derive(Debug)]
+pub enum ApplyError {
+    InvalidMessage,
+    Backpressure,
+    ApplyFailed,
+}
+
+pub fn try_apply_py(callable: &Py<PyAny>, message: &PyStreamingMessage) -> ApplyResut<Py<PyAny>> {
+    traced_with_gil!(|py| {
+        match &message {
+            PyStreamingMessage::PyAnyMessage { content } => {
+                callable.call1(py, (content.clone_ref(py),))
+            }
+            PyStreamingMessage::RawMessage { content } => {
+                callable.call1(py, (content.clone_ref(py),))
+            }
         }
-    })?
-    .into())
+        .map_err(|py_err| {
+            py_err.print(py);
+            if py_err.is_instance(py, &py.get_type::<InvalidMessageError>()) {
+                ApplyError::InvalidMessage
+            } else {
+                ApplyError::ApplyFailed
+            }
+        })
+    })
 }
 
 /// Executes a Python callable with an Arroyo message containing Any and
@@ -68,7 +82,7 @@ mod tests {
 
             let result = match message.payload().payload {
                 RoutedValuePayload::PyStreamingMessage(ref msg) => {
-                    call_python_function(&callable, &msg).unwrap()
+                    try_apply_py(&callable, &msg).unwrap().into()
                 }
                 RoutedValuePayload::WatermarkMessage(..) => unreachable!(),
             };

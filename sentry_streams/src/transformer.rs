@@ -1,15 +1,11 @@
-use crate::callers::call_python_function;
+use crate::callers::{try_apply_py, ApplyError};
 use crate::filter_step::Filter;
 use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
-use crate::utils::traced_with_gil;
-use pyo3::import_exception;
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
-use sentry_arroyo::processing::strategies::{ProcessingStrategy, SubmitError};
-use sentry_arroyo::types::Message;
-
-import_exception!(sentry_streams.pipeline.exception, InvalidMessageError);
+use sentry_arroyo::processing::strategies::{MessageRejected, ProcessingStrategy, SubmitError};
+use sentry_arroyo::types::{InnerMessage, Message};
 
 /// Creates an Arroyo transformer strategy that uses a Python callable to
 /// transform messages. The callable is expected to take a Message<RoutedValue>
@@ -36,31 +32,18 @@ pub fn build_map(
 
         let route = message.payload().route.clone();
 
-        let transformed = call_python_function(&callable, py_streaming_msg).map_err(|py_err| {
-            // TODO: Ideally this should be built into an abstraction like
-            // call_python_function, where someone can call it and it handles
-            // things like printing the stacktrace and returns a custom variant
-            // if the exception is a InvalidMessageError
-            if !traced_with_gil!(|py| {
-                py_err.print(py);
-                py_err.is_instance(py, &py.get_type::<InvalidMessageError>())
-            }) {
-                 panic!("Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError")
-            }
+        let res = try_apply_py(&callable, py_streaming_msg);
 
-            let sentry_arroyo::types::InnerMessage::BrokerMessage(ref broker_message) =
-                message.inner_message
-            else {
-                panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage")
-            };
-
-            SubmitError::InvalidMessage(broker_message.into())
-        })?;
-
-        Ok(message.replace(RoutedValue {
-            route,
-            payload: RoutedValuePayload::PyStreamingMessage(transformed),
-        }))
+        match (res, &message.inner_message) {
+            (Ok(transformed), _) => Ok(message.replace(RoutedValue {
+                route,
+                payload: RoutedValuePayload::PyStreamingMessage(transformed.into()),
+            })),
+            (Err(ApplyError::ApplyFailed), _) => panic!("Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
+            (Err(ApplyError::Backpressure), _) => Err(MessageRejected {message}.into()),
+            (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
+            (Err(ApplyError::InvalidMessage),  InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into()))
+        }
     };
     Box::new(RunTask::new(mapper, next))
 }
