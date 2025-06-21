@@ -129,6 +129,7 @@ pub struct PyAnyMessage {
     pub schema: Option<String>,
 }
 
+#[allow(dead_code)]
 pub fn into_pyany(py: Python<'_>, message: PyAnyMessage) -> PyResult<Py<PyAnyMessage>> {
     // Converts a PyAnyMessage instantiated outside of Python memory into a
     // Py<PyAnyMessage> that can be used in Python code.
@@ -302,7 +303,7 @@ impl RoutedValuePayload {
     /// If the payload is a `WatermarkMessage` this panics.
     pub fn unwrap_payload(&self) -> &PyStreamingMessage {
         match &self {
-            RoutedValuePayload::PyStreamingMessage(payload) => &payload,
+            RoutedValuePayload::PyStreamingMessage(payload) => payload,
             RoutedValuePayload::WatermarkMessage(..) => panic!(
                 "Invalid message payload, expected PyStreamingMessage but got WatermarkPayload."
             ),
@@ -310,10 +311,10 @@ impl RoutedValuePayload {
     }
 }
 
-impl Into<PyStreamingMessage> for Py<PyAny> {
-    fn into(self) -> PyStreamingMessage {
+impl From<Py<PyAny>> for PyStreamingMessage {
+    fn from(value: Py<PyAny>) -> Self {
         traced_with_gil!(|py| {
-            let bound = self.clone_ref(py).into_bound(py);
+            let bound = value.clone_ref(py).into_bound(py);
             if bound.is_instance_of::<PyAnyMessage>() {
                 let content = bound.downcast::<PyAnyMessage>()?;
                 Ok(PyStreamingMessage::PyAnyMessage {

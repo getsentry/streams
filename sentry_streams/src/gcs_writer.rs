@@ -91,7 +91,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 
         let bytes = match message.payload().payload {
             RoutedValuePayload::PyStreamingMessage(ref py_message) => {
-                traced_with_gil!(|py| pybytes_to_bytes(&py_message, py)).unwrap()
+                traced_with_gil!(|py| pybytes_to_bytes(py_message, py)).unwrap()
             }
             RoutedValuePayload::WatermarkMessage(..) => {
                 return Box::pin(async move { Ok(message) })
@@ -141,7 +141,7 @@ mod tests {
         traced_with_gil!(|py| {
             let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(
-                pybytes_to_bytes(&arroyo_msg.payload().payload.unwrap_payload(), py).unwrap(),
+                pybytes_to_bytes(arroyo_msg.payload().payload.unwrap_payload(), py).unwrap(),
                 b"hello".to_vec()
             );
         });

@@ -7,6 +7,7 @@ use sentry_arroyo::processing::strategies::run_task::RunTask;
 use sentry_arroyo::processing::strategies::{InvalidMessage, ProcessingStrategy, SubmitError};
 use sentry_arroyo::types::{InnerMessage, Message};
 
+#[allow(clippy::result_large_err)]
 fn route_message(
     route: &Route,
     callable: &Py<PyAny>,
@@ -16,7 +17,7 @@ fn route_message(
         return Ok(message);
     }
     let dest_route = match message.payload().payload {
-        RoutedValuePayload::PyStreamingMessage(ref msg) => call_any_python_function(callable, &msg),
+        RoutedValuePayload::PyStreamingMessage(ref msg) => call_any_python_function(callable, msg),
         // TODO: a future PR will remove this gate on WatermarkMessage and duplicate it for each downstream route.
         RoutedValuePayload::WatermarkMessage(..) => return Ok(message),
     };
