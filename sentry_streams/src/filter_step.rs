@@ -1,9 +1,10 @@
-use crate::messages::{PyStreamingMessage, RoutedValuePayload};
+use crate::callers::{try_apply_py, ApplyError};
+use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
-use pyo3::{Py, PyAny, Python};
+use pyo3::{Py, PyAny};
 use sentry_arroyo::processing::strategies::{
-    CommitRequest, InvalidMessage, ProcessingStrategy, StrategyError, SubmitError,
+    CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
 };
 use sentry_arroyo::types::{InnerMessage, Message};
 use std::time::Duration;
@@ -42,53 +43,30 @@ impl ProcessingStrategy<RoutedValue> for Filter {
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
         // WatermarkMessages are submitted to next_step immediately so they aren't passed to the filter function
         if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
-            self.next_step.submit(message)
-        } else {
-            let res: Result<bool, pyo3::PyErr> = match message.payload().payload {
-                RoutedValuePayload::PyStreamingMessage(ref py_payload) => {
-                    traced_with_gil!(|py: Python<'_>| {
-                        let python_payload: Py<PyAny> = match py_payload {
-                            PyStreamingMessage::PyAnyMessage { ref content } => {
-                                content.clone_ref(py).into_any()
-                            }
-                            PyStreamingMessage::RawMessage { ref content } => {
-                                content.clone_ref(py).into_any()
-                            }
-                        };
-                        let py_res = self.callable.call1(py, (python_payload,));
-                        match py_res {
-                            Ok(boolean) => {
-                                let filtered = boolean.is_truthy(py).unwrap();
-                                Ok(filtered)
-                            }
-                            Err(e) => Err(e),
-                        }
-                    })
-                }
-                RoutedValuePayload::WatermarkMessage(..) => {
-                    unreachable!("Watermark message trying to be passed to filter function.")
-                }
-            };
+            return self.next_step.submit(message);
+        }
 
-            match res {
-                Ok(bool) => {
-                    if bool {
-                        self.next_step.submit(message)?;
-                    }
-                    Ok(())
-                }
-                Err(_) => match message.inner_message {
-                    InnerMessage::BrokerMessage(inner) => {
-                        Err(SubmitError::<RoutedValue>::InvalidMessage(InvalidMessage {
-                            partition: inner.partition,
-                            offset: inner.offset,
-                        }))
-                    }
-                    InnerMessage::AnyMessage(inner) => {
-                        panic!("Unexpected message type: {:?}", inner)
-                    }
-                },
-            }
+        let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) =
+            message.payload().payload
+        else {
+            unreachable!("Watermark message trying to be passed to filter function.")
+        };
+
+        let res = traced_with_gil!(|py| {
+            try_apply_py(
+                py,
+                &self.callable,
+                (Into::<Py<PyAny>>::into(py_streaming_msg),),
+            )
+            .and_then(|py_res| py_res.is_truthy(py).map_err(|_| ApplyError::ApplyFailed))
+        });
+
+        match (res, &message.inner_message) {
+            (Ok(true), _) => self.next_step.submit(message),
+            (Ok(false), _) => Ok(()),
+            (Err(ApplyError::ApplyFailed), _) => panic!("Python filter function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
+            (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
+            (Err(ApplyError::InvalidMessage), InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into())),
         }
     }
 
@@ -110,15 +88,126 @@ mod tests {
     use crate::messages::WatermarkMessage;
     use crate::routes::Route;
     use crate::test_operators::build_routed_value;
+    use crate::test_operators::import_py_dep;
     use crate::test_operators::make_lambda;
     use crate::transformer::build_filter;
     use crate::utils::traced_with_gil;
+    use chrono::Utc;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
+    use sentry_arroyo::processing::strategies::noop::Noop;
+    use sentry_arroyo::processing::strategies::InvalidMessage;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
+    use sentry_arroyo::types::Partition;
+    use sentry_arroyo::types::Topic;
     use std::collections::BTreeMap;
+    use std::ffi::CStr;
     use std::ops::Deref;
     use std::sync::{Arc, Mutex};
+
+    fn create_simple_filter<T>(
+        lambda_body: &CStr,
+        next_step: T,
+    ) -> Box<dyn ProcessingStrategy<RoutedValue>>
+    where
+        T: ProcessingStrategy<RoutedValue> + 'static,
+    {
+        traced_with_gil!(|py| {
+            py.run(lambda_body, None, None).expect("Unable to import");
+            let callable = make_lambda(py, lambda_body);
+
+            build_filter(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                callable,
+                Box::new(next_step),
+            )
+        })
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
+    )]
+    fn test_filter_crashes_on_any_msg() {
+        pyo3::prepare_freethreaded_python();
+
+        import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
+
+        let mut filter = create_simple_filter(
+            c_str!("lambda x: (_ for _ in ()).throw(InvalidMessageError())"),
+            Noop {},
+        );
+
+        traced_with_gil!(|py| {
+            let message = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            let _ = filter.submit(message);
+        });
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Python filter function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
+    )]
+    fn test_filter_crashes_on_normal_exceptions() {
+        pyo3::prepare_freethreaded_python();
+
+        let mut filter = create_simple_filter(c_str!("lambda x: {}[0]"), Noop {});
+
+        traced_with_gil!(|py| {
+            let message = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            let _ = filter.submit(message);
+        });
+    }
+
+    #[test]
+    fn test_filter_handles_invalid_msg_exception() {
+        pyo3::prepare_freethreaded_python();
+
+        import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
+
+        let mut filter = create_simple_filter(
+            c_str!("lambda x: (_ for _ in ()).throw(InvalidMessageError())"),
+            Noop {},
+        );
+
+        traced_with_gil!(|py| {
+            let message = Message::new_broker_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                Partition::new(Topic::new("topic"), 2),
+                10,
+                Utc::now(),
+            );
+            let SubmitError::InvalidMessage(InvalidMessage { partition, offset }) =
+                filter.submit(message).unwrap_err()
+            else {
+                panic!("Expected SubmitError::InvalidMessage")
+            };
+
+            assert_eq!(partition, Partition::new(Topic::new("topic"), 2));
+            assert_eq!(offset, 10);
+        });
+    }
 
     #[test]
     fn test_build_filter() {
