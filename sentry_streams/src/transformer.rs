@@ -135,90 +135,93 @@ mod tests {
         })
     }
 
-    // #[test]
-    // #[should_panic(
-    //     expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
-    // )]
-    // fn test_transform_crashes_on_any_msg() {
-    //     pyo3::prepare_freethreaded_python();
+    #[ignore]
+    #[test]
+    #[should_panic(
+        expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
+    )]
+    fn test_transform_crashes_on_any_msg() {
+        pyo3::prepare_freethreaded_python();
 
-    //     import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
+        import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
-    //     let mut transform = create_simple_transform_step(
-    //         c_str!("lambda x: (_ for _ in ()).throw(InvalidMessageError())"),
-    //         Noop {},
-    //     );
+        let mut transform = create_simple_transform_step(
+            c_str!("lambda x: (_ for _ in ()).throw(InvalidMessageError())"),
+            Noop {},
+        );
 
-    //     traced_with_gil("test_transform_crashes_on_any_msg", |py| {
-    //         let message = Message::new_any_message(
-    //             build_routed_value(
-    //                 py,
-    //                 "test_message".into_py_any(py).unwrap(),
-    //                 "source1",
-    //                 vec!["waypoint1".to_string()],
-    //             ),
-    //             BTreeMap::new(),
-    //         );
-    //         let _ = transform.submit(message);
-    //     });
-    // }
+        traced_with_gil!(|py| {
+            let message = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            let _ = transform.submit(message);
+        });
+    }
 
-    // #[test]
-    // #[should_panic(
-    //     expected = "Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
-    // )]
-    // fn test_transform_crashes_on_normal_exceptions() {
-    //     pyo3::prepare_freethreaded_python();
+    #[ignore]
+    #[test]
+    #[should_panic(
+        expected = "Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
+    )]
+    fn test_transform_crashes_on_normal_exceptions() {
+        pyo3::prepare_freethreaded_python();
 
-    //     let mut transform = create_simple_transform_step(c_str!("lambda x: {}[0]"), Noop {});
+        let mut transform = create_simple_transform_step(c_str!("lambda x: {}[0]"), Noop {});
 
-    //     traced_with_gil("test_transform_crashes_on_normal_exceptions", |py| {
-    //         let message = Message::new_any_message(
-    //             build_routed_value(
-    //                 py,
-    //                 "test_message".into_py_any(py).unwrap(),
-    //                 "source1",
-    //                 vec!["waypoint1".to_string()],
-    //             ),
-    //             BTreeMap::new(),
-    //         );
-    //         let _ = transform.submit(message);
-    //     });
-    // }
+        traced_with_gil!(|py| {
+            let message = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
+            );
+            let _ = transform.submit(message);
+        });
+    }
 
-    // #[test]
-    // fn test_transform_handles_msg_invalid_exception() {
-    //     pyo3::prepare_freethreaded_python();
+    #[ignore]
+    #[test]
+    fn test_transform_handles_msg_invalid_exception() {
+        pyo3::prepare_freethreaded_python();
 
-    //     import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
+        import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
-    //     let mut transform = create_simple_transform_step(
-    //         c_str!("lambda x: (_ for _ in ()).throw(InvalidMessageError())"),
-    //         Noop {},
-    //     );
+        let mut transform = create_simple_transform_step(
+            c_str!("lambda x: (_ for _ in ()).throw(InvalidMessageError())"),
+            Noop {},
+        );
 
-    //     traced_with_gil("test_transform_handles_msg_invalid_exception", |py| {
-    //         let message = Message::new_broker_message(
-    //             build_routed_value(
-    //                 py,
-    //                 "test_message".into_py_any(py).unwrap(),
-    //                 "source1",
-    //                 vec!["waypoint1".to_string()],
-    //             ),
-    //             Partition::new(Topic::new("topic"), 2),
-    //             10,
-    //             Utc::now(),
-    //         );
-    //         let SubmitError::InvalidMessage(InvalidMessage { partition, offset }) =
-    //             transform.submit(message).unwrap_err()
-    //         else {
-    //             panic!("Expected SubmitError::InvalidMessage")
-    //         };
+        traced_with_gil!(|py| {
+            let message = Message::new_broker_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                ),
+                Partition::new(Topic::new("topic"), 2),
+                10,
+                Utc::now(),
+            );
+            let SubmitError::InvalidMessage(InvalidMessage { partition, offset }) =
+                transform.submit(message).unwrap_err()
+            else {
+                panic!("Expected SubmitError::InvalidMessage")
+            };
 
-    //         assert_eq!(partition, Partition::new(Topic::new("topic"), 2));
-    //         assert_eq!(offset, 10);
-    //     });
-    // }
+            assert_eq!(partition, Partition::new(Topic::new("topic"), 2));
+            assert_eq!(offset, 10);
+        });
+    }
 
     #[test]
     fn test_build_map() {
