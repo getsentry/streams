@@ -44,7 +44,7 @@ impl PythonAdapter {
         delegate_factory: Py<PyAny>,
         next_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
     ) -> Self {
-        traced_with_gil("PythonAdapter::new", |py| {
+        traced_with_gil!(|py| {
             let processing_step = delegate_factory.call_method0(py, "build").unwrap();
 
             Self {
@@ -148,7 +148,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                 committable.insert(partition, offset);
             }
 
-            traced_with_gil("PythonAdapter::submit", |py| {
+            traced_with_gil!(|py| {
                 let python_payload: Py<PyAny> = match message.payload().payload {
                     RoutedValuePayload::WatermarkMessage(ref watermark) => {
                         // TODO: this code is unreachable, future PR will allow forwarding WatermarkMessages
@@ -199,15 +199,14 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     ///
     /// This is the method that sends messages to the next ProcessingStrategy.
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        let out_messages =
-            traced_with_gil("PythonAdapter::poll", |py| -> PyResult<Vec<Py<PyAny>>> {
-                let ret = self.processing_step.call_method0(py, "poll")?;
-                Ok(ret.extract(py).unwrap())
-            });
+        let out_messages = traced_with_gil!(|py| -> PyResult<Vec<Py<PyAny>>> {
+            let ret = self.processing_step.call_method0(py, "poll")?;
+            Ok(ret.extract(py).unwrap())
+        });
 
         match out_messages {
             Ok(out_messages) => {
-                traced_with_gil("PythonAdapter py function", |py| {
+                traced_with_gil!(|py| {
                     self.handle_py_return_value(py, out_messages);
                 });
                 while let Some(msg) = self.transformed_messages.pop_front() {
@@ -248,17 +247,16 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
         let deadline = timeout.map(Deadline::new);
         let timeout_secs = timeout.map(|d| d.as_secs());
 
-        let out_messages =
-            traced_with_gil("PythonAdapter::join", |py| -> PyResult<Vec<Py<PyAny>>> {
-                let ret = self
-                    .processing_step
-                    .call_method1(py, "flush", (timeout_secs,))?;
-                Ok(ret.extract(py).unwrap())
-            });
+        let out_messages = traced_with_gil!(|py| -> PyResult<Vec<Py<PyAny>>> {
+            let ret = self
+                .processing_step
+                .call_method1(py, "flush", (timeout_secs,))?;
+            Ok(ret.extract(py).unwrap())
+        });
 
         match out_messages {
             Ok(out_messages) => {
-                traced_with_gil("PythonAdapter::join function", |py| {
+                traced_with_gil!(|py| {
                     self.handle_py_return_value(py, out_messages);
                 });
                 while let Some(msg) = self.transformed_messages.pop_front() {
@@ -389,7 +387,7 @@ class RustOperatorDelegateFactory:
     #[test]
     fn test_convert_committable_to_py_and_back() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_convert_committable_to_py_and_back", |py| {
+        traced_with_gil!(|py| {
             // Prepare a committable with two partitions
             let mut committable = BTreeMap::new();
             committable.insert(
@@ -419,7 +417,7 @@ class RustOperatorDelegateFactory:
     #[test]
     fn test_submit_with_matching_route() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_submit_with_matching_route", |py| {
+        traced_with_gil!(|py| {
             let instance = build_operator(py);
             let mut operator = PythonAdapter::new(
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
@@ -455,7 +453,7 @@ class RustOperatorDelegateFactory:
     #[test]
     fn test_poll_with_messages() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_poll_with_messages", |py| {
+        traced_with_gil!(|py| {
             let instance = build_operator(py);
 
             let submitted_messages = Arc::new(RawMutex::new(Vec::new()));
@@ -512,7 +510,9 @@ class RustOperatorDelegateFactory:
 
             let watermark_val = RoutedValue {
                 route: Route::new(String::from("source"), vec![]),
-                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
+                    BTreeMap::new(),
+                )),
             };
             let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
             let watermark_res = operator.submit(watermark_msg);
@@ -525,7 +525,7 @@ class RustOperatorDelegateFactory:
     #[test]
     fn test_poll_and_fail() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_poll_and_fail", |py| {
+        traced_with_gil!(|py| {
             let instance = build_operator(py);
 
             let submitted_messages = Arc::new(RawMutex::new(Vec::new()));

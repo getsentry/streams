@@ -46,7 +46,7 @@ impl ProcessingStrategy<RoutedValue> for Filter {
         } else {
             let res: Result<bool, pyo3::PyErr> = match message.payload().payload {
                 RoutedValuePayload::PyStreamingMessage(ref py_payload) => {
-                    traced_with_gil("FilterStrategy submit", |py: Python<'_>| {
+                    traced_with_gil!(|py: Python<'_>| {
                         let python_payload: Py<PyAny> = match py_payload {
                             PyStreamingMessage::PyAnyMessage { ref content } => {
                                 content.clone_ref(py).into_any()
@@ -123,7 +123,7 @@ mod tests {
     #[test]
     fn test_build_filter() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_build_filter", |py| {
+        traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: 'test' in x.payload"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();
@@ -186,13 +186,18 @@ mod tests {
 
             let watermark_val = RoutedValue {
                 route: Route::new(String::from("source"), vec![]),
-                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(0.)),
+                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
+                    BTreeMap::new(),
+                )),
             };
             let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
             let watermark_res = strategy.submit(watermark_msg);
             assert!(watermark_res.is_ok());
             let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-            assert_eq!(watermark_messages.len(), 1);
+            assert_eq!(
+                watermark_messages[0],
+                WatermarkMessage::new(BTreeMap::new())
+            );
         });
     }
 }

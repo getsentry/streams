@@ -1,18 +1,12 @@
 import json
 from dataclasses import dataclass
-from typing import Any, Generator, Self, Union
+from datetime import datetime
+from typing import Generator, Self, Union
+
+from sentry_kafka_schemas.schema_types.events_v1 import InsertEvent
 
 from sentry_streams.pipeline.function_template import Accumulator, GroupBy
 from sentry_streams.pipeline.message import Message
-
-
-@dataclass
-class Event:
-    project_id: int
-    latency: int
-    timestamp: int
-    tags: list[str]
-    value: int
 
 
 @dataclass
@@ -50,24 +44,14 @@ class CountAlertData:
         }
 
 
-def build_event(value: Message[bytes]) -> Event:
-    """
-    Build a Span object from a JSON str
-    """
+def build_alert_json(message: Message[Union[p95AlertData, CountAlertData]]) -> bytes:
 
-    d: dict[str, Any] = json.loads(value.payload)
-
-    return Event(d["project_id"], d["latency"], d["timestamp"], d["tags"], d["value"])
-
-
-def build_alert_json(message: Union[p95AlertData, CountAlertData]) -> bytes:
-
-    d = message.to_dict()
+    d = message.payload.to_dict()
 
     return json.dumps(d).encode("utf-8")
 
 
-class AlertsBuffer(Accumulator[TimeSeriesDataPoint, Union[p95AlertData, CountAlertData]]):
+class AlertsBuffer(Accumulator[Message[TimeSeriesDataPoint], Union[p95AlertData, CountAlertData]]):
     """
     An AlertsBuffer, which is created per-alert ID. Manages the aggregation of event data
     that pertains to each particular registered alert ID.
@@ -79,7 +63,8 @@ class AlertsBuffer(Accumulator[TimeSeriesDataPoint, Union[p95AlertData, CountAle
         self.alert_type: str
         self.alert_id: int
 
-    def add(self, value: TimeSeriesDataPoint) -> Self:
+    def add(self, message: Message[TimeSeriesDataPoint]) -> Self:
+        value = message.payload
         if value.alert_type == "count":
             self.count += 1
             self.alert_type = value.alert_type
@@ -119,7 +104,7 @@ REGISTERED_PROJECT_ALERTS = {2: {"tag_a": 4, "tag_b": 6}, 1: 6}
 
 
 def materialize_alerts(
-    event: Event,
+    message: Message[InsertEvent],
 ) -> Generator[TimeSeriesDataPoint, None, None]:
     """
     Generates (potentially multiple) time series data points per event data point.
@@ -127,11 +112,13 @@ def materialize_alerts(
     which registered alert(s) correspond to the current event. One event may be registered
     with multiple alert rules.
     """
-    project_id = event.project_id
+    event = message.payload
+    project_id = event["project_id"]
     alerts_for_project = REGISTERED_PROJECT_ALERTS[project_id]
-
+    now = datetime.now().timestamp()
+    latency = int(now - event["data"]["received"])
     if isinstance(alerts_for_project, dict):
-        tags = event.tags
+        tags = event["data"]["tags"] or []
         for tag in tags:
             alert_id = alerts_for_project[tag]
             alert_rule = REGISTERED_ALERTS[alert_id]
@@ -140,7 +127,7 @@ def materialize_alerts(
 
             alerting_event = TimeSeriesDataPoint(
                 alert_id=alert_id,
-                latency=event.latency,
+                latency=latency,
                 alert_type=alert_type,
             )
             yield alerting_event
@@ -152,7 +139,7 @@ def materialize_alerts(
 
         alerting_event = TimeSeriesDataPoint(
             alert_id=alerts_for_project,
-            latency=event.latency,
+            latency=latency,
             alert_type=alert_type,
         )
         yield alerting_event

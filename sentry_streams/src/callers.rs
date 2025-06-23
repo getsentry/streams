@@ -8,7 +8,7 @@ pub fn call_python_function(
     callable: &Py<PyAny>,
     message: &PyStreamingMessage,
 ) -> Result<PyStreamingMessage, PyErr> {
-    Ok(traced_with_gil("call_python_function", |py| match message {
+    Ok(traced_with_gil!(|py| match message {
         PyStreamingMessage::PyAnyMessage { ref content } => {
             callable.call1(py, (content.clone_ref(py),))
         }
@@ -26,7 +26,7 @@ pub fn call_any_python_function(
     callable: &Py<PyAny>,
     message: &PyStreamingMessage,
 ) -> Result<Py<PyAny>, PyErr> {
-    traced_with_gil("call_any_python_function", |py| match message {
+    traced_with_gil!(|py| match message {
         PyStreamingMessage::PyAnyMessage { ref content } => {
             callable.call1(py, (content.clone_ref(py),))
         }
@@ -50,7 +50,7 @@ mod tests {
     #[test]
     fn test_call_python_function() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_call_python_function", |py| {
+        traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,
                 c_str!("lambda x: x.replace_payload(x.payload + '_transformed')"),
