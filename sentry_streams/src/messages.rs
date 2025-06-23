@@ -34,6 +34,7 @@
 //!       will allow us to optimize the translation avoiding copy without
 //!       impacting each operator.
 use std::collections::BTreeMap;
+use std::os::macos::raw;
 
 use pyo3::types::{PyBytes, PyList, PyTuple};
 use pyo3::Python;
@@ -41,7 +42,7 @@ use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
 use sentry_arroyo::types::Partition;
 
-use crate::utils::traced_with_gil;
+use crate::utils::{clone_committable, traced_with_gil};
 
 pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(String, Vec<u8>)>> {
     // Converts the Python consumable representation of the Message headers into
@@ -306,6 +307,33 @@ impl RoutedValuePayload {
             RoutedValuePayload::WatermarkMessage(..) => panic!(
                 "Invalid message payload, expected PyStreamingMessage but got WatermarkPayload."
             ),
+        }
+    }
+}
+
+impl Clone for RoutedValuePayload {
+    fn clone(&self) -> Self {
+        match self {
+            RoutedValuePayload::WatermarkMessage(watermark) => {
+                let watermark_clone = WatermarkMessage::new(watermark.committable.clone());
+                RoutedValuePayload::WatermarkMessage(watermark_clone)
+            }
+            RoutedValuePayload::PyStreamingMessage(ref py_msg) => match py_msg {
+                PyStreamingMessage::PyAnyMessage { ref content } => {
+                    let py_any_clone =
+                        traced_with_gil("PyAnyMessage_clone", |py| content.clone_ref(py));
+                    RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
+                        content: py_any_clone,
+                    })
+                }
+                PyStreamingMessage::RawMessage { ref content } => {
+                    let raw_clone =
+                        traced_with_gil("PyAnyMessage_clone", |py| content.clone_ref(py));
+                    RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage {
+                        content: raw_clone,
+                    })
+                }
+            },
         }
     }
 }

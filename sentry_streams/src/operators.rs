@@ -53,8 +53,15 @@ pub enum RuntimeOperator {
         bucket: String,
         object_generator: Py<PyAny>,
     },
-
-    /// Represent a router step in the pipeline that can send messages
+    /// Represents an unfold step in the pipeline that takes a single
+    /// message and a function which returns a vec of messages, and submits
+    /// the messages downstream.
+    #[pyo3(name = "Unfold")]
+    Unfold<F> {
+        route: Route,
+        callable: F,
+    },
+    /// Represents a router step in the pipeline that can send messages
     /// to one of the downstream routes.
     #[pyo3(name = "Router")]
     Router {
@@ -121,7 +128,12 @@ pub fn build(
                 func_ref,
             ))
         }
+        RuntimeOperator::Broadcast {
+            route,
+            downstream_routes
+        } => {
 
+        }
         RuntimeOperator::Router {
             route,
             routing_function,
