@@ -35,7 +35,7 @@
 //!       impacting each operator.
 use std::collections::BTreeMap;
 
-use pyo3::types::{PyBytes, PyList, PyTuple};
+use pyo3::types::{PyBytes, PyDict, PyList, PyTuple};
 use pyo3::Python;
 use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
@@ -95,15 +95,64 @@ pub fn headers_to_sequence(
 /// - reduce/broadcast/router steps need to handle WatermarkMessages instead of just forwarding them downstream immediately
 /// - comit policy needs to be aware of the total # of broadcast branches so it knows how many copies of a given WatermarkMessage
 ///   to anticipate before it sends a CommitRequest
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 #[pyclass]
 pub struct WatermarkMessage {
-    pub committable: BTreeMap<Partition, u64>,
+    pub committable: Py<PyAny>,
 }
 
 impl WatermarkMessage {
     pub fn new(committable: BTreeMap<Partition, u64>) -> Self {
-        Self { committable }
+        let py_committable = traced_with_gil!(|py| {
+            let new_committable = PyDict::new(py);
+            for (k, v) in committable.iter() {
+                // PyTuples of differently-typed objects requires converting a rust tuple into PyObject
+                let partition =
+                    PyTuple::new(py, (k.topic.as_str(), k.index).into_pyobject(py)).unwrap();
+                let res = new_committable.set_item(partition, v);
+                match res {
+                    Ok(..) => (),
+                    Err(..) => panic!("Failed to add partition {k} to watermark committable"),
+                }
+            }
+            new_committable.unbind().into_any()
+        });
+        Self {
+            committable: py_committable,
+        }
+    }
+
+    /// Like `WatermarkMessage.eq()`, but checks the value of the internal committable and not just identity.
+    /// Requires the GIL so should be avoided when possible.
+    pub fn deep_eq(&self, other: &Self) -> bool {
+        traced_with_gil!(|py| {
+            self.committable
+                .clone_ref(py)
+                .into_bound(py)
+                .eq(other.committable.clone_ref(py).into_bound(py))
+                .unwrap()
+        })
+    }
+}
+
+// clones the WatermarkMessage, but each clone's payload is just a Py reference counter
+// to the same object
+impl Clone for WatermarkMessage {
+    fn clone(&self) -> Self {
+        traced_with_gil!(|py| {
+            WatermarkMessage {
+                committable: self.committable.clone_ref(py),
+            }
+        })
+    }
+}
+
+// PartialEq compares if both payloads point to the same underlying python object.
+// To check if two WatermarkMessages have the same value (but not necessarily the same identity),
+// use WatermarkMessage.deep_eq().
+impl PartialEq for WatermarkMessage {
+    fn eq(&self, other: &Self) -> bool {
+        self.committable.is(&other.committable)
     }
 }
 
@@ -280,11 +329,28 @@ pub enum PyStreamingMessage {
     RawMessage { content: Py<RawMessage> },
 }
 
+impl Clone for PyStreamingMessage {
+    fn clone(&self) -> Self {
+        traced_with_gil!(|py| {
+            match self {
+                PyStreamingMessage::PyAnyMessage { content } => {
+                    let clone = content.clone_ref(py);
+                    PyStreamingMessage::PyAnyMessage { content: clone }
+                }
+                PyStreamingMessage::RawMessage { content } => {
+                    let clone = content.clone_ref(py);
+                    PyStreamingMessage::RawMessage { content: clone }
+                }
+            }
+        })
+    }
+}
+
 /// RoutedValuePayload is an enum type to describe the 2 possible payload values of a RoutedValue:
 /// - PyStreamingMessage: a message containing data that will be processed by the pipeline
 /// - WatermarkMessage: a message emitted by the Watermark step which is propagated down the pipeline
 ///   to ensure we only commit messages which have completed all pipeline processing
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum RoutedValuePayload {
     PyStreamingMessage(PyStreamingMessage),
     WatermarkMessage(WatermarkMessage),

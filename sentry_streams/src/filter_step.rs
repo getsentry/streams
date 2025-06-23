@@ -184,20 +184,17 @@ mod tests {
 
             assert_messages_match(py, expected_messages, actual_messages.deref());
 
+            let watermark = WatermarkMessage::new(BTreeMap::new());
+            let watermark_clone = watermark.clone();
             let watermark_val = RoutedValue {
                 route: Route::new(String::from("source"), vec![]),
-                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
-                    BTreeMap::new(),
-                )),
+                payload: RoutedValuePayload::WatermarkMessage(watermark),
             };
             let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
             let watermark_res = strategy.submit(watermark_msg);
             assert!(watermark_res.is_ok());
             let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-            assert_eq!(
-                watermark_messages[0],
-                WatermarkMessage::new(BTreeMap::new())
-            );
+            assert_eq!(watermark_messages[0], watermark_clone,);
         });
     }
 }

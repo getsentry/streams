@@ -174,10 +174,8 @@ mod tests {
             // submitted WatermarkMessage contains the last seen committable
             watermark.last_sent_timestamp = 0;
             let _ = watermark.poll();
-            assert_eq!(
-                submitted_watermarks_clone.lock().unwrap()[0],
-                WatermarkMessage::new(expected_committable)
-            );
+            assert!(submitted_watermarks_clone.lock().unwrap()[0]
+                .deep_eq(&WatermarkMessage::new(expected_committable)));
         })
     }
 }
