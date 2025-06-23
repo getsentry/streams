@@ -35,11 +35,15 @@ macro_rules! traced_with_gil {
 pub(crate) use traced_with_gil;
 
 use pyo3::Python;
+use sentry_arroyo::types::{Message, Partition};
 use std::{
+    collections::BTreeMap,
     thread,
     time::{Duration, Instant},
 };
 use tracing::warn;
+
+use crate::routes::RoutedValue;
 
 #[doc(hidden)]
 pub(crate) fn __traced_with_gil<F, R>(label: &str, warn_threshold: Duration, function: F) -> R
@@ -61,4 +65,13 @@ where
 
         function(py)
     })
+}
+
+/// Returns a clone of a message's committable
+pub fn clone_committable(message: &Message<RoutedValue>) -> BTreeMap<Partition, u64> {
+    let mut committable = BTreeMap::new();
+    for (partition, offset) in message.committable() {
+        committable.insert(partition, offset);
+    }
+    committable
 }

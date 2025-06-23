@@ -2,9 +2,9 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
-use crate::messages::{PyStreamingMessage, RoutedValuePayload};
+use crate::messages::{PyStreamingMessage, PyWatermarkMessage, RoutedValuePayload};
 use crate::routes::{Route, RoutedValue};
-use crate::utils::traced_with_gil;
+use crate::utils::{clone_committable, traced_with_gil};
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::Python;
 use pyo3::{prelude::*, IntoPyObjectExt};
@@ -140,21 +140,32 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     ///
     /// Any other exception is unexpected and triggers a panic.
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        // TODO: forward watermark messages to python code instead of gating here
-        if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
+        if self.route != message.payload().route {
             self.next_strategy.submit(message)
         } else {
-            let mut committable = BTreeMap::new();
-            for (partition, offset) in message.committable() {
-                committable.insert(partition, offset);
-            }
+            let committable = match message.payload().payload {
+                RoutedValuePayload::PyStreamingMessage(..) => clone_committable(&message),
+                RoutedValuePayload::WatermarkMessage(ref watermark) => {
+                    watermark.committable.clone()
+                }
+            };
+
+            // match message.payload().payload {
+            //     RoutedValuePayload::WatermarkMessage(watermark) => {
+            //         watermark.clone().into()
+            //     }
+            // }
 
             traced_with_gil!(|py| {
                 let python_payload: Py<PyAny> = match message.payload().payload {
                     RoutedValuePayload::WatermarkMessage(ref watermark) => {
-                        // TODO: this code is unreachable, future PR will allow forwarding WatermarkMessages
-                        // to python code which will use this branch.
-                        watermark.clone().into_py_any(py).unwrap()
+                        // temporary awful code please ignore
+                        PyWatermarkMessage::new(
+                            convert_committable_to_py(py, watermark.committable.clone()).unwrap(),
+                        )
+                        .unwrap()
+                        .into_py_any(py)
+                        .unwrap()
                     }
                     RoutedValuePayload::PyStreamingMessage(ref payload) => match payload {
                         PyStreamingMessage::PyAnyMessage { ref content } => {

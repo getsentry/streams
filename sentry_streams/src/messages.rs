@@ -96,7 +96,6 @@ pub fn headers_to_sequence(
 /// - comit policy needs to be aware of the total # of broadcast branches so it knows how many copies of a given WatermarkMessage
 ///   to anticipate before it sends a CommitRequest
 #[derive(Debug, Clone, PartialEq)]
-#[pyclass]
 pub struct WatermarkMessage {
     pub committable: BTreeMap<Partition, u64>,
 }
@@ -104,6 +103,21 @@ pub struct WatermarkMessage {
 impl WatermarkMessage {
     pub fn new(committable: BTreeMap<Partition, u64>) -> Self {
         Self { committable }
+    }
+}
+
+#[derive(Debug)]
+#[pyclass]
+pub struct PyWatermarkMessage {
+    #[pyo3(get)]
+    pub committable: Py<PyAny>,
+}
+
+#[pymethods]
+impl PyWatermarkMessage {
+    #[new]
+    pub fn new(committable: Py<PyAny>) -> PyResult<Self> {
+        Ok(Self { committable })
     }
 }
 
