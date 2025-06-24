@@ -1,7 +1,5 @@
 import json
 
-from sentry_streams.pipeline.message import Message
-
 
 class BroadcastFunctions:
     """
@@ -13,15 +11,15 @@ class BroadcastFunctions:
     """
 
     @staticmethod
-    def no_op_map(value: Message[bytes]) -> str:
-        return value.payload.decode("utf-8")
+    def no_op_map(value: str) -> str:
+        return value
 
     @staticmethod
-    def hello_map(value: Message[str]) -> str:
-        name = json.loads(value.payload)["name"]
+    def hello_map(value: str) -> str:
+        name = json.loads(value)["name"]
         return f"Hello, {name}!"
 
     @staticmethod
-    def goodbye_map(value: Message[str]) -> str:
-        name = json.loads(value.payload)["name"]
+    def goodbye_map(value: str) -> str:
+        name = json.loads(value)["name"]
         return f"Goodbye, {name}."
