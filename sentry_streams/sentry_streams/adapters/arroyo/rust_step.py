@@ -6,6 +6,7 @@ from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStr
 from arroyo.types import Message as ArroyoMessage
 
 from sentry_streams.pipeline.message import RustMessage
+from sentry_streams.rust_streams import PyWatermark
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
@@ -280,8 +281,10 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         self.__retriever = retriever
 
     def submit(self, message: RustMessage, committable: Committable) -> None:
-        arroyo_msg = self.__in_transformer(message, committable)
-        self.__inner.submit(arroyo_msg)
+        # TODO: handle watermark message inside of the OperatorDelegate
+        if not isinstance(message, PyWatermark):
+            arroyo_msg = self.__in_transformer(message, committable)
+            self.__inner.submit(arroyo_msg)
 
     def poll(self) -> Iterable[Tuple[RustMessage, Committable]]:
         self.__inner.poll()

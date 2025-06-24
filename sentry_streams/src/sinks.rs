@@ -185,7 +185,7 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
-    use crate::messages::{RoutedValuePayload, WatermarkMessage};
+    use crate::messages::{RoutedValuePayload, Watermark};
     use crate::routes::Route;
     use crate::test_operators::make_raw_routed_msg;
     use crate::utils::traced_with_gil;
@@ -252,16 +252,13 @@ mod tests {
 
         let watermark_val = RoutedValue {
             route: Route::new(String::from("source"), vec![]),
-            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(BTreeMap::new())),
+            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new()),
         };
         let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
         let watermark_res = sink.submit(watermark_msg);
         assert!(watermark_res.is_ok());
         let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-        assert_eq!(
-            watermark_messages[0],
-            WatermarkMessage::new(BTreeMap::new())
-        );
+        assert_eq!(watermark_messages[0], Watermark::new(BTreeMap::new()));
     }
 
     #[test]

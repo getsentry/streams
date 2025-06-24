@@ -30,6 +30,6 @@ fn rust_streams(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<consumer::ArroyoConsumer>()?;
     m.add_class::<messages::PyAnyMessage>()?;
     m.add_class::<messages::RawMessage>()?;
-    m.add_class::<messages::PyWatermarkMessage>()?;
+    m.add_class::<messages::PyWatermark>()?;
     Ok(())
 }

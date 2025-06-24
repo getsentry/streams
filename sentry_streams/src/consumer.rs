@@ -12,7 +12,7 @@ use crate::operators::RuntimeOperator;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
-use crate::watermark::Watermark;
+use crate::watermark::WatermarkEmitter;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
@@ -206,7 +206,7 @@ fn build_chain(
             concurrency_config,
         );
     }
-    let watermark_step = Box::new(Watermark::new(
+    let watermark_step = Box::new(WatermarkEmitter::new(
         next,
         Route {
             source: source.to_string(),

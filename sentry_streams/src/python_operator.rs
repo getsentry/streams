@@ -2,7 +2,7 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
-use crate::messages::{PyStreamingMessage, PyWatermarkMessage, RoutedValuePayload};
+use crate::messages::{PyStreamingMessage, PyWatermark, RoutedValuePayload, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::{clone_committable, traced_with_gil};
 use pyo3::types::{PyDict, PyTuple};
@@ -24,7 +24,7 @@ use std::time::Duration;
 ///
 /// The python delegate is passed as a `Py<PyAny>` reference.
 ///
-/// Overall This struct has a ProcessingStrategy implementation so it
+/// Overall this struct has a ProcessingStrategy implementation so it
 /// can be wired up to other Arroyo strategies. When it receives a
 /// message it forwards them to the `submit` method of the python
 /// delegate. The responses of the `poll` method on the python delegate
@@ -145,27 +145,30 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
         } else {
             let committable = match message.payload().payload {
                 RoutedValuePayload::PyStreamingMessage(..) => clone_committable(&message),
-                RoutedValuePayload::WatermarkMessage(ref watermark) => {
-                    watermark.committable.clone()
-                }
+                RoutedValuePayload::WatermarkMessage(ref payload) => match payload {
+                    WatermarkMessage::Watermark(ref watermark) => watermark.committable.clone(),
+                    WatermarkMessage::PyWatermark(..) => unreachable!(
+                        "Python Watermark should never be submitted to the Python Operator."
+                    ),
+                },
             };
-
-            // match message.payload().payload {
-            //     RoutedValuePayload::WatermarkMessage(watermark) => {
-            //         watermark.clone().into()
-            //     }
-            // }
 
             traced_with_gil!(|py| {
                 let python_payload: Py<PyAny> = match message.payload().payload {
-                    RoutedValuePayload::WatermarkMessage(ref watermark) => {
-                        // temporary awful code please ignore
-                        PyWatermarkMessage::new(
-                            convert_committable_to_py(py, watermark.committable.clone()).unwrap(),
-                        )
-                        .unwrap()
-                        .into_py_any(py)
-                        .unwrap()
+                    RoutedValuePayload::WatermarkMessage(ref payload) => {
+                        match payload {
+                            WatermarkMessage::Watermark(watermark) => PyWatermark::new(
+                                convert_committable_to_py(py, watermark.committable.clone())
+                                    .unwrap(),
+                            )
+                            .unwrap()
+                            .into_py_any(py)
+                            .unwrap(),
+                            // shouldn't be able to receive a PyWatermark here
+                            WatermarkMessage::PyWatermark(..) => {
+                                unreachable!("Submitting Python watermark to Python Operator.")
+                            }
+                        }
                     }
                     RoutedValuePayload::PyStreamingMessage(ref payload) => match payload {
                         PyStreamingMessage::PyAnyMessage { ref content } => {
@@ -311,6 +314,7 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::WatermarkMessage;
     use crate::test_operators::build_routed_value;
+    use crate::test_operators::make_committable;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::noop::Noop;
@@ -396,26 +400,28 @@ class RustOperatorDelegateFactory:
         Message::new_any_message(routed_value, committable)
     }
 
+    fn make_test_watermark(py: Python<'_>) -> Message<RoutedValue> {
+        let committable = make_committable(2, 0);
+        let py_committable = convert_committable_to_py(py, committable.clone()).unwrap();
+        let py_watermark = PyWatermark::new(py_committable).unwrap();
+        let routed_py_watermark = RoutedValue {
+            route: Route {
+                source: "source".to_string(),
+                waypoints: vec![],
+            },
+            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::PyWatermark(
+                py_watermark,
+            )),
+        };
+        Message::new_any_message(routed_py_watermark, committable)
+    }
+
     #[test]
     fn test_convert_committable_to_py_and_back() {
         pyo3::prepare_freethreaded_python();
         traced_with_gil!(|py| {
             // Prepare a committable with two partitions
-            let mut committable = BTreeMap::new();
-            committable.insert(
-                Partition {
-                    topic: Topic::new("topic1"),
-                    index: 0,
-                },
-                123,
-            );
-            committable.insert(
-                Partition {
-                    topic: Topic::new("topic2"),
-                    index: 1,
-                },
-                456,
-            );
+            let committable = make_committable(2, 0);
 
             // Convert to Python object and back
             let py_obj = convert_committable_to_py(py, committable.clone()).unwrap();
@@ -439,6 +445,42 @@ class RustOperatorDelegateFactory:
 
             let message = make_msg(py, "ok");
             let res = operator.submit(message);
+            assert!(res.is_ok());
+
+            let message = make_msg(py, "reject");
+            let res = operator.submit(message);
+            assert!(res.is_err());
+            assert!(matches!(
+                res,
+                Err(SubmitError::MessageRejected(MessageRejected { .. }))
+            ));
+
+            let message = make_msg(py, "invalid");
+            let res = operator.submit(message);
+            assert!(res.is_err());
+            assert!(matches!(
+                res,
+                Err(SubmitError::InvalidMessage(InvalidMessage {
+                    partition: Partition { .. },
+                    offset: 42
+                }))
+            ));
+        })
+    }
+
+    #[test]
+    fn test_submit_watermark() {
+        pyo3::prepare_freethreaded_python();
+        traced_with_gil!(|py| {
+            let instance = build_operator(py);
+            let mut operator = PythonAdapter::new(
+                Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                instance.unbind(),
+                Box::new(Noop {}),
+            );
+
+            let watermark = make_test_watermark(py);
+            let res = operator.submit(watermark);
             assert!(res.is_ok());
 
             let message = make_msg(py, "reject");
@@ -522,9 +564,7 @@ class RustOperatorDelegateFactory:
 
             let watermark_val = RoutedValue {
                 route: Route::new(String::from("source"), vec![]),
-                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
-                    BTreeMap::new(),
-                )),
+                payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new()),
             };
             let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
             let watermark_res = operator.submit(watermark_msg);
