@@ -12,3 +12,4 @@
    configure_pipeline
    runtime/arroyo
    deployment
+   docker

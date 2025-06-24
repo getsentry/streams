@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# runner - Run sentry_streams.runner directly
+# Usage: ./runner [runner_args...]
+# Example: ./runner -n SimpleMap --adapter rust_arroyo --config config.yaml app.py
+
+set -e
+
+# Run the sentry_streams runner with all provided arguments
+python -m sentry_streams.runner "$@"
