@@ -1,40 +1,50 @@
 from sentry_streams.examples.broadcast_fn import BroadcastFunctions
-from sentry_streams.pipeline import streaming_source
-from sentry_streams.pipeline.chain import ExtensibleChain, Map, StreamSink
-from sentry_streams.pipeline.message import Message
-
-# Create the source stream
-source = streaming_source("myinput", stream_name="events")
-
-# Apply the no-op map transformation
-mapped: ExtensibleChain[Message[str]] = source.apply(
-    "no_op_map",
-    Map(
-        function=BroadcastFunctions.no_op_map,
-    ),
+from sentry_streams.pipeline.pipeline import (
+    Map,
+    Pipeline,
+    StreamSink,
+    StreamSource,
 )
 
-# Broadcast into two branches
-hello_branch = mapped.apply(
-    "hello_map",
-    Map(
-        function=BroadcastFunctions.hello_map,
-    ),
-).sink(
-    "hello_sink",
-    StreamSink(
-        stream_name="transformed-events",
-    ),
+pipeline = Pipeline()
+
+source = StreamSource(
+    name="myinput",
+    ctx=pipeline,
+    stream_name="events",
 )
 
-goodbye_branch = mapped.apply(
-    "goodbye_map",
-    Map(
-        function=BroadcastFunctions.goodbye_map,
-    ),
-).sink(
-    "goodbye_sink",
-    StreamSink(
-        stream_name="transformed-events-2",
-    ),
+map = Map(
+    name="no_op_map",
+    ctx=pipeline,
+    inputs=[source],
+    function=BroadcastFunctions.no_op_map,
+)
+
+hello_map = Map(
+    name="hello_map",
+    ctx=pipeline,
+    inputs=[map],
+    function=BroadcastFunctions.hello_map,
+)
+
+goodbye_map = Map(
+    name="goodbye_map",
+    ctx=pipeline,
+    inputs=[map],
+    function=BroadcastFunctions.goodbye_map,
+)
+
+hello_sink = StreamSink(
+    name="hello_sink",
+    ctx=pipeline,
+    inputs=[hello_map],
+    stream_name="transformed-events",
+)
+
+goodbye_sink = StreamSink(
+    name="goodbye_sink",
+    ctx=pipeline,
+    inputs=[goodbye_map],
+    stream_name="transformed-events-2",
 )
