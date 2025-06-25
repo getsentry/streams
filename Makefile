@@ -13,6 +13,10 @@ tests-streams:
 	./sentry_streams/.venv/bin/pytest -vv sentry_streams/tests
 .PHONY: tests-streams
 
+test-rust-streams:
+	. scripts/rust-envvars && cd ./sentry_streams/ && cargo test
+.PHONY: tests-rust-streams
+
 tests-flink:
 	./sentry_flink/.venv/bin/pytest -vv sentry_flink/tests
 .PHONY: tests-flink

@@ -34,7 +34,4 @@ jobs:
         run: |
           make install-dev
       - name: Run tests
-        working-directory: ./sentry_streams
-        run: |
-          . .venv/bin/activate
-          cargo test
+        run: make test-rust-streams
