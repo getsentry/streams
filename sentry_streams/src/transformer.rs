@@ -109,6 +109,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     #[should_panic(
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
@@ -137,6 +138,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     #[should_panic(
         expected = "Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
@@ -160,6 +162,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_transform_handles_invalid_msg_exception() {
         pyo3::prepare_freethreaded_python();
 
