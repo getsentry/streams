@@ -5,7 +5,7 @@ edition = "2021"
 
 
 [dependencies]
-pyo3 = { version = "0.24.0"}
+pyo3 = { version = "0.24.0" }
 serde = { version = "1.0", features = ["derive"] }
 sentry_arroyo = "2.19.5"
 chrono = "0.4.40"
@@ -23,7 +23,9 @@ name = "rust_streams"
 crate-type = ["cdylib"]
 
 [features]
+default = ["enable_py_import_tests"]
 extension-module = ["pyo3/extension-module"]
+enable_py_import_tests = []
 
 [dev-dependencies]
 parking_lot = "0.12.1"

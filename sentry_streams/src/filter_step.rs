@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "enable_py_import_tests")]
     #[should_panic(
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "enable_py_import_tests")]
     #[should_panic(
         expected = "Python filter function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "enable_py_import_tests")]
     fn test_filter_handles_invalid_msg_exception() {
         pyo3::prepare_freethreaded_python();
 

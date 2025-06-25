@@ -43,7 +43,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "enable_py_import_tests")]
     fn test_apply_py_invalid_msg_err() {
         pyo3::prepare_freethreaded_python();
 
@@ -63,7 +63,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[cfg(feature = "enable_py_import_tests")]
     fn test_apply_py_throws_other_exception() {
         pyo3::prepare_freethreaded_python();
 
