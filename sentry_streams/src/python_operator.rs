@@ -115,10 +115,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
             };
 
             traced_with_gil!(|py| {
-                let python_payload: Py<PyAny> = match message.payload().payload {
-                    RoutedValuePayload::WatermarkMessage(ref payload) => payload.into(),
-                    RoutedValuePayload::PyStreamingMessage(ref payload) => payload.into(),
-                };
+                let python_payload: Py<PyAny> = (&message.payload().payload).into();
                 let py_committable = convert_committable_to_py(py, committable).unwrap();
                 match self.processing_step.call_method1(
                     py,

@@ -370,6 +370,15 @@ impl From<&PyStreamingMessage> for Py<PyAny> {
     }
 }
 
+impl From<&RoutedValuePayload> for Py<PyAny> {
+    fn from(value: &RoutedValuePayload) -> Self {
+        match &value {
+            RoutedValuePayload::PyStreamingMessage(msg) => msg.into(),
+            RoutedValuePayload::WatermarkMessage(msg) => msg.into(),
+        }
+    }
+}
+
 impl From<Py<PyAny>> for PyStreamingMessage {
     fn from(value: Py<PyAny>) -> Self {
         traced_with_gil!(|py| {
