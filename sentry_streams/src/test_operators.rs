@@ -12,6 +12,23 @@ use std::collections::BTreeMap;
 use std::ffi::CStr;
 
 #[cfg(test)]
+pub fn import_py_dep(module: &str, attr: &str) {
+    use std::ffi::CString;
+
+    use crate::utils::traced_with_gil;
+
+    let stmt = format!("from {} import {}", module, attr);
+    traced_with_gil!(|py| {
+        py.run(
+            &CString::new(stmt).expect("Unable to convert import statement into Cstr"),
+            None,
+            None,
+        )
+        .expect("Unable to import");
+    });
+}
+
+#[cfg(test)]
 pub fn make_lambda(py: Python<'_>, py_code: &CStr) -> Py<PyAny> {
     py.eval(py_code, None, None)
         .unwrap()

@@ -2,7 +2,7 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
-use crate::messages::{PyStreamingMessage, RoutedValuePayload};
+use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::types::{PyDict, PyTuple};
@@ -156,14 +156,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                         // to python code which will use this branch.
                         watermark.clone().into_py_any(py).unwrap()
                     }
-                    RoutedValuePayload::PyStreamingMessage(ref payload) => match payload {
-                        PyStreamingMessage::PyAnyMessage { ref content } => {
-                            content.clone_ref(py).into_any()
-                        }
-                        PyStreamingMessage::RawMessage { ref content } => {
-                            content.clone_ref(py).into_any()
-                        }
-                    },
+                    RoutedValuePayload::PyStreamingMessage(ref payload) => payload.into(),
                 };
                 let py_committable = convert_committable_to_py(py, committable).unwrap();
                 match self.processing_step.call_method1(
