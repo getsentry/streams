@@ -29,7 +29,7 @@ repos:
     rev: 7.1.1
     hooks:
       - id: flake8
-        language_version: python3.11
+        language_version: python3.13
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: 'v1.14.1'
     hooks:
@@ -67,4 +67,4 @@ repos:
         files: ^sentry_streams/.*\.rs$
 
 default_language_version:
-  python: python3.11
+  python: python3.13

@@ -1,0 +1,6 @@
+# Related thread: https://github.com/PyO3/pyo3/issues/1741
+export STREAMS_TEST_PYTHONPATH="$(python -c 'import sys; print(":".join(sys.path))')"
+export STREAMS_TEST_PYTHONEXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
+
+# https://github.com/astral-sh/uv/issues/8821
+export PYTHONHOME="$(dirname $(dirname $(realpath $(which python))))"
