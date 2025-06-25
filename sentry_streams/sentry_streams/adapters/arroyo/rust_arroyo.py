@@ -167,14 +167,10 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 bucket = (
                     step.bucket if not sink_config.get("bucket") else str(sink_config.get("bucket"))
                 )
-                object_generator = (
-                    step.object_generator
-                    if not sink_config.get("object_file")
-                    else lambda: str(sink_config.get("object_file"))
-                )
             else:
                 bucket = step.bucket
-                object_generator = step.object_generator
+
+            object_generator = step.object_generator
 
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.GCSSink(route, bucket, object_generator)

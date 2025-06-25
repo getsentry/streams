@@ -18,4 +18,3 @@ pipeline:
               batch_time: 0.2
         mysink:
           bucket: "arroyo-artifacts"
-          object_file: "hardcoded.txt"
