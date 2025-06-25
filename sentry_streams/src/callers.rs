@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn test_call_python_function() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,

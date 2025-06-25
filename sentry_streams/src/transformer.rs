@@ -141,7 +141,7 @@ mod tests {
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
     fn test_transform_crashes_on_any_msg() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
@@ -170,7 +170,7 @@ mod tests {
         expected = "Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
     fn test_transform_crashes_on_normal_exceptions() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         let mut transform = create_simple_transform_step(c_str!("lambda x: {}[0]"), Noop {});
 
@@ -191,7 +191,7 @@ mod tests {
     #[ignore]
     #[test]
     fn test_transform_handles_msg_invalid_exception() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_build_map() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,

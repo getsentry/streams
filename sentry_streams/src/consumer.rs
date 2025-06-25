@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_to_routed_value() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let payload_data = b"test_payload";
             let message = make_msg(Some(payload_data.to_vec()));
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn test_to_none_python() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let message = make_msg(None);
             let python_message = to_routed_value("source", message, &Some("schema".to_string()));
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_build_chain() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,

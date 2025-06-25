@@ -387,7 +387,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_convert_committable_to_py_and_back() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             // Prepare a committable with two partitions
             let mut committable = BTreeMap::new();
@@ -417,7 +417,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_submit_with_matching_route() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
             let mut operator = PythonAdapter::new(
@@ -453,7 +453,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_poll_with_messages() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
 
@@ -525,7 +525,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_poll_and_fail() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
 

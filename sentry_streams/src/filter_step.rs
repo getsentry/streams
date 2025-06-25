@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_build_filter() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: 'test' in x.payload"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
