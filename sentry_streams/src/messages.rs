@@ -41,6 +41,7 @@ use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
 use sentry_arroyo::types::Partition;
 
+use crate::committable::convert_committable_to_py;
 use crate::utils::traced_with_gil;
 
 pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(String, Vec<u8>)>> {
@@ -95,15 +96,38 @@ pub fn headers_to_sequence(
 /// - reduce/broadcast/router steps need to handle WatermarkMessages instead of just forwarding them downstream immediately
 /// - comit policy needs to be aware of the total # of broadcast branches so it knows how many copies of a given WatermarkMessage
 ///   to anticipate before it sends a CommitRequest
+#[derive(Debug)]
+pub enum WatermarkMessage {
+    Watermark(Watermark),
+    PyWatermark(PyWatermark),
+}
+
+/// Watermark represents a watermark message in rust.
 #[derive(Debug, Clone, PartialEq)]
-#[pyclass]
-pub struct WatermarkMessage {
+pub struct Watermark {
     pub committable: BTreeMap<Partition, u64>,
 }
 
-impl WatermarkMessage {
+impl Watermark {
     pub fn new(committable: BTreeMap<Partition, u64>) -> Self {
         Self { committable }
+    }
+}
+
+/// PyWatermark is a python class that represents a watermark when it is passed into
+/// Python space (such as by the PythonOperator).
+#[derive(Debug)]
+#[pyclass]
+pub struct PyWatermark {
+    #[pyo3(get)]
+    pub committable: Py<PyAny>,
+}
+
+#[pymethods]
+impl PyWatermark {
+    #[new]
+    pub fn new(committable: Py<PyAny>) -> PyResult<Self> {
+        Ok(Self { committable })
     }
 }
 
@@ -309,6 +333,30 @@ impl RoutedValuePayload {
             ),
         }
     }
+
+    pub fn make_watermark_payload(committable: BTreeMap<Partition, u64>) -> Self {
+        RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(Watermark::new(
+            committable,
+        )))
+    }
+}
+
+impl From<&WatermarkMessage> for Py<PyAny> {
+    fn from(value: &WatermarkMessage) -> Self {
+        traced_with_gil!(|py| {
+            match &value {
+                WatermarkMessage::Watermark(watermark) => PyWatermark::new(
+                    convert_committable_to_py(py, watermark.committable.clone()).unwrap(),
+                )
+                .unwrap()
+                .into_py_any(py)
+                .unwrap(),
+                WatermarkMessage::PyWatermark(watermark) => {
+                    watermark.committable.clone_ref(py).into_any()
+                }
+            }
+        })
+    }
 }
 
 impl From<&PyStreamingMessage> for Py<PyAny> {
@@ -319,6 +367,15 @@ impl From<&PyStreamingMessage> for Py<PyAny> {
                 PyStreamingMessage::RawMessage { content } => content.clone_ref(py).into_any(),
             }
         })
+    }
+}
+
+impl From<&RoutedValuePayload> for Py<PyAny> {
+    fn from(value: &RoutedValuePayload) -> Self {
+        match &value {
+            RoutedValuePayload::PyStreamingMessage(msg) => msg.into(),
+            RoutedValuePayload::WatermarkMessage(msg) => msg.into(),
+        }
     }
 }
 
@@ -361,6 +418,8 @@ pub enum StreamingMessage {
 
 #[cfg(test)]
 mod tests {
+    use pyo3::types::PyDict;
+
     use super::*;
 
     #[test]
@@ -519,10 +578,37 @@ mod tests {
     }
 
     #[test]
+    fn test_pywatermark_lifecycle() {
+        pyo3::prepare_freethreaded_python();
+        traced_with_gil!(|py| {
+            // Prepare test data
+            let committable = PyDict::new(py);
+            let key = PyTuple::new(
+                py,
+                &[
+                    "topic1".into_py_any(py).unwrap(),
+                    1.into_py_any(py).unwrap(),
+                ],
+            );
+            let _ = committable.set_item(key.unwrap(), 0);
+
+            // Create PyAnyMessage
+            let msg = PyWatermark::new(committable.unbind().clone_ref(py).into_any()).unwrap();
+
+            // Check payload
+            let payload_val: BTreeMap<(String, u64), u64> =
+                msg.committable.bind(py).extract().unwrap();
+            assert_eq!(
+                payload_val,
+                BTreeMap::from([(("topic1".to_string(), 1), 0),])
+            );
+        });
+    }
+
+    #[test]
     fn test_is_watermark_message() {
-        let wmsg = WatermarkMessage::new(BTreeMap::new());
-        let payload_wmsg = RoutedValuePayload::WatermarkMessage(wmsg);
-        assert!(payload_wmsg.is_watermark_msg());
+        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new());
+        assert!(wmsg.is_watermark_msg());
     }
 
     #[test]
@@ -554,8 +640,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_unwrap_payload_watermark_msg() {
-        let wmsg = WatermarkMessage::new(BTreeMap::new());
-        let payload_wmsg = RoutedValuePayload::WatermarkMessage(wmsg);
-        payload_wmsg.unwrap_payload();
+        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new());
+        wmsg.unwrap_payload();
     }
 }
