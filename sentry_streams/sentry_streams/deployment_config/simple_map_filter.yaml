@@ -17,4 +17,4 @@ pipeline:
               batch_size: 1000
               batch_time: 0.2
         mysink:
-          bootstrap_servers: ["127.0.0.1:9092"]
+          bucket: "arroyo-artifacts"

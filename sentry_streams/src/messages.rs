@@ -359,6 +359,17 @@ impl From<&WatermarkMessage> for Py<PyAny> {
     }
 }
 
+impl From<&PyStreamingMessage> for Py<PyAny> {
+    fn from(value: &PyStreamingMessage) -> Self {
+        traced_with_gil!(|py| {
+            match &value {
+                PyStreamingMessage::PyAnyMessage { content } => content.clone_ref(py).into_any(),
+                PyStreamingMessage::RawMessage { content } => content.clone_ref(py).into_any(),
+            }
+        })
+    }
+}
+
 impl From<Py<PyAny>> for PyStreamingMessage {
     fn from(value: Py<PyAny>) -> Self {
         traced_with_gil!(|py| {
