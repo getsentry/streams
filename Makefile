@@ -14,7 +14,7 @@ tests-streams:
 .PHONY: tests-streams
 
 test-rust-streams:
-	. scripts/rust-envvars && cd ./sentry_streams/ && cargo test
+	. scripts/rust-envvars && . sentry_streams/.venv/bin/activate && cd ./sentry_streams/ && cargo test
 .PHONY: tests-rust-streams
 
 tests-flink:
