@@ -137,6 +137,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     /// It understand Python some exceptions returned. Specifically:
     /// - MessageRejected is interpreted as backpressure.
     /// - InvalidMessage is interpreted as a message for DLQ.
+    ///
     /// Any other exception is unexpected and triggers a panic.
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
         // TODO: forward watermark messages to python code instead of gating here
@@ -270,7 +271,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                             message: transformed_message,
                         })) => {
                             self.transformed_messages.push_front(transformed_message);
-                            if deadline.map_or(false, |d| d.has_elapsed()) {
+                            if deadline.is_some_and(|d| d.has_elapsed()) {
                                 tracing::warn!("Timeout reached");
                                 break;
                             }

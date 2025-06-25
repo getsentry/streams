@@ -68,7 +68,7 @@ mod tests {
 
             let result = match message.payload().payload {
                 RoutedValuePayload::PyStreamingMessage(ref msg) => {
-                    call_python_function(&callable, &msg).unwrap()
+                    call_python_function(&callable, msg).unwrap()
                 }
                 RoutedValuePayload::WatermarkMessage(..) => unreachable!(),
             };
