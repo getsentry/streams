@@ -4,3 +4,6 @@ export STREAMS_TEST_PYTHONEXECUTABLE="$(python -c 'import sys; print(sys.executa
 
 # https://github.com/astral-sh/uv/issues/8821
 export PYTHONHOME="$(dirname $(dirname $(realpath $(which python))))"
+
+# https://github.com/astral-sh/uv/issues/11006
+export PYO3_PYTHON="$(python -c 'import sys; print(sys.executable)')"
