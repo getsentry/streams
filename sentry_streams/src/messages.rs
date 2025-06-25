@@ -41,6 +41,7 @@ use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
 use sentry_arroyo::types::Partition;
 
+use crate::committable::convert_committable_to_py;
 use crate::utils::traced_with_gil;
 
 pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(String, Vec<u8>)>> {
@@ -337,6 +338,24 @@ impl RoutedValuePayload {
         RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(Watermark::new(
             committable,
         )))
+    }
+}
+
+impl From<&WatermarkMessage> for Py<PyAny> {
+    fn from(value: &WatermarkMessage) -> Self {
+        traced_with_gil!(|py| {
+            match &value {
+                WatermarkMessage::Watermark(watermark) => PyWatermark::new(
+                    convert_committable_to_py(py, watermark.committable.clone()).unwrap(),
+                )
+                .unwrap()
+                .into_py_any(py)
+                .unwrap(),
+                WatermarkMessage::PyWatermark(watermark) => {
+                    watermark.committable.clone_ref(py).into_any()
+                }
+            }
+        })
     }
 }
 

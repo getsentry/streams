@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 mod callers;
+mod committable;
 mod consumer;
 mod filter_step;
 mod gcs_writer;

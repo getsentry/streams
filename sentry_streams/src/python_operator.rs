@@ -2,12 +2,13 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
-use crate::messages::{PyStreamingMessage, PyWatermark, RoutedValuePayload, WatermarkMessage};
+use crate::committable::{clone_committable, convert_committable_to_py, convert_py_committable};
+use crate::messages::{PyStreamingMessage, RoutedValuePayload, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
-use crate::utils::{clone_committable, traced_with_gil};
-use pyo3::types::{PyDict, PyTuple};
+use crate::utils::traced_with_gil;
+use pyo3::prelude::*;
+use pyo3::types::PyTuple;
 use pyo3::Python;
-use pyo3::{prelude::*, IntoPyObjectExt};
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::processing::strategies::SubmitError;
 use sentry_arroyo::processing::strategies::{
@@ -15,7 +16,7 @@ use sentry_arroyo::processing::strategies::{
 };
 use sentry_arroyo::types::{Message, Partition, Topic};
 use sentry_arroyo::utils::timing::Deadline;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::time::Duration;
 
 /// PythonAdapter is an Arroyo processing strategy that delegates the
@@ -91,46 +92,6 @@ fn convert_partition(partition: Bound<'_, PyAny>) -> Result<Partition, PyErr> {
     })
 }
 
-fn convert_committable_to_py(
-    py: Python<'_>,
-    committable: BTreeMap<Partition, u64>,
-) -> Result<Py<PyAny>, PyErr> {
-    let dict = PyDict::new(py);
-    for (partition, offset) in committable {
-        let key = PyTuple::new(
-            py,
-            &[
-                partition.topic.as_str().into_py_any(py)?,
-                partition.index.into_py_any(py)?,
-            ],
-        );
-        dict.set_item(key?, offset)?;
-    }
-    Ok(dict.into())
-}
-
-fn convert_py_committable(
-    py: Python<'_>,
-    py_committable: Py<PyAny>,
-) -> Result<BTreeMap<Partition, u64>, PyErr> {
-    let mut committable = BTreeMap::new();
-    let dict = py_committable.downcast_bound::<PyDict>(py)?;
-    for (key, value) in dict.iter() {
-        let partition = key.downcast::<PyTuple>()?;
-        let topic: String = partition.get_item(0)?.extract()?;
-        let index: u16 = partition.get_item(1)?.extract()?;
-        let offset: u64 = value.extract()?;
-        committable.insert(
-            Partition {
-                topic: Topic::new(&topic),
-                index,
-            },
-            offset,
-        );
-    }
-    Ok(committable)
-}
-
 impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     /// Receives a message to process and forwards it to the Python delegate.
     ///
@@ -155,21 +116,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
 
             traced_with_gil!(|py| {
                 let python_payload: Py<PyAny> = match message.payload().payload {
-                    RoutedValuePayload::WatermarkMessage(ref payload) => {
-                        match payload {
-                            WatermarkMessage::Watermark(watermark) => PyWatermark::new(
-                                convert_committable_to_py(py, watermark.committable.clone())
-                                    .unwrap(),
-                            )
-                            .unwrap()
-                            .into_py_any(py)
-                            .unwrap(),
-                            // shouldn't be able to receive a PyWatermark here
-                            WatermarkMessage::PyWatermark(..) => {
-                                unreachable!("Submitting Python watermark to Python Operator.")
-                            }
-                        }
-                    }
+                    RoutedValuePayload::WatermarkMessage(ref payload) => payload.into(),
                     RoutedValuePayload::PyStreamingMessage(ref payload) => match payload {
                         PyStreamingMessage::PyAnyMessage { ref content } => {
                             content.clone_ref(py).into_any()
@@ -312,13 +259,13 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
-    use crate::messages::WatermarkMessage;
+    use crate::messages::{PyWatermark, WatermarkMessage};
     use crate::test_operators::build_routed_value;
     use crate::test_operators::make_committable;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::noop::Noop;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::ops::Deref;
     use std::sync::Arc;
     use std::sync::Mutex as RawMutex;
@@ -414,22 +361,6 @@ class RustOperatorDelegateFactory:
             )),
         };
         Message::new_any_message(routed_py_watermark, committable)
-    }
-
-    #[test]
-    fn test_convert_committable_to_py_and_back() {
-        pyo3::prepare_freethreaded_python();
-        traced_with_gil!(|py| {
-            // Prepare a committable with two partitions
-            let committable = make_committable(2, 0);
-
-            // Convert to Python object and back
-            let py_obj = convert_committable_to_py(py, committable.clone()).unwrap();
-            let committable_back = convert_py_committable(py, py_obj).unwrap();
-
-            // Assert equality
-            assert_eq!(committable, committable_back);
-        });
     }
 
     #[test]
