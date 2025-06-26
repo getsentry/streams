@@ -86,14 +86,11 @@ pub fn build(
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     match step.get() {
         RuntimeOperator::Map { function, route } => {
-            let func_ref =
-                traced_with_gil("RuntimeOperator::Map function", |py| function.clone_ref(py));
+            let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_map(route, func_ref, next)
         }
         RuntimeOperator::Filter { function, route } => {
-            let func_ref = traced_with_gil("RuntimeOperator::Filter function", |py| {
-                function.clone_ref(py)
-            });
+            let func_ref = traced_with_gil!(|py| { function.clone_ref(py) });
             build_filter(route, func_ref, next)
         }
         RuntimeOperator::StreamSink {
@@ -116,15 +113,13 @@ pub fn build(
             bucket,
             object_generator,
         } => {
-            let func_ref = traced_with_gil("RuntimeOperator::Map function", |py| {
-                object_generator.clone_ref(py)
-            });
+            let func_ref = traced_with_gil!(|py| { object_generator.clone_ref(py) });
 
             Box::new(GCSSink::new(
                 route.clone(),
                 next,
                 concurrency_config,
-                &bucket,
+                bucket,
                 func_ref,
             ))
         }
@@ -138,18 +133,14 @@ pub fn build(
             route,
             routing_function,
         } => {
-            let func_ref = traced_with_gil("RuntimeOperator::Router function", |py| {
-                routing_function.clone_ref(py)
-            });
+            let func_ref = traced_with_gil!(|py| { routing_function.clone_ref(py) });
             build_router(route, func_ref, next)
         }
         RuntimeOperator::PythonAdapter {
             route,
             delegate_factory,
         } => {
-            let factory = traced_with_gil("RuntimeOperator::PythonAdapter function", |py| {
-                delegate_factory.clone_ref(py)
-            });
+            let factory = traced_with_gil!(|py| { delegate_factory.clone_ref(py) });
             Box::new(PythonAdapter::new(route.clone(), factory, next))
         }
     }

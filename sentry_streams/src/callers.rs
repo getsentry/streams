@@ -1,37 +1,29 @@
-use crate::messages::PyStreamingMessage;
-use crate::utils::traced_with_gil;
-use pyo3::prelude::*;
+use pyo3::{import_exception, prelude::*, types::PyTuple};
 
-/// Executes a Python callable with an Arroyo message containing Any and
-/// returns the result.
-pub fn call_python_function(
-    callable: &Py<PyAny>,
-    message: &PyStreamingMessage,
-) -> Result<PyStreamingMessage, PyErr> {
-    Ok(traced_with_gil("call_python_function", |py| match message {
-        PyStreamingMessage::PyAnyMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
-        }
+import_exception!(sentry_streams.pipeline.exception, InvalidMessageError);
 
-        PyStreamingMessage::RawMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
-        }
-    })?
-    .into())
+pub type ApplyResult<T> = Result<T, ApplyError>;
+
+#[derive(Debug, PartialEq)]
+pub enum ApplyError {
+    InvalidMessage,
+    ApplyFailed,
 }
 
-/// Executes a Python callable with an Arroyo message containing Any and
-/// returns the result.
-pub fn call_any_python_function(
+pub fn try_apply_py<'py, N>(
+    py: Python<'py>,
     callable: &Py<PyAny>,
-    message: &PyStreamingMessage,
-) -> Result<Py<PyAny>, PyErr> {
-    traced_with_gil("call_any_python_function", |py| match message {
-        PyStreamingMessage::PyAnyMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
-        }
-        PyStreamingMessage::RawMessage { ref content } => {
-            callable.call1(py, (content.clone_ref(py),))
+    args: N,
+) -> ApplyResult<Py<PyAny>>
+where
+    N: IntoPyObject<'py, Target = PyTuple>,
+{
+    callable.call1(py, args).map_err(|py_err| {
+        py_err.print(py);
+        if py_err.is_instance(py, &py.get_type::<InvalidMessageError>()) {
+            ApplyError::InvalidMessage
+        } else {
+            ApplyError::ApplyFailed
         }
     })
 }
@@ -39,18 +31,56 @@ pub fn call_any_python_function(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messages::PyStreamingMessage;
     use crate::messages::RoutedValuePayload;
-    use crate::test_operators::build_routed_value;
-    use crate::test_operators::make_lambda;
+    use crate::testutils::build_routed_value;
+    use crate::testutils::import_py_dep;
+    use crate::testutils::make_lambda;
+    use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::types::Message;
     use std::collections::BTreeMap;
 
     #[test]
-    fn test_call_python_function() {
+    #[ignore]
+    fn test_apply_py_invalid_msg_err() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_call_python_function", |py| {
+
+        import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
+
+        traced_with_gil!(|py| {
+            let callable = make_lambda(
+                py,
+                c_str!("lambda: (_ for _ in ()).throw(InvalidMessageError())"),
+            );
+
+            assert!(matches!(
+                try_apply_py(py, &callable, ()),
+                Err(ApplyError::InvalidMessage)
+            ));
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn test_apply_py_throws_other_exception() {
+        pyo3::prepare_freethreaded_python();
+
+        traced_with_gil!(|py| {
+            let callable = make_lambda(py, c_str!("lambda x: {}[0]"));
+
+            assert!(matches!(
+                try_apply_py(py, &callable, ()),
+                Err(ApplyError::ApplyFailed)
+            ));
+        });
+    }
+
+    #[test]
+    fn test_call_python_function() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,
                 c_str!("lambda x: x.replace_payload(x.payload + '_transformed')"),
@@ -68,7 +98,18 @@ mod tests {
 
             let result = match message.payload().payload {
                 RoutedValuePayload::PyStreamingMessage(ref msg) => {
-                    call_python_function(&callable, &msg).unwrap()
+                    traced_with_gil!(|py| {
+                        match &msg {
+                            PyStreamingMessage::PyAnyMessage { content } => {
+                                try_apply_py(py, &callable, (content.clone_ref(py),))
+                            }
+                            PyStreamingMessage::RawMessage { content } => {
+                                try_apply_py(py, &callable, (content.clone_ref(py),))
+                            }
+                        }
+                        .unwrap()
+                        .into()
+                    })
                 }
                 RoutedValuePayload::WatermarkMessage(..) => unreachable!(),
             };

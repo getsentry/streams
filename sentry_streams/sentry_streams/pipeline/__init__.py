@@ -6,6 +6,7 @@ from sentry_streams.pipeline.chain import (
     Parser,
     Reducer,
     Serializer,
+    StreamSink,
     multi_chain,
     segment,
     streaming_source,
@@ -22,4 +23,5 @@ __all__ = [
     "Batch",
     "Parser",
     "Serializer",
+    "StreamSink",
 ]
