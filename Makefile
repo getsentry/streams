@@ -1,3 +1,8 @@
+reset:
+	rm -rf sentry_streams/.venv
+	cd sentry_streams && cargo clean
+.PHONY: reset
+
 install-dev:
 	./scripts/flink-jar-download.sh
 	which uv || (curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh)
