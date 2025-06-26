@@ -1,3 +1,8 @@
+reset:
+	rm -rf sentry_streams/.venv
+	cd sentry_streams && cargo clean
+.PHONY: reset
+
 install-dev:
 	./scripts/flink-jar-download.sh
 	which uv || (curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh)
@@ -12,6 +17,10 @@ install-pre-commit-hook:
 tests-streams:
 	./sentry_streams/.venv/bin/pytest -vv sentry_streams/tests
 .PHONY: tests-streams
+
+test-rust-streams:
+	. scripts/rust-envvars && . sentry_streams/.venv/bin/activate && cd ./sentry_streams/ && cargo test
+.PHONY: tests-rust-streams
 
 tests-flink:
 	./sentry_flink/.venv/bin/pytest -vv sentry_flink/tests

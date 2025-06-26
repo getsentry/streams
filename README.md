@@ -36,7 +36,21 @@ The main features are:
 
 [Streams Documentation](https://getsentry.github.io/streams/)
 
-# to develop in this repo
-1. `cd` into the `streams` repo should automatically set up your development environment for you.
-if encountering "CMake Error at CMakeLists.txt:1 (cmake_minimum_required): Compatibility with CMake < 3.5 has been removed from CMake.",
-run `export CMAKE_POLICY_VERSION_MINIMUM=3.5` before running `make install-dev`
+## to develop in this repo
+
+`cd` into the `streams`, the repo should automatically set up your development environment for you. Make sure to regularly run `direnv allow` since we iterate on the devenv quite a bit.
+
+You can use `make reset` to remove almost all installed artifacts.
+
+## Troubleshooting
+
+### CMake Error
+
+If encountering "CMake Error at CMakeLists.txt:1 (cmake_minimum_required): Compatibility with CMake < 3.5 has been removed from CMake.",
+run `export CMAKE_POLICY_VERSION_MINIMUM=3.5` before running `make install-dev`.
+
+Note: The `.envrc` should already set this for you. If you don't have this environment variable then you don't have direnv setup correctly.
+
+### spurious changes to uv.lock
+
+Those are usually okay to check in. Run `uv self update` to be sure that this is how the latest UV does things.

@@ -58,7 +58,7 @@ pub fn convert_py_committable(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_operators::make_committable;
+    use crate::testutils::make_committable;
     use crate::utils::traced_with_gil;
 
     #[test]

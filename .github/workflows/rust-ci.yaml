@@ -30,14 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout code
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version-file: sentry_streams/.python-version
       - name: Make environment
         run: |
           make install-dev
       - name: Run tests
-        working-directory: ./sentry_streams
-        run: |
-          . .venv/bin/activate
-          cargo test
+        run: make test-rust-streams

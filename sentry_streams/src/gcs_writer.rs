@@ -131,13 +131,13 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_operators::make_raw_routed_msg;
+    use crate::testutils::make_raw_routed_msg;
 
     use super::*;
 
     #[test]
     fn test_to_bytes() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(
