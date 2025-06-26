@@ -14,6 +14,7 @@ use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
 use crate::watermark::WatermarkEmitter;
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::processing::strategies::commit_offsets::CommitOffsets;
@@ -27,6 +28,54 @@ use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Enum to represent different consumer backend modes
+#[derive(Debug, Clone)]
+pub enum ConsumerMode {
+    /// Production Kafka consumer mode
+    Kafka,
+    /// In-memory testing mode with pre-populated data
+    InMemory {
+        /// Raw message data to be processed
+        test_data: Vec<Vec<u8>>,
+    },
+}
+
+/// Configuration for in-memory testing
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct InMemoryConfig {
+    /// Test data as list of byte strings
+    pub test_data: Vec<Vec<u8>>,
+}
+
+#[pymethods]
+impl InMemoryConfig {
+    #[new]
+    fn new() -> Self {
+        InMemoryConfig {
+            test_data: Vec::new(),
+        }
+    }
+
+    /// Add test data from Python bytes or strings
+    fn add_test_data(&mut self, data: &Bound<'_, PyAny>) -> PyResult<()> {
+        if let Ok(py_list) = data.downcast::<PyList>() {
+            for item in py_list.iter() {
+                if let Ok(bytes) = item.extract::<Vec<u8>>() {
+                    self.test_data.push(bytes);
+                } else if let Ok(string) = item.extract::<String>() {
+                    self.test_data.push(string.into_bytes());
+                }
+            }
+        } else if let Ok(bytes) = data.extract::<Vec<u8>>() {
+            self.test_data.push(bytes);
+        } else if let Ok(string) = data.extract::<String>() {
+            self.test_data.push(string.into_bytes());
+        }
+        Ok(())
+    }
+}
 
 /// The class that represent the consumer.
 /// This class is exposed to python and it is the main entry point
@@ -58,6 +107,9 @@ pub struct ArroyoConsumer {
     // this variable must live for the lifetime of the entire consumer.
     // This is a requirement of Arroyo Rust.
     concurrency_config: Arc<ConcurrencyConfig>,
+
+    /// Consumer mode - either Kafka or InMemory for testing
+    mode: ConsumerMode,
 }
 
 #[pymethods]
@@ -77,6 +129,7 @@ impl ArroyoConsumer {
             steps: Vec::new(),
             handle: None,
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
+            mode: ConsumerMode::Kafka,
         }
     }
 
@@ -87,13 +140,41 @@ impl ArroyoConsumer {
         self.steps.push(step);
     }
 
+    /// Configure the consumer for in-memory testing mode with test data
+    fn set_test_mode(&mut self, config: InMemoryConfig) {
+        self.mode = ConsumerMode::InMemory {
+            test_data: config.test_data,
+        };
+    }
+
+    /// Check if the consumer is in test mode
+    fn is_test_mode(&self) -> bool {
+        matches!(self.mode, ConsumerMode::InMemory { .. })
+    }
+
     /// Runs the consumer.
     /// This method is blocking and will run until the consumer
     /// is stopped via SIGTERM or SIGINT.
     fn run(&mut self) {
         tracing_subscriber::fmt::init();
-        println!("Running Arroyo Consumer...");
 
+        match &self.mode {
+            ConsumerMode::Kafka => {
+                println!("Running Arroyo Consumer in Kafka mode...");
+                self.run_kafka_mode();
+            }
+            ConsumerMode::InMemory { test_data } => {
+                println!(
+                    "Running Arroyo Consumer in test mode with {} messages...",
+                    test_data.len()
+                );
+                self.run_test_mode(test_data.clone());
+            }
+        }
+    }
+
+    /// Run the consumer in Kafka mode (original implementation)
+    fn run_kafka_mode(&mut self) {
         let factory = ArroyoStreamingFactory::new(
             self.source.clone(),
             &self.steps,
@@ -112,6 +193,51 @@ impl ArroyoConsumer {
         .expect("Error setting Ctrl+C handler");
 
         let _ = processor.run();
+    }
+
+    /// Run the consumer in test mode with in-memory data
+    fn run_test_mode(&mut self, test_data: Vec<Vec<u8>>) {
+        println!("Processing {} test messages...", test_data.len());
+
+        let factory = ArroyoStreamingFactory::new(
+            self.source.clone(),
+            &self.steps,
+            self.concurrency_config.clone(),
+            self.schema.clone(),
+        );
+
+        // Create a processing strategy directly
+        let mut strategy = factory.create();
+
+        // Convert test data to KafkaPayload messages and process them
+        for (i, data) in test_data.iter().enumerate() {
+            let kafka_payload = KafkaPayload::new(None, None, Some(data.clone()));
+            let message =
+                Message::new_any_message(kafka_payload, std::collections::BTreeMap::new());
+
+            match strategy.submit(message) {
+                Ok(()) => {
+                    println!("Processed test message {}", i + 1);
+                }
+                Err(e) => {
+                    println!("Error processing test message {}: {:?}", i + 1, e);
+                }
+            }
+
+            // Poll the strategy to process any pending work
+            match strategy.poll() {
+                Ok(_) => {}
+                Err(e) => {
+                    println!("Error during poll: {:?}", e);
+                }
+            }
+        }
+
+        // Join the strategy to ensure all work is completed
+        match strategy.join(Some(Duration::from_secs(5))) {
+            Ok(_) => println!("All test messages processed successfully"),
+            Err(e) => println!("Error during join: {:?}", e),
+        }
     }
 
     fn shutdown(&mut self) {
@@ -382,5 +508,49 @@ mod tests {
 
             assert_messages_match(py, expected_messages, actual_messages.deref());
         })
+    }
+
+    #[test]
+    fn test_in_memory_consumer_mode() {
+        use crate::kafka_config::{InitialOffset, PyKafkaConsumerConfig};
+
+        pyo3::prepare_freethreaded_python();
+
+        // Create consumer in Kafka mode by default
+        let kafka_config = PyKafkaConsumerConfig::new(
+            vec!["localhost:9092".to_string()],
+            "test_group".to_string(),
+            InitialOffset::Earliest,
+            false,
+            300000,
+            None,
+        );
+
+        let consumer = ArroyoConsumer::new(
+            "test_source".to_string(),
+            kafka_config,
+            "test_topic".to_string(),
+            Some("test_schema".to_string()),
+        );
+
+        assert!(!consumer.is_test_mode());
+
+        // Test switching to in-memory mode
+        let mut consumer = consumer;
+        let mut config = InMemoryConfig::new();
+        config.test_data.push(b"test_message_1".to_vec());
+        config.test_data.push(b"test_message_2".to_vec());
+
+        consumer.set_test_mode(config);
+        assert!(consumer.is_test_mode());
+
+        // Verify test data is stored correctly
+        if let ConsumerMode::InMemory { test_data } = &consumer.mode {
+            assert_eq!(test_data.len(), 2);
+            assert_eq!(test_data[0], b"test_message_1".to_vec());
+            assert_eq!(test_data[1], b"test_message_2".to_vec());
+        } else {
+            panic!("Consumer should be in InMemory mode");
+        }
     }
 }

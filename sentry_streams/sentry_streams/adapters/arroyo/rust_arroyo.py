@@ -50,6 +50,7 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_streams.rust_streams import (
     ArroyoConsumer,
+    InMemoryConfig,
     InitialOffset,
     PyKafkaConsumerConfig,
     PyKafkaProducerConfig,
@@ -137,20 +138,26 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     def __init__(
         self,
         steps_config: Mapping[str, StepConfig],
+        test_mode: bool = False,
+        test_data: list[bytes] | None = None,
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
+        self.test_mode = test_mode
+        self.test_data = test_data or []
 
     @classmethod
     def build(
         cls,
         config: PipelineConfig,
+        test_mode: bool = False,
+        test_data: list[bytes] | None = None,
     ) -> Self:
         steps_config = config["steps_config"]
 
-        return cls(steps_config)
+        return cls(steps_config, test_mode=test_mode, test_data=test_data)
 
     def __close_chain(self, step: Step, stream: Route) -> None:
         step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
@@ -173,12 +180,21 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         source_config = self.steps_config.get(source_name)
         assert source_config is not None, f"Config not provided for source {source_name}"
 
-        self.__consumers[source_name] = ArroyoConsumer(
+        consumer = ArroyoConsumer(
             source=source_name,
             kafka_config=build_kafka_consumer_config(source_name, source_config),
             topic=step.stream_name,
             schema=step.stream_name,
         )
+        
+        # Configure for test mode if enabled
+        if self.test_mode:
+            config = InMemoryConfig()
+            for data in self.test_data:
+                config.add_test_data(data)
+            consumer.set_test_mode(config)
+        
+        self.__consumers[source_name] = consumer
         return Route(source_name, [])
 
     def sink(self, step: Sink, stream: Route) -> Route:
