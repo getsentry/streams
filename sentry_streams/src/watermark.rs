@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_watermark_poll() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));

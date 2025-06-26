@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn test_route_msg() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: 'waypoint2'"));
 

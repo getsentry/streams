@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_call_python_function() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,

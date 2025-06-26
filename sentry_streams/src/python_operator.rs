@@ -355,7 +355,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_submit_with_matching_route() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
             let mut operator = PythonAdapter::new(
@@ -427,7 +427,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_poll_with_messages() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
 
@@ -497,7 +497,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_poll_and_fail() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
 

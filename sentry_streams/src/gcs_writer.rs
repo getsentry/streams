@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn test_to_bytes() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(

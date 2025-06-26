@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_kafka_payload() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let message = make_raw_routed_msg(
                 py,
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_route() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         let result_topic = Topic::new("result-topic");
         let mut broker = LocalBroker::new(
             Box::new(MemoryMessageStorage::default()),

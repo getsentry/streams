@@ -424,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_headers_to_vec_and_sequence_roundtrip() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let headers = vec![
                 ("key1".to_string(), vec![1, 2, 3]),
@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_pyanymessage_lifecycle() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             // Prepare test data
             let payload = "payload".into_py_any(py).unwrap();
@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_rawmessage_lifecycle() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             // Prepare test data
             let payload_bytes = vec![100, 101, 102, 103];
@@ -613,7 +613,7 @@ mod tests {
 
     #[test]
     fn test_unwrap_payload_py_msg() {
-        crate::testutils::initialize_python();
+        crate::test_operators::initialize_python();
         traced_with_gil!(|py| {
             let headers = vec![
                 ("alpha".to_string(), vec![1, 2]),
