@@ -8,6 +8,8 @@ version = "0.0.23"
 description = "The python Sentry Streaming API"
 readme = "README.md"
 
+requires-python = ">=3.11"
+
 dependencies = [
     "requests>=2.32.3",
     "sentry-arroyo>=2.18.2",
