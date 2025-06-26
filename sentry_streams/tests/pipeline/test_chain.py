@@ -27,20 +27,16 @@ from sentry_streams.pipeline.window import TumblingWindow
 def test_sequence() -> None:
     pipeline = (
         streaming_source("myinput", "events")
-        .apply("transform1", Map(lambda msg: msg))
-        .sink("myoutput", StreamSink(stream_name="transformed-events"))
+        .apply_step("transform1", Map(lambda msg: msg))
+        .add_sink("myoutput", StreamSink(stream_name="transformed-events"))
     )
 
     assert set(pipeline.steps.keys()) == {"myinput", "transform1", "myoutput"}
     assert cast(StreamSource, pipeline.steps["myinput"]).stream_name == "events"
-    assert pipeline.steps["myinput"].ctx == pipeline
     assert set(s.name for s in pipeline.sources) == {"myinput"}
 
     assert pipeline.steps["transform1"].name == "transform1"
-    assert pipeline.steps["transform1"].ctx == pipeline
-
     assert pipeline.steps["myoutput"].name == "myoutput"
-    assert pipeline.steps["myoutput"].ctx == pipeline
 
     assert pipeline.incoming_edges["myinput"] == []
     assert pipeline.incoming_edges["transform1"] == ["myinput"]
@@ -54,16 +50,16 @@ def test_sequence() -> None:
 def test_broadcast() -> None:
     pipeline = (
         streaming_source("myinput", "events")
-        .apply("transform1", Map(lambda msg: msg))
+        .apply_step("transform1", Map(lambda msg: msg))
         .broadcast(
             "route_to_all",
             [
                 segment(name="route1", msg_type=IngestMetric)
-                .apply("transform2", Map(lambda msg: msg))
-                .sink("myoutput1", StreamSink(stream_name="transformed-events-2")),
+                .apply_step("transform2", Map(lambda msg: msg))
+                .add_sink("myoutput1", StreamSink(stream_name="transformed-events-2")),
                 segment(name="route2", msg_type=IngestMetric)
-                .apply("transform3", Map(lambda msg: msg))
-                .sink("myoutput2", StreamSink(stream_name="transformed-events-3")),
+                .apply_step("transform3", Map(lambda msg: msg))
+                .add_sink("myoutput2", StreamSink(stream_name="transformed-events-3")),
             ],
         )
     )
@@ -114,17 +110,17 @@ def routing_func(msg: Any) -> Routes:
 def test_router() -> None:
     pipeline = (
         streaming_source("myinput", "events")
-        .apply("transform1", Map(lambda msg: msg))
+        .apply_step("transform1", Map(lambda msg: msg))
         .route(
             "route_to_one",
             routing_function=routing_func,
             routes={
                 Routes.ROUTE1: segment(name="route1", msg_type=IngestMetric)
-                .apply("transform2", Map(lambda msg: msg))
-                .sink("myoutput1", StreamSink(stream_name="transformed-events-2")),
+                .apply_step("transform2", Map(lambda msg: msg))
+                .add_sink("myoutput1", StreamSink(stream_name="transformed-events-2")),
                 Routes.ROUTE2: segment(name="route2", msg_type=IngestMetric)
-                .apply("transform3", Map(lambda msg: msg))
-                .sink("myoutput2", StreamSink(stream_name="transformed-events-3")),
+                .apply_step("transform3", Map(lambda msg: msg))
+                .add_sink("myoutput2", StreamSink(stream_name="transformed-events-3")),
             },
         )
     )
@@ -185,13 +181,9 @@ TOut = TypeVar("TOut")
     ],
 )
 def test_applier_steps(applier: Applier[TIn, TOut], name: str) -> None:
-    pipeline = Pipeline()
-    source = StreamSource(
-        name="mysource",
-        ctx=pipeline,
-        stream_name="name",
-    )
-    ret = applier.build_step(name, pipeline, source)
+    pipeline = Pipeline().start(StreamSource(name="mysource", stream_name="name"))
+    ret = applier.build_step(name)
+    pipeline.apply(ret)
     assert pipeline.steps[name] == ret
     assert pipeline.steps[name].name == name
     assert pipeline.incoming_edges[name] == ["mysource"]

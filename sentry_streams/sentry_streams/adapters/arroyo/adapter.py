@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import (
     Any,
+    Callable,
     Mapping,
     MutableMapping,
     Self,
@@ -43,6 +44,7 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
+    ComplexStep,
     Filter,
     FlatMap,
     Map,
@@ -126,6 +128,9 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__processors: Mapping[str, StreamProcessor[KafkaPayload]] = {}
+
+    def complex_step_override(self) -> dict[str, Callable[[ComplexStep], Route]]:
+        return {}
 
     @classmethod
     def build(

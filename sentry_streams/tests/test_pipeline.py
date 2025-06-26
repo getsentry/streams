@@ -2,8 +2,6 @@ from typing import Any, Callable, Mapping, Union
 
 import pytest
 
-from sentry_streams.pipeline.chain import StreamSink as StreamSinkStep
-from sentry_streams.pipeline.chain import streaming_source
 from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
@@ -24,71 +22,34 @@ from sentry_streams.pipeline.window import MeasurementUnit
 
 @pytest.fixture
 def pipeline() -> Pipeline:
-    pipeline = Pipeline()
-    source = StreamSource(
-        name="source",
-        ctx=pipeline,
-        stream_name="events",
+    pipeline = (
+        Pipeline()
+        .start(StreamSource(name="source", stream_name="events"))
+        .apply(
+            Filter(
+                name="filter",
+                function=simple_filter,
+            )
+        )
+        .apply(Filter(name="filter2", function=simple_filter))
+        .apply(Map(name="map", function=simple_map))
+        .apply(Map(name="map2", function=simple_map))
+        .apply(
+            Router(
+                "router",
+                routing_function=simple_router,
+                routing_table={
+                    "branch1": Pipeline()
+                    .start(Branch("branch1"))
+                    .sink(StreamSink(name="kafkasink1", stream_name="transformed-events")),
+                    "branch2": Pipeline()
+                    .start(Branch("branch2"))
+                    .sink(StreamSink(name="kafkasink2", stream_name="transformed-events-2")),
+                },
+            )
+        )
     )
 
-    source2 = StreamSource(
-        name="source2",
-        ctx=pipeline,
-        stream_name="anotehr-events",
-    )
-
-    filter = Filter(
-        name="filter",
-        ctx=pipeline,
-        inputs=[source, source2],
-        function=simple_filter,
-    )
-
-    _ = Filter(
-        name="filter2",
-        ctx=pipeline,
-        inputs=[filter],
-        function=simple_filter,
-    )
-
-    map = Map(
-        name="map",
-        ctx=pipeline,
-        inputs=[filter],
-        function=simple_map,
-    )
-
-    map2 = Map(
-        name="map2",
-        ctx=pipeline,
-        inputs=[filter, map],
-        function=simple_map,
-    )
-
-    router = Router(
-        name="router",
-        ctx=pipeline,
-        inputs=[map2],
-        routing_table={
-            "branch1": Branch(name="branch1", ctx=pipeline),
-            "branch2": Branch(name="branch2", ctx=pipeline),
-        },
-        routing_function=simple_router,
-    )
-
-    StreamSink(
-        name="kafkasink1",
-        ctx=pipeline,
-        inputs=[router.routing_table["branch1"]],
-        stream_name="transformed-events",
-    )
-
-    StreamSink(
-        name="kafkasink2",
-        ctx=pipeline,
-        inputs=[router.routing_table["branch2"]],
-        stream_name="transformed-events-2",
-    )
     return pipeline
 
 
@@ -108,21 +69,19 @@ def simple_router(value: str) -> str:
 
 
 def test_register_step(pipeline: Pipeline) -> None:
-    step = Step("new_step", pipeline)
+    step = Step("new_step")
+    pipeline.apply(step)
     assert "new_step" in pipeline.steps
     assert pipeline.steps["new_step"] == step
 
 
 def test_register_edge(pipeline: Pipeline) -> None:
     # when there is only one step going to the next step
-    assert pipeline.incoming_edges["map"] == ["filter"]
+    assert pipeline.incoming_edges["map"] == ["filter2"]
     assert pipeline.outgoing_edges["branch2"] == ["kafkasink2"]
-    # when one step fans out to multiple steps
-    assert pipeline.incoming_edges["map2"] == ["filter", "map"]
-    assert pipeline.outgoing_edges["filter"] == ["filter2", "map", "map2"]
-    # when multiple steps fan into one step
-    assert pipeline.incoming_edges["filter"] == ["source", "source2"]
-    assert pipeline.outgoing_edges["filter"] == ["filter2", "map", "map2"]
+    assert pipeline.incoming_edges["map2"] == ["map"]
+    assert pipeline.incoming_edges["filter"] == ["source"]
+    assert pipeline.outgoing_edges["filter"] == ["filter2"]
     # when a router splits the stream into multiple branches
     assert pipeline.outgoing_edges["router"] == ["branch1", "branch2"]
     assert pipeline.outgoing_edges["branch1"] == ["kafkasink1"]
@@ -132,7 +91,7 @@ def test_register_edge(pipeline: Pipeline) -> None:
 
 
 def test_register_source(pipeline: Pipeline) -> None:
-    assert {pipeline.sources[0].name, pipeline.sources[1].name} == {"source", "source2"}
+    assert pipeline.sources[0].name == "source"
 
 
 class ExampleClass:
@@ -163,131 +122,78 @@ class ExampleClass:
 def test_resolve_function(
     function: Union[Callable[..., str], str], expected: Callable[..., str]
 ) -> None:
-    pipeline = Pipeline()
+    pipeline = Pipeline().start(StreamSource(name="source", stream_name="events"))
     step: TransformStep[Any] = TransformStep(
         name="test_resolve_function",
-        ctx=pipeline,
-        inputs=[],
         function=function,
         step_type=StepType.MAP,
     )
+    pipeline.apply(step)
     assert step.resolved_function == expected
 
 
 def test_merge_linear() -> None:
-    pipeline1 = Pipeline()
-    StreamSource(
-        name="source",
-        ctx=pipeline1,
-        stream_name="logical-events",
-    )
+    pipeline1 = Pipeline().start(StreamSource(name="source", stream_name="logical-events"))
 
-    pipeline2 = Pipeline()
-    branch = Branch(
-        "branch1",
-        pipeline2,
-    )
-    Map(
-        name="map",
-        ctx=pipeline2,
-        inputs=[branch],
-        function=simple_map,
-    )
+    pipeline2 = Pipeline().start(Branch("branch1")).apply(Map(name="map", function=simple_map))
 
     pipeline1.merge(pipeline2, merge_point="source")
 
-    assert set(pipeline1.steps.keys()) == {"source", "map"}
+    assert set(pipeline1.steps.keys()) == {"source", "map", "branch1"}
     assert pipeline1.outgoing_edges == {
-        "source": ["map"],
+        "source": ["branch1"],
+        "branch1": ["map"],
     }
     assert pipeline1.incoming_edges == {
-        "map": ["source"],
+        "map": ["branch1"],
+        "branch1": ["source"],
     }
 
 
 def test_merge_branches() -> None:
-    pipeline1 = Pipeline()
-    StreamSource(
-        name="source",
-        ctx=pipeline1,
-        stream_name="logical-events",
-    )
+    pipeline1 = Pipeline().start(StreamSource(name="source", stream_name="logical-events"))
 
-    pipeline2 = Pipeline()
-    branch1 = Branch(
-        "branch1",
-        pipeline2,
-    )
-    Map(
-        name="map1",
-        ctx=pipeline2,
-        inputs=[branch1],
-        function=simple_map,
-    )
+    pipeline2 = Pipeline().start(Branch("branch1")).apply(Map(name="map1", function=simple_map))
 
-    pipeline3 = Pipeline()
-    branch2 = Branch(
-        "branch2",
-        pipeline3,
-    )
-    Map(
-        name="map2",
-        ctx=pipeline3,
-        inputs=[branch2],
-        function=simple_map,
-    )
+    pipeline3 = Pipeline().start(Branch("branch2")).apply(Map(name="map2", function=simple_map))
 
     pipeline1.merge(pipeline2, merge_point="source")
     pipeline1.merge(pipeline3, merge_point="source")
 
-    assert set(pipeline1.steps.keys()) == {"source", "map1", "map2"}
+    assert set(pipeline1.steps.keys()) == {"source", "map1", "map2", "branch1", "branch2"}
     assert make_edge_sets(pipeline1.outgoing_edges) == {
-        "source": {"map1", "map2"},
+        "source": {"branch1", "branch2"},
+        "branch1": {"map1"},
+        "branch2": {"map2"},
     }
     assert make_edge_sets(pipeline1.incoming_edges) == {
-        "map1": {"source"},
-        "map2": {"source"},
+        "map1": {"branch1"},
+        "map2": {"branch2"},
+        "branch1": {"source"},
+        "branch2": {"source"},
     }
 
 
 def test_multi_broadcast() -> None:
-    pipeline1 = Pipeline()
-    StreamSource(
-        name="source",
-        ctx=pipeline1,
-        stream_name="logical-events",
+    pipeline1 = Pipeline().start(
+        StreamSource(
+            name="source",
+            stream_name="logical-events",
+        )
     )
 
-    pipeline2 = Pipeline()
-    pipeline2_start = Branch(
-        "pipeline2_start",
-        pipeline2,
-    )
+    pipeline2 = Pipeline().start(Branch("pipeline2_start"))
+    branch1 = Pipeline().start(Branch("branch1")).apply(Map(name="map1", function=simple_map))
+    branch2 = Pipeline().start(Branch("branch2")).apply(Map(name="map2", function=simple_map))
 
-    broadcast = Broadcast(
-        "broadcast1",
-        ctx=pipeline2,
-        inputs=[pipeline2_start],
-        routes=[
-            Branch("branch1", ctx=pipeline2),
-            Branch("branch2", ctx=pipeline2),
-        ],
-    )
-    Map(
-        name="map1",
-        ctx=pipeline2,
-        inputs=[broadcast.routes[0]],
-        function=simple_map,
-    )
-    Map(
-        name="map2",
-        ctx=pipeline2,
-        inputs=[broadcast.routes[1]],
-        function=simple_map,
+    pipeline2.apply(
+        Broadcast(
+            "broadcast1",
+            routes=[branch1, branch2],
+        )
     )
 
     pipeline1.merge(pipeline2, merge_point="source")
-
     assert set(pipeline1.steps.keys()) == {
         "source",
         "map1",
@@ -295,9 +201,11 @@ def test_multi_broadcast() -> None:
         "broadcast1",
         "branch1",
         "branch2",
+        "pipeline2_start",
     }
     assert make_edge_sets(pipeline1.outgoing_edges) == {
-        "source": {"broadcast1"},
+        "source": {"pipeline2_start"},
+        "pipeline2_start": {"broadcast1"},
         "broadcast1": {"branch1", "branch2"},
         "branch1": {"map1"},
         "branch2": {"map2"},
@@ -307,7 +215,8 @@ def test_multi_broadcast() -> None:
         "map2": {"branch2"},
         "branch1": {"broadcast1"},
         "branch2": {"broadcast1"},
-        "broadcast1": {"source"},
+        "broadcast1": {"pipeline2_start"},
+        "pipeline2_start": {"source"},
     }
 
 
@@ -326,8 +235,10 @@ def test_add_empty_pipeline_to_empty_pipeline() -> None:
 def test_add_to_empty() -> None:
     pipeline1 = Pipeline()
 
-    pipeline2 = streaming_source("source", "events").sink(
-        "sink", StreamSinkStep(stream_name="processed-events")
+    pipeline2 = (
+        Pipeline()
+        .start(StreamSource(name="source", stream_name="events"))
+        .sink(StreamSink(name="sink", stream_name="processed-events"))
     )
     pipeline1.add(pipeline2)
 
@@ -341,13 +252,17 @@ def test_add_to_empty() -> None:
 def test_add_multi_pipeline() -> None:
     pipeline1 = Pipeline()
 
-    pipeline2 = streaming_source("source1", "events").sink(
-        "sink1", StreamSinkStep(stream_name="processed-events")
+    pipeline2 = (
+        Pipeline()
+        .start(StreamSource(name="source1", stream_name="events"))
+        .sink(StreamSink(name="sink1", stream_name="processed-events"))
     )
     pipeline1.add(pipeline2)
 
-    pipeline2 = streaming_source("source2", "events").sink(
-        "sink2", StreamSinkStep(stream_name="processed-events")
+    pipeline2 = (
+        Pipeline()
+        .start(StreamSource(name="source2", stream_name="events"))
+        .sink(StreamSink(name="sink2", stream_name="processed-events"))
     )
     pipeline1.add(pipeline2)
 
@@ -363,8 +278,10 @@ def test_add_multi_pipeline() -> None:
 def test_invalid_add() -> None:
     pipeline1 = Pipeline()
 
-    pipeline2 = streaming_source("source", "events").sink(
-        "sink", StreamSinkStep(stream_name="processed-events")
+    pipeline2 = (
+        Pipeline()
+        .start(StreamSource(name="source", stream_name="events"))
+        .sink(StreamSink(name="sink", stream_name="processed-events"))
     )
     pipeline1.add(pipeline2)
 
@@ -387,13 +304,12 @@ def test_batch_step_override_config(
     pipeline = Pipeline()
     source = StreamSource(
         name="mysource",
-        ctx=pipeline,
         stream_name="name",
     )
+    pipeline.start(source)
 
-    step: BatchStep = BatchStep(  # type: ignore
-        name="test-batch", ctx=pipeline, inputs=[source], batch_size=default_batch_size
-    )
+    step: BatchStep = BatchStep(name="test-batch", batch_size=default_batch_size)  # type: ignore
+    pipeline.apply(step)
 
     step.override_config(loaded_config=loaded_batch_size)
 

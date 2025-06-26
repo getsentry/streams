@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import (
     Any,
+    Callable,
     Generic,
     Mapping,
     Optional,
@@ -18,6 +19,7 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
+    ComplexStep,
     Filter,
     FlatMap,
     Map,
@@ -60,6 +62,13 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         # currently we rely on the adapter to validate the content while
         # there are a lot of configuration elements that can be adapter
         # agnostic.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def complex_step_override(self) -> dict[str, Callable[[ComplexStep], StreamT]]:
+        """
+        Allows an adapter to directly handle certain complex steps, instead of converting them to simple steps.
         """
         raise NotImplementedError
 
@@ -163,6 +172,13 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
         assert hasattr(step, "step_type")
         step_type = step.step_type
         step_name = step.name
+
+        if isinstance(step, ComplexStep):
+            overrides = self.adapter.complex_step_override()
+            if str(step.__class__) in overrides:
+                return {step_name: overrides[str(step.__class__)](step)}
+            else:
+                step = step.convert()
 
         if step_type is StepType.SOURCE:
             assert isinstance(step, Source)

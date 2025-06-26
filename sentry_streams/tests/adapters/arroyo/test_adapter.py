@@ -46,8 +46,7 @@ def test_kafka_sources() -> None:
     with pytest.raises(KeyError):
         sources.get_topic("source2")
 
-    pipeline = Pipeline()
-    sources.add_source(StreamSource("source1", pipeline, "test_topic"))
+    sources.add_source(StreamSource("source1", "test_topic"))
 
     assert sources.get_topic("source1") == Topic("test_topic")
     assert sources.get_consumer("source1") is not None

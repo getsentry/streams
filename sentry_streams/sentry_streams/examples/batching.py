@@ -13,10 +13,10 @@ pipeline = streaming_source(
 )
 
 # TODO: Figure out why the concrete type of InputType is not showing up in the type hint of chain1
-parsed_batch = pipeline.apply("mybatch", Batch(batch_size=2)).apply(
+parsed_batch = pipeline.apply_step("mybatch", Batch(batch_size=2)).apply_step(
     "batch_parser", BatchParser(msg_type=IngestMetric)
 )
 
-parsed_batch.apply("serializer", Serializer()).sink(
+parsed_batch.apply_step("serializer", Serializer()).add_sink(
     "mysink", StreamSink(stream_name="transformed-events")
 )

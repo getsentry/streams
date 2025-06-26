@@ -19,21 +19,16 @@ pipeline = Pipeline()
 
 source = StreamSource(
     name="myinput",
-    ctx=pipeline,
     stream_name="events",
 )
 
 filter = Filter(
     name="myfilter",
-    ctx=pipeline,
-    inputs=[source],
     function=EventsPipelineFilterFunctions.simple_filter,
 )
 
 map = Map(
     name="mymap",
-    ctx=pipeline,
-    inputs=[filter],
     function=EventsPipelineMapFunction.simple_map,
 )
 
@@ -44,8 +39,6 @@ reduce_window = TumblingWindow(window_size=3)
 
 reduce: Aggregate[int, tuple[str, int], str] = Aggregate(
     name="myreduce",
-    ctx=pipeline,
-    inputs=[map],
     window=reduce_window,
     aggregate_func=WordCounter,
     group_by_key=GroupByWord(),
@@ -53,7 +46,5 @@ reduce: Aggregate[int, tuple[str, int], str] = Aggregate(
 
 sink = StreamSink(
     name="kafkasink",
-    ctx=pipeline,
-    inputs=[reduce],
     stream_name="transformed-events",
 )

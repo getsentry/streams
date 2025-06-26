@@ -14,8 +14,8 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
-    Union,
     cast,
+    Union,
 )
 
 from sentry_streams.pipeline.function_template import (
@@ -42,6 +42,7 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.pipeline import Filter as FilterStep
 from sentry_streams.pipeline.pipeline import FlatMap as FlatMapStep
 from sentry_streams.pipeline.pipeline import GCSSink as GCSSinkStep
+from sentry_streams.pipeline.pipeline import Sink as SinkStep
 from sentry_streams.pipeline.pipeline import Map as MapStep
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
@@ -73,7 +74,7 @@ class Applier(ABC, Generic[TIn, TOut]):
     """
 
     @abstractmethod
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+    def build_step(self, name: str) -> Step:
         """
         Build a pipeline step and wires it to the Pipeline.
 
@@ -86,16 +87,16 @@ class Applier(ABC, Generic[TIn, TOut]):
 class Map(Applier[Message[TIn], Message[TOut]]):
     function: Union[Callable[[Message[TIn]], TOut], str]
 
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
-        return MapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
+    def build_step(self, name: str) -> Step:
+        return MapStep(name=name, function=self.function)
 
 
 @dataclass
 class Filter(Applier[Message[TIn], Message[TIn]]):
     function: Union[Callable[[Message[TIn]], bool], str]
 
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
-        return FilterStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
+    def build_step(self, name: str) -> Step:
+        return FilterStep(name=name, function=self.function)
 
 
 @dataclass
@@ -107,8 +108,8 @@ class FlatMap(Applier[Message[TIn], Message[TOut]], Generic[TIn, TOut]):
 
     function: Union[Callable[[Message[TIn]], Iterable[TOut]], str]
 
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
-        return FlatMapStep(name=name, ctx=ctx, inputs=[previous], function=self.function)
+    def build_step(self, name: str) -> Step:
+        return FlatMapStep(name=name, function=self.function)
 
 
 @dataclass
@@ -121,11 +122,9 @@ class Reducer(
     aggregate_backend: AggregationBackend[OutputType] | None = None
     group_by_key: GroupBy | None = None
 
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+    def build_step(self, name: str) -> Step:
         return Aggregate(
             name=name,
-            ctx=ctx,
-            inputs=[previous],
             window=self.window,
             aggregate_func=self.aggregate_func,
             aggregate_backend=self.aggregate_backend,
@@ -146,11 +145,9 @@ class Parser(Applier[Message[bytes], Message[TOut]]):
 
     msg_type: Type[TOut]
 
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+    def build_step(self, name: str) -> Step:
         return MapStep(
             name=name,
-            ctx=ctx,
-            inputs=[previous],
             function=msg_parser,
         )
 
@@ -161,11 +158,9 @@ class BatchParser(
 ):
     msg_type: Type[TOut]
 
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+    def build_step(self, name: str) -> Step:
         return MapStep(
             name=name,
-            ctx=ctx,
-            inputs=[previous],
             function=batch_msg_parser,
         )
 
@@ -180,12 +175,10 @@ class Serializer(Applier[Message[TIn], bytes]):
 
     dt_format: Optional[str] = None
 
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+    def build_step(self, name: str) -> Step:
         serializer_fn = partial(msg_serializer, dt_format=self.dt_format)
         return MapStep(
             name=name,
-            ctx=ctx,
-            inputs=[previous],
             function=serializer_fn,
         )
 
@@ -197,11 +190,9 @@ class Batch(
 ):
     batch_size: MeasurementUnit
 
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+    def build_step(self, name: str) -> Step:
         return BatchStep(
             name=name,
-            ctx=ctx,
-            inputs=[previous],
             batch_size=self.batch_size,
         )
 
@@ -215,7 +206,7 @@ class Sink(ABC):
     """
 
     @abstractmethod
-    def build_sink(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+    def build_sink(self, name: str) -> SinkStep:
         """
         Build a pipeline step and wires it to the Pipeline.
 
@@ -228,8 +219,8 @@ class Sink(ABC):
 class StreamSink(Sink):
     stream_name: str
 
-    def build_sink(self, name: str, ctx: Pipeline, previous: Step) -> Step:
-        return StreamSinkStep(name=name, ctx=ctx, inputs=[previous], stream_name=self.stream_name)
+    def build_sink(self, name: str) -> SinkStep:
+        return StreamSinkStep(name=name, stream_name=self.stream_name)
 
 
 @dataclass
@@ -237,11 +228,9 @@ class GCSSink(Sink):
     bucket: str
     object_generator: Callable[[], str]
 
-    def build_sink(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+    def build_sink(self, name: str) -> SinkStep:
         return GCSSinkStep(
             name=name,
-            ctx=ctx,
-            inputs=[previous],
             bucket=self.bucket,
             object_generator=self.object_generator,
         )
@@ -291,14 +280,7 @@ class ExtensibleChain(Chain, Generic[TIn]):
 
     """
 
-    def __init__(self, name: str) -> None:
-        super().__init__(name)
-        self.__edge: Step | None = None
-
-    def _add_start(self, start: Step) -> None:
-        self.__edge = start
-
-    def apply(self, name: str, applier: Applier[TIn, TOut]) -> ExtensibleChain[TOut]:
+    def apply_step(self, name: str, applier: Applier[TIn, TOut]) -> ExtensibleChain[TOut]:
         """
         Apply a transformation to the stream. The transformation is
         defined via an `Applier`.
@@ -310,23 +292,20 @@ class ExtensibleChain(Chain, Generic[TIn]):
         - flatMap performs a 1:n transformation
         - reduce performs a n:1 transformation
         """
-        assert self.__edge is not None
-        self.__edge = applier.build_step(name, self, self.__edge)
-        return cast(ExtensibleChain[TOut], self)
+        pipeline = super().apply(applier.build_step(name))
+        return cast(ExtensibleChain[TOut], pipeline)
 
     def broadcast(self, name: str, routes: Sequence[Chain]) -> Chain:
         """
         Forks the pipeline sending all messages to all routes.
         """
-        assert self.__edge is not None
-        Broadcast(
+        step = Broadcast(
             name,
-            ctx=self,
-            inputs=[self.__edge],
-            routes=[Branch(name=chain.name, ctx=self) for chain in routes],
+            routes=routes,
         )
-        for chain in routes:
-            self.merge(other=chain, merge_point=chain.name)
+        self.apply(step)
+        # for chain in routes:
+        #     self.merge(other=chain, merge_point=chain.name)
         return self
 
     def route(
@@ -340,33 +319,21 @@ class ExtensibleChain(Chain, Generic[TIn]):
         The `routing_function` parameter specifies the function that
         takes the message in and returns the route to send it to.
         """
-        assert self.__edge is not None
-        table = {branch: Branch(name=chain.name, ctx=self) for branch, chain in routes.items()}
-        Router(
+        step = Router(
             name,
-            ctx=self,
-            inputs=[self.__edge],
             routing_function=routing_function,
-            routing_table=table,
+            routing_table=routes,
         )
-        for branch in table:
-            chain = routes[branch]
-            self.merge(other=chain, merge_point=chain.name)
+        self.apply(step)
 
         return self
 
-    def sink(
-        self,
-        name: str,
-        sink: Sink,
-    ) -> Chain:
+    def add_sink(self, name: str, sink: Sink) -> Chain:
         """
-        Terminates the pipeline.
-
-        TODO: support anything other than StreamSink.
+        Add a sink to the pipeline.
         """
-        assert self.__edge is not None
-        sink.build_sink(name=name, ctx=self, previous=self.__edge)
+        step = sink.build_sink(name)
+        self.sink(step)
         return self
 
 
@@ -376,7 +343,7 @@ def segment(name: str, msg_type: Type[TIn]) -> ExtensibleChain[Message[TIn]]:
     in route and broadcast steps.
     """
     pipeline: ExtensibleChain[Message[TIn]] = ExtensibleChain(name)
-    pipeline._add_start(Branch(name=name, ctx=pipeline))
+    pipeline.start(Branch(name=name))
     return pipeline
 
 
@@ -387,10 +354,8 @@ def streaming_source(
     Create a pipeline that starts with a StreamingSource.
     """
     pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain("root")
-    source = StreamSource(
-        name=name, ctx=pipeline, stream_name=stream_name, header_filter=header_filter
-    )
-    pipeline._add_start(source)
+    source = StreamSource(name=name, stream_name=stream_name, header_filter=header_filter)
+    pipeline.start(source)
     return pipeline
 
 
