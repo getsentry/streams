@@ -2,8 +2,6 @@
 name = "rust_streams"
 version = "0.1.0"
 edition = "2021"
-build = "build.rs"
-
 
 [dependencies]
 pyo3 = { version = "0.24.0"}
