@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn test_routed_value_creation() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let route = Route::new("source1".to_string(), vec!["waypoint1".to_string()]);
             let routed_value = RoutedValue {

@@ -33,9 +33,9 @@ mod tests {
     use super::*;
     use crate::messages::PyStreamingMessage;
     use crate::messages::RoutedValuePayload;
-    use crate::test_operators::build_routed_value;
-    use crate::test_operators::import_py_dep;
-    use crate::test_operators::make_lambda;
+    use crate::testutils::build_routed_value;
+    use crate::testutils::import_py_dep;
+    use crate::testutils::make_lambda;
     use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_call_python_function() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,

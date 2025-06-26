@@ -250,8 +250,8 @@ mod tests {
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::{PyWatermark, WatermarkMessage};
-    use crate::test_operators::build_routed_value;
-    use crate::test_operators::make_committable;
+    use crate::testutils::build_routed_value;
+    use crate::testutils::make_committable;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::noop::Noop;
@@ -355,7 +355,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_submit_with_matching_route() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
             let mut operator = PythonAdapter::new(
@@ -427,7 +427,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_poll_with_messages() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
 
@@ -497,7 +497,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_poll_and_fail() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
 

@@ -72,9 +72,9 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::Watermark;
     use crate::routes::Route;
-    use crate::test_operators::build_routed_value;
-    use crate::test_operators::import_py_dep;
-    use crate::test_operators::make_lambda;
+    use crate::testutils::build_routed_value;
+    use crate::testutils::import_py_dep;
+    use crate::testutils::make_lambda;
     use crate::utils::traced_with_gil;
     use chrono::Utc;
     use pyo3::ffi::c_str;
@@ -114,7 +114,7 @@ mod tests {
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
     fn test_transform_crashes_on_any_msg() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
 
         import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
@@ -143,7 +143,7 @@ mod tests {
         expected = "Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
     fn test_transform_crashes_on_normal_exceptions() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
 
         let mut transform = create_simple_transform_step(c_str!("lambda x: {}[0]"), Noop {});
 
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_transform_handles_msg_invalid_exception() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
 
         import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_build_map() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,

@@ -118,7 +118,7 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::Watermark;
     use crate::routes::Route;
-    use crate::test_operators::{build_routed_value, make_committable};
+    use crate::testutils::{build_routed_value, make_committable};
     use crate::utils::traced_with_gil;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_watermark_poll() {
-        crate::test_operators::initialize_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
