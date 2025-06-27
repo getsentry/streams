@@ -57,9 +57,9 @@ pub enum RuntimeOperator {
     /// message and a function which returns a vec of messages, and submits
     /// the messages downstream.
     #[pyo3(name = "Unfold")]
-    Unfold<F> {
+    Unfold {
         route: Route,
-        callable: F,
+        callable: Py<PyAny>,
     },
     /// Represents a router step in the pipeline that can send messages
     /// to one of the downstream routes.
@@ -123,12 +123,6 @@ pub fn build(
                 func_ref,
             ))
         }
-        RuntimeOperator::Broadcast {
-            route,
-            downstream_routes
-        } => {
-
-        }
         RuntimeOperator::Router {
             route,
             routing_function,
@@ -143,5 +137,7 @@ pub fn build(
             let factory = traced_with_gil!(|py| { delegate_factory.clone_ref(py) });
             Box::new(PythonAdapter::new(route.clone(), factory, next))
         }
+        // TODO: fixme
+        RuntimeOperator::Unfold { .. } => Box::new(())
     }
 }

@@ -1,21 +1,17 @@
-use crate::callers::call_any_python_function;
+use crate::callers::{try_apply_py, ApplyError, ApplyResult};
+use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
-use crate::utils::clone_committable;
+use crate::committable::clone_committable;
+use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 use sentry_arroyo::processing::strategies::{
-    CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
+    CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy, StrategyError, SubmitError
 };
 use sentry_arroyo::types::{Message, Partition};
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
-
-/// Unfold's TransformFunction can be either a user-defined Python function
-/// (like in FlatMap) or a rust function owned by the platform (like for Broadcast)
-pub enum TransformFunction<F> {
-    PyFunction(Py<PyAny>),
-    RustFunction(F),
-}
 
 /// MessageIdentifier is used to uniquely identify a routed message copy
 /// when it is stored in pending_messages after previously returning MessageRejected
@@ -37,18 +33,18 @@ impl Hash for MessageIdentifier {
     }
 }
 
-pub struct Unfold<F> {
+pub struct Unfold {
     pub next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     pub route: Route,
-    pub callable: TransformFunction<F>,
+    pub callable: Py<PyAny>,
     pub pending_messages: HashMap<MessageIdentifier, Message<RoutedValue>>,
 }
 
-impl<F> Unfold<F> {
+impl Unfold {
     fn new(
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
         route: Route,
-        callable: TransformFunction<F>,
+        callable: Py<PyAny>,
     ) -> Self {
         Self {
             next_step,
@@ -99,13 +95,7 @@ impl<F> Unfold<F> {
     }
 }
 
-impl<F> ProcessingStrategy<RoutedValue> for Unfold<F>
-where
-    F: FnMut(Message<RoutedValue>) -> Result<Vec<Message<RoutedValue>>, SubmitError<RoutedValue>>
-        + Send
-        + Sync
-        + 'static,
-{
+impl ProcessingStrategy<RoutedValue> for Unfold {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         self.next_step.poll()
     }
@@ -114,14 +104,24 @@ where
         if self.route != message.payload().route {
             return self.next_step.submit(message);
         }
-        let transformed_messages = match self.callable {
-            TransformFunction::PyFunction(py_function) => {
-                let py_transformed_messages =
-                    call_any_python_function(&py_function, message).unwrap();
-                py_transformed_messages.extract(py)
-            }
-        };
-        let transformed_messages = (self.callable)(message)?;
+        let py_message: Py<PyAny> = (&message.payload().payload).into();
+        let transformed_messages = traced_with_gil!(|py| {
+            let res = try_apply_py(py, &self.callable, (py_message,))
+                    .and_then(|py_res| py_res.extract::<Vec<RoutedValuePayload>>(py).map_err(|_| ApplyError::ApplyFailed));
+
+            //         ApplyResult::Ok(msgs) => {
+            //             msgs.extract()
+            //         },
+            //         ApplyResult::Err(e) => {
+            //             // TODO: handle errors
+            //             match e {
+            //                 ApplyError::InvalidMessage => return SubmitError::MessageRejected(MessageRejected { message }),
+            //                 ApplyError::ApplyFailed => return SubmitError::InvalidMessage(InvalidMessage { message }),
+            //             }
+            //         }
+            //     }
+            });
+        // let transformed_messages = (self.callable)(message)?;
         for msg in transformed_messages {
             self.handle_submit(msg)?;
         }
@@ -144,8 +144,6 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::WatermarkMessage;
     use crate::routes::Route;
-    use crate::test_operators::build_routed_value;
-    use crate::test_operators::make_lambda;
     use crate::transformer::build_filter;
     use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
@@ -158,7 +156,7 @@ mod tests {
     #[test]
     fn test_submit() {
         pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_build_filter", |py| {
+        traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: 'test' in x.payload"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();

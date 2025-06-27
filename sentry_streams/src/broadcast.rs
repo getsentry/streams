@@ -1,5 +1,5 @@
 use crate::routes::RoutedValue;
-use crate::utils::clone_committable;
+use crate::committable::clone_committable;
 use sentry_arroyo::{processing::strategies::SubmitError, types::Message};
 
 pub fn broadcast(

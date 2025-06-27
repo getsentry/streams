@@ -108,13 +108,11 @@ impl Clone for WatermarkMessage {
             WatermarkMessage::Watermark(watermark) => {
                 let watermark_clone = watermark.clone();
                 WatermarkMessage::Watermark(watermark_clone)
-            },
+            }
             WatermarkMessage::PyWatermark(py_watermark) => {
                 traced_with_gil!(|py| {
                     let committable = py_watermark.committable.clone_ref(py);
-                    WatermarkMessage::PyWatermark(
-                        PyWatermark { committable }
-                    )
+                    WatermarkMessage::PyWatermark(PyWatermark { committable })
                 })
             }
         }
@@ -328,19 +326,15 @@ impl Clone for PyStreamingMessage {
     fn clone(&self) -> Self {
         match self {
             PyStreamingMessage::PyAnyMessage { ref content } => {
-                let py_any_clone =
-                    traced_with_gil!(|py| content.clone_ref(py));
+                let py_any_clone = traced_with_gil!(|py| content.clone_ref(py));
                 PyStreamingMessage::PyAnyMessage {
                     content: py_any_clone,
                 }
-            },
+            }
             PyStreamingMessage::RawMessage { ref content } => {
-                let raw_clone =
-                    traced_with_gil!(|py| content.clone_ref(py));
-                PyStreamingMessage::RawMessage {
-                    content: raw_clone,
-                }
-            },
+                let raw_clone = traced_with_gil!(|py| content.clone_ref(py));
+                PyStreamingMessage::RawMessage { content: raw_clone }
+            }
         }
     }
 }
@@ -384,8 +378,12 @@ impl RoutedValuePayload {
 impl Clone for RoutedValuePayload {
     fn clone(&self) -> Self {
         match self {
-            RoutedValuePayload::WatermarkMessage(watermark) => RoutedValuePayload::WatermarkMessage(watermark.clone()),
-            RoutedValuePayload::PyStreamingMessage(ref py_msg) => RoutedValuePayload::PyStreamingMessage(py_msg.clone()),
+            RoutedValuePayload::WatermarkMessage(watermark) => {
+                RoutedValuePayload::WatermarkMessage(watermark.clone())
+            }
+            RoutedValuePayload::PyStreamingMessage(ref py_msg) => {
+                RoutedValuePayload::PyStreamingMessage(py_msg.clone())
+            }
         }
     }
 }
