@@ -79,6 +79,15 @@ jobs:
           working-directory: ./sentry_streams
           docker-options:
             -e CMAKE_POLICY_VERSION_MINIMUM=3.5
+
+      - name: Validate wheels
+        run: |
+          python -m venv tmp_venv
+          . tmp_venv/bin/activate
+          cd tmp_venv/
+          pip install ./sentry_streams/dist/*
+          python -c 'import sentry_streams'
+          python -c 'import sentry_streams.rust_streams'
       - name: Upload wheels
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
