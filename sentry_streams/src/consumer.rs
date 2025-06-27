@@ -275,8 +275,8 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::operators::RuntimeOperator;
     use crate::routes::Route;
-    use crate::test_operators::make_lambda;
-    use crate::test_operators::make_msg;
+    use crate::testutils::make_lambda;
+    use crate::testutils::make_msg;
     use pyo3::ffi::c_str;
     use pyo3::types::PyBytes;
     use pyo3::IntoPyObjectExt;
@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_to_routed_value() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let payload_data = b"test_payload";
             let message = make_msg(Some(payload_data.to_vec()));
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn test_to_none_python() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let message = make_msg(None);
             let python_message = to_routed_value("source", message, &Some("schema".to_string()));
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_build_chain() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(
                 py,

@@ -83,7 +83,7 @@ class TransformChains:
         self.__chains[hashable_route] = ChainConfig([], config)
 
     def add_map(self, route: Route, step: Map) -> None:
-        logger.info(f"Chaining map {step.name} to parallel chain")
+        logger.info(f"Chaining map {step.name} to transform chain")
         hashable_route = _hashable_route(route)
         if hashable_route not in self.__chains:
             raise ValueError(f"Chain {route} not initialized")

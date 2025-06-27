@@ -19,7 +19,7 @@ mod watermark;
 #[cfg(test)]
 mod fake_strategy;
 #[cfg(test)]
-mod test_operators;
+mod testutils;
 
 #[pymodule]
 fn rust_streams(m: &Bound<'_, PyModule>) -> PyResult<()> {
