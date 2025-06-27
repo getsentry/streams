@@ -96,7 +96,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
@@ -125,7 +124,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Python route function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
@@ -149,7 +147,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Python route function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]

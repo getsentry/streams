@@ -109,7 +109,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
@@ -138,7 +137,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
@@ -162,7 +160,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_transform_handles_msg_invalid_exception() {
         crate::testutils::initialize_python();
 
