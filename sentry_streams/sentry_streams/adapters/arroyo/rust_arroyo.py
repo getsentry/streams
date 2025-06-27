@@ -158,6 +158,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             assert step_config[
                 "starts_segment"
             ], "A new segment has to be created to add parallelism"
+            logger.info("Adding transformation chain: {stream} to pipeline")
             self.__consumers[stream.source].add_step(finalize_chain(self.__chains, stream))
 
     def source(self, step: Source) -> Route:
@@ -202,6 +203,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
             object_generator = step.object_generator
 
+            logger.info(f"Adding GCS sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.GCSSink(route, bucket, object_generator)
             )
@@ -209,6 +211,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         # Our fallback for now since there's no other Sink type
         else:
             assert isinstance(step, StreamSink)
+            logger.info(f"Adding stream sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.StreamSink(
                     route,
@@ -254,6 +257,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Builds a flat-map operator for the platform the adapter supports.
         """
+        logger.info(f"Adding flatMap: {step.name} to pipeline")
         raise NotImplementedError
 
     def filter(self, step: Filter, stream: Route) -> Route:
@@ -269,6 +273,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             return step.resolved_function(msg)
 
         route = RustRoute(stream.source, stream.waypoints)
+        logger.info(f"Adding filter: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
         return stream
 
@@ -285,6 +290,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         name = step.name
         loaded_config: Mapping[str, Any] = self.steps_config.get(name, {})
         step.override_config(loaded_config)
+        logger.info(f"Adding reduce: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(
             RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
         )
@@ -298,6 +304,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a broadcast operator for the platform the adapter supports.
         """
+        logger.info(f"Adding broadcast: {step.name} to pipeline")
         raise NotImplementedError
 
     def router(
@@ -315,6 +322,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             waypoint = step.routing_function(msg)
             return step.routing_table[waypoint].name
 
+        logger.info(f"Adding router: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(RuntimeOperator.Router(route, routing_function))
         return build_branches(stream, step.routing_table.values())
 
