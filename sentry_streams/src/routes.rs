@@ -47,7 +47,7 @@ impl Route {
 /// Represents a message being passed between steps in the Arroyo
 /// consumer. All messages have a Route attached to them which
 /// represents the path taken by the message in the pipeline.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RoutedValue {
     pub route: Route,
     pub payload: RoutedValuePayload,
