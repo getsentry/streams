@@ -47,7 +47,8 @@ However, since a ``Broadcast`` step creates multiple copies of a message, we can
 as soon as the commit step receives it because the message isn't fully processed until *each copy* of the message
 reaches the commit step.
 
-To solve this, we introduce Watermarks - internal messages which are regularly emitted into the pipeline.
+To solve this, we introduce Watermarks - internal messages which are regularly emitted into the pipeline (by default
+a watermark is send every 10 seconds).
 Each watermark message contains the combined `committable <https://getsentry.github.io/arroyo/strategies/index.html#arroyo.types.Message.committable>`_
 of all messages which were picked up by the consumer since the last watermark message was sent.
 
@@ -55,7 +56,7 @@ The end step of a consumer created by the arroyo runtime will be a custom commit
 stored in a watermark once it has received ``N`` copies of that watermark, where ``N`` is the number of possible
 branches in the pipeline.
 For example, if a pipeline contains a ``Router`` which routes messages to one of 2 downstream branches, then
-in one of those branches is a ``Broadcast`` step that forwards messages to 3 downstream branches, the commit
+in one of those branches there is a ``Broadcast`` step that forwards messages to 3 downstream branches, the commit
 offsets step will only commit the offsets stored in a watermark after it receives a total of 4 copies of that
 watermark::
 
