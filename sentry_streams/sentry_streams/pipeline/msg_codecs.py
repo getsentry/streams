@@ -17,7 +17,6 @@ from sentry_kafka_schemas import get_codec
 from sentry_kafka_schemas.codecs import Codec
 
 from sentry_streams.pipeline.datatypes import (
-    DataType,
     Field,
     List,
     StreamsDataType,
@@ -110,7 +109,7 @@ def _resolve_polars_schema(schema_fields: Mapping[str, Any]) -> PolarsSchema:
 
 
 def parquet_serializer(
-    msg: Message[Any], schema_fields: Mapping[str, DataType], compression: ParquetCompression
+    msg: Message[Any], schema_fields: Mapping[str, StreamsDataType], compression: ParquetCompression
 ) -> bytes:
     assert _validate_schema(schema_fields)
     polars_schema = _resolve_polars_schema(schema_fields)

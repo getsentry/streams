@@ -5,7 +5,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import partial
 from typing import (
-    Any,
     Callable,
     Generic,
     Mapping,
@@ -19,6 +18,7 @@ from typing import (
     cast,
 )
 
+from sentry_streams.pipeline.datatypes import StreamsDataType
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -195,7 +195,7 @@ class Serializer(Applier[Message[TIn], bytes]):
 
 @dataclass
 class ParquetSerializer(Applier[Message[TIn], bytes]):
-    schema_fields: Mapping[str, Any]
+    schema_fields: Mapping[str, StreamsDataType]
     compression: Optional[ParquetCompression] = "snappy"
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
