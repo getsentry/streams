@@ -86,7 +86,7 @@ jobs:
           . tmp_venv/bin/activate
           cd tmp_venv/
           ls ../sentry_streams/dist
-          pip install ../sentry_streams/dist/*
+          pip install ../sentry_streams/dist/*cp311*
           python -c 'import sentry_streams'
           python -c 'import sentry_streams.rust_streams'
       - name: Upload wheels
