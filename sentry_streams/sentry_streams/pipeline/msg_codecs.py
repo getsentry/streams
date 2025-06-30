@@ -73,18 +73,7 @@ def msg_serializer(msg: Message[Any], dt_format: Optional[str] = None) -> bytes:
 ParquetCompression = Literal["lz4", "uncompressed", "snappy", "gzip", "lzo", "brotli", "zstd"]
 
 
-def _get_parquet(
-    msg: Message[Iterable[Any]],
-    schema_fields: PolarsSchema,
-    compression: ParquetCompression,
-) -> bytes:
-    df = pl.DataFrame([i for i in msg.payload if i is not None], schema=schema_fields)
-    buffer = io.BytesIO()
-    df.write_parquet(buffer, compression=compression, statistics=False, use_pyarrow=False)
-    return bytes(buffer.getvalue())
-
-
-def _resolve_polars_schema(schema_fields: Mapping[str, DataType]) -> PolarsSchema:
+def resolve_polars_schema(schema_fields: Mapping[str, DataType]) -> PolarsSchema:
     resolved_schema = {key: dtype.resolve() for key, dtype in schema_fields.items()}
     polars_schema = pl.Schema(resolved_schema)
     return polars_schema
@@ -92,8 +81,10 @@ def _resolve_polars_schema(schema_fields: Mapping[str, DataType]) -> PolarsSchem
 
 def parquet_serializer(
     msg: Message[Iterable[Any]],
-    schema_fields: Mapping[str, DataType],
+    polars_schema: PolarsSchema,
     compression: ParquetCompression,
 ) -> bytes:
-    polars_schema = _resolve_polars_schema(schema_fields)
-    return _get_parquet(msg, polars_schema, compression)
+    df = pl.DataFrame([i for i in msg.payload if i is not None], schema=polars_schema)
+    buffer = io.BytesIO()
+    df.write_parquet(buffer, compression=compression, statistics=False, use_pyarrow=False)
+    return bytes(buffer.getvalue())

@@ -34,6 +34,7 @@ from sentry_streams.pipeline.msg_codecs import (
     msg_parser,
     msg_serializer,
     parquet_serializer,
+    resolve_polars_schema,
 )
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
@@ -201,8 +202,10 @@ class ParquetSerializer(Applier[Message[MutableSequence[Any]], bytes]):
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         assert self.compression is not None
+        polars_schema = resolve_polars_schema(self.schema_fields)
+
         serializer_fn = partial(
-            parquet_serializer, schema_fields=self.schema_fields, compression=self.compression
+            parquet_serializer, polars_schema=polars_schema, compression=self.compression
         )
         return MapStep(
             name=name,
