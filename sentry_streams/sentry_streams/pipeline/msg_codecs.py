@@ -1,5 +1,6 @@
 import io
 import json
+from collections.abc import Iterable
 from datetime import datetime
 from functools import partial
 from typing import (
@@ -17,10 +18,7 @@ from sentry_kafka_schemas import get_codec
 from sentry_kafka_schemas.codecs import Codec
 
 from sentry_streams.pipeline.datatypes import (
-    Field,
-    List,
-    StreamsDataType,
-    Struct,
+    DataType,
 )
 from sentry_streams.pipeline.message import Message
 
@@ -76,7 +74,7 @@ ParquetCompression = Literal["lz4", "uncompressed", "snappy", "gzip", "lzo", "br
 
 
 def _get_parquet(
-    msg: Message[Any],
+    msg: Message[Iterable[Any]],
     schema_fields: PolarsSchema,
     compression: ParquetCompression,
 ) -> bytes:
@@ -86,31 +84,16 @@ def _get_parquet(
     return bytes(buffer.getvalue())
 
 
-def _validate_schema(schema: Mapping[str, StreamsDataType]) -> bool:
-    def _check_dtype(k: str, dtype: StreamsDataType) -> bool:
-        if isinstance(dtype, Struct):
-            return all(_check_dtype(k, field.dtype) for field in dtype.fields)
-        elif isinstance(dtype, List):
-            return _check_dtype(k, dtype.inner)
-        elif isinstance(dtype, Field):
-            return _check_dtype(k, dtype.dtype)
-
-        if not isinstance(dtype, StreamsDataType):
-            raise TypeError(f"Field {k} has type {dtype} and it is not a valid Streams DataType.")
-        return True
-
-    return all(_check_dtype(k, dtype) for k, dtype in schema.items())
-
-
-def _resolve_polars_schema(schema_fields: Mapping[str, Any]) -> PolarsSchema:
+def _resolve_polars_schema(schema_fields: Mapping[str, DataType]) -> PolarsSchema:
     resolved_schema = {key: dtype.resolve() for key, dtype in schema_fields.items()}
     polars_schema = pl.Schema(resolved_schema)
     return polars_schema
 
 
 def parquet_serializer(
-    msg: Message[Any], schema_fields: Mapping[str, StreamsDataType], compression: ParquetCompression
+    msg: Message[Iterable[Any]],
+    schema_fields: Mapping[str, DataType],
+    compression: ParquetCompression,
 ) -> bytes:
-    assert _validate_schema(schema_fields)
     polars_schema = _resolve_polars_schema(schema_fields)
     return _get_parquet(msg, polars_schema, compression)

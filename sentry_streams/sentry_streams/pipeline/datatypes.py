@@ -10,15 +10,7 @@ import polars as pl
 PolarsDataType: TypeAlias = Union[type[pl.DataType], pl.DataType]
 
 
-class StreamsDataType(ABC):
-    """
-    All the type classes the streaming platform offers
-    """
-
-    ...
-
-
-class DataType(StreamsDataType):
+class DataType(ABC):
     @abstractmethod
     def resolve(self) -> PolarsDataType:
         raise NotImplementedError
@@ -145,7 +137,7 @@ class Duration(DataType):
 
 
 @dataclass
-class Field(StreamsDataType):
+class Field:
     """
     Only to be used inside Mappings
     """

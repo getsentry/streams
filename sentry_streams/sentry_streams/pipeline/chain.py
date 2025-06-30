@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import partial
 from typing import (
+    Any,
     Callable,
     Generic,
     Mapping,
@@ -18,7 +19,7 @@ from typing import (
     cast,
 )
 
-from sentry_streams.pipeline.datatypes import StreamsDataType
+from sentry_streams.pipeline.datatypes import DataType
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -174,7 +175,7 @@ class BatchParser(
 
 
 @dataclass
-class Serializer(Applier[Message[TIn], bytes]):
+class Serializer(Applier[Message[Any], bytes]):
     """
     A step to serialize and encode messages into bytes. These bytes can be written
     to sink data to a Kafka topic, for example. This step will need to precede a
@@ -194,8 +195,8 @@ class Serializer(Applier[Message[TIn], bytes]):
 
 
 @dataclass
-class ParquetSerializer(Applier[Message[TIn], bytes]):
-    schema_fields: Mapping[str, StreamsDataType]
+class ParquetSerializer(Applier[Message[MutableSequence[Any]], bytes]):
+    schema_fields: Mapping[str, DataType]
     compression: Optional[ParquetCompression] = "snappy"
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
