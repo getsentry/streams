@@ -93,37 +93,39 @@ def test_msg_no_found_schema() -> None:
 def test_parquet_serializer_with_polars_schema() -> None:
     import polars as pl
 
+    payload = [
+        {
+            "org_id": 420,
+            "project_id": 420,
+            "name": "s:sessions/user@none",
+            "tags": {
+                "sdk": "raven-node/2.6.3",
+                "environment": "production",
+                "release": "sentry-test@1.0.0",
+            },
+            "timestamp": 11111111111,
+            "type": "s",
+            "retention_days": 90,
+            "value": [1617781333],
+        },
+        {
+            "org_id": 420,
+            "project_id": 420,
+            "name": "s:sessions/user@none",
+            "tags": {
+                "sdk": "raven-node/2.6.3",
+                "environment": "production",
+                "release": "sentry-test@1.0.0",
+            },
+            "timestamp": 11111111111,
+            "type": "s",
+            "retention_days": 90,
+            "value": [1617781333],
+        },
+    ]
+
     msg: Message[Sequence[Mapping[Any, Any]]] = PyMessage(
-        payload=[
-            {
-                "org_id": 420,
-                "project_id": 420,
-                "name": "s:sessions/user@none",
-                "tags": {
-                    "sdk": "raven-node/2.6.3",
-                    "environment": "production",
-                    "release": "sentry-test@1.0.0",
-                },
-                "timestamp": 11111111111,
-                "type": "s",
-                "retention_days": 90,
-                "value": [1617781333],
-            },
-            {
-                "org_id": 420,
-                "project_id": 420,
-                "name": "s:sessions/user@none",
-                "tags": {
-                    "sdk": "raven-node/2.6.3",
-                    "environment": "production",
-                    "release": "sentry-test@1.0.0",
-                },
-                "timestamp": 11111111111,
-                "type": "s",
-                "retention_days": 90,
-                "value": [1617781333],
-            },
-        ],
+        payload=payload,
         schema="example-schema",
         headers=[],
         timestamp=0.0,
@@ -153,38 +155,7 @@ def test_parquet_serializer_with_polars_schema() -> None:
     df = pl.read_parquet(BytesIO(result))
     assert df.shape == (2, 8)
 
-    expected_df = pl.DataFrame(
-        [
-            {
-                "org_id": 420,
-                "project_id": 420,
-                "name": "s:sessions/user@none",
-                "tags": {
-                    "sdk": "raven-node/2.6.3",
-                    "environment": "production",
-                    "release": "sentry-test@1.0.0",
-                },
-                "timestamp": 11111111111,
-                "type": "s",
-                "retention_days": 90,
-                "value": [1617781333],
-            },
-            {
-                "org_id": 420,
-                "project_id": 420,
-                "name": "s:sessions/user@none",
-                "tags": {
-                    "sdk": "raven-node/2.6.3",
-                    "environment": "production",
-                    "release": "sentry-test@1.0.0",
-                },
-                "timestamp": 11111111111,
-                "type": "s",
-                "retention_days": 90,
-                "value": [1617781333],
-            },
-        ]
-    )
+    expected_df = pl.DataFrame(payload)
     assert_frame_equal(df, expected_df)
 
 
