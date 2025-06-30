@@ -9,7 +9,6 @@ from typing import (
     MutableMapping,
     Optional,
     Sequence,
-    Union,
 )
 
 import polars as pl
@@ -80,11 +79,10 @@ ParquetCompression = Literal["lz4", "uncompressed", "snappy", "gzip", "lzo", "br
 def _get_parquet(
     msg: Message[Any],
     schema_fields: PolarsSchema,
-    compression: Union[ParquetCompression, None] = "snappy",
+    compression: ParquetCompression,
 ) -> bytes:
     df = pl.DataFrame([i for i in msg.payload if i is not None], schema=schema_fields)
     buffer = io.BytesIO()
-    assert compression is not None
     df.write_parquet(buffer, compression=compression, statistics=False, use_pyarrow=False)
     return bytes(buffer.getvalue())
 
@@ -112,9 +110,7 @@ def _resolve_polars_schema(schema_fields: Mapping[str, Any]) -> PolarsSchema:
 
 
 def parquet_serializer(
-    msg: Message[Any],
-    schema_fields: Mapping[str, DataType],
-    compression: Optional[ParquetCompression] = "snappy",
+    msg: Message[Any], schema_fields: Mapping[str, DataType], compression: ParquetCompression
 ) -> bytes:
     assert _validate_schema(schema_fields)
     polars_schema = _resolve_polars_schema(schema_fields)

@@ -146,7 +146,7 @@ def test_parquet_serializer_with_polars_schema() -> None:
         "value": List(Int64()),
     }
 
-    result = parquet_serializer(msg, schema)
+    result = parquet_serializer(msg, schema, "snappy")
 
     assert isinstance(result, bytes)
 
@@ -217,7 +217,7 @@ def test_parquet_serializer_non_stream_schema() -> None:
     }
 
     with pytest.raises(TypeError) as e:
-        parquet_serializer(msg, schema)
+        parquet_serializer(msg, schema, "snappy")
     assert "Field tags has type <class 'str'> and it is not a valid Streams DataType" in str(
         e.value
     )

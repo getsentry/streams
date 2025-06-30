@@ -199,6 +199,7 @@ class ParquetSerializer(Applier[Message[TIn], bytes]):
     compression: Optional[ParquetCompression] = "snappy"
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        assert self.compression is not None
         serializer_fn = partial(
             parquet_serializer, schema_fields=self.schema_fields, compression=self.compression
         )
