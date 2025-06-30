@@ -52,6 +52,7 @@ pub enum RuntimeOperator {
         route: Route,
         bucket: String,
         object_generator: Py<PyAny>,
+        thread_count: usize,
     },
 
     /// Represent a router step in the pipeline that can send messages
@@ -105,13 +106,16 @@ pub fn build(
             route,
             bucket,
             object_generator,
+            thread_count,
         } => {
             let func_ref = traced_with_gil!(|py| { object_generator.clone_ref(py) });
+            let threads = *thread_count;
+            let concurrency = &ConcurrencyConfig::new(threads);
 
             Box::new(GCSSink::new(
                 route.clone(),
                 next,
-                concurrency_config,
+                concurrency,
                 bucket,
                 func_ref,
             ))

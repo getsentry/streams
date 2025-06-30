@@ -197,13 +197,19 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 bucket = (
                     step.bucket if not sink_config.get("bucket") else str(sink_config.get("bucket"))
                 )
+                parallelism_config = cast(Mapping[str, Any], sink_config.get("parallelism"))
+                if parallelism_config:
+                    thread_count = cast(int, parallelism_config["threads"])
+                else:
+                    thread_count = 1
             else:
                 bucket = step.bucket
+                thread_count = 1
 
             object_generator = step.object_generator
 
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, bucket, object_generator)
+                RuntimeOperator.GCSSink(route, bucket, object_generator, thread_count)
             )
 
         # Our fallback for now since there's no other Sink type
