@@ -108,7 +108,6 @@ def _validate_schema(schema: Mapping[str, StreamsDataType]) -> bool:
 def _resolve_polars_schema(schema_fields: Mapping[str, Any]) -> PolarsSchema:
     resolved_schema = {key: dtype.resolve() for key, dtype in schema_fields.items()}
     polars_schema = pl.Schema(resolved_schema)
-    assert isinstance(polars_schema, PolarsSchema)
     return polars_schema
 
 
