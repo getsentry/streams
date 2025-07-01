@@ -197,6 +197,7 @@ class Serializer(Applier[Message[Any], bytes]):
 
 @dataclass
 class ParquetSerializer(Applier[Message[MutableSequence[Any]], bytes]):
+    # TODO: it's only a MutableSequence for now because BatchParser outputs a MutableSequence
     schema_fields: Mapping[str, DataType]
     compression: Optional[ParquetCompression] = "snappy"
 
