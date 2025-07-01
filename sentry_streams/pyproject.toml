@@ -37,7 +37,6 @@ dev = [
 
 [tool.maturin]
 module-name = "sentry_streams.rust_streams"
-python-versions = "3.11"
 
 [tool.setuptools.package-data]
 sentry_streams = ["py.typed", "config.json", "deployment_config/test_flink_config.yaml"]
