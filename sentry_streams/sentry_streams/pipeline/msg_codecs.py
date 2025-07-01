@@ -79,7 +79,7 @@ def resolve_polars_schema(schema_fields: Mapping[str, DataType]) -> PolarsSchema
     return polars_schema
 
 
-def parquet_serializer(
+def serialize_to_parquet(
     msg: Message[Iterable[Any]],
     polars_schema: PolarsSchema,
     compression: ParquetCompression,

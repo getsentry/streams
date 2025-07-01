@@ -1,11 +1,14 @@
 import json
+from collections.abc import Iterable
 from datetime import datetime
 from importlib import resources
 from io import BytesIO
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, Union
 from unittest.mock import MagicMock
 
+import polars as pl
 import pytest
+from polars import Schema as PolarsSchema
 from polars.testing import assert_frame_equal
 
 from sentry_streams.pipeline.datatypes import (
@@ -20,7 +23,8 @@ from sentry_streams.pipeline.msg_codecs import (
     _get_codec_from_msg,
     batch_msg_parser,
     msg_serializer,
-    parquet_serializer,
+    resolve_polars_schema,
+    serialize_to_parquet,
 )
 
 
@@ -90,9 +94,7 @@ def test_msg_no_found_schema() -> None:
     assert "Kafka topic invalid-schema has no associated schema" in str(e.value)
 
 
-def test_parquet_serializer_with_polars_schema() -> None:
-    import polars as pl
-
+def test_serialize_to_parquet_with_polars_schema() -> None:
     payload = [
         {
             "org_id": 420,
@@ -124,14 +126,44 @@ def test_parquet_serializer_with_polars_schema() -> None:
         },
     ]
 
-    msg: Message[Sequence[Mapping[Any, Any]]] = PyMessage(
+    msg: Message[Iterable[Any]] = PyMessage(
         payload=payload,
         schema="example-schema",
         headers=[],
         timestamp=0.0,
     )
 
-    schema = {
+    schema_mapping: Mapping[str, Union[pl.DataType, pl.DataTypeClass]] = {
+        "org_id": pl.Int64,
+        "project_id": pl.Int64,
+        "name": pl.String,
+        "tags": pl.Struct(
+            [
+                pl.Field("sdk", pl.String),
+                pl.Field("environment", pl.String),
+                pl.Field("release", pl.String),
+            ]
+        ),
+        "timestamp": pl.Int64,
+        "type": pl.String,
+        "retention_days": pl.Int64,
+        "value": pl.List(pl.Int64),
+    }
+    polars_schema: PolarsSchema = pl.Schema(schema_mapping)
+
+    result = serialize_to_parquet(msg, polars_schema, "snappy")
+
+    assert isinstance(result, bytes)
+
+    df = pl.read_parquet(BytesIO(result))
+    assert df.shape == (2, 8)
+
+    expected_df = pl.DataFrame(payload)
+    assert_frame_equal(df, expected_df)
+
+
+def test_resolve_polars_schema() -> None:
+    streaming_schema = {
         "org_id": Int64(),
         "project_id": Int64(),
         "name": String(),
@@ -147,48 +179,21 @@ def test_parquet_serializer_with_polars_schema() -> None:
         "retention_days": Int64(),
         "value": List(Int64()),
     }
-
-    result = parquet_serializer(msg, schema, "snappy")
-
-    assert isinstance(result, bytes)
-
-    df = pl.read_parquet(BytesIO(result))
-    assert df.shape == (2, 8)
-
-    expected_df = pl.DataFrame(payload)
-    assert_frame_equal(df, expected_df)
-
-
-def test_parquet_serializer_non_stream_schema() -> None:
-    msg: Message[Sequence[Mapping[Any, Any]]] = PyMessage(
-        payload=[
-            {
-                "org_id": 420,
-                "tags": {
-                    "sdk": "raven-node/2.6.3",
-                    "environment": "production",
-                    "release": "sentry-test@1.0.0",
-                },
-            },
-        ],
-        schema="example-schema",
-        headers=[],
-        timestamp=0.0,
-    )
-
-    schema = {
-        "org_id": Int64(),
-        "tags": Struct(
+    expected = {
+        "org_id": pl.Int64,
+        "project_id": pl.Int64,
+        "name": pl.String,
+        "tags": pl.Struct(
             [
-                Field("sdk", str),  # type: ignore
-                Field("environment", String()),
-                Field("release", String()),
+                pl.Field("sdk", pl.String),
+                pl.Field("environment", pl.String),
+                pl.Field("release", pl.String),
             ]
         ),
+        "timestamp": pl.Int64,
+        "type": pl.String,
+        "retention_days": pl.Int64,
+        "value": pl.List(pl.Int64),
     }
-
-    with pytest.raises(TypeError) as e:
-        parquet_serializer(msg, schema, "snappy")
-    assert "Field tags has type <class 'str'> and it is not a valid Streams DataType" in str(
-        e.value
-    )
+    transformed_schema = resolve_polars_schema(streaming_schema)
+    assert expected == transformed_schema
