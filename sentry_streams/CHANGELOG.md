@@ -1,3 +1,34 @@
+## 0.0.24
+
+### Various fixes & improvements
+
+- ref(rust): Re-enable tests (#167) by @john-z-yang
+- Fix the process to append steps to the pipeline (#165) by @fpacifici
+- feat(docs): add some Arroyo runtime docs (#161) by @bmckerry
+- fix(uv): Pin python versions (#158) by @untitaker
+- feat(watermark): add PyWatermarkMessage for passing watermark to python (#156) by @bmckerry
+- temp: ignore failing tests (#159) by @bmckerry
+- ref(rust): Parse and handle errors when interfacing with python code (#157) by @john-z-yang
+- ref: Handle overrides in GCSSink from config (#153) by @ayirr7
+- Chain primitives in Arroyo (#135) by @fpacifici
+- ref(rust): fixup clippy lint (#154) by @john-z-yang
+- fix(flatmap): Change the FlatMap signature to match usage (#151) by @evanh
+- fix(docs): Update the docs for first time users (#142) by @evanh
+- feat(logging): make traced_with_gil display callsite filename and lineno (#149) by @john-z-yang
+- fix(examples): Migrate billing example (#146) by @evanh
+- feat(chain): add BatchParser (#134) by @victoria-yining-huang
+- feat(watermarks): track last seen message committable (#137) by @bmckerry
+- temp: comment out failing tests (#150) by @bmckerry
+- fix(uv): Regenerate uv.lock using v0.7.13 (#148) by @evanh
+- ref(error): Add MessageInvalidException to API and implement support in Map (#141) by @john-z-yang
+- feat: Introduce object file generator for GCSSink (#144) by @ayirr7
+- rename test_msg_parser file to test_msg_codecs (#145) by @victoria-yining-huang
+- feat(rust_arroyo): add watermark step (#133) by @bmckerry
+- release: 0.0.23 (430c5760) by @getsentry-bot
+- Support parallelism in python (#132) by @fpacifici
+
+_Plus 88 more_
+
 ## 0.0.23
 
 ### Various fixes & improvements
