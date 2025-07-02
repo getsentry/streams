@@ -127,3 +127,16 @@ pub fn assert_messages_match(
         );
     }
 }
+
+#[cfg(test)]
+pub fn assert_watermarks_match(expected_messages: Vec<Watermark>, actual_messages: &[Watermark]) {
+    assert_eq!(
+        expected_messages.len(),
+        actual_messages.len(),
+        "Watermark lengths differ"
+    );
+
+    for (actual, expected) in actual_messages.iter().zip(expected_messages.iter()) {
+        assert_eq!(actual, expected,);
+    }
+}
