@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import partial
 from typing import (
+    Any,
     Callable,
     Generic,
     Mapping,
@@ -18,6 +19,7 @@ from typing import (
     cast,
 )
 
+from sentry_streams.pipeline.datatypes import DataType
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -27,9 +29,12 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.msg_codecs import (
+    ParquetCompression,
     batch_msg_parser,
     msg_parser,
     msg_serializer,
+    resolve_polars_schema,
+    serialize_to_parquet,
 )
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
@@ -171,7 +176,7 @@ class BatchParser(
 
 
 @dataclass
-class Serializer(Applier[Message[TIn], bytes]):
+class Serializer(Applier[Message[Any], bytes]):
     """
     A step to serialize and encode messages into bytes. These bytes can be written
     to sink data to a Kafka topic, for example. This step will need to precede a
@@ -182,6 +187,27 @@ class Serializer(Applier[Message[TIn], bytes]):
 
     def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
         serializer_fn = partial(msg_serializer, dt_format=self.dt_format)
+        return MapStep(
+            name=name,
+            ctx=ctx,
+            inputs=[previous],
+            function=serializer_fn,
+        )
+
+
+@dataclass
+class ParquetSerializer(Applier[Message[MutableSequence[Any]], bytes]):
+    # TODO: because BatchParser outputs a MutableSequence, to satisfy type checking this must also be a MutableSequence
+    schema_fields: Mapping[str, DataType]
+    compression: Optional[ParquetCompression] = "snappy"
+
+    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+        assert self.compression is not None
+        polars_schema = resolve_polars_schema(self.schema_fields)
+
+        serializer_fn = partial(
+            serialize_to_parquet, polars_schema=polars_schema, compression=self.compression
+        )
         return MapStep(
             name=name,
             ctx=ctx,

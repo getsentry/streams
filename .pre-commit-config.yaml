@@ -43,6 +43,7 @@ repos:
           types-pyYAML,
           types-jsonschema,
           "sentry-kafka-schemas>=1.2.0",
+          "polars==1.30.0",
         ]
         files: ^sentry_streams/.+
   - repo: https://github.com/pycqa/isort
