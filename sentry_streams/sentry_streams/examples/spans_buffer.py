@@ -1,29 +1,10 @@
 from datetime import timedelta
 
-from sentry_streams.examples.spans import SpansBuffer, build_segment_json, build_span
-from sentry_streams.pipeline.pipeline import (
-    Aggregate,
-    Map,
-    Pipeline,
-    StreamSink,
-    StreamSource,
-)
+from sentry_kafka_schemas.schema_types.snuba_spans_v1 import SpanEvent
+
+from sentry_streams.examples.span_helpers import SpansBuffer, build_segment_json
+from sentry_streams.pipeline import Map, Parser, Reducer, StreamSink, streaming_source
 from sentry_streams.pipeline.window import TumblingWindow
-
-pipeline = Pipeline()
-
-source = StreamSource(
-    name="myinput",
-    ctx=pipeline,
-    stream_name="events",
-)
-
-map = Map(
-    name="mymap",
-    ctx=pipeline,
-    inputs=[source],
-    function=build_span,
-)
 
 # A sample window.
 # Windows are open for 5 seconds max
@@ -35,24 +16,26 @@ reduce_window = TumblingWindow(window_size=timedelta(seconds=5))
 # Make the trigger and closing windows synonymous, both
 # apparent in the API and as part of implementation
 
-reduce = Aggregate(
-    name="myreduce",
-    ctx=pipeline,
-    inputs=[map],
-    window=reduce_window,
-    aggregate_func=SpansBuffer,
-)
-
-map_str = Map(
-    name="map_str",
-    ctx=pipeline,
-    inputs=[reduce],
-    function=build_segment_json,
-)
-
-sink = StreamSink(
-    name="kafkasink",
-    ctx=pipeline,
-    inputs=[map_str],
-    stream_name="transformed-events",
+pipeline = (
+    streaming_source(name="myinput", stream_name="events")
+    .apply("mymap", Parser(msg_type=SpanEvent))
+    .apply(
+        "myreduce",
+        Reducer(
+            window=reduce_window,
+            aggregate_func=SpansBuffer,
+        ),
+    )
+    .apply(
+        "map_str",
+        Map(
+            function=build_segment_json,
+        ),
+    )
+    .sink(
+        "kafkasink",
+        StreamSink(
+            stream_name="transformed-events",
+        ),
+    )
 )

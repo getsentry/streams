@@ -1,50 +1,52 @@
 from sentry_streams.examples.broadcast_fn import BroadcastFunctions
-from sentry_streams.pipeline.pipeline import (
+from sentry_streams.pipeline.chain import (
+    ExtensibleChain,
     Map,
-    Pipeline,
     StreamSink,
-    StreamSource,
+    segment,
+    streaming_source,
+)
+from sentry_streams.pipeline.message import Message
+
+pipeline: ExtensibleChain[Message[str]] = streaming_source(
+    name="myinput", stream_name="events"
+).apply(
+    "no_op_map",
+    Map(
+        function=BroadcastFunctions.no_op_map,
+    ),
 )
 
-pipeline = Pipeline()
-
-source = StreamSource(
-    name="myinput",
-    ctx=pipeline,
-    stream_name="events",
+hello_segment = (
+    segment(name="hello_segment", msg_type=str)
+    .apply(
+        "hello_map",
+        Map(
+            function=BroadcastFunctions.hello_map,
+        ),
+    )
+    .sink(
+        "hello_sink",
+        StreamSink(
+            stream_name="transformed-events",
+        ),
+    )
 )
 
-map = Map(
-    name="no_op_map",
-    ctx=pipeline,
-    inputs=[source],
-    function=BroadcastFunctions.no_op_map,
+goodbye_segment = (
+    segment(name="goodbye_segment", msg_type=str)
+    .apply(
+        "goodbye_map",
+        Map(
+            function=BroadcastFunctions.goodbye_map,
+        ),
+    )
+    .sink(
+        "goodbye_sink",
+        StreamSink(
+            stream_name="transformed-events-2",
+        ),
+    )
 )
 
-hello_map = Map(
-    name="hello_map",
-    ctx=pipeline,
-    inputs=[map],
-    function=BroadcastFunctions.hello_map,
-)
-
-goodbye_map = Map(
-    name="goodbye_map",
-    ctx=pipeline,
-    inputs=[map],
-    function=BroadcastFunctions.goodbye_map,
-)
-
-hello_sink = StreamSink(
-    name="hello_sink",
-    ctx=pipeline,
-    inputs=[hello_map],
-    stream_name="transformed-events",
-)
-
-goodbye_sink = StreamSink(
-    name="goodbye_sink",
-    ctx=pipeline,
-    inputs=[goodbye_map],
-    stream_name="transformed-events-2",
-)
+pipeline.broadcast(name="hello_broadcast", routes=[hello_segment, goodbye_segment])
