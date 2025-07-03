@@ -299,6 +299,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a broadcast operator for the platform the adapter supports.
         """
+        self.__close_chain(stream)
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding broadcast: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(
