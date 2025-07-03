@@ -61,13 +61,20 @@ class Pipeline:
     logical Steps.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, source: Source | Branch) -> None:
         self.steps: MutableMapping[str, Step] = {}
         self.incoming_edges: MutableMapping[str, list[str]] = defaultdict(list)
         self.outgoing_edges: MutableMapping[str, list[str]] = defaultdict(list)
-        self.sources: list[Source] = []
-        self.root: Optional[Step] = None
-        self.__previous_step: Optional[Step] = None
+
+        self.root = source
+        self.register(source)
+        self.__previous_step: Step = source
+        if isinstance(source, Source):
+            self.sources: list[Source] = [source]
+        else:
+            self.sources = []
+
+        self._closed = False
 
     def register(self, step: Step) -> None:
         assert step.name not in self.steps, f"Step {step.name} already exists in the pipeline"
@@ -85,11 +92,8 @@ class Pipeline:
         Merges another pipeline into this one after a provided step identified
         as `merge_point`
 
-        The source of the other pipeline is fully replaced by the merge_point
-        step of this pipeline.
-
-        This does not adjust the context field of the steps contained in the
-        merged pipeline.
+        The source of the other pipeline (which must be a Branch) is set to be the child
+        of the merge_point step.
         """
         assert (
             not other.sources
@@ -122,6 +126,7 @@ class Pipeline:
         It is meant to add multiple pipeline chains starting with a source
         to the existing pipeline.
         """
+        assert not self._closed, "Cannot add to a pipeline after it has been closed"
         for step in other.steps.values():
             assert (
                 step.name not in self.steps
@@ -136,28 +141,21 @@ class Pipeline:
         for source, dests in other.outgoing_edges.items():
             self.outgoing_edges[source] = dests
 
-    def start(self, step: Source | Branch) -> Pipeline:
-        assert not self.__previous_step, "Cannot start a pipeline that is already started"
-        self.root = step
-        step.register(self)
-        self.__previous_step = step
-        return self
-
     def apply(self, step: Step) -> Pipeline:
-        assert self.__previous_step, "Cannot apply a step without starting first"
+        assert not self._closed, "Cannot add to a pipeline after it has been closed"
         step.register(self, self.__previous_step)
         self.__previous_step = step
         return self
 
     def sink(self, step: Sink) -> Pipeline:
-        assert self.__previous_step, "Cannot create a sink step without starting first"
+        assert not self._closed, "Cannot add to a pipeline after it has been closed"
         step.register(self, self.__previous_step)
-        self.__previous_step = None
+        self._closed = True
         return self
 
 
 def streaming_source(name: str, stream_name: str) -> Pipeline:
-    return Pipeline().start(StreamSource(name=name, stream_name=stream_name))
+    return Pipeline(StreamSource(name=name, stream_name=stream_name))
 
 
 @dataclass
@@ -170,7 +168,7 @@ class Step:
 
     name: str
 
-    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+    def register(self, ctx: Pipeline, previous: Step) -> None:
         ctx.register(self)
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
@@ -209,8 +207,8 @@ class StreamSource(Source):
     header_filter: Optional[Tuple[str, bytes]] = None
     step_type: StepType = StepType.SOURCE
 
-    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
-        super().register(ctx)
+    def register(self, ctx: Pipeline, previous: Step) -> None:
+        super().register(ctx, previous)
         ctx.register_source(self)
 
 
@@ -221,9 +219,8 @@ class WithInput(Step):
     step which has inputs.
     """
 
-    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
-        super().register(ctx)
-        assert previous, "Cannot register a step with no previous step"
+    def register(self, ctx: Pipeline, previous: Step) -> None:
+        super().register(ctx, previous)
         ctx.register_edge(previous, self)
 
 
@@ -346,7 +343,7 @@ class Router(WithInput, Generic[RoutingFuncReturnType]):
     routing_table: Mapping[RoutingFuncReturnType, Pipeline]
     step_type: StepType = StepType.ROUTER
 
-    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+    def register(self, ctx: Pipeline, previous: Step) -> None:
         super().register(ctx, previous)
         for pipeline in self.routing_table.values():
             ctx.merge(other=pipeline, merge_point=self.name)
@@ -361,7 +358,7 @@ class Broadcast(WithInput):
     routes: Sequence[Pipeline]
     step_type: StepType = StepType.BROADCAST
 
-    def register(self, ctx: Pipeline, previous: Optional[Step] = None) -> None:
+    def register(self, ctx: Pipeline, previous: Step) -> None:
         super().register(ctx, previous)
         for chain in self.routes:
             ctx.merge(other=chain, merge_point=self.name)

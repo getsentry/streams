@@ -181,7 +181,7 @@ TOut = TypeVar("TOut")
     ],
 )
 def test_applier_steps(applier: Applier[TIn, TOut], name: str) -> None:
-    pipeline = Pipeline().start(StreamSource(name="mysource", stream_name="name"))
+    pipeline = Pipeline(StreamSource(name="mysource", stream_name="name"))
     ret = applier.build_step(name)
     pipeline.apply(ret)
     assert pipeline.steps[name] == ret

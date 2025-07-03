@@ -23,8 +23,7 @@ from sentry_streams.pipeline.window import MeasurementUnit
 @pytest.fixture
 def pipeline() -> Pipeline:
     pipeline = (
-        Pipeline()
-        .start(StreamSource(name="source", stream_name="events"))
+        Pipeline(StreamSource(name="source", stream_name="events"))
         .apply(
             Filter(
                 name="filter",
@@ -39,12 +38,12 @@ def pipeline() -> Pipeline:
                 "router",
                 routing_function=simple_router,
                 routing_table={
-                    "branch1": Pipeline()
-                    .start(Branch("branch1"))
-                    .sink(StreamSink(name="kafkasink1", stream_name="transformed-events")),
-                    "branch2": Pipeline()
-                    .start(Branch("branch2"))
-                    .sink(StreamSink(name="kafkasink2", stream_name="transformed-events-2")),
+                    "branch1": Pipeline(Branch("branch1")).sink(
+                        StreamSink(name="kafkasink1", stream_name="transformed-events")
+                    ),
+                    "branch2": Pipeline(Branch("branch2")).sink(
+                        StreamSink(name="kafkasink2", stream_name="transformed-events-2")
+                    ),
                 },
             )
         )
@@ -122,7 +121,7 @@ class ExampleClass:
 def test_resolve_function(
     function: Union[Callable[..., str], str], expected: Callable[..., str]
 ) -> None:
-    pipeline = Pipeline().start(StreamSource(name="source", stream_name="events"))
+    pipeline = Pipeline(StreamSource(name="source", stream_name="events"))
     step: TransformStep[Any] = TransformStep(
         name="test_resolve_function",
         function=function,
@@ -133,9 +132,9 @@ def test_resolve_function(
 
 
 def test_merge_linear() -> None:
-    pipeline1 = Pipeline().start(StreamSource(name="source", stream_name="logical-events"))
+    pipeline1 = Pipeline(StreamSource(name="source", stream_name="logical-events"))
 
-    pipeline2 = Pipeline().start(Branch("branch1")).apply(Map(name="map", function=simple_map))
+    pipeline2 = Pipeline(Branch("branch1")).apply(Map(name="map", function=simple_map))
 
     pipeline1.merge(pipeline2, merge_point="source")
 
@@ -151,11 +150,11 @@ def test_merge_linear() -> None:
 
 
 def test_merge_branches() -> None:
-    pipeline1 = Pipeline().start(StreamSource(name="source", stream_name="logical-events"))
+    pipeline1 = Pipeline(StreamSource(name="source", stream_name="logical-events"))
 
-    pipeline2 = Pipeline().start(Branch("branch1")).apply(Map(name="map1", function=simple_map))
+    pipeline2 = Pipeline(Branch("branch1")).apply(Map(name="map1", function=simple_map))
 
-    pipeline3 = Pipeline().start(Branch("branch2")).apply(Map(name="map2", function=simple_map))
+    pipeline3 = Pipeline(Branch("branch2")).apply(Map(name="map2", function=simple_map))
 
     pipeline1.merge(pipeline2, merge_point="source")
     pipeline1.merge(pipeline3, merge_point="source")
@@ -175,16 +174,16 @@ def test_merge_branches() -> None:
 
 
 def test_multi_broadcast() -> None:
-    pipeline1 = Pipeline().start(
+    pipeline1 = Pipeline(
         StreamSource(
             name="source",
             stream_name="logical-events",
         )
     )
 
-    pipeline2 = Pipeline().start(Branch("pipeline2_start"))
-    branch1 = Pipeline().start(Branch("branch1")).apply(Map(name="map1", function=simple_map))
-    branch2 = Pipeline().start(Branch("branch2")).apply(Map(name="map2", function=simple_map))
+    pipeline2 = Pipeline(Branch("pipeline2_start"))
+    branch1 = Pipeline(Branch("branch1")).apply(Map(name="map1", function=simple_map))
+    branch2 = Pipeline(Branch("branch2")).apply(Map(name="map2", function=simple_map))
 
     pipeline2.apply(
         Broadcast(
@@ -221,8 +220,8 @@ def test_multi_broadcast() -> None:
 
 
 def test_add_empty_pipeline_to_empty_pipeline() -> None:
-    pipeline1 = Pipeline()
-    pipeline2 = Pipeline()
+    pipeline1 = Pipeline(Branch("root1"))
+    pipeline2 = Pipeline(Branch("root2"))
 
     pipeline1.add(pipeline2)
 
@@ -233,12 +232,10 @@ def test_add_empty_pipeline_to_empty_pipeline() -> None:
 
 
 def test_add_to_empty() -> None:
-    pipeline1 = Pipeline()
+    pipeline1 = Pipeline(Branch("root1"))
 
-    pipeline2 = (
-        Pipeline()
-        .start(StreamSource(name="source", stream_name="events"))
-        .sink(StreamSink(name="sink", stream_name="processed-events"))
+    pipeline2 = Pipeline(StreamSource(name="source", stream_name="events")).sink(
+        StreamSink(name="sink", stream_name="processed-events")
     )
     pipeline1.add(pipeline2)
 
@@ -250,19 +247,15 @@ def test_add_to_empty() -> None:
 
 
 def test_add_multi_pipeline() -> None:
-    pipeline1 = Pipeline()
+    pipeline1 = Pipeline(Branch("root1"))
 
-    pipeline2 = (
-        Pipeline()
-        .start(StreamSource(name="source1", stream_name="events"))
-        .sink(StreamSink(name="sink1", stream_name="processed-events"))
+    pipeline2 = Pipeline(StreamSource(name="source1", stream_name="events")).sink(
+        StreamSink(name="sink1", stream_name="processed-events")
     )
     pipeline1.add(pipeline2)
 
-    pipeline2 = (
-        Pipeline()
-        .start(StreamSource(name="source2", stream_name="events"))
-        .sink(StreamSink(name="sink2", stream_name="processed-events"))
+    pipeline2 = Pipeline(StreamSource(name="source2", stream_name="events")).sink(
+        StreamSink(name="sink2", stream_name="processed-events")
     )
     pipeline1.add(pipeline2)
 
@@ -276,12 +269,10 @@ def test_add_multi_pipeline() -> None:
 
 
 def test_invalid_add() -> None:
-    pipeline1 = Pipeline()
+    pipeline1 = Pipeline(Branch("root1"))
 
-    pipeline2 = (
-        Pipeline()
-        .start(StreamSource(name="source", stream_name="events"))
-        .sink(StreamSink(name="sink", stream_name="processed-events"))
+    pipeline2 = Pipeline(StreamSource(name="source", stream_name="events")).sink(
+        StreamSink(name="sink", stream_name="processed-events")
     )
     pipeline1.add(pipeline2)
 
@@ -301,12 +292,12 @@ def test_batch_step_override_config(
     default_batch_size: MeasurementUnit,
     expected: MeasurementUnit,
 ) -> None:
-    pipeline = Pipeline()
-    source = StreamSource(
-        name="mysource",
-        stream_name="name",
+    pipeline = Pipeline(
+        StreamSource(
+            name="mysource",
+            stream_name="name",
+        )
     )
-    pipeline.start(source)
 
     step: BatchStep = BatchStep(name="test-batch", batch_size=default_batch_size)  # type: ignore
     pipeline.apply(step)

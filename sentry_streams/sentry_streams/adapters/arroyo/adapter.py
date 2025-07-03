@@ -7,6 +7,7 @@ from typing import (
     Mapping,
     MutableMapping,
     Self,
+    Type,
     cast,
 )
 
@@ -129,7 +130,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__processors: Mapping[str, StreamProcessor[KafkaPayload]] = {}
 
-    def complex_step_override(self) -> dict[str, Callable[[ComplexStep], Route]]:
+    def complex_step_override(self) -> dict[Type[ComplexStep], Callable[[ComplexStep], Route]]:
         return {}
 
     @classmethod

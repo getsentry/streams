@@ -174,7 +174,6 @@ class BroadcastStep(ArroyoStep):
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
         downstream_branches = []
         for branch in self.pipeline_step.routes:
-            assert branch.root is not None
             downstream_branches.append(branch.root.name)
         return Broadcaster(
             route=self.route,
@@ -205,7 +204,6 @@ class RouterStep(ArroyoStep, Generic[RoutingFuncReturnType]):
             routing_table = self.pipeline_step.routing_table
             result_branch_name = routing_func(payload.payload)
             result_branch = routing_table[result_branch_name]
-            assert result_branch.root is not None
             payload.route.waypoints.append(result_branch.root.name)
 
             streams_msg = payload.payload

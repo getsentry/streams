@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, Self, Sequence, TypeVar, cast
+from typing import Any, Callable, Optional, Self, Sequence, Type, TypeVar, cast
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import (
@@ -36,7 +36,7 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         self.input_streams: list[str] = []
         self.branches: list[str] = []
 
-    def complex_step_override(self) -> dict[str, Callable[[ComplexStep], Any]]:
+    def complex_step_override(self) -> dict[Type[ComplexStep], Callable[[ComplexStep], Any]]:
         return {}
 
     def track_input_streams(
@@ -78,7 +78,6 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         self.track_input_streams(cast(WithInput, step), [cast(Branch, r.root) for r in step.routes])
         ret = {}
         for segment_branch in step.routes:
-            assert segment_branch.root is not None
             self.branches.append(segment_branch.root.name)
             ret[segment_branch.root.name] = segment_branch
         return ret
@@ -87,7 +86,6 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         self.track_input_streams(cast(WithInput, step))
         ret = {}
         for branch in step.routing_table.values():
-            assert branch.root is not None
             self.branches.append(branch.root.name)
             ret[branch.root.name] = branch
         return ret

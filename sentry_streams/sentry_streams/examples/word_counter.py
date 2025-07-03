@@ -15,11 +15,11 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.window import TumblingWindow
 
 # pipeline: special name
-pipeline = Pipeline()
-
-source = StreamSource(
-    name="myinput",
-    stream_name="events",
+pipeline = Pipeline(
+    StreamSource(
+        name="myinput",
+        stream_name="events",
+    )
 )
 
 filter = Filter(

@@ -8,6 +8,7 @@ from typing import (
     Mapping,
     Optional,
     Self,
+    Type,
     TypeVar,
     Union,
     assert_never,
@@ -66,9 +67,10 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
-    def complex_step_override(self) -> dict[str, Callable[[ComplexStep], StreamT]]:
+    def complex_step_override(self) -> dict[Type[ComplexStep], Callable[[ComplexStep], StreamT]]:
         """
-        Allows an adapter to directly handle certain complex steps, instead of converting them to simple steps.
+        Allows an adapter to directly handle certain complex steps, instead of converting them to simple steps. The keys of the dict should be
+        the class of the specific step being handled.
         """
         raise NotImplementedError
 
@@ -175,8 +177,8 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
 
         if isinstance(step, ComplexStep):
             overrides = self.adapter.complex_step_override()
-            if str(step.__class__) in overrides:
-                return {step_name: overrides[str(step.__class__)](step)}
+            if step.__class__ in overrides:
+                return {step_name: overrides[step.__class__](step)}
             else:
                 step = step.convert()
 

@@ -10,7 +10,6 @@ def build_branches(current_route: Route, branches: Iterable[Pipeline]) -> Mappin
     """
     ret = {}
     for branch in branches:
-        assert branch.root is not None
         ret[branch.root.name] = Route(
             source=current_route.source,
             waypoints=[*current_route.waypoints, branch.root.name],

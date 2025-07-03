@@ -7,6 +7,7 @@ from typing import (
     Mapping,
     MutableMapping,
     Self,
+    Type,
     cast,
 )
 
@@ -158,7 +159,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             logger.info(f"Closing transformation chain: {stream} and adding to pipeline")
             self.__consumers[stream.source].add_step(finalize_chain(self.__chains, stream))
 
-    def complex_step_override(self) -> dict[str, Callable[[ComplexStep], Route]]:
+    def complex_step_override(self) -> dict[Type[ComplexStep], Callable[[ComplexStep], Route]]:
         return {}
 
     def source(self, step: Source) -> Route:
@@ -321,7 +322,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         def routing_function(msg: Message[Any]) -> str:
             waypoint = step.routing_function(msg)
             branch = step.routing_table[waypoint]
-            assert branch.root is not None
             return branch.root.name
 
         logger.info(f"Adding router: {step.name} to pipeline")

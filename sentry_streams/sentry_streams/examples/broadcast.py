@@ -8,25 +8,20 @@ from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 
-pipeline = (
-    Pipeline()
-    .start(
-        StreamSource(
-            name="myinput",
-            stream_name="events",
-        )
+pipeline = Pipeline(
+    StreamSource(
+        name="myinput",
+        stream_name="events",
     )
-    .apply(
-        Map(
-            name="no_op_map",
-            function=BroadcastFunctions.no_op_map,
-        )
+).apply(
+    Map(
+        name="no_op_map",
+        function=BroadcastFunctions.no_op_map,
     )
 )
 
 hello_branch = (
-    Pipeline()
-    .start(Branch("hello_branch"))
+    Pipeline(Branch("hello_branch"))
     .apply(
         Map(
             name="hello_map",
@@ -42,8 +37,7 @@ hello_branch = (
 )
 
 goodbye_branch = (
-    Pipeline()
-    .start(Branch("goodbye_branch"))
+    Pipeline(Branch("goodbye_branch"))
     .apply(
         Map(
             name="goodbye_map",

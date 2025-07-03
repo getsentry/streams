@@ -14,8 +14,8 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
-    cast,
     Union,
+    cast,
 )
 
 from sentry_streams.pipeline.function_template import (
@@ -42,11 +42,14 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.pipeline import Filter as FilterStep
 from sentry_streams.pipeline.pipeline import FlatMap as FlatMapStep
 from sentry_streams.pipeline.pipeline import GCSSink as GCSSinkStep
-from sentry_streams.pipeline.pipeline import Sink as SinkStep
 from sentry_streams.pipeline.pipeline import Map as MapStep
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
     Router,
+)
+from sentry_streams.pipeline.pipeline import Sink as SinkStep
+from sentry_streams.pipeline.pipeline import (
+    Source,
     Step,
 )
 from sentry_streams.pipeline.pipeline import StreamSink as StreamSinkStep
@@ -245,8 +248,8 @@ class Chain(Pipeline):
     invalid state.
     """
 
-    def __init__(self, name: str) -> None:
-        super().__init__()
+    def __init__(self, name: str, source: Source | None = None) -> None:
+        super().__init__(source or Branch(name=name))
         self.name = name
 
 
@@ -343,7 +346,6 @@ def segment(name: str, msg_type: Type[TIn]) -> ExtensibleChain[Message[TIn]]:
     in route and broadcast steps.
     """
     pipeline: ExtensibleChain[Message[TIn]] = ExtensibleChain(name)
-    pipeline.start(Branch(name=name))
     return pipeline
 
 
@@ -353,9 +355,9 @@ def streaming_source(
     """
     Create a pipeline that starts with a StreamingSource.
     """
-    pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain("root")
-    source = StreamSource(name=name, stream_name=stream_name, header_filter=header_filter)
-    pipeline.start(source)
+    pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain(
+        "root", source=StreamSource(name=name, stream_name=stream_name, header_filter=header_filter)
+    )
     return pipeline
 
 
@@ -365,7 +367,7 @@ def multi_chain(chains: Sequence[Chain]) -> Pipeline:
     chain is a portion of the pipeline that starts with a source
     and ends with multiple sinks.
     """
-    pipeline = Pipeline()
+    pipeline = Pipeline(Branch("root"))
     for chain in chains:
         pipeline.add(chain)
     return pipeline
