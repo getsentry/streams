@@ -15,6 +15,7 @@ from typing import (
     Sequence,
     Set,
     Tuple,
+    Type,
     TypeVar,
     Union,
     cast,
@@ -28,6 +29,12 @@ from sentry_streams.pipeline.function_template import (
     GroupBy,
     InputType,
     OutputType,
+)
+from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.msg_codecs import (
+    batch_msg_parser,
+    msg_parser,
+    msg_serializer,
 )
 from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
 
@@ -54,11 +61,20 @@ class Pipeline:
     logical Steps.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, source: Source | Branch) -> None:
         self.steps: MutableMapping[str, Step] = {}
         self.incoming_edges: MutableMapping[str, list[str]] = defaultdict(list)
         self.outgoing_edges: MutableMapping[str, list[str]] = defaultdict(list)
-        self.sources: list[Source] = []
+
+        self.root = source
+        self.register(source)
+        self.__previous_step: Step = source
+        if isinstance(source, Source):
+            self.sources: list[Source] = [source]
+        else:
+            self.sources = []
+
+        self._closed = False
 
     def register(self, step: Step) -> None:
         assert step.name not in self.steps, f"Step {step.name} already exists in the pipeline"
@@ -76,11 +92,8 @@ class Pipeline:
         Merges another pipeline into this one after a provided step identified
         as `merge_point`
 
-        The source of the other pipeline is fully replaced by the merge_point
-        step of this pipeline.
-
-        This does not adjust the context field of the steps contained in the
-        merged pipeline.
+        The source of the other pipeline (which must be a Branch) is set to be the child
+        of the merge_point step.
         """
         assert (
             not other.sources
@@ -91,26 +104,17 @@ class Pipeline:
         }
 
         for step in other.steps.values():
-            if step.name not in other_pipeline_sources:
-                self.register(step)
+            self.register(step)
 
         for source, dests in other.outgoing_edges.items():
-            if source not in other_pipeline_sources:
-                self.outgoing_edges[source].extend(dests)
+            self.outgoing_edges[source].extend(dests)
 
         for dest, sources in other.incoming_edges.items():
             for s in sources:
-                if s not in other_pipeline_sources:
-                    self.incoming_edges[dest].append(s)
+                self.incoming_edges[dest].append(s)
 
-        merged_pipeline_sources = set()
-        for n in other.steps:
-            incoming_edges = other.incoming_edges[n]
-            if incoming_edges and all(n in other_pipeline_sources for n in incoming_edges):
-                merged_pipeline_sources.add(n)
-
-        self.outgoing_edges[merge_point].extend(merged_pipeline_sources)
-        for n in merged_pipeline_sources:
+        self.outgoing_edges[merge_point].extend(other_pipeline_sources)
+        for n in other_pipeline_sources:
             self.incoming_edges[n].append(merge_point)
 
     def add(self, other: Pipeline) -> None:
@@ -122,6 +126,7 @@ class Pipeline:
         It is meant to add multiple pipeline chains starting with a source
         to the existing pipeline.
         """
+        assert not self._closed, "Cannot add to a pipeline after it has been closed"
         for step in other.steps.values():
             assert (
                 step.name not in self.steps
@@ -136,6 +141,22 @@ class Pipeline:
         for source, dests in other.outgoing_edges.items():
             self.outgoing_edges[source] = dests
 
+    def apply(self, step: Step) -> Pipeline:
+        assert not self._closed, "Cannot add to a pipeline after it has been closed"
+        step.register(self, self.__previous_step)
+        self.__previous_step = step
+        return self
+
+    def sink(self, step: Sink) -> Pipeline:
+        assert not self._closed, "Cannot add to a pipeline after it has been closed"
+        step.register(self, self.__previous_step)
+        self._closed = True
+        return self
+
+
+def streaming_source(name: str, stream_name: str) -> Pipeline:
+    return Pipeline(StreamSource(name=name, stream_name=stream_name))
+
 
 @dataclass
 class Step:
@@ -146,16 +167,27 @@ class Step:
     """
 
     name: str
-    ctx: Pipeline
 
-    def __post_init__(self) -> None:
-        self.ctx.register(self)
+    def register(self, ctx: Pipeline, previous: Step) -> None:
+        ctx.register(self)
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
         """
         Steps can implement custom overriding logic
         """
         pass
+
+
+@dataclass
+class ComplexStep(Step):
+    """
+    A wrapper around a simple step that allows for syntactic sugar/more complex steps.
+    The convert() function must return a simple step.
+    """
+
+    @abstractmethod
+    def convert(self) -> Step:
+        raise NotImplementedError()
 
 
 @dataclass
@@ -175,9 +207,9 @@ class StreamSource(Source):
     header_filter: Optional[Tuple[str, bytes]] = None
     step_type: StepType = StepType.SOURCE
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.ctx.register_source(self)
+    def register(self, ctx: Pipeline, previous: Step) -> None:
+        super().register(ctx, previous)
+        ctx.register_source(self)
 
 
 @dataclass
@@ -187,12 +219,9 @@ class WithInput(Step):
     step which has inputs.
     """
 
-    inputs: list[Step]
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        for input in self.inputs:
-            self.ctx.register_edge(input, self)
+    def register(self, ctx: Pipeline, previous: Step) -> None:
+        super().register(ctx, previous)
+        ctx.register_edge(previous, self)
 
 
 @dataclass
@@ -311,13 +340,13 @@ class Router(WithInput, Generic[RoutingFuncReturnType]):
     """
 
     routing_function: Callable[..., RoutingFuncReturnType]
-    routing_table: Mapping[RoutingFuncReturnType, Branch]
+    routing_table: Mapping[RoutingFuncReturnType, Pipeline]
     step_type: StepType = StepType.ROUTER
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        for branch_step in self.routing_table.values():
-            self.ctx.register_edge(self, branch_step)
+    def register(self, ctx: Pipeline, previous: Step) -> None:
+        super().register(ctx, previous)
+        for pipeline in self.routing_table.values():
+            ctx.merge(other=pipeline, merge_point=self.name)
 
 
 @dataclass
@@ -326,13 +355,13 @@ class Broadcast(WithInput):
     A Broadcast step will forward messages to all downstream branches in a pipeline.
     """
 
-    routes: Sequence[Branch]
+    routes: Sequence[Pipeline]
     step_type: StepType = StepType.BROADCAST
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        for branch_step in self.routes:
-            self.ctx.register_edge(self, branch_step)
+    def register(self, ctx: Pipeline, previous: Step) -> None:
+        super().register(ctx, previous)
+        for chain in self.routes:
+            ctx.merge(other=chain, merge_point=self.name)
 
 
 @dataclass
@@ -431,3 +460,77 @@ class FlatMap(TransformStep[Any]):
     """
 
     step_type: StepType = StepType.FLAT_MAP
+
+
+######################
+# Complex Primitives #
+######################
+
+
+@dataclass
+class Parser(ComplexStep, WithInput, Generic[TransformFuncReturnType]):
+    """
+    A step to decode bytes, deserialize the resulting message and validate it against the schema
+    which corresponds to the message type provided. The message type should be one which
+    is supported by sentry-kafka-schemas. See examples/ for usage, this step can be plugged in
+    flexibly into a pipeline. Keep in mind, data up until this step will simply be bytes.
+
+    Supports both JSON and protobuf.
+    """
+
+    msg_type: Type[TransformFuncReturnType]
+
+    def convert(self) -> Step:
+        return Map(
+            name=self.name,
+            function=msg_parser,
+        )
+
+
+@dataclass
+class BatchParser(
+    ComplexStep,
+    WithInput,
+    Generic[TransformFuncReturnType],
+):
+    msg_type: Type[TransformFuncReturnType]
+
+    def convert(self) -> Step:
+        return Map(
+            name=self.name,
+            function=batch_msg_parser,
+        )
+
+
+@dataclass
+class Serializer(ComplexStep, WithInput):
+    """
+    A step to serialize and encode messages into bytes. These bytes can be written
+    to sink data to a Kafka topic, for example. This step will need to precede a
+    sink step which writes to Kafka.
+    """
+
+    dt_format: Optional[str] = None
+
+    def convert(self) -> Step:
+        return Map(
+            name=self.name,
+            function=msg_serializer,
+        )
+
+
+@dataclass
+class Reducer(ComplexStep, WithInput, Generic[MeasurementUnit, InputType, OutputType]):
+    window: Window[MeasurementUnit]
+    aggregate_func: Callable[[], Accumulator[Message[InputType], OutputType]]
+    aggregate_backend: AggregationBackend[OutputType] | None = None
+    group_by_key: GroupBy | None = None
+
+    def convert(self) -> Step:
+        return Aggregate(
+            name=self.name,
+            window=self.window,
+            aggregate_func=self.aggregate_func,
+            aggregate_backend=self.aggregate_backend,
+            group_by_key=self.group_by_key,
+        )

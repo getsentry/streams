@@ -27,7 +27,7 @@ tests-flink:
 .PHONY: tests-flink
 
 typecheck:
-	./sentry_streams/.venv/bin/mypy --config-file sentry_streams/mypy.ini --strict sentry_streams/sentry_streams/
+	./sentry_streams/.venv/bin/mypy --config-file sentry_streams/mypy.ini --strict sentry_streams/
 	./sentry_flink/.venv/bin/mypy --config-file sentry_flink/mypy.ini --strict sentry_flink/sentry_flink/
 .PHONY: typecheck
 

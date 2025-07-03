@@ -10,18 +10,16 @@ from sentry_streams.pipeline.pipeline import (
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
-pipeline = Pipeline()
-
-source = StreamSource(
-    name="myinput",
-    ctx=pipeline,
-    stream_name="events",
+pipeline = Pipeline(
+    StreamSource(
+        name="myinput",
+        stream_name="events",
+    )
 )
+
 
 map = Map(
     name="mymap",
-    ctx=pipeline,
-    inputs=[source],
     function=build_span,
 )
 
@@ -37,22 +35,16 @@ reduce_window = TumblingWindow(window_size=timedelta(seconds=5))
 
 reduce = Aggregate(
     name="myreduce",
-    ctx=pipeline,
-    inputs=[map],
     window=reduce_window,
     aggregate_func=SpansBuffer,
 )
 
 map_str = Map(
     name="map_str",
-    ctx=pipeline,
-    inputs=[reduce],
     function=build_segment_json,
 )
 
 sink = StreamSink(
     name="kafkasink",
-    ctx=pipeline,
-    inputs=[map_str],
     stream_name="transformed-events",
 )

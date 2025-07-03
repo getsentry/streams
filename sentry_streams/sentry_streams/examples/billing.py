@@ -71,10 +71,10 @@ pipeline = (
         name="myinput",
         stream_name="events",
     )
-    .apply("myparser", Parser(msg_type=Outcome))
-    .apply(
+    .apply_step("myparser", Parser(msg_type=Outcome))
+    .apply_step(
         "myreduce",
         Reducer(aggregate_func=lambda: OutcomesBuffer(), window=TumblingWindow(window_size=3)),
     )
-    .sink("mysink", StreamSink(stream_name="transformed-events"))
+    .add_sink("mysink", StreamSink(stream_name="transformed-events"))
 )

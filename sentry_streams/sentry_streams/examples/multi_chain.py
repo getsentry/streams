@@ -14,32 +14,32 @@ pipeline = multi_chain(
     [
         # Main Ingest chain
         streaming_source("ingest", stream_name="ingest-metrics")
-        .apply("parse_msg", Parser(msg_type=IngestMetric))
-        .apply("process", Map(do_something))
-        .apply("serialize", Serializer())
-        .sink("eventstream", StreamSink(stream_name="events")),
+        .apply_step("parse_msg", Parser(msg_type=IngestMetric))
+        .apply_step("process", Map(do_something))
+        .apply_step("serialize", Serializer())
+        .add_sink("eventstream", StreamSink(stream_name="events")),
         # Snuba chain to Clickhouse
         streaming_source("snuba", stream_name="ingest-metrics")
-        .apply("snuba_parse_msg", Parser(msg_type=IngestMetric))
-        .apply("snuba_serialize", Serializer())
-        .sink(
+        .apply_step("snuba_parse_msg", Parser(msg_type=IngestMetric))
+        .apply_step("snuba_serialize", Serializer())
+        .add_sink(
             "clickhouse",
             StreamSink(stream_name="someewhere"),
         ),
         # Super Big Consumer chain
         streaming_source("sbc", stream_name="ingest-metrics")
-        .apply("sbc_parse_msg", Parser(msg_type=IngestMetric))
-        .apply("sbc_serialize", Serializer())
-        .sink(
+        .apply_step("sbc_parse_msg", Parser(msg_type=IngestMetric))
+        .apply_step("sbc_serialize", Serializer())
+        .add_sink(
             "sbc_sink",
             StreamSink(stream_name="someewhere"),
         ),
         # Post process chain
         streaming_source("post_process", stream_name="ingest-metrics")
-        .apply("post_parse_msg", Parser(msg_type=IngestMetric))
-        .apply("postprocess", Map(do_something))
-        .apply("postprocess_serialize", Serializer())
-        .sink(
+        .apply_step("post_parse_msg", Parser(msg_type=IngestMetric))
+        .apply_step("postprocess", Map(do_something))
+        .apply_step("postprocess_serialize", Serializer())
+        .add_sink(
             "devnull",
             StreamSink(stream_name="someewhereelse"),
         ),

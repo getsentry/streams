@@ -9,14 +9,14 @@ from sentry_streams.pipeline.chain import Parser, Serializer, StreamSink
 
 storage_branch = (
     segment(name="recent", msg_type=IngestMetric)
-    .apply("serializer1", Serializer())
+    .apply_step("serializer1", Serializer())
     .broadcast(
         "send_message_to_DBs",
         routes=[
-            segment("sbc", msg_type=IngestMetric).sink(
+            segment("sbc", msg_type=IngestMetric).add_sink(
                 "kafkasink", StreamSink(stream_name="transformed-events")
             ),
-            segment("clickhouse", msg_type=IngestMetric).sink(
+            segment("clickhouse", msg_type=IngestMetric).add_sink(
                 "kafkasink2", StreamSink(stream_name="transformed-events-2")
             ),
         ],
@@ -25,8 +25,8 @@ storage_branch = (
 
 save_delayed_message = (
     segment(name="delayed", msg_type=IngestMetric)
-    .apply("serializer2", Serializer())
-    .sink(
+    .apply_step("serializer2", Serializer())
+    .add_sink(
         "kafkasink3",
         StreamSink(stream_name="transformed-events-3"),
     )
@@ -37,7 +37,7 @@ pipeline = (
         name="ingest",
         stream_name="ingest-metrics",
     )
-    .apply("parser", Parser(msg_type=IngestMetric))
+    .apply_step("parser", Parser(msg_type=IngestMetric))
     .route(
         "blq_router",
         routing_function=should_send_to_blq,
