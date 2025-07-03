@@ -62,9 +62,9 @@ pub fn build_router(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_operators::build_routed_value;
-    use crate::test_operators::import_py_dep;
-    use crate::test_operators::make_lambda;
+    use crate::testutils::build_routed_value;
+    use crate::testutils::import_py_dep;
+    use crate::testutils::make_lambda;
     use crate::utils::traced_with_gil;
     use chrono::Utc;
     use pyo3::ffi::c_str;
@@ -96,7 +96,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
@@ -125,7 +124,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Python route function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
@@ -149,7 +147,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Python route function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
@@ -183,7 +180,7 @@ mod tests {
 
     #[test]
     fn test_route_msg() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: 'waypoint2'"));
 

@@ -87,9 +87,9 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::Watermark;
     use crate::routes::Route;
-    use crate::test_operators::build_routed_value;
-    use crate::test_operators::import_py_dep;
-    use crate::test_operators::make_lambda;
+    use crate::testutils::build_routed_value;
+    use crate::testutils::import_py_dep;
+    use crate::testutils::make_lambda;
     use crate::transformer::build_filter;
     use crate::utils::traced_with_gil;
     use chrono::Utc;
@@ -125,7 +125,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
@@ -154,7 +153,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Python filter function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
@@ -178,7 +176,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_filter_handles_invalid_msg_exception() {
         pyo3::prepare_freethreaded_python();
 
@@ -214,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_build_filter() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: 'test' in x.payload"));
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));

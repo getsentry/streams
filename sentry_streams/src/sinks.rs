@@ -187,7 +187,7 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::{RoutedValuePayload, Watermark};
     use crate::routes::Route;
-    use crate::test_operators::make_raw_routed_msg;
+    use crate::testutils::make_raw_routed_msg;
     use crate::utils::traced_with_gil;
     use sentry_arroyo::backends::local::broker::LocalBroker;
 
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_kafka_payload() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let message = make_raw_routed_msg(
                 py,
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_route() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         let result_topic = Topic::new("result-topic");
         let mut broker = LocalBroker::new(
             Box::new(MemoryMessageStorage::default()),

@@ -3,9 +3,6 @@ from datetime import datetime
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.examples.transform_metrics import transform_msg
-
-# from sentry_streams.pipeline import Filter, Map, Parser, Serializer, streaming_source
-# from sentry_streams.pipeline.chain import GCSSink
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
     Filter,
