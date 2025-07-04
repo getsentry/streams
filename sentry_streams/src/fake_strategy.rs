@@ -137,6 +137,6 @@ pub fn assert_watermarks_match(expected_messages: Vec<Watermark>, actual_message
     );
 
     for (actual, expected) in actual_messages.iter().zip(expected_messages.iter()) {
-        assert_eq!(actual, expected,);
+        assert_eq!(actual, expected);
     }
 }
