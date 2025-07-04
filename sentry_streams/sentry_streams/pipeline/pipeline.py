@@ -121,6 +121,35 @@ class Pipeline:
         self._closed = True
         return self
 
+    def broadcast(self, name: str, routes: Sequence[Pipeline]) -> Pipeline:
+        """
+        Broadcast a message to multiple branches. Adding a broadcast step will close the pipeline, since
+        more steps can't be added after it. Thus it expects that all the branches are fully defined.
+        """
+        assert not self._closed, "Cannot add to a pipeline after it has been closed"
+        step = Broadcast(name=name, routes=routes)
+        step.register(self, self.__previous_step)
+        self.__previous_step = step
+        self._closed = True
+        return self
+
+    def route(
+        self,
+        name: str,
+        routing_function: Callable[[Any], str],
+        routing_table: Mapping[str, Pipeline],
+    ) -> Pipeline:
+        """
+        Route a message to a specific branch based on a routing function. Adding a router step will close the pipeline, since
+        more steps can't be added after it. Thus it expects that all the branches are fully defined.
+        """
+        assert not self._closed, "Cannot add to a pipeline after it has been closed"
+        step = Router(name=name, routing_function=routing_function, routing_table=routing_table)
+        step.register(self, self.__previous_step)
+        self.__previous_step = step
+        self._closed = True
+        return self
+
 
 def streaming_source(name: str, stream_name: str) -> Pipeline:
     """

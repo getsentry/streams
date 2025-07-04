@@ -3,23 +3,20 @@ from typing import Any, TypeVar, cast
 from unittest import mock
 
 import pytest
-from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
-from sentry_streams.pipeline.chain import (
-    Applier,
+from sentry_streams.pipeline.pipeline import (
     Batch,
     Filter,
     FlatMap,
     Map,
-    Reducer,
-    StreamSink,
-    segment,
-    streaming_source,
-)
-from sentry_streams.pipeline.pipeline import (
     Pipeline,
+    Reducer,
+    Step,
+    StreamSink,
     StreamSource,
     make_edge_sets,
+    segment,
+    streaming_source,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 
@@ -27,8 +24,8 @@ from sentry_streams.pipeline.window import TumblingWindow
 def test_sequence() -> None:
     pipeline = (
         streaming_source("myinput", "events")
-        .apply_step("transform1", Map(lambda msg: msg))
-        .add_sink("myoutput", StreamSink(stream_name="transformed-events"))
+        .apply(Map("transform1", lambda msg: msg))
+        .sink(StreamSink("myoutput", stream_name="transformed-events"))
     )
 
     assert set(pipeline.steps.keys()) == {"myinput", "transform1", "myoutput"}
@@ -50,16 +47,16 @@ def test_sequence() -> None:
 def test_broadcast() -> None:
     pipeline = (
         streaming_source("myinput", "events")
-        .apply_step("transform1", Map(lambda msg: msg))
+        .apply(Map("transform1", lambda msg: msg))
         .broadcast(
             "route_to_all",
             [
-                segment(name="route1", msg_type=IngestMetric)
-                .apply_step("transform2", Map(lambda msg: msg))
-                .add_sink("myoutput1", StreamSink(stream_name="transformed-events-2")),
-                segment(name="route2", msg_type=IngestMetric)
-                .apply_step("transform3", Map(lambda msg: msg))
-                .add_sink("myoutput2", StreamSink(stream_name="transformed-events-3")),
+                segment("route1")
+                .apply(Map("transform2", lambda msg: msg))
+                .sink(StreamSink("myoutput1", stream_name="transformed-events-2")),
+                segment("route2")
+                .apply(Map("transform3", lambda msg: msg))
+                .sink(StreamSink("myoutput2", stream_name="transformed-events-3")),
             ],
         )
     )
@@ -103,24 +100,24 @@ class Routes(Enum):
     ROUTE2 = "route2"
 
 
-def routing_func(msg: Any) -> Routes:
-    return Routes.ROUTE1
+def routing_func(msg: Any) -> str:
+    return Routes.ROUTE1.value
 
 
 def test_router() -> None:
     pipeline = (
         streaming_source("myinput", "events")
-        .apply_step("transform1", Map(lambda msg: msg))
+        .apply(Map("transform1", lambda msg: msg))
         .route(
             "route_to_one",
             routing_function=routing_func,
-            routes={
-                Routes.ROUTE1: segment(name="route1", msg_type=IngestMetric)
-                .apply_step("transform2", Map(lambda msg: msg))
-                .add_sink("myoutput1", StreamSink(stream_name="transformed-events-2")),
-                Routes.ROUTE2: segment(name="route2", msg_type=IngestMetric)
-                .apply_step("transform3", Map(lambda msg: msg))
-                .add_sink("myoutput2", StreamSink(stream_name="transformed-events-3")),
+            routing_table={
+                Routes.ROUTE1.value: segment("route1")
+                .apply(Map("transform2", lambda msg: msg))
+                .sink(StreamSink("myoutput1", stream_name="transformed-events-2")),
+                Routes.ROUTE2.value: segment("route2")
+                .apply(Map("transform3", lambda msg: msg))
+                .sink(StreamSink("myoutput2", stream_name="transformed-events-3")),
             },
         )
     )
@@ -164,27 +161,27 @@ TOut = TypeVar("TOut")
 
 
 @pytest.mark.parametrize(
-    "applier, name",
+    "step",
     [
-        pytest.param(Map(lambda msg: msg), "map_step", id="Create map"),
-        pytest.param(Filter(lambda msg: True), "filter_step", id="Create filter"),
-        pytest.param(FlatMap(lambda msg: [msg]), "flatmap_step", id="Create flatMap"),
+        pytest.param(Map("map_step", lambda msg: msg), id="Create map"),
+        pytest.param(Filter("filter_step", lambda msg: True), id="Create filter"),
+        pytest.param(FlatMap("flatmap_step", lambda msg: [msg]), id="Create flatMap"),
         pytest.param(
             Reducer(
+                "reducer_step",
                 window=TumblingWindow(window_size=1),
                 aggregate_func=lambda: mock.Mock(),
             ),
-            "reducer_step",
             id="Create reducer",
         ),
-        pytest.param(Batch(batch_size=1), "batch_step", id="Create batch"),
+        pytest.param(Batch("batch_step", batch_size=1), id="Create batch"),
     ],
 )
-def test_applier_steps(applier: Applier[TIn, TOut], name: str) -> None:
+def test_register_steps(step: Step) -> None:
+    name = step.name
     pipeline = Pipeline(StreamSource(name="mysource", stream_name="name"))
-    ret = applier.build_step(name)
-    pipeline.apply(ret)
-    assert pipeline.steps[name] == ret
+    pipeline.apply(step)
+    assert pipeline.steps[name] == step
     assert pipeline.steps[name].name == name
     assert pipeline.incoming_edges[name] == ["mysource"]
     assert pipeline.outgoing_edges["mysource"] == [name]

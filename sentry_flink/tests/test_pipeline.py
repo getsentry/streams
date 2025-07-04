@@ -17,7 +17,6 @@ from sentry_streams.examples.word_counter_fn import (
     GroupByWord,
     WordCounter,
 )
-from sentry_streams.pipeline.chain import segment, streaming_source
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Branch,
@@ -27,6 +26,8 @@ from sentry_streams.pipeline.pipeline import (
     Router,
     StreamSink,
     StreamSource,
+    segment,
+    streaming_source,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 from sentry_streams.runner import iterate_edges

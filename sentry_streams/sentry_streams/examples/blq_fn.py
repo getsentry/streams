@@ -14,9 +14,9 @@ class DownstreamBranch(Enum):
     RECENT = "recent"
 
 
-def should_send_to_blq(msg: Message[IngestMetric]) -> DownstreamBranch:
+def should_send_to_blq(msg: Message[IngestMetric]) -> str:
     timestamp = msg.payload["timestamp"]  # We can do this because the type of the payload is known
     if timestamp < time.time() - MAX_MESSAGE_LATENCY:
-        return DownstreamBranch.DELAYED
+        return DownstreamBranch.DELAYED.value
     else:
-        return DownstreamBranch.RECENT
+        return DownstreamBranch.RECENT.value

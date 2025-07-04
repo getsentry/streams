@@ -1,4 +1,4 @@
-from sentry_streams.pipeline.chain import (
+from sentry_streams.pipeline.pipeline import (
     Batch,
     BatchParser,
     Filter,
