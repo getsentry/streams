@@ -70,7 +70,7 @@ For local development, instead of using pip, install the package from the source
     :linenos:
 
     from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
-    from sentry_streams.pipeline.chain import Parser, Serializer
+    from sentry_streams.pipeline.pipeline import Parser, Serializer
     from sentry_streams.pipeline import streaming_source
 
     pipeline = (
@@ -78,11 +78,10 @@ For local development, instead of using pip, install the package from the source
             name="myinput",
             stream_name="ingest-metrics",
         )
-        .apply("parse_msg", Parser(msg_type=IngestMetric))
-        .apply("serializer", Serializer())
+        .apply(Parser("parse_msg", msg_type=IngestMetric))
+        .apply(Serializer("serializer"))
         .sink(
-            "mysink",
-            StreamSink(stream_name="transformed-events"),
+            StreamSink(name="mysink", stream_name="transformed-events"),
         )
     )
 

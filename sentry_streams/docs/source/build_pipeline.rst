@@ -18,9 +18,9 @@ the application, which is basically its business logic. The distribution is
 defined via the deployment descriptor so the operators can be distributed
 differently in different environments.
 
-The DSL operators are in the `chain.py` module.
+The DSL operators are in the `pipeline.py` module.
 
-.. automodule:: sentry_streams.pipeline.chain
+.. automodule:: sentry_streams.pipeline.pipeline
    :members:
    :undoc-members:
    :show-inheritance:
