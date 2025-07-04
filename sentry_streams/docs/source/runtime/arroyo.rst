@@ -57,8 +57,8 @@ stored in a watermark once it has received ``N`` copies of that watermark, where
 branches in the pipeline.
 For example, if a pipeline contains a ``Router`` which routes messages to one of 2 downstream branches, then
 in one of those branches there is a ``Broadcast`` step that forwards messages to 3 downstream branches, the commit
-offsets step will only commit the offsets stored in a watermark after it receives a total of 4 copies of that
-watermark::
+offsets step will only commit the offsets stored in a watermark after it receives a watermark for each downstream branch
+(4 watermarks total)::
 
     Source
       |
@@ -68,7 +68,7 @@ watermark::
       |    |    |
       2    3    4
 
-*Fig 1: Example pipeline with branching routes. One watermark from each route is required to commit.*
+*Fig 1: Example pipeline with branching routes. One watermark from each branch is required to commit.*
 
 Watermark messages are sent by a ``WatermarkEmitter`` step, which is automatically added at the start of a pipeline.
 By default watermark messages are emitted every 10 seconds.
@@ -105,13 +105,12 @@ Current progress:
 
 ☑ Watermarks can be passed into Python code via a ``PythonAdapter`` step
 
-☐ An ``Unfold`` step needs to be implemented for ``rust_arroyo`` which will take in a single message and
-submit multiple messages (needed for broadcast/router/flatmap)
+☑ A ``Broadcast`` step has been created which broadcasts messages and watermarks to all downstream branches
 
-☐ ``Reduce`` and ``Multiprocess`` need to handle watermark messages
+☐ The ``Router`` step needs to be rewritten to be a custom step that routes regular messages downstream (to a single downstream branch),
+but broadcasts watermarks downstream (to all branches)
 
-☐ The ``Router`` step needs to be rewritten to use the above ``Unfold`` step instead of just being an arroyo
-``RunTask``
+☐ ``Reduce`` and ``Multiprocess`` steps need to handle watermark messages
 
-☐ The custom commit step that commits based on # of watermarks received needs to be implemented (for now,
-the arroyo runtime uses the standard once-per-second commit step)
+☐ The custom commit step that commits only after receiving a watermark copy from each branch in the pipeline
+needs to be implemented (for now, the arroyo runtime uses the standard once-per-second commit step)
