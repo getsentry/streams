@@ -4,14 +4,14 @@ from typing import MutableSequence, Optional, Self, Tuple
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline import streaming_source
-from sentry_streams.pipeline.chain import (
+from sentry_streams.pipeline.function_template import Accumulator
+from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.pipeline import (
     Parser,
     Reducer,
     Serializer,
     StreamSink,
 )
-from sentry_streams.pipeline.function_template import Accumulator
-from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.window import SlidingWindow
 
 # The simplest possible pipeline.
@@ -49,20 +49,19 @@ pipeline = streaming_source(
     name="myinput", stream_name="ingest-metrics"
 )  # ExtensibleChain[Message[bytes]]
 
-chain1 = pipeline.apply_step(
-    "parser",
+chain1 = pipeline.apply(
     Parser(
+        "parser",
         msg_type=IngestMetric,
     ),  # pass in the standard message parser function
 )  # ExtensibleChain[Message[IngestMetric]]
 
-chain2 = chain1.apply_step(
-    "custom_batcher", Reducer(reduce_window, TransformerBatch)
+chain2 = chain1.apply(
+    Reducer("custom_batcher", reduce_window, TransformerBatch)
 )  # ExtensibleChain[Message[MutableSequence[IngestMetric]]]
 
-chain3 = chain2.apply_step(
-    "serializer",
-    Serializer(),  # pass in the standard message serializer function
+chain3 = chain2.apply(
+    Serializer("serializer"),  # pass in the standard message serializer function
 )  # ExtensibleChain[bytes]
 
-chain4 = chain3.add_sink("kafkasink2", StreamSink(stream_name="transformed-events"))  # Chain
+chain4 = chain3.sink(StreamSink("kafkasink2", stream_name="transformed-events"))  # Chain
