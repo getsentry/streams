@@ -57,8 +57,8 @@ stored in a watermark once it has received ``N`` copies of that watermark, where
 branches in the pipeline.
 For example, if a pipeline contains a ``Router`` which routes messages to one of 2 downstream branches, then
 in one of those branches there is a ``Broadcast`` step that forwards messages to 3 downstream branches, the commit
-offsets step will only commit the offsets stored in a watermark after it receives a watermark a given payload routed
-for each downstream branch (4 watermarks total)::
+offsets step will only commit the offsets stored in a watermark after it receives a watermark for each downstream branch
+(4 watermarks total)::
 
     Source
       |

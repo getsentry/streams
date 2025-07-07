@@ -12,8 +12,8 @@ use std::time::Duration;
 /// when it is stored in pending_messages after previously returning MessageRejected
 #[derive(Clone, Debug, PartialEq)]
 pub struct MessageIdentifier {
-    route: Route,
-    committable: BTreeMap<Partition, u64>,
+    pub route: Route,
+    pub committable: BTreeMap<Partition, u64>,
 }
 
 impl Eq for MessageIdentifier {}
@@ -71,27 +71,24 @@ impl Broadcaster {
     fn retry_pending_message(
         &mut self,
         message: Message<RoutedValue>,
-        identifier: MessageIdentifier,
+        identifier: &MessageIdentifier,
     ) -> Result<(), SubmitError<RoutedValue>> {
         self.next_step.submit(message)?;
-        self.pending_messages.remove(&identifier);
+        self.pending_messages.remove(identifier);
         Ok(())
     }
 
-    // Attempts to re-submit all pending messages.
+    /// Attempts to re-submit all pending messages.
     fn flush_pending(&mut self) -> Result<(), StrategyError> {
-        let pending = self.pending_messages.clone();
-        for (identifier, message) in pending {
-            let res = self.retry_pending_message(message.clone(), identifier.clone());
-            match res {
-                Ok(..) => (),
-                // We don't do anything here as `retry_pending_message` doesn't remove from
-                // pending buffer if we get `MessageRejected`
-                Err(SubmitError::MessageRejected(..)) => (),
-                Err(SubmitError::InvalidMessage(e)) => {
-                    self.pending_messages.remove(&identifier);
-                    return Err(e.into());
-                }
+        let ids: Vec<MessageIdentifier> = self.pending_messages.keys().cloned().collect();
+        for identifier in ids {
+            let msg = self.pending_messages.get(&identifier).unwrap();
+            // we only need to take action here if the returned error is `InvalidMessage`
+            if let Err(SubmitError::InvalidMessage(e)) =
+                self.retry_pending_message(msg.clone(), &identifier)
+            {
+                self.pending_messages.remove(&identifier);
+                return Err(e.into());
             }
         }
         Ok(())
@@ -125,7 +122,7 @@ impl Broadcaster {
             committable: clone_committable(&message),
         };
         if self.pending_messages.contains_key(&identifier) {
-            self.retry_pending_message(message, identifier)
+            self.retry_pending_message(message, &identifier)
         } else {
             self.submit_to_next_step(message, identifier)
         }

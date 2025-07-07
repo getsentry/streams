@@ -176,3 +176,6 @@ target/
 
 # Flink
 flink_libs/*
+
+# macOS nonsense
+.DS_Store
