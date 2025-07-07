@@ -626,7 +626,7 @@ mod tests {
 
     #[test]
     fn test_pywatermark_lifecycle() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             // Prepare test data
             let committable = PyDict::new(py);
