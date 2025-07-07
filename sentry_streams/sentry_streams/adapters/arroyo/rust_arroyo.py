@@ -231,6 +231,22 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
+        # Check if this is a Rust function that should be handled directly
+        if step.has_rust_function():
+            # Handle Rust functions directly without going through the chain system
+            self.__close_chain(stream)
+
+            route = RustRoute(stream.source, stream.waypoints)
+            logger.info(f"Adding Rust map: {step.name} to pipeline")
+
+            # For Rust functions, pass the function directly - the Rust runtime will handle it
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.Map(route, step.resolved_function)
+            )
+
+            return stream
+
+        # Handle Python functions with the existing chain system
         step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
         parallelism_config = step_config.get("parallelism")
 
@@ -270,12 +286,22 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
-        def filter_msg(msg: Message[Any]) -> bool:
-            return step.resolved_function(msg)
-
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+
+        if step.has_rust_function():
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.Filter(route, step.resolved_function)
+            )
+        else:
+            # XXX(markus): I don't know what this lambda is for, but i had to
+            # disable it for the rust path since we need access to methods on
+            # the callable. This seems like a useless indirection though?
+            def filter_msg(msg: Message[Any]) -> bool:
+                return step.resolved_function(msg)
+
+            self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+
         return stream
 
     def reduce(

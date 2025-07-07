@@ -5,7 +5,7 @@ use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
 use crate::store_sinks::GCSSink;
-use crate::transformer::{build_filter, build_map};
+use crate::transformer::{build_filter, build_map, build_rust_filter, build_rust_map};
 use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
@@ -86,12 +86,56 @@ pub fn build(
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     match step.get() {
         RuntimeOperator::Map { function, route } => {
-            let func_ref = traced_with_gil!(|py| function.clone_ref(py));
-            build_map(route, func_ref, next)
+            // Check if this is a Rust function
+            let is_rust_function = traced_with_gil!(|py| {
+                function
+                    .bind(py)
+                    .hasattr("get_rust_function_pointer")
+                    .unwrap_or(false)
+            });
+
+            if is_rust_function {
+                // Get the raw function pointer and call Rust directly
+                let rust_fn_ptr = traced_with_gil!(|py| {
+                    function
+                        .bind(py)
+                        .call_method0("get_rust_function_pointer")
+                        .unwrap()
+                        .extract::<usize>()
+                        .unwrap()
+                });
+                build_rust_map(route, rust_fn_ptr, next)
+            } else {
+                // Use existing Python path
+                let func_ref = traced_with_gil!(|py| function.clone_ref(py));
+                build_map(route, func_ref, next)
+            }
         }
         RuntimeOperator::Filter { function, route } => {
-            let func_ref = traced_with_gil!(|py| { function.clone_ref(py) });
-            build_filter(route, func_ref, next)
+            // Check if this is a Rust function
+            let is_rust_function = traced_with_gil!(|py| {
+                function
+                    .bind(py)
+                    .hasattr("get_rust_function_pointer")
+                    .unwrap_or(false)
+            });
+
+            if is_rust_function {
+                // Get the raw function pointer and call Rust directly
+                let rust_fn_ptr = traced_with_gil!(|py| {
+                    function
+                        .bind(py)
+                        .call_method0("get_rust_function_pointer")
+                        .unwrap()
+                        .extract::<usize>()
+                        .unwrap()
+                });
+                build_rust_filter(route, rust_fn_ptr, next)
+            } else {
+                // Use existing Python path
+                let func_ref = traced_with_gil!(|py| { function.clone_ref(py) });
+                build_filter(route, func_ref, next)
+            }
         }
         RuntimeOperator::StreamSink {
             route,

@@ -3,9 +3,11 @@ mod broadcaster;
 mod callers;
 mod committable;
 mod consumer;
+pub mod ffi;
 mod filter_step;
 mod gcs_writer;
 mod kafka_config;
+pub mod macros;
 mod messages;
 mod operators;
 mod python_operator;
@@ -16,6 +18,9 @@ mod store_sinks;
 mod transformer;
 mod utils;
 mod watermark;
+
+// Re-export macros so they can be used by external crates
+pub use macros::*;
 
 #[cfg(test)]
 mod fake_strategy;

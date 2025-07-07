@@ -241,6 +241,29 @@ class TransformFunction(ABC, Generic[TransformFuncReturnType]):
     def resolved_function(self) -> Callable[..., TransformFuncReturnType]:
         raise NotImplementedError()
 
+    def has_rust_function(self) -> bool:
+        """Check if this function provides a Rust implementation"""
+        func = self.resolved_function
+        return (
+            hasattr(func, "get_rust_function_pointer")
+            and hasattr(func, "input_type")
+            and hasattr(func, "output_type")
+            and hasattr(func, "callback_type")
+        )
+
+    def get_rust_callback_info(self) -> Mapping[str, Any]:
+        """Get information about the Rust callback function"""
+        if not self.has_rust_function():
+            raise ValueError("Function does not have Rust implementation")
+
+        func = self.resolved_function
+        return {
+            "function_ptr": func.get_rust_function_pointer(),  # type: ignore[attr-defined]
+            "input_type": func.input_type(),  # type: ignore[attr-defined]
+            "output_type": func.output_type(),  # type: ignore[attr-defined]
+            "callback_type": func.callback_type(),  # type: ignore[attr-defined]
+        }
+
 
 @dataclass
 class TransformStep(WithInput, TransformFunction[TransformFuncReturnType]):
@@ -289,6 +312,24 @@ class Map(TransformStep[Any]):
     # TODO: Allow product to both enable and access
     # configuration (e.g. a DB that is used as part of Map)
 
+    def __post_init__(self) -> None:
+        """Validate the function after initialization"""
+        super().__post_init__()
+        if self.has_rust_function():
+            self._validate_rust_function_type("map")
+
+    def _validate_rust_function_type(self, expected_callback_type: str) -> None:
+        """Validate that the Rust function has the correct type"""
+        try:
+            info = self.get_rust_callback_info()
+            if info["callback_type"] != expected_callback_type:
+                raise TypeError(
+                    f"Function {self.function} is a {info['callback_type']} function, "
+                    f"but expected {expected_callback_type}"
+                )
+        except Exception as e:
+            raise TypeError(f"Invalid Rust function {self.function}: {e}")
+
 
 @dataclass
 class Filter(TransformStep[bool]):
@@ -297,6 +338,30 @@ class Filter(TransformStep[bool]):
     """
 
     step_type: StepType = StepType.FILTER
+
+    def __post_init__(self) -> None:
+        """Validate the function after initialization"""
+        super().__post_init__()
+        if self.has_rust_function():
+            self._validate_rust_function_type("filter")
+
+    def _validate_rust_function_type(self, expected_callback_type: str) -> None:
+        """Validate that the Rust function has the correct type"""
+        try:
+            info = self.get_rust_callback_info()
+            if info["callback_type"] != expected_callback_type:
+                raise TypeError(
+                    f"Function {self.function} is a {info['callback_type']} function, "
+                    f"but expected {expected_callback_type}"
+                )
+            # Additional validation for filter: output type should be bool
+            if expected_callback_type == "filter" and info["output_type"] != "bool":
+                raise TypeError(
+                    f"Filter function {self.function} should return bool, "
+                    f"but returns {info['output_type']}"
+                )
+        except Exception as e:
+            raise TypeError(f"Invalid Rust function {self.function}: {e}")
 
 
 @dataclass
