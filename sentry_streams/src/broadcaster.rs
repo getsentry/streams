@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_message_rejected() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_messages_clone = submitted_messages.clone();

@@ -392,7 +392,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_submit_watermark() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
             let mut operator = PythonAdapter::new(

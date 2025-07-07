@@ -129,7 +129,7 @@ mod tests {
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
     fn test_filter_crashes_on_any_msg() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
@@ -157,7 +157,7 @@ mod tests {
         expected = "Python filter function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
     fn test_filter_crashes_on_normal_exceptions() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         let mut filter = create_simple_filter(c_str!("lambda x: {}[0]"), Noop {});
 
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_filter_handles_invalid_msg_exception() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
