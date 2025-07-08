@@ -1,4 +1,4 @@
-use crate::messages::{RoutedValuePayload, WatermarkMessage};
+use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
 use sentry_arroyo::processing::strategies::{
     CommitRequest, InvalidMessage, ProcessingStrategy, StrategyError, SubmitError,
@@ -22,7 +22,7 @@ fn current_epoch() -> u64 {
 /// then when poll is called the last seen committable is sent in a WatermarkMessage payload.
 /// The Arroyo adapter commit step only commits once it recives a watermark
 /// message with a specific committable from all branches in a consumer.
-pub struct Watermark {
+pub struct WatermarkEmitter {
     pub next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     pub route: Route,
     pub period: u64,
@@ -30,7 +30,7 @@ pub struct Watermark {
     last_sent_timestamp: u64,
 }
 
-impl Watermark {
+impl WatermarkEmitter {
     pub fn new(
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
         route: Route,
@@ -55,13 +55,12 @@ impl Watermark {
         let timestamp = current_epoch();
         let watermark_msg = RoutedValue {
             route: self.route.clone(),
-            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
-                self.watermark_committable.clone(),
-            )),
+            payload: RoutedValuePayload::make_watermark_payload(self.watermark_committable.clone()),
         };
-        let result = self
-            .next_step
-            .submit(Message::new_any_message(watermark_msg, BTreeMap::new()));
+        let result = self.next_step.submit(Message::new_any_message(
+            watermark_msg,
+            self.watermark_committable.clone(),
+        ));
         match result {
             Ok(..) => {
                 self.last_sent_timestamp = timestamp;
@@ -88,7 +87,7 @@ impl Watermark {
     }
 }
 
-impl ProcessingStrategy<RoutedValue> for Watermark {
+impl ProcessingStrategy<RoutedValue> for WatermarkEmitter {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         if self.should_send_watermark_msg() {
             self.send_watermark_msg()?;
@@ -118,8 +117,9 @@ impl ProcessingStrategy<RoutedValue> for Watermark {
 mod tests {
     use super::*;
     use crate::fake_strategy::FakeStrategy;
+    use crate::messages::Watermark;
     use crate::routes::Route;
-    use crate::test_operators::{build_routed_value, make_committable};
+    use crate::testutils::{build_routed_value, make_committable};
     use crate::utils::traced_with_gil;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
@@ -127,13 +127,13 @@ mod tests {
 
     #[test]
     fn test_watermark_poll() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let submitted_messages = Arc::new(Mutex::new(Vec::new()));
             let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
             let submitted_watermarks_clone = submitted_watermarks.clone();
             let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
-            let mut watermark = Watermark::new(
+            let mut watermark = WatermarkEmitter::new(
                 Box::new(next_step),
                 Route {
                     source: String::from("source"),
@@ -176,7 +176,7 @@ mod tests {
             let _ = watermark.poll();
             assert_eq!(
                 submitted_watermarks_clone.lock().unwrap()[0],
-                WatermarkMessage::new(expected_committable)
+                Watermark::new(expected_committable)
             );
         })
     }

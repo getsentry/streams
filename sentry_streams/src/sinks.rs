@@ -185,9 +185,9 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
-    use crate::messages::{RoutedValuePayload, WatermarkMessage};
+    use crate::messages::{RoutedValuePayload, Watermark};
     use crate::routes::Route;
-    use crate::test_operators::make_raw_routed_msg;
+    use crate::testutils::make_raw_routed_msg;
     use crate::utils::traced_with_gil;
     use sentry_arroyo::backends::local::broker::LocalBroker;
 
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_kafka_payload() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let message = make_raw_routed_msg(
                 py,
@@ -252,21 +252,18 @@ mod tests {
 
         let watermark_val = RoutedValue {
             route: Route::new(String::from("source"), vec![]),
-            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(BTreeMap::new())),
+            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new()),
         };
         let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
         let watermark_res = sink.submit(watermark_msg);
         assert!(watermark_res.is_ok());
         let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-        assert_eq!(
-            watermark_messages[0],
-            WatermarkMessage::new(BTreeMap::new())
-        );
+        assert_eq!(watermark_messages[0], Watermark::new(BTreeMap::new()));
     }
 
     #[test]
     fn test_route() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         let result_topic = Topic::new("result-topic");
         let mut broker = LocalBroker::new(
             Box::new(MemoryMessageStorage::default()),

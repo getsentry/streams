@@ -2,21 +2,23 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
-use crate::messages::{PyStreamingMessage, RoutedValuePayload};
+use crate::committable::{clone_committable, convert_committable_to_py, convert_py_committable};
+use crate::messages::{RoutedValuePayload, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::PyTuple;
 use pyo3::Python;
-use pyo3::{prelude::*, IntoPyObjectExt};
+use pyo3::{import_exception, prelude::*};
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::processing::strategies::SubmitError;
-use sentry_arroyo::processing::strategies::{
-    merge_commit_request, CommitRequest, InvalidMessage, MessageRejected, StrategyError,
-};
+use sentry_arroyo::processing::strategies::{merge_commit_request, CommitRequest, StrategyError};
 use sentry_arroyo::types::{Message, Partition, Topic};
 use sentry_arroyo::utils::timing::Deadline;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::time::Duration;
+
+import_exception!(arroyo.processing.strategies, MessageRejected);
+import_exception!(arroyo.dlq, InvalidMessage);
 
 /// PythonAdapter is an Arroyo processing strategy that delegates the
 /// processing of messages to a Python class that extends the
@@ -24,7 +26,7 @@ use std::time::Duration;
 ///
 /// The python delegate is passed as a `Py<PyAny>` reference.
 ///
-/// Overall This struct has a ProcessingStrategy implementation so it
+/// Overall this struct has a ProcessingStrategy implementation so it
 /// can be wired up to other Arroyo strategies. When it receives a
 /// message it forwards them to the `submit` method of the python
 /// delegate. The responses of the `poll` method on the python delegate
@@ -91,46 +93,6 @@ fn convert_partition(partition: Bound<'_, PyAny>) -> Result<Partition, PyErr> {
     })
 }
 
-fn convert_committable_to_py(
-    py: Python<'_>,
-    committable: BTreeMap<Partition, u64>,
-) -> Result<Py<PyAny>, PyErr> {
-    let dict = PyDict::new(py);
-    for (partition, offset) in committable {
-        let key = PyTuple::new(
-            py,
-            &[
-                partition.topic.as_str().into_py_any(py)?,
-                partition.index.into_py_any(py)?,
-            ],
-        );
-        dict.set_item(key?, offset)?;
-    }
-    Ok(dict.into())
-}
-
-fn convert_py_committable(
-    py: Python<'_>,
-    py_committable: Py<PyAny>,
-) -> Result<BTreeMap<Partition, u64>, PyErr> {
-    let mut committable = BTreeMap::new();
-    let dict = py_committable.downcast_bound::<PyDict>(py)?;
-    for (key, value) in dict.iter() {
-        let partition = key.downcast::<PyTuple>()?;
-        let topic: String = partition.get_item(0)?.extract()?;
-        let index: u16 = partition.get_item(1)?.extract()?;
-        let offset: u64 = value.extract()?;
-        committable.insert(
-            Partition {
-                topic: Topic::new(&topic),
-                index,
-            },
-            offset,
-        );
-    }
-    Ok(committable)
-}
-
 impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     /// Receives a message to process and forwards it to the Python delegate.
     ///
@@ -140,60 +102,58 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     ///
     /// Any other exception is unexpected and triggers a panic.
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        // TODO: forward watermark messages to python code instead of gating here
-        if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
-            self.next_strategy.submit(message)
-        } else {
-            let mut committable = BTreeMap::new();
-            for (partition, offset) in message.committable() {
-                committable.insert(partition, offset);
-            }
-
-            traced_with_gil!(|py| {
-                let python_payload: Py<PyAny> = match message.payload().payload {
-                    RoutedValuePayload::WatermarkMessage(ref watermark) => {
-                        // TODO: this code is unreachable, future PR will allow forwarding WatermarkMessages
-                        // to python code which will use this branch.
-                        watermark.clone().into_py_any(py).unwrap()
-                    }
-                    RoutedValuePayload::PyStreamingMessage(ref payload) => match payload {
-                        PyStreamingMessage::PyAnyMessage { ref content } => {
-                            content.clone_ref(py).into_any()
-                        }
-                        PyStreamingMessage::RawMessage { ref content } => {
-                            content.clone_ref(py).into_any()
-                        }
-                    },
-                };
-                let py_committable = convert_committable_to_py(py, committable).unwrap();
-                match self.processing_step.call_method1(
-                    py,
-                    "submit",
-                    (python_payload, py_committable),
-                ) {
-                    Ok(_) => Ok(()),
-                    Err(err) => {
-                        let error_type = err.get_type(py).name();
-                        match error_type.unwrap().to_string().as_str() {
-                            "MessageRejected" => {
-                                Err(SubmitError::MessageRejected(MessageRejected { message }))
-                            }
-                            "InvalidMessage" => {
-                                let py_err_obj = err.value(py);
-                                let offset: u64 =
-                                    py_err_obj.getattr("offset").unwrap().extract().unwrap();
-                                let partition = py_err_obj.getattr("partition").unwrap();
-                                Err(SubmitError::InvalidMessage(InvalidMessage {
-                                    offset,
-                                    partition: convert_partition(partition).unwrap(),
-                                }))
-                            }
-                            _ => panic!("Unexpected exception from submit: {}", err),
-                        }
-                    }
-                }
-            })
+        if self.route != message.payload().route {
+            return self.next_strategy.submit(message);
         }
+
+        let committable = match &message.payload().payload {
+            RoutedValuePayload::PyStreamingMessage(..) => clone_committable(&message),
+            RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(watermark)) => {
+                watermark.committable.clone()
+            }
+            RoutedValuePayload::WatermarkMessage(WatermarkMessage::PyWatermark(..)) => {
+                unreachable!("Python Watermark should never be submitted to the Python Operator.")
+            }
+        };
+
+        traced_with_gil!(|py| {
+            let python_payload: Py<PyAny> = (&message.payload().payload).into();
+            let py_committable = convert_committable_to_py(py, committable)
+                .expect("Unable to retrieve commitable from message");
+
+            let res =
+                self.processing_step
+                    .call_method1(py, "submit", (python_payload, py_committable));
+
+            let Err(py_err) = res else {
+                return Ok(());
+            };
+
+            if py_err.is_instance(py, &py.get_type::<MessageRejected>()) {
+                Err(SubmitError::MessageRejected(
+                    sentry_arroyo::processing::strategies::MessageRejected { message },
+                ))
+            } else if py_err.is_instance(py, &py.get_type::<InvalidMessage>()) {
+                let val = py_err.value(py);
+                let offset: u64 = val
+                    .getattr("offset")
+                    .expect("Unable to retrieve offset from InvalidMessage")
+                    .extract()
+                    .expect("Unable to convert offset from InvalidMessage into u64");
+                let partition = val
+                    .getattr("partition")
+                    .expect("Unable to retrieve partition from InvalidMessage");
+                Err(SubmitError::InvalidMessage(
+                    sentry_arroyo::processing::strategies::InvalidMessage {
+                        offset,
+                        partition: convert_partition(partition)
+                            .expect("Unable to convert partition from InvalidMessage into sentry_arroyo::types::Partition"),
+                    },
+                ))
+            } else {
+                panic!("Unexpected exception from submit: {}", py_err)
+            }
+        })
     }
 
     /// Polls messages from the Python delegate.
@@ -217,9 +177,11 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                         commit_request,
                     );
                     match self.next_strategy.submit(msg) {
-                        Err(SubmitError::MessageRejected(MessageRejected {
-                            message: transformed_message,
-                        })) => {
+                        Err(SubmitError::MessageRejected(
+                            sentry_arroyo::processing::strategies::MessageRejected {
+                                message: transformed_message,
+                            },
+                        )) => {
                             self.transformed_messages.push_front(transformed_message);
                             break;
                         }
@@ -267,9 +229,11 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                         commit_request,
                     );
                     match self.next_strategy.submit(msg) {
-                        Err(SubmitError::MessageRejected(MessageRejected {
-                            message: transformed_message,
-                        })) => {
+                        Err(SubmitError::MessageRejected(
+                            sentry_arroyo::processing::strategies::MessageRejected {
+                                message: transformed_message,
+                            },
+                        )) => {
                             self.transformed_messages.push_front(transformed_message);
                             if deadline.is_some_and(|d| d.has_elapsed()) {
                                 tracing::warn!("Timeout reached");
@@ -298,12 +262,13 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
-    use crate::messages::WatermarkMessage;
-    use crate::test_operators::build_routed_value;
+    use crate::messages::{PyWatermark, WatermarkMessage};
+    use crate::testutils::build_routed_value;
+    use crate::testutils::make_committable;
     use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::noop::Noop;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::ops::Deref;
     use std::sync::Arc;
     use std::sync::Mutex as RawMutex;
@@ -311,25 +276,6 @@ mod tests {
     fn build_operator(py: Python<'_>) -> Bound<'_, PyAny> {
         let class_def = c_str!(
             r#"
-# Adding these classes here as I could not import them from
-# arroyo
-class Topic:
-    def __init__(self, name):
-        self.name = name
-
-class Partition:
-    def __init__(self, topic, index):
-        self.topic = topic
-        self.index = index
-
-class MessageRejected(Exception):
-    pass
-
-class InvalidMessage(Exception):
-    def __init__(self, partition, offset):
-        self.partition = partition
-        self.offset = offset
-
 class RustOperatorDelegate:
     def __init__(self):
         self.payload = None
@@ -341,8 +287,11 @@ class RustOperatorDelegate:
             self.payload = payload
             return
         elif payload.payload == "reject":
+            from arroyo.processing.strategies import MessageRejected
             raise MessageRejected()
         elif payload.payload == "invalid":
+            from arroyo.dlq import InvalidMessage
+            from arroyo import Partition, Topic
             raise InvalidMessage(Partition(Topic("topic"), 0), 42)
 
     def poll(self):
@@ -385,39 +334,25 @@ class RustOperatorDelegateFactory:
         Message::new_any_message(routed_value, committable)
     }
 
-    #[test]
-    fn test_convert_committable_to_py_and_back() {
-        pyo3::prepare_freethreaded_python();
-        traced_with_gil!(|py| {
-            // Prepare a committable with two partitions
-            let mut committable = BTreeMap::new();
-            committable.insert(
-                Partition {
-                    topic: Topic::new("topic1"),
-                    index: 0,
-                },
-                123,
-            );
-            committable.insert(
-                Partition {
-                    topic: Topic::new("topic2"),
-                    index: 1,
-                },
-                456,
-            );
-
-            // Convert to Python object and back
-            let py_obj = convert_committable_to_py(py, committable.clone()).unwrap();
-            let committable_back = convert_py_committable(py, py_obj).unwrap();
-
-            // Assert equality
-            assert_eq!(committable, committable_back);
-        });
+    fn make_test_watermark(py: Python<'_>) -> Message<RoutedValue> {
+        let committable = make_committable(2, 0);
+        let py_committable = convert_committable_to_py(py, committable.clone()).unwrap();
+        let py_watermark = PyWatermark::new(py_committable).unwrap();
+        let routed_py_watermark = RoutedValue {
+            route: Route {
+                source: "source".to_string(),
+                waypoints: vec![],
+            },
+            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::PyWatermark(
+                py_watermark,
+            )),
+        };
+        Message::new_any_message(routed_py_watermark, committable)
     }
 
     #[test]
     fn test_submit_with_matching_route() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
             let mut operator = PythonAdapter::new(
@@ -435,7 +370,9 @@ class RustOperatorDelegateFactory:
             assert!(res.is_err());
             assert!(matches!(
                 res,
-                Err(SubmitError::MessageRejected(MessageRejected { .. }))
+                Err(SubmitError::MessageRejected(
+                    sentry_arroyo::processing::strategies::MessageRejected { .. }
+                ))
             ));
 
             let message = make_msg(py, "invalid");
@@ -443,17 +380,59 @@ class RustOperatorDelegateFactory:
             assert!(res.is_err());
             assert!(matches!(
                 res,
-                Err(SubmitError::InvalidMessage(InvalidMessage {
-                    partition: Partition { .. },
-                    offset: 42
-                }))
+                Err(SubmitError::InvalidMessage(
+                    sentry_arroyo::processing::strategies::InvalidMessage {
+                        partition: Partition { .. },
+                        offset: 42
+                    }
+                ))
+            ));
+        })
+    }
+
+    #[test]
+    fn test_submit_watermark() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let instance = build_operator(py);
+            let mut operator = PythonAdapter::new(
+                Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                instance.unbind(),
+                Box::new(Noop {}),
+            );
+
+            let watermark = make_test_watermark(py);
+            let res = operator.submit(watermark);
+            assert!(res.is_ok());
+
+            let message = make_msg(py, "reject");
+            let res = operator.submit(message);
+            assert!(res.is_err());
+            assert!(matches!(
+                res,
+                Err(SubmitError::MessageRejected(
+                    sentry_arroyo::processing::strategies::MessageRejected { .. }
+                ))
+            ));
+
+            let message = make_msg(py, "invalid");
+            let res = operator.submit(message);
+            assert!(res.is_err());
+            assert!(matches!(
+                res,
+                Err(SubmitError::InvalidMessage(
+                    sentry_arroyo::processing::strategies::InvalidMessage {
+                        partition: Partition { .. },
+                        offset: 42
+                    }
+                ))
             ));
         })
     }
 
     #[test]
     fn test_poll_with_messages() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
 
@@ -511,9 +490,7 @@ class RustOperatorDelegateFactory:
 
             let watermark_val = RoutedValue {
                 route: Route::new(String::from("source"), vec![]),
-                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::new(
-                    BTreeMap::new(),
-                )),
+                payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new()),
             };
             let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
             let watermark_res = operator.submit(watermark_msg);
@@ -525,7 +502,7 @@ class RustOperatorDelegateFactory:
 
     #[test]
     fn test_poll_and_fail() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let instance = build_operator(py);
 
@@ -547,10 +524,12 @@ class RustOperatorDelegateFactory:
             let commit_request = operator.poll();
             assert!(matches!(
                 commit_request,
-                Err(StrategyError::InvalidMessage(InvalidMessage {
-                    partition: Partition { .. },
-                    offset: 0
-                }))
+                Err(StrategyError::InvalidMessage(
+                    sentry_arroyo::processing::strategies::InvalidMessage {
+                        partition: Partition { .. },
+                        offset: 0
+                    }
+                ))
             ));
 
             {

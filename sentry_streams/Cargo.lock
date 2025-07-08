@@ -1305,6 +1305,7 @@ dependencies = [
  "log",
  "parking_lot",
  "pyo3",
+ "pyo3-build-config",
  "rdkafka",
  "reqwest",
  "sentry_arroyo",

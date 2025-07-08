@@ -3,7 +3,6 @@ name = "rust_streams"
 version = "0.1.0"
 edition = "2021"
 
-
 [dependencies]
 pyo3 = { version = "0.24.0"}
 serde = { version = "1.0", features = ["derive"] }
@@ -27,3 +26,7 @@ extension-module = ["pyo3/extension-module"]
 
 [dev-dependencies]
 parking_lot = "0.12.1"
+pyo3 = { version = "*", features = ["auto-initialize"] }
+
+[build-dependencies]
+pyo3-build-config = "*"
