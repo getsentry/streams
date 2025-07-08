@@ -17,7 +17,6 @@ from sentry_streams.adapters.arroyo.rust_step import (
     Committable,
     OutputRetriever,
 )
-from sentry_streams.pipeline.chain import ExtensibleChain
 from sentry_streams.pipeline.message import (
     Message,
     PyMessage,
@@ -224,8 +223,7 @@ def test_flush() -> None:
 
 
 def test_reduce() -> None:
-    pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain("root")
-    factory = ReduceDelegateFactory[Sequence[str]](Batch("batch", pipeline, [], 4))
+    factory = ReduceDelegateFactory[Sequence[str]](Batch("batch", 4))
     delegate = factory.build()
 
     timestamp = datetime.now().timestamp()

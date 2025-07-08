@@ -49,20 +49,20 @@ pipeline = streaming_source(
     name="myinput", stream_name="ingest-metrics"
 )  # ExtensibleChain[Message[bytes]]
 
-chain1 = pipeline.apply(
+chain1 = pipeline.apply_step(
     "parser",
     Parser(
         msg_type=IngestMetric,
     ),  # pass in the standard message parser function
 )  # ExtensibleChain[Message[IngestMetric]]
 
-chain2 = chain1.apply(
+chain2 = chain1.apply_step(
     "custom_batcher", Reducer(reduce_window, TransformerBatch)
 )  # ExtensibleChain[Message[MutableSequence[IngestMetric]]]
 
-chain3 = chain2.apply(
+chain3 = chain2.apply_step(
     "serializer",
     Serializer(),  # pass in the standard message serializer function
 )  # ExtensibleChain[bytes]
 
-chain4 = chain3.sink("kafkasink2", StreamSink(stream_name="transformed-events"))  # Chain
+chain4 = chain3.add_sink("kafkasink2", StreamSink(stream_name="transformed-events"))  # Chain

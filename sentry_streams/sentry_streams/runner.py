@@ -33,26 +33,25 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[StreamT, Stre
 
     step_streams = {}
 
-    for source in p_graph.sources:
-        logger.info(f"Apply source: {source.name}")
-        source_streams = translator.translate_step(source)
-        for source_name in source_streams:
-            step_streams[source_name] = source_streams[source_name]
+    logger.info(f"Apply source: {p_graph.root.name}")
+    source_streams = translator.translate_step(p_graph.root)
+    for source_name in source_streams:
+        step_streams[source_name] = source_streams[source_name]
 
-        while step_streams:
-            for input_name in list(step_streams):
-                output_steps = p_graph.outgoing_edges[input_name]
-                input_stream = step_streams.pop(input_name)
+    while step_streams:
+        for input_name in list(step_streams):
+            output_steps = p_graph.outgoing_edges[input_name]
+            input_stream = step_streams.pop(input_name)
 
-                if not output_steps:
-                    continue
+            if not output_steps:
+                continue
 
-                for output in output_steps:
-                    next_step: WithInput = cast(WithInput, p_graph.steps[output])
-                    # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
-                    next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
-                    for branch_name in next_step_stream:
-                        step_streams[branch_name] = next_step_stream[branch_name]
+            for output in output_steps:
+                next_step: WithInput = cast(WithInput, p_graph.steps[output])
+                # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
+                next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
+                for branch_name in next_step_stream:
+                    step_streams[branch_name] = next_step_stream[branch_name]
 
 
 def main() -> None:

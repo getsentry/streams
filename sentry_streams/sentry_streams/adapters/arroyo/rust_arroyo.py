@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 from typing import (
     Any,
+    Callable,
     Mapping,
     MutableMapping,
     Self,
+    Type,
     cast,
 )
 
@@ -34,6 +36,7 @@ from sentry_streams.pipeline.function_template import (
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
+    ComplexStep,
     Filter,
     FlatMap,
     GCSSink,
@@ -155,6 +158,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         if self.__chains.exists(stream):
             logger.info(f"Closing transformation chain: {stream} and adding to pipeline")
             self.__consumers[stream.source].add_step(finalize_chain(self.__chains, stream))
+
+    def complex_step_override(self) -> dict[Type[ComplexStep], Callable[[ComplexStep], Route]]:
+        return {}
 
     def source(self, step: Source) -> Route:
         """
@@ -304,7 +310,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding broadcast: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(
             RuntimeOperator.Broadcast(
-                route, downstream_routes=[branch.name for branch in step.routes]
+                route, downstream_routes=[branch.root.name for branch in step.routes]
             )
         )
         return build_branches(stream, step.routes)
@@ -322,7 +328,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         def routing_function(msg: Message[Any]) -> str:
             waypoint = step.routing_function(msg)
-            return step.routing_table[waypoint].name
+            branch = step.routing_table[waypoint]
+            return branch.root.name
 
         logger.info(f"Adding router: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(RuntimeOperator.Router(route, routing_function))

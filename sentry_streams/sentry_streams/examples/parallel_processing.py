@@ -13,13 +13,13 @@ pipeline = (
         name="myinput",
         stream_name="ingest-metrics",
     )
-    .apply(
+    .apply_step(
         "parser",
         Parser(
             msg_type=IngestMetric,
         ),
     )
-    .apply("transform", Map(function=transform_msg))
-    .apply("serializer", Serializer())
-    .sink("mysink", StreamSink(stream_name="transformed-events"))
+    .apply_step("transform", Map(function=transform_msg))
+    .apply_step("serializer", Serializer())
+    .add_sink("mysink", StreamSink(stream_name="transformed-events"))
 )

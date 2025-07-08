@@ -19,19 +19,19 @@ pipeline = (
         name="myinput",
         stream_name="events",
     )
-    .apply(
+    .apply_step(
         "myfilter",
         Filter(
             function=simple_filter,
         ),
     )
-    .apply(
+    .apply_step(
         "mymap",
         Map(
             function=simple_map,
         ),
     )
-    .apply(
+    .apply_step(
         "myreduce",
         Reducer(
             window=reduce_window,
@@ -39,7 +39,7 @@ pipeline = (
             group_by_key=GroupByWord(),
         ),
     )
-    .sink(
+    .add_sink(
         "kafkasink",
         StreamSink(
             stream_name="transformed-events",
