@@ -57,9 +57,10 @@ impl WatermarkEmitter {
             route: self.route.clone(),
             payload: RoutedValuePayload::make_watermark_payload(self.watermark_committable.clone()),
         };
-        let result = self
-            .next_step
-            .submit(Message::new_any_message(watermark_msg, BTreeMap::new()));
+        let result = self.next_step.submit(Message::new_any_message(
+            watermark_msg,
+            self.watermark_committable.clone(),
+        ));
         match result {
             Ok(..) => {
                 self.last_sent_timestamp = timestamp;

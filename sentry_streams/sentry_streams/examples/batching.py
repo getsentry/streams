@@ -1,3 +1,5 @@
+# echo '{"org_id":420,"project_id":420,"name":"s:sessions/user@none","tags":{"sdk":"raven-node/2.6.3","environment":"production","release":"sentry-test@1.0.0"},"timestamp":11111111111,"type":"s","retention_days":90,"value":[1617781333]}' | kcat -P -b 127.0.0.1:9092 -t ingest-metrics
+
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline import Batch, streaming_source

@@ -305,8 +305,15 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Build a broadcast operator for the platform the adapter supports.
         """
+        self.__close_chain(stream)
+        route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding broadcast: {step.name} to pipeline")
-        raise NotImplementedError
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.Broadcast(
+                route, downstream_routes=[branch.name for branch in step.routes]
+            )
+        )
+        return build_branches(stream, step.routes)
 
     def router(
         self,
