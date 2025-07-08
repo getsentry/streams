@@ -68,12 +68,7 @@ class Pipeline:
 
         self.root = source
         self.register(source)
-        self.__previous_step: Step = source
-        if isinstance(source, Source):
-            self.sources: list[Source] = [source]
-        else:
-            self.sources = []
-
+        self.__last_added_step: Step = source
         self._closed = False
 
     def register(self, step: Step) -> None:
@@ -84,10 +79,7 @@ class Pipeline:
         self.incoming_edges[_to.name].append(_from.name)
         self.outgoing_edges[_from.name].append(_to.name)
 
-    def register_source(self, step: Source) -> None:
-        self.sources.append(step)
-
-    def merge(self, other: Pipeline, merge_point: str) -> None:
+    def _merge(self, other: Pipeline, merge_point: str) -> None:
         """
         Merges another pipeline into this one after a provided step identified
         as `merge_point`
@@ -95,8 +87,8 @@ class Pipeline:
         The source of the other pipeline (which must be a Branch) is set to be the child
         of the merge_point step.
         """
-        assert (
-            not other.sources
+        assert not isinstance(
+            other.root, Source
         ), "Cannot merge a pipeline into another if it contains a stream source"
 
         other_pipeline_sources = {
@@ -117,45 +109,33 @@ class Pipeline:
         for n in other_pipeline_sources:
             self.incoming_edges[n].append(merge_point)
 
-    def add(self, other: Pipeline) -> None:
-        """
-        Adds all the steps of another pipeline into this one.
-        This does wire the pipeline being added to a specific step of
-        the existing pipeline.
-
-        It is meant to add multiple pipeline chains starting with a source
-        to the existing pipeline.
-        """
-        assert not self._closed, "Cannot add to a pipeline after it has been closed"
-        for step in other.steps.values():
-            assert (
-                step.name not in self.steps
-            ), f"Naming conflict between pipelines {step.name} exists in the current pipeline"
-            self.register(step)
-            if isinstance(step, Source):
-                self.register_source(step)
-
-        for dest, sources in other.incoming_edges.items():
-            self.incoming_edges[dest] = sources
-
-        for source, dests in other.outgoing_edges.items():
-            self.outgoing_edges[source] = dests
-
     def apply(self, step: Step) -> Pipeline:
         assert not self._closed, "Cannot add to a pipeline after it has been closed"
-        step.register(self, self.__previous_step)
-        self.__previous_step = step
+        step.register(self, self.__last_added_step)
+        self.__last_added_step = step
         return self
 
     def sink(self, step: Sink) -> Pipeline:
         assert not self._closed, "Cannot add to a pipeline after it has been closed"
-        step.register(self, self.__previous_step)
+        step.register(self, self.__last_added_step)
         self._closed = True
         return self
 
 
 def streaming_source(name: str, stream_name: str) -> Pipeline:
+    """
+    Used to create a new pipeline with a streaming source, where the stream_name is the
+    name of the Kafka topic to read from.
+    """
     return Pipeline(StreamSource(name=name, stream_name=stream_name))
+
+
+def branch(name: str) -> Pipeline:
+    """
+    Used to create a new pipeline with a branch as the root step. This pipeline can then be added as part of
+    a router or broadcast step.
+    """
+    return Pipeline(Branch(name=name))
 
 
 @dataclass
@@ -209,7 +189,6 @@ class StreamSource(Source):
 
     def register(self, ctx: Pipeline, previous: Step) -> None:
         super().register(ctx, previous)
-        ctx.register_source(self)
 
 
 @dataclass
@@ -346,7 +325,7 @@ class Router(WithInput, Generic[RoutingFuncReturnType]):
     def register(self, ctx: Pipeline, previous: Step) -> None:
         super().register(ctx, previous)
         for pipeline in self.routing_table.values():
-            ctx.merge(other=pipeline, merge_point=self.name)
+            ctx._merge(other=pipeline, merge_point=self.name)
 
 
 @dataclass
@@ -361,7 +340,7 @@ class Broadcast(WithInput):
     def register(self, ctx: Pipeline, previous: Step) -> None:
         super().register(ctx, previous)
         for chain in self.routes:
-            ctx.merge(other=chain, merge_point=self.name)
+            ctx._merge(other=chain, merge_point=self.name)
 
 
 @dataclass

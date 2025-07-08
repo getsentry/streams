@@ -6,10 +6,10 @@ from sentry_streams.examples.transform_metrics import transform_msg
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
     Filter,
-    GCSSink,
     Map,
     Parser,
     Serializer,
+    StreamSink,
     streaming_source,
 )
 
@@ -32,11 +32,5 @@ pipeline = streaming_source(name="myinput", stream_name="ingest-metrics")
     .apply(Filter("filter", function=filter_events))
     .apply(Map("transform", function=transform_msg))
     .apply(Serializer("serializer"))
-    .sink(
-        GCSSink(
-            "mysink",
-            bucket="arroyo-artifacts",
-            object_generator=generate_files,
-        )
-    )
+    .sink(StreamSink("mysink", stream_name="transformed-events"))
 )

@@ -310,7 +310,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding broadcast: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(
             RuntimeOperator.Broadcast(
-                route, downstream_routes=[branch.name for branch in step.routes]
+                route, downstream_routes=[branch.root.name for branch in step.routes]
             )
         )
         return build_branches(stream, step.routes)

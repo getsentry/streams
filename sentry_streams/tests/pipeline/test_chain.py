@@ -33,7 +33,7 @@ def test_sequence() -> None:
 
     assert set(pipeline.steps.keys()) == {"myinput", "transform1", "myoutput"}
     assert cast(StreamSource, pipeline.steps["myinput"]).stream_name == "events"
-    assert set(s.name for s in pipeline.sources) == {"myinput"}
+    assert pipeline.root.name == "myinput"
 
     assert pipeline.steps["transform1"].name == "transform1"
     assert pipeline.steps["myoutput"].name == "myoutput"

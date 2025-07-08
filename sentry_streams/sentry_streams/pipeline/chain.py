@@ -197,7 +197,7 @@ class ParquetSerializer(Applier[Message[MutableSequence[Any]], bytes]):
     schema_fields: Mapping[str, DataType]
     compression: Optional[ParquetCompression] = "snappy"
 
-    def build_step(self, name: str, ctx: Pipeline, previous: Step) -> Step:
+    def build_step(self, name: str) -> Step:
         assert self.compression is not None
         polars_schema = resolve_polars_schema(self.schema_fields)
 
@@ -206,8 +206,6 @@ class ParquetSerializer(Applier[Message[MutableSequence[Any]], bytes]):
         )
         return MapStep(
             name=name,
-            ctx=ctx,
-            inputs=[previous],
             function=serializer_fn,
         )
 
@@ -333,8 +331,6 @@ class ExtensibleChain(Chain, Generic[TIn]):
             routes=routes,
         )
         self.apply(step)
-        # for chain in routes:
-        #     self.merge(other=chain, merge_point=chain.name)
         return self
 
     def route(
@@ -384,16 +380,4 @@ def streaming_source(
     pipeline: ExtensibleChain[Message[bytes]] = ExtensibleChain(
         "root", source=StreamSource(name=name, stream_name=stream_name, header_filter=header_filter)
     )
-    return pipeline
-
-
-def multi_chain(chains: Sequence[Chain]) -> Pipeline:
-    """
-    Creates a pipeline that contains multiple chains, where every
-    chain is a portion of the pipeline that starts with a source
-    and ends with multiple sinks.
-    """
-    pipeline = Pipeline(Branch("root"))
-    for chain in chains:
-        pipeline.add(chain)
     return pipeline
