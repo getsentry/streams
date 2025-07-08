@@ -1,3 +1,34 @@
+## 0.0.25
+
+### Various fixes & improvements
+
+- feat(chain): add ParquetSerializer (#140) by @victoria-yining-huang
+- fix: replace freedthreaded_python with initialize_python everywhere (#174) by @bmckerry
+- feat(rust_arroyo): add Broadcast step (#164) by @bmckerry
+- Add kcat command to batching.py (#163) by @untitaker
+- fix(ci): Also add release tags (#168) by @untitaker
+- ref(rust): Use python for instance check when parsing error in PythonAdapter (#166) by @john-z-yang
+- release: 0.0.24 (25aadbfa) by @getsentry-bot
+- ref(rust): Re-enable tests (#167) by @john-z-yang
+- Fix the process to append steps to the pipeline (#165) by @fpacifici
+- feat(docs): add some Arroyo runtime docs (#161) by @bmckerry
+- fix(uv): Pin python versions (#158) by @untitaker
+- feat(watermark): add PyWatermarkMessage for passing watermark to python (#156) by @bmckerry
+- temp: ignore failing tests (#159) by @bmckerry
+- ref(rust): Parse and handle errors when interfacing with python code (#157) by @john-z-yang
+- ref: Handle overrides in GCSSink from config (#153) by @ayirr7
+- Chain primitives in Arroyo (#135) by @fpacifici
+- ref(rust): fixup clippy lint (#154) by @john-z-yang
+- fix(flatmap): Change the FlatMap signature to match usage (#151) by @evanh
+- fix(docs): Update the docs for first time users (#142) by @evanh
+- feat(logging): make traced_with_gil display callsite filename and lineno (#149) by @john-z-yang
+- fix(examples): Migrate billing example (#146) by @evanh
+- feat(chain): add BatchParser (#134) by @victoria-yining-huang
+- feat(watermarks): track last seen message committable (#137) by @bmckerry
+- temp: comment out failing tests (#150) by @bmckerry
+
+_Plus 95 more_
+
 ## 0.0.24
 
 ### Various fixes & improvements
