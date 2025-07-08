@@ -26,7 +26,7 @@ from sentry_streams.pipeline.pipeline import (
     Router,
     StreamSink,
     StreamSource,
-    segment,
+    branch,
     streaming_source,
 )
 from sentry_streams.pipeline.window import TumblingWindow
@@ -239,8 +239,8 @@ def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]
     pipeline = streaming_source(name="myinput", stream_name="events").broadcast(
         "mybroadcast",
         routes=[
-            segment("sbc").sink("kafkasink", stream_name="transformed-events"),
-            segment("clickhouse").sink("kafkasink2", stream_name="transformed-events-2"),
+            branch("sbc").sink("kafkasink", stream_name="transformed-events"),
+            branch("clickhouse").sink("kafkasink2", stream_name="transformed-events-2"),
         ],
     )
 

@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
+from functools import partial
 from typing import (
     Any,
     Callable,
@@ -23,6 +24,7 @@ from typing import (
 
 from sentry_streams.modules import get_module
 from sentry_streams.pipeline.batch import BatchBuilder
+from sentry_streams.pipeline.datatypes import DataType
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     AggregationBackend,
@@ -32,9 +34,12 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.msg_codecs import (
+    ParquetCompression,
     batch_msg_parser,
     msg_parser,
     msg_serializer,
+    resolve_polars_schema,
+    serialize_to_parquet,
 )
 from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
 
@@ -128,8 +133,8 @@ class Pipeline:
         """
         assert not self._closed, "Cannot add to a pipeline after it has been closed"
         step = Broadcast(name=name, routes=routes)
-        step.register(self, self.__previous_step)
-        self.__previous_step = step
+        step.register(self, self.__last_added_step)
+        self.__last_added_step = step
         self._closed = True
         return self
 
@@ -145,8 +150,8 @@ class Pipeline:
         """
         assert not self._closed, "Cannot add to a pipeline after it has been closed"
         step = Router(name=name, routing_function=routing_function, routing_table=routing_table)
-        step.register(self, self.__previous_step)
-        self.__previous_step = step
+        step.register(self, self.__last_added_step)
+        self.__last_added_step = step
         self._closed = True
         return self
 
@@ -541,4 +546,23 @@ class Reducer(ComplexStep, WithInput, Generic[MeasurementUnit, InputType, Output
             aggregate_func=self.aggregate_func,
             aggregate_backend=self.aggregate_backend,
             group_by_key=self.group_by_key,
+        )
+
+
+@dataclass
+class ParquetSerializer(ComplexStep, WithInput):
+    # TODO: because BatchParser outputs a MutableSequence, to satisfy type checking this must also be a MutableSequence
+    schema_fields: Mapping[str, DataType]
+    compression: Optional[ParquetCompression] = "snappy"
+
+    def convert(self) -> Step:
+        assert self.compression is not None
+        polars_schema = resolve_polars_schema(self.schema_fields)
+
+        serializer_fn = partial(
+            serialize_to_parquet, polars_schema=polars_schema, compression=self.compression
+        )
+        return Map(
+            name=self.name,
+            function=serializer_fn,
         )

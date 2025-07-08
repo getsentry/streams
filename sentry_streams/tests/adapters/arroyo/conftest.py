@@ -19,7 +19,7 @@ from sentry_streams.pipeline.pipeline import (
     Reducer,
     Serializer,
     StreamSink,
-    segment,
+    branch,
     streaming_source,
 )
 from sentry_streams.pipeline.window import SlidingWindow
@@ -138,12 +138,12 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
 @pytest.fixture
 def router_pipeline() -> Pipeline:
     branch_1 = (
-        segment("set_branch")
+        branch("set_branch")
         .apply(Serializer("serializer"))
         .sink(StreamSink("kafkasink1", stream_name="transformed-events"))
     )
     branch_2 = (
-        segment("not_set_branch")
+        branch("not_set_branch")
         .apply(Serializer("serializer2"))
         .sink(StreamSink("kafkasink2", stream_name="transformed-events-2"))
     )
@@ -170,13 +170,13 @@ def router_pipeline() -> Pipeline:
 @pytest.fixture
 def broadcast_pipeline() -> Pipeline:
     branch_1 = (
-        segment("even_branch")
+        branch("even_branch")
         .apply(Map("mymap1", basic_map))
         .apply(Serializer("serializer"))
         .sink(StreamSink("kafkasink1", stream_name="transformed-events"))
     )
     branch_2 = (
-        segment("odd_branch")
+        branch("odd_branch")
         .apply(Map("mymap2", basic_map))
         .apply(Serializer("serializer2"))
         .sink(StreamSink("kafkasink2", stream_name="transformed-events-2"))

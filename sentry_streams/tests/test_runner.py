@@ -6,7 +6,7 @@ import pytest
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import PipelineConfig, RuntimeTranslator
 from sentry_streams.dummy.dummy_adapter import DummyAdapter
-from sentry_streams.pipeline import Filter, Map, segment, streaming_source
+from sentry_streams.pipeline import Filter, Map, branch, streaming_source
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
 )
@@ -21,22 +21,22 @@ class RouterBranch(Enum):
 @pytest.fixture
 def create_pipeline() -> Pipeline:
     broadcast_branch_1 = (
-        segment("branch1")
+        branch("branch1")
         .apply(Map("map2", function=lambda x: x))
         .route(
             "router1",
             routing_function=lambda x: RouterBranch.BRANCH1.value,
             routing_table={
-                RouterBranch.BRANCH1.value: segment("map4_segment").apply(
+                RouterBranch.BRANCH1.value: branch("map4_segment").apply(
                     Map("map4", function=lambda x: x)
                 ),
-                RouterBranch.BRANCH2.value: segment("map5_segment").apply(
+                RouterBranch.BRANCH2.value: branch("map5_segment").apply(
                     Map("map5", function=lambda x: x)
                 ),
             },
         )
     )
-    broadcast_branch_2 = segment("branch2").apply(Map("map3", function=lambda x: x))
+    broadcast_branch_2 = branch("branch2").apply(Map("map3", function=lambda x: x))
 
     test_pipeline = (
         streaming_source("source1", stream_name="foo")

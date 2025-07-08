@@ -9,13 +9,13 @@ from sentry_streams.pipeline.pipeline import (
     Reducer,
     Serializer,
     StreamSink,
-    segment,
+    branch,
     streaming_source,
 )
 
 __all__ = [
     "streaming_source",
-    "segment",
+    "branch",
     "Map",
     "Filter",
     "FlatMap",

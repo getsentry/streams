@@ -14,8 +14,8 @@ from sentry_streams.pipeline.pipeline import (
     Step,
     StreamSink,
     StreamSource,
+    branch,
     make_edge_sets,
-    segment,
     streaming_source,
 )
 from sentry_streams.pipeline.window import TumblingWindow
@@ -51,10 +51,10 @@ def test_broadcast() -> None:
         .broadcast(
             "route_to_all",
             [
-                segment("route1")
+                branch("route1")
                 .apply(Map("transform2", lambda msg: msg))
                 .sink(StreamSink("myoutput1", stream_name="transformed-events-2")),
-                segment("route2")
+                branch("route2")
                 .apply(Map("transform3", lambda msg: msg))
                 .sink(StreamSink("myoutput2", stream_name="transformed-events-3")),
             ],
@@ -112,10 +112,10 @@ def test_router() -> None:
             "route_to_one",
             routing_function=routing_func,
             routing_table={
-                Routes.ROUTE1.value: segment("route1")
+                Routes.ROUTE1.value: branch("route1")
                 .apply(Map("transform2", lambda msg: msg))
                 .sink(StreamSink("myoutput1", stream_name="transformed-events-2")),
-                Routes.ROUTE2.value: segment("route2")
+                Routes.ROUTE2.value: branch("route2")
                 .apply(Map("transform3", lambda msg: msg))
                 .sink(StreamSink("myoutput2", stream_name="transformed-events-3")),
             },
