@@ -141,8 +141,8 @@ class Pipeline:
     def route(
         self,
         name: str,
-        routing_function: Callable[[Any], str],
-        routing_table: Mapping[str, Pipeline],
+        routing_function: Callable[..., RoutingFuncReturnType],
+        routing_table: Mapping[RoutingFuncReturnType, Pipeline],
     ) -> Pipeline:
         """
         Route a message to a specific branch based on a routing function. Adding a router step will close the pipeline, since
