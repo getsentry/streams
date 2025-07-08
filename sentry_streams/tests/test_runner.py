@@ -23,26 +23,28 @@ class RouterBranch(Enum):
 def create_pipeline() -> Pipeline:
     broadcast_branch_1 = (
         segment("branch1", IngestMetric)
-        .apply("map2", Map(function=lambda x: x))
+        .apply_step("map2", Map(function=lambda x: x))
         .route(
             "router1",
             routing_function=lambda x: RouterBranch.BRANCH1,
             routes={
-                RouterBranch.BRANCH1: segment("map4_segment", IngestMetric).apply(
+                RouterBranch.BRANCH1: segment("map4_segment", IngestMetric).apply_step(
                     "map4", Map(function=lambda x: x)
                 ),
-                RouterBranch.BRANCH2: segment("map5_segment", IngestMetric).apply(
+                RouterBranch.BRANCH2: segment("map5_segment", IngestMetric).apply_step(
                     "map5", Map(function=lambda x: x)
                 ),
             },
         )
     )
-    broadcast_branch_2 = segment("branch2", IngestMetric).apply("map3", Map(function=lambda x: x))
+    broadcast_branch_2 = segment("branch2", IngestMetric).apply_step(
+        "map3", Map(function=lambda x: x)
+    )
 
     test_pipeline = (
         streaming_source("source1", stream_name="foo")
-        .apply("map1", Map(function=lambda x: x))
-        .apply("filter1", Filter(function=lambda x: True))
+        .apply_step("map1", Map(function=lambda x: x))
+        .apply_step("filter1", Filter(function=lambda x: True))
         .broadcast(
             "broadcast_to_maps",
             routes=[
@@ -60,52 +62,22 @@ def test_iterate_edges(create_pipeline: Pipeline) -> None:
     runtime: DummyAdapter[Any, Any] = load_adapter("dummy", dummy_config, None)  # type: ignore
     translator: RuntimeTranslator[Any, Any] = RuntimeTranslator(runtime)
     iterate_edges(create_pipeline, translator)
-    assert runtime.input_streams == {
-        "source1": set(),
-        "map1": {"source1"},
-        "filter1": {"source1", "map1"},
-        "broadcast_to_maps": {"source1", "map1", "filter1"},
-        "branch1": {"source1", "map1", "filter1", "broadcast_to_maps"},
-        "map2": {"source1", "map1", "filter1", "broadcast_to_maps", "branch1"},
-        "router1": {"source1", "map1", "filter1", "broadcast_to_maps", "branch1", "map2"},
-        "branch2": {"source1", "map1", "filter1", "broadcast_to_maps"},
-        "map3": {"source1", "map1", "filter1", "broadcast_to_maps", "branch2"},
-        "map4_segment": {
-            "source1",
-            "map1",
-            "filter1",
-            "map2",
-            "broadcast_to_maps",
-            "branch1",
-            "router1",
-        },
-        "map5_segment": {
-            "source1",
-            "map1",
-            "filter1",
-            "map2",
-            "broadcast_to_maps",
-            "branch1",
-            "router1",
-        },
-        "map4": {
-            "source1",
-            "map1",
-            "filter1",
-            "map2",
-            "router1",
-            "broadcast_to_maps",
-            "branch1",
-            "map4_segment",
-        },
-        "map5": {
-            "source1",
-            "map1",
-            "filter1",
-            "map2",
-            "router1",
-            "branch1",
-            "broadcast_to_maps",
-            "map5_segment",
-        },
-    }
+    assert runtime.input_streams == [
+        "source1",
+        "map1",
+        "filter1",
+        "broadcast_to_maps",
+        "map2",
+        "map3",
+        "router1",
+        "map4",
+        "map5",
+    ]
+    assert runtime.branches == [
+        "branch1",
+        "branch2",
+        "branch1",
+        "branch2",
+        "map4_segment",
+        "map5_segment",
+    ]

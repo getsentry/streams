@@ -12,6 +12,23 @@ use std::collections::BTreeMap;
 use std::ffi::CStr;
 
 #[cfg(test)]
+pub fn import_py_dep(module: &str, attr: &str) {
+    use std::ffi::CString;
+
+    use crate::utils::traced_with_gil;
+
+    let stmt = format!("from {} import {}", module, attr);
+    traced_with_gil!(|py| {
+        py.run(
+            &CString::new(stmt).expect("Unable to convert import statement into Cstr"),
+            None,
+            None,
+        )
+        .expect("Unable to import");
+    });
+}
+
+#[cfg(test)]
 pub fn make_lambda(py: Python<'_>, py_code: &CStr) -> Py<PyAny> {
     py.eval(py_code, None, None)
         .unwrap()
@@ -117,4 +134,17 @@ pub fn make_committable(num_partitions: u64, starting_offset: u64) -> BTreeMap<P
         );
     }
     committable
+}
+
+pub fn initialize_python() {
+    let python_executable = std::env::var("STREAMS_TEST_PYTHONEXECUTABLE").unwrap();
+    let python_path = std::env::var("STREAMS_TEST_PYTHONPATH").unwrap();
+    let python_path: Vec<_> = python_path.split(':').map(String::from).collect();
+
+    Python::with_gil(|py| -> PyResult<()> {
+        PyModule::import(py, "sys")?.setattr("executable", python_executable)?;
+        PyModule::import(py, "sys")?.setattr("path", python_path)?;
+        Ok(())
+    })
+    .unwrap();
 }

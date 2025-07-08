@@ -172,9 +172,12 @@ class BroadcastStep(ArroyoStep):
     def build(
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
     ) -> ProcessingStrategy[Union[FilteredPayload, RoutedValue]]:
+        downstream_branches = []
+        for branch in self.pipeline_step.routes:
+            downstream_branches.append(branch.root.name)
         return Broadcaster(
             route=self.route,
-            downstream_branches=[branch.name for branch in self.pipeline_step.routes],
+            downstream_branches=downstream_branches,
             next_step=next,
         )
 
@@ -199,9 +202,9 @@ class RouterStep(ArroyoStep, Generic[RoutingFuncReturnType]):
         ) -> RoutedValue:
             routing_func = self.pipeline_step.routing_function
             routing_table = self.pipeline_step.routing_table
-            result_branch = routing_func(payload.payload)
-            result_branch_name = routing_table[result_branch].name
-            payload.route.waypoints.append(result_branch_name)
+            result_branch_name = routing_func(payload.payload)
+            result_branch = routing_table[result_branch_name]
+            payload.route.waypoints.append(result_branch.root.name)
 
             streams_msg = payload.payload
             msg = StreamsMessage(

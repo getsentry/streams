@@ -1,8 +1,13 @@
+# echo '{"org_id":420,"project_id":420,"name":"s:sessions/user@none","tags":{"sdk":"raven-node/2.6.3","environment":"production","release":"sentry-test@1.0.0"},"timestamp":11111111111,"type":"s","retention_days":90,"value":[1617781333]}' | kcat -P -b 127.0.0.1:9092 -t ingest-metrics
+
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
-from sentry_streams.pipeline import Batch, FlatMap, streaming_source
-from sentry_streams.pipeline.batch import unbatch
-from sentry_streams.pipeline.chain import Parser, Serializer, StreamSink
+from sentry_streams.pipeline import Batch, streaming_source
+from sentry_streams.pipeline.chain import (
+    BatchParser,
+    Serializer,
+    StreamSink,
+)
 
 pipeline = streaming_source(
     name="myinput",
@@ -10,15 +15,10 @@ pipeline = streaming_source(
 )
 
 # TODO: Figure out why the concrete type of InputType is not showing up in the type hint of chain1
-parsed = pipeline.apply("parser", Parser(msg_type=IngestMetric))
-
-batched = parsed.apply("mybatch", Batch(batch_size=5))  # User simply provides the batch size
-
-unbatched = batched.apply(
-    "myunbatch",
-    FlatMap(function=unbatch),
+parsed_batch = pipeline.apply_step("mybatch", Batch(batch_size=2)).apply_step(
+    "batch_parser", BatchParser(msg_type=IngestMetric)
 )
 
-sinked = unbatched.apply("serializer", Serializer()).sink(
-    "kafkasink2", StreamSink(stream_name="transformed-events")
-)  # flush the batches to the Sink
+parsed_batch.apply_step("serializer", Serializer()).add_sink(
+    "mysink", StreamSink(stream_name="transformed-events")
+)

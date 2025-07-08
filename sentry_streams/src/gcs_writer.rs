@@ -76,10 +76,9 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
     // Async task to write to GCS via HTTP
     fn get_task(&self, message: Message<RoutedValue>) -> RunTaskFunc<RoutedValue, anyhow::Error> {
         let client = self.client.clone();
-        let object = traced_with_gil("call_GCS_object_generator", |py| {
-            object_gen_fn(self.object_generator.clone_ref(py), py)
-        })
-        .unwrap();
+        let object =
+            traced_with_gil!(|py| { object_gen_fn(self.object_generator.clone_ref(py), py) })
+                .unwrap();
 
         let url = format!(
             "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
@@ -92,8 +91,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 
         let bytes = match message.payload().payload {
             RoutedValuePayload::PyStreamingMessage(ref py_message) => {
-                traced_with_gil("GCSWriter get_task", |py| pybytes_to_bytes(&py_message, py))
-                    .unwrap()
+                traced_with_gil!(|py| pybytes_to_bytes(py_message, py)).unwrap()
             }
             RoutedValuePayload::WatermarkMessage(..) => {
                 return Box::pin(async move { Ok(message) })
@@ -133,17 +131,17 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_operators::make_raw_routed_msg;
+    use crate::testutils::make_raw_routed_msg;
 
     use super::*;
 
     #[test]
     fn test_to_bytes() {
-        pyo3::prepare_freethreaded_python();
-        traced_with_gil("test_to_bytes", |py| {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
             let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(
-                pybytes_to_bytes(&arroyo_msg.payload().payload.unwrap_payload(), py).unwrap(),
+                pybytes_to_bytes(arroyo_msg.payload().payload.unwrap_payload(), py).unwrap(),
                 b"hello".to_vec()
             );
         });

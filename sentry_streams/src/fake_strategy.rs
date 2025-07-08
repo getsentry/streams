@@ -1,5 +1,5 @@
 use super::*;
-use crate::messages::{PyStreamingMessage, RoutedValuePayload, WatermarkMessage};
+use crate::messages::{PyStreamingMessage, RoutedValuePayload, Watermark, WatermarkMessage};
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
 
@@ -14,7 +14,7 @@ use std::time::Duration;
 
 pub struct FakeStrategy {
     pub submitted: Arc<Mutex<Vec<Py<PyAny>>>>,
-    pub submitted_watermarks: Arc<Mutex<Vec<WatermarkMessage>>>,
+    pub submitted_watermarks: Arc<Mutex<Vec<Watermark>>>,
     pub reject_message: bool,
     commit_request: Option<CommitRequest>,
 }
@@ -22,7 +22,7 @@ pub struct FakeStrategy {
 impl FakeStrategy {
     pub fn new(
         submitted: Arc<Mutex<Vec<Py<PyAny>>>>,
-        submitted_watermarks: Arc<Mutex<Vec<WatermarkMessage>>>,
+        submitted_watermarks: Arc<Mutex<Vec<Watermark>>>,
         reject_message: bool,
     ) -> Self {
         Self {
@@ -72,11 +72,14 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
 
             let msg_payload = message.into_payload().payload;
             match msg_payload {
-                RoutedValuePayload::WatermarkMessage(watermark) => {
-                    self.submitted_watermarks.lock().unwrap().push(watermark);
-                }
+                RoutedValuePayload::WatermarkMessage(msg) => match msg {
+                    WatermarkMessage::Watermark(watermark) => {
+                        self.submitted_watermarks.lock().unwrap().push(watermark)
+                    }
+                    WatermarkMessage::PyWatermark(..) => (),
+                },
                 RoutedValuePayload::PyStreamingMessage(py_payload) => {
-                    traced_with_gil("FakeStrategy submit", |py| {
+                    traced_with_gil!(|py| {
                         let msg = match py_payload {
                             PyStreamingMessage::PyAnyMessage { content } => {
                                 content.bind(py).getattr("payload").unwrap()
@@ -122,5 +125,18 @@ pub fn assert_messages_match(
             "Message at index {} differs {actual} - {expected}",
             i
         );
+    }
+}
+
+#[cfg(test)]
+pub fn assert_watermarks_match(expected_messages: Vec<Watermark>, actual_messages: &[Watermark]) {
+    assert_eq!(
+        expected_messages.len(),
+        actual_messages.len(),
+        "Watermark lengths differ"
+    );
+
+    for (actual, expected) in actual_messages.iter().zip(expected_messages.iter()) {
+        assert_eq!(actual, expected);
     }
 }
