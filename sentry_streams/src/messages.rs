@@ -102,6 +102,23 @@ pub enum WatermarkMessage {
     PyWatermark(PyWatermark),
 }
 
+impl Clone for WatermarkMessage {
+    fn clone(&self) -> Self {
+        match self {
+            WatermarkMessage::Watermark(watermark) => {
+                let watermark_clone = watermark.clone();
+                WatermarkMessage::Watermark(watermark_clone)
+            }
+            WatermarkMessage::PyWatermark(py_watermark) => {
+                traced_with_gil!(|py| {
+                    let committable = py_watermark.committable.clone_ref(py);
+                    WatermarkMessage::PyWatermark(PyWatermark { committable })
+                })
+            }
+        }
+    }
+}
+
 /// Watermark represents a watermark message in rust.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Watermark {
@@ -305,6 +322,23 @@ pub enum PyStreamingMessage {
     RawMessage { content: Py<RawMessage> },
 }
 
+impl Clone for PyStreamingMessage {
+    fn clone(&self) -> Self {
+        match self {
+            PyStreamingMessage::PyAnyMessage { ref content } => {
+                let py_any_clone = traced_with_gil!(|py| content.clone_ref(py));
+                PyStreamingMessage::PyAnyMessage {
+                    content: py_any_clone,
+                }
+            }
+            PyStreamingMessage::RawMessage { ref content } => {
+                let raw_clone = traced_with_gil!(|py| content.clone_ref(py));
+                PyStreamingMessage::RawMessage { content: raw_clone }
+            }
+        }
+    }
+}
+
 /// RoutedValuePayload is an enum type to describe the 2 possible payload values of a RoutedValue:
 /// - PyStreamingMessage: a message containing data that will be processed by the pipeline
 /// - WatermarkMessage: a message emitted by the Watermark step which is propagated down the pipeline
@@ -338,6 +372,19 @@ impl RoutedValuePayload {
         RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(Watermark::new(
             committable,
         )))
+    }
+}
+
+impl Clone for RoutedValuePayload {
+    fn clone(&self) -> Self {
+        match self {
+            RoutedValuePayload::WatermarkMessage(watermark) => {
+                RoutedValuePayload::WatermarkMessage(watermark.clone())
+            }
+            RoutedValuePayload::PyStreamingMessage(ref py_msg) => {
+                RoutedValuePayload::PyStreamingMessage(py_msg.clone())
+            }
+        }
     }
 }
 
@@ -579,7 +626,7 @@ mod tests {
 
     #[test]
     fn test_pywatermark_lifecycle() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             // Prepare test data
             let committable = PyDict::new(py);

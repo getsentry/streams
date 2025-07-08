@@ -96,12 +96,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"
     )]
     fn test_router_crashes_on_any_msg() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
@@ -125,12 +124,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Python route function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
     fn test_router_crashes_on_normal_exceptions() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         let mut router = create_simple_router(c_str!("lambda x: {}[0]"), Noop {});
 
@@ -149,12 +147,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     #[should_panic(
         expected = "Python route function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
     )]
     fn test_router_handles_invalid_msg_exception() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         let mut router = create_simple_router(c_str!("lambda x: {}[0]"), Noop {});
 

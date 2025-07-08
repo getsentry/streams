@@ -43,9 +43,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
-    #[ignore]
     fn test_apply_py_invalid_msg_err() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
 
@@ -63,9 +62,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_apply_py_throws_other_exception() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
 
         traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: {}[0]"));

@@ -1,3 +1,4 @@
+use crate::broadcaster::Broadcaster;
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
@@ -53,8 +54,14 @@ pub enum RuntimeOperator {
         bucket: String,
         object_generator: Py<PyAny>,
     },
-
-    /// Represent a router step in the pipeline that can send messages
+    /// Represents a Broadcast step in the pipeline that takes a single
+    /// message and submits a copy of that message to each downstream route.
+    #[pyo3(name = "Broadcast")]
+    Broadcast {
+        route: Route,
+        downstream_routes: Py<PyAny>,
+    },
+    /// Represents a router step in the pipeline that can send messages
     /// to one of the downstream routes.
     #[pyo3(name = "Router")]
     Router {
@@ -116,7 +123,6 @@ pub fn build(
                 func_ref,
             ))
         }
-
         RuntimeOperator::Router {
             route,
             routing_function,
@@ -130,6 +136,14 @@ pub fn build(
         } => {
             let factory = traced_with_gil!(|py| { delegate_factory.clone_ref(py) });
             Box::new(PythonAdapter::new(route.clone(), factory, next))
+        }
+        RuntimeOperator::Broadcast {
+            route,
+            downstream_routes,
+        } => {
+            let rust_branches =
+                traced_with_gil!(|py| { downstream_routes.extract::<Vec<String>>(py).unwrap() });
+            Box::new(Broadcaster::new(next, route.clone(), rust_branches))
         }
     }
 }

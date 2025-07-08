@@ -63,7 +63,7 @@ mod test {
 
     #[test]
     fn test_convert_committable_to_py_and_back() {
-        pyo3::prepare_freethreaded_python();
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             // Prepare a committable with two partitions
             let committable = make_committable(2, 0);
