@@ -16,6 +16,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "jsonschema>=4.23.0",
     "sentry-kafka-schemas>=1.2.0",
+    "polars",
 ]
 
 [dependency-groups]
