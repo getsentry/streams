@@ -314,7 +314,6 @@ class Map(TransformStep[Any]):
 
     def __post_init__(self) -> None:
         """Validate the function after initialization"""
-        super().__post_init__()
         if self.has_rust_function():
             self._validate_rust_function_type("map")
 
@@ -341,7 +340,6 @@ class Filter(TransformStep[bool]):
 
     def __post_init__(self) -> None:
         """Validate the function after initialization"""
-        super().__post_init__()
         if self.has_rust_function():
             self._validate_rust_function_type("filter")
 
