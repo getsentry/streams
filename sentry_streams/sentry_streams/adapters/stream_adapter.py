@@ -171,16 +171,16 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
     def translate_step(
         self, step: Step, stream: Optional[StreamT] = None
     ) -> Mapping[str, Union[StreamT, StreamSinkT]]:
-        assert hasattr(step, "step_type")
-        step_type = step.step_type
-        step_name = step.name
-
         if isinstance(step, ComplexStep):
             overrides = self.adapter.complex_step_override()
             if step.__class__ in overrides:
-                return {step_name: overrides[step.__class__](step)}
+                return {step.name: overrides[step.__class__](step)}
             else:
                 step = step.convert()
+
+        assert hasattr(step, "step_type")
+        step_type = step.step_type
+        step_name = step.name
 
         if step_type is StepType.SOURCE:
             assert isinstance(step, Source)
