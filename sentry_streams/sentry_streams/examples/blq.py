@@ -37,8 +37,8 @@ pipeline = (
         "blq_router",
         routing_function=should_send_to_blq,
         routing_table={
-            DownstreamBranch.RECENT.value: storage_branch,
-            DownstreamBranch.DELAYED.value: save_delayed_message,
+            DownstreamBranch.RECENT: storage_branch,
+            DownstreamBranch.DELAYED: save_delayed_message,
         },
     )
 )
