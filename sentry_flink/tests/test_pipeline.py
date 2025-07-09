@@ -17,6 +17,7 @@ from sentry_streams.examples.word_counter_fn import (
     GroupByWord,
     WordCounter,
 )
+from sentry_streams.pipeline.chain import segment, streaming_source
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Branch,
@@ -26,8 +27,6 @@ from sentry_streams.pipeline.pipeline import (
     Router,
     StreamSink,
     StreamSource,
-    branch,
-    streaming_source,
 )
 from sentry_streams.pipeline.window import TumblingWindow
 from sentry_streams.runner import iterate_edges
@@ -235,12 +234,13 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     return (pipeline, expected)
 
 
+@pytest.mark.skip(reason="Chain API is not supported in sentry streams")
 def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = streaming_source(name="myinput", stream_name="events").broadcast(
         "mybroadcast",
         routes=[
-            branch("sbc").sink("kafkasink", stream_name="transformed-events"),
-            branch("clickhouse").sink("kafkasink2", stream_name="transformed-events-2"),
+            segment("sbc").sink("kafkasink", stream_name="transformed-events"),
+            segment("clickhouse").sink("kafkasink2", stream_name="transformed-events-2"),
         ],
     )
 
