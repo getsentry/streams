@@ -289,18 +289,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
 
-        if step.has_rust_function():
-            self.__consumers[stream.source].add_step(
-                RuntimeOperator.Filter(route, step.resolved_function)
-            )
-        else:
-            # XXX(markus): I don't know what this lambda is for, but i had to
-            # disable it for the rust path since we need access to methods on
-            # the callable. This seems like a useless indirection though?
-            def filter_msg(msg: Message[Any]) -> bool:
-                return step.resolved_function(msg)
-
-            self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.Filter(route, step.resolved_function)
+        )
 
         return stream
 

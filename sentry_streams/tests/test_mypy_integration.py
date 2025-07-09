@@ -48,18 +48,17 @@ def test_mypy_detects_correct_pipeline(test_rust_extension) -> None:  # type: ig
 
     # Create a test file with correct types
     correct_code = """
-from sentry_streams.pipeline import Filter, Map, Parser, streaming_source
-from sentry_streams.pipeline.chain import StreamSink
+from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
 from rust_test_functions import TestFilterCorrect, TestMapCorrect, TestMapString, TestMessage
 
 def create_correct_pipeline():
     return (
         streaming_source("input", "test-stream")
-        .apply("parser", Parser(msg_type=TestMessage))              # bytes -> TestMessage
-        .apply("filter", Filter(function=TestFilterCorrect()))      # TestMessage -> TestMessage
-        .apply("transform", Map(function=TestMapCorrect()))         # TestMessage -> String
-        .apply("length", Map(function=TestMapString()))             # String -> u64
-        .sink("output", StreamSink("output-stream"))
+        .apply(Parser("parser", msg_type=TestMessage))              # bytes -> TestMessage
+        .apply(Filter("filter", function=TestFilterCorrect()))      # TestMessage -> TestMessage
+        .apply(Map("transform", function=TestMapCorrect()))         # TestMessage -> String
+        .apply(Map("length", function=TestMapString()))             # String -> u64
+        .sink(StreamSink("output", "output-stream"))
     )
 """
 
@@ -83,18 +82,17 @@ def test_mypy_detects_type_mismatch(test_rust_extension) -> None:  # type: ignor
     """Test that mypy detects type mismatches in pipeline definitions"""
 
     wrong_code = """
-from sentry_streams.pipeline import Filter, Map, Parser, streaming_source
-from sentry_streams.pipeline.chain import StreamSink
+from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
 from rust_test_functions import TestFilterCorrect, TestMapCorrect, TestMapWrongType, TestMessage
 
 # expect failure: TestMapWrongType expects Message[bool] but gets Message[TestMessage]
 def create_wrong_pipeline():
     return (
         streaming_source("input", "test-stream")
-        .apply("parser", Parser(msg_type=TestMessage))              # bytes -> TestMessage
-        .apply("filter", Filter(function=TestFilterCorrect()))      # TestMessage -> TestMessage
-        .apply("wrong", Map(function=TestMapWrongType()))           # Expects Message[bool], gets Message[TestMessage]!
-        .sink("output", StreamSink("output-stream"))
+        .apply(Parser("parser", msg_type=TestMessage))              # bytes -> TestMessage
+        .apply(Filter("filter", function=TestFilterCorrect()))      # TestMessage -> TestMessage
+        .apply(Map("wrong", function=TestMapWrongType()))           # Expects Message[bool], gets Message[TestMessage]!
+        .sink(StreamSink("output", "output-stream"))
     )
 """
 

@@ -27,12 +27,13 @@ except ImportError as e:
 
 # Same pipeline structure as simple_map_filter.py, but with Rust functions
 # that will be called directly without Python overhead
-pipeline = (
-    streaming_source(
-        name="myinput",
-        stream_name="ingest-metrics",
-    )
-    .apply(Parser("parser", msg_type=IngestMetric))
+pipeline = streaming_source(
+    name="myinput",
+    stream_name="ingest-metrics",
+)
+
+(
+    pipeline.apply(Parser("parser", msg_type=IngestMetric))
     # This filter will run in native Rust with zero Python overhead
     .apply(Filter("filter", function=RustFilterEvents()))
     # This transform will run in native Rust with zero Python overhead
