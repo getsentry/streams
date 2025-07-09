@@ -27,6 +27,7 @@ from sentry_streams.adapters.arroyo.steps import (
 )
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
+    ComplexStep,
     Filter,
     Map,
     Pipeline,
@@ -56,7 +57,7 @@ def test_single_route(
     consumer.add_step(
         MapStep(
             route=empty_route,
-            pipeline_step=cast(Map, pipeline.steps["decoder"]),
+            pipeline_step=cast(Map, cast(ComplexStep, pipeline.steps["decoder"]).convert()),
         )
     )
     consumer.add_step(
@@ -74,7 +75,7 @@ def test_single_route(
     consumer.add_step(
         MapStep(
             route=empty_route,
-            pipeline_step=cast(Map, pipeline.steps["serializer"]),
+            pipeline_step=cast(Map, cast(ComplexStep, pipeline.steps["serializer"]).convert()),
         )
     )
     consumer.add_step(
@@ -138,7 +139,9 @@ def test_broadcast(
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, broadcast_pipeline.steps["decoder"]),
+            pipeline_step=cast(
+                Map, cast(ComplexStep, broadcast_pipeline.steps["decoder"]).convert()
+            ),
         )
     )
     consumer.add_step(
@@ -162,13 +165,17 @@ def test_broadcast(
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=["even_branch"]),
-            pipeline_step=cast(Map, broadcast_pipeline.steps["serializer"]),
+            pipeline_step=cast(
+                Map, cast(ComplexStep, broadcast_pipeline.steps["serializer"]).convert()
+            ),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=["odd_branch"]),
-            pipeline_step=cast(Map, broadcast_pipeline.steps["serializer2"]),
+            pipeline_step=cast(
+                Map, cast(ComplexStep, broadcast_pipeline.steps["serializer2"]).convert()
+            ),
         )
     )
     consumer.add_step(
@@ -228,7 +235,7 @@ def test_multiple_routes(
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, router_pipeline.steps["decoder"]),
+            pipeline_step=cast(Map, cast(ComplexStep, router_pipeline.steps["decoder"]).convert()),
         )
     )
     consumer.add_step(
@@ -240,13 +247,17 @@ def test_multiple_routes(
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=["set_branch"]),
-            pipeline_step=cast(Map, router_pipeline.steps["serializer"]),
+            pipeline_step=cast(
+                Map, cast(ComplexStep, router_pipeline.steps["serializer"]).convert()
+            ),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=["not_set_branch"]),
-            pipeline_step=cast(Map, router_pipeline.steps["serializer2"]),
+            pipeline_step=cast(
+                Map, cast(ComplexStep, router_pipeline.steps["serializer2"]).convert()
+            ),
         )
     )
     consumer.add_step(
@@ -323,7 +334,7 @@ def test_standard_reduce(
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, reduce_pipeline.steps["decoder"]),
+            pipeline_step=cast(Map, cast(ComplexStep, reduce_pipeline.steps["decoder"]).convert()),
         )
     )
     consumer.add_step(
@@ -335,13 +346,18 @@ def test_standard_reduce(
     consumer.add_step(
         ReduceStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Reduce[timedelta, Any, Any], reduce_pipeline.steps["myreduce"]),
+            pipeline_step=cast(
+                Reduce[timedelta, Any, Any],
+                cast(ComplexStep, reduce_pipeline.steps["myreduce"]).convert(),
+            ),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, reduce_pipeline.steps["serializer"]),
+            pipeline_step=cast(
+                Map, cast(ComplexStep, reduce_pipeline.steps["serializer"]).convert()
+            ),
         )
     )
     consumer.add_step(
@@ -527,7 +543,7 @@ def test_reduce_with_gap(
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, reduce_pipeline.steps["decoder"]),
+            pipeline_step=cast(Map, cast(ComplexStep, reduce_pipeline.steps["decoder"]).convert()),
         )
     )
     consumer.add_step(
@@ -539,13 +555,18 @@ def test_reduce_with_gap(
     consumer.add_step(
         ReduceStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Reduce[timedelta, Any, Any], reduce_pipeline.steps["myreduce"]),
+            pipeline_step=cast(
+                Reduce[timedelta, Any, Any],
+                cast(ComplexStep, reduce_pipeline.steps["myreduce"]).convert(),
+            ),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, reduce_pipeline.steps["serializer"]),
+            pipeline_step=cast(
+                Map, cast(ComplexStep, reduce_pipeline.steps["serializer"]).convert()
+            ),
         )
     )
     consumer.add_step(

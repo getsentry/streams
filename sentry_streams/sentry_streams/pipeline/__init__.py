@@ -1,4 +1,4 @@
-from sentry_streams.pipeline.chain import (
+from sentry_streams.pipeline.pipeline import (
     Batch,
     BatchParser,
     Filter,
@@ -9,21 +9,21 @@ from sentry_streams.pipeline.chain import (
     Reducer,
     Serializer,
     StreamSink,
-    segment,
+    branch,
     streaming_source,
 )
 
 __all__ = [
-    "streaming_source",
-    "segment",
-    "Map",
-    "Filter",
-    "FlatMap",
-    "Reducer",
     "Batch",
     "BatchParser",
+    "Filter",
+    "FlatMap",
+    "Map",
     "ParquetSerializer",
     "Parser",
+    "Reducer",
     "Serializer",
     "StreamSink",
+    "branch",
+    "streaming_source",
 ]

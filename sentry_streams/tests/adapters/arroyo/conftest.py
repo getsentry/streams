@@ -9,23 +9,20 @@ from arroyo.types import Topic
 from arroyo.utils.clock import MockedClock
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
-from sentry_streams.pipeline.chain import (
+from sentry_streams.pipeline.function_template import Accumulator
+from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.pipeline import (
     Filter,
     Map,
     Parser,
+    Pipeline,
     Reducer,
     Serializer,
     StreamSink,
-    segment,
+    branch,
     streaming_source,
 )
-from sentry_streams.pipeline.function_template import Accumulator
-from sentry_streams.pipeline.message import Message
-from sentry_streams.pipeline.pipeline import Pipeline
 from sentry_streams.pipeline.window import SlidingWindow
-
-# def decode(msg: bytes) -> str:
-#     return msg.decode("utf-8")
 
 
 def basic_map(msg: Message[IngestMetric]) -> IngestMetric:
@@ -110,11 +107,11 @@ def transformer() -> Callable[[], TestTransformerBatch]:
 def pipeline() -> Pipeline:
     pipeline = (
         streaming_source("myinput", stream_name="ingest-metrics")
-        .apply_step("decoder", Parser(msg_type=IngestMetric))
-        .apply_step("myfilter", Filter(lambda msg: msg.payload["type"] == "s"))
-        .apply_step("mymap", Map(basic_map))
-        .apply_step("serializer", Serializer())
-        .add_sink("kafkasink", StreamSink(stream_name="transformed-events"))
+        .apply(Parser("decoder", msg_type=IngestMetric))
+        .apply(Filter("myfilter", lambda msg: msg.payload["type"] == "s"))
+        .apply(Map("mymap", basic_map))
+        .apply(Serializer("serializer"))
+        .sink(StreamSink("kafkasink", stream_name="transformed-events"))
     )
 
     return pipeline
@@ -128,11 +125,11 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
 
     pipeline = (
         streaming_source("myinput", stream_name="ingest-metrics")
-        .apply_step("decoder", Parser(msg_type=IngestMetric))
-        .apply_step("mymap", Map(basic_map))
-        .apply_step("myreduce", Reducer(reduce_window, transformer))
-        .apply_step("serializer", Serializer())
-        .add_sink("kafkasink", StreamSink(stream_name="transformed-events"))
+        .apply(Parser("decoder", msg_type=IngestMetric))
+        .apply(Map("mymap", basic_map))
+        .apply(Reducer("myreduce", reduce_window, transformer))
+        .apply(Serializer("serializer"))
+        .sink(StreamSink("kafkasink", stream_name="transformed-events"))
     )
 
     return pipeline
@@ -141,14 +138,14 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
 @pytest.fixture
 def router_pipeline() -> Pipeline:
     branch_1 = (
-        segment("set_branch", IngestMetric)
-        .apply_step("serializer", Serializer())
-        .add_sink("kafkasink1", StreamSink(stream_name="transformed-events"))
+        branch("set_branch")
+        .apply(Serializer("serializer"))
+        .sink(StreamSink("kafkasink1", stream_name="transformed-events"))
     )
     branch_2 = (
-        segment("not_set_branch", IngestMetric)
-        .apply_step("serializer2", Serializer())
-        .add_sink("kafkasink2", StreamSink(stream_name="transformed-events-2"))
+        branch("not_set_branch")
+        .apply(Serializer("serializer2"))
+        .sink(StreamSink("kafkasink2", stream_name="transformed-events-2"))
     )
 
     pipeline = (
@@ -156,11 +153,11 @@ def router_pipeline() -> Pipeline:
             name="ingest",
             stream_name="ingest-metrics",
         )
-        .apply_step("decoder", Parser(msg_type=IngestMetric))
+        .apply(Parser("decoder", msg_type=IngestMetric))
         .route(
             "router",
             routing_function=lambda msg: "set" if msg.payload["type"] == "s" else "not_set",
-            routes={
+            routing_table={
                 "set": branch_1,
                 "not_set": branch_2,
             },
@@ -173,16 +170,16 @@ def router_pipeline() -> Pipeline:
 @pytest.fixture
 def broadcast_pipeline() -> Pipeline:
     branch_1 = (
-        segment("even_branch", IngestMetric)
-        .apply_step("mymap1", Map(basic_map))
-        .apply_step("serializer", Serializer())
-        .add_sink("kafkasink1", StreamSink(stream_name="transformed-events"))
+        branch("even_branch")
+        .apply(Map("mymap1", basic_map))
+        .apply(Serializer("serializer"))
+        .sink(StreamSink("kafkasink1", stream_name="transformed-events"))
     )
     branch_2 = (
-        segment("odd_branch", IngestMetric)
-        .apply_step("mymap2", Map(basic_map))
-        .apply_step("serializer2", Serializer())
-        .add_sink("kafkasink2", StreamSink(stream_name="transformed-events-2"))
+        branch("odd_branch")
+        .apply(Map("mymap2", basic_map))
+        .apply(Serializer("serializer2"))
+        .sink(StreamSink("kafkasink2", stream_name="transformed-events-2"))
     )
 
     pipeline = (
@@ -190,7 +187,7 @@ def broadcast_pipeline() -> Pipeline:
             name="ingest",
             stream_name="ingest-metrics",
         )
-        .apply_step("decoder", Parser(msg_type=IngestMetric))
+        .apply(Parser("decoder", msg_type=IngestMetric))
         .broadcast(
             "broadcast",
             routes=[

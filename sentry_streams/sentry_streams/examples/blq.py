@@ -4,31 +4,26 @@ from sentry_streams.examples.blq_fn import (
     DownstreamBranch,
     should_send_to_blq,
 )
-from sentry_streams.pipeline import segment, streaming_source
-from sentry_streams.pipeline.chain import Parser, Serializer, StreamSink
+from sentry_streams.pipeline import branch, streaming_source
+from sentry_streams.pipeline.pipeline import Parser, Serializer, StreamSink
 
 storage_branch = (
-    segment(name="recent", msg_type=IngestMetric)
-    .apply_step("serializer1", Serializer())
+    branch("recent")
+    .apply(Serializer("serializer1"))
     .broadcast(
         "send_message_to_DBs",
         routes=[
-            segment("sbc", msg_type=IngestMetric).add_sink(
-                "kafkasink", StreamSink(stream_name="transformed-events")
-            ),
-            segment("clickhouse", msg_type=IngestMetric).add_sink(
-                "kafkasink2", StreamSink(stream_name="transformed-events-2")
-            ),
+            branch("sbc").sink(StreamSink("kafkasink", stream_name="transformed-events")),
+            branch("clickhouse").sink(StreamSink("kafkasink2", stream_name="transformed-events-2")),
         ],
     )
 )
 
 save_delayed_message = (
-    segment(name="delayed", msg_type=IngestMetric)
-    .apply_step("serializer2", Serializer())
-    .add_sink(
-        "kafkasink3",
-        StreamSink(stream_name="transformed-events-3"),
+    branch("delayed")
+    .apply(Serializer("serializer2"))
+    .sink(
+        StreamSink("kafkasink3", stream_name="transformed-events-3"),
     )
 )
 
@@ -37,11 +32,11 @@ pipeline = (
         name="ingest",
         stream_name="ingest-metrics",
     )
-    .apply_step("parser", Parser(msg_type=IngestMetric))
+    .apply(Parser("parser", msg_type=IngestMetric))
     .route(
         "blq_router",
         routing_function=should_send_to_blq,
-        routes={
+        routing_table={
             DownstreamBranch.RECENT: storage_branch,
             DownstreamBranch.DELAYED: save_delayed_message,
         },
