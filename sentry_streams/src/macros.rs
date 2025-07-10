@@ -1,18 +1,4 @@
 /// Base trait for all Rust callback functions that can be called from the streaming pipeline
-pub trait RustCallback: Send + Sync {
-    /// Get the raw function pointer for direct Rust calls
-    fn get_rust_function_pointer(&self) -> usize;
-
-    /// Get the input type name for type validation
-    fn input_type(&self) -> &'static str;
-
-    /// Get the output type name for type validation
-    fn output_type(&self) -> &'static str;
-
-    /// Get the callback type ("map", "filter", "reduce", etc.)
-    fn callback_type(&self) -> &'static str;
-}
-
 /// Macro to create a Rust map function that can be called from Python
 /// Usage: rust_map_function!(MyFunction, InputType, OutputType, |msg: Message<InputType>| -> Message<OutputType> { ... });
 #[macro_export]
@@ -53,24 +39,6 @@ macro_rules! rust_map_function {
             }
 
             pub fn callback_type(&self) -> &'static str {
-                "map"
-            }
-        }
-
-        impl $crate::macros::RustCallback for $name {
-            fn get_rust_function_pointer(&self) -> usize {
-                self.rust_fn_ptr
-            }
-
-            fn input_type(&self) -> &'static str {
-                std::any::type_name::<$input_type>()
-            }
-
-            fn output_type(&self) -> &'static str {
-                std::any::type_name::<$output_type>()
-            }
-
-            fn callback_type(&self) -> &'static str {
                 "map"
             }
         }
@@ -143,24 +111,6 @@ macro_rules! rust_filter_function {
             }
 
             pub fn callback_type(&self) -> &'static str {
-                "filter"
-            }
-        }
-
-        impl $crate::macros::RustCallback for $name {
-            fn get_rust_function_pointer(&self) -> usize {
-                self.rust_fn_ptr
-            }
-
-            fn input_type(&self) -> &'static str {
-                std::any::type_name::<$input_type>()
-            }
-
-            fn output_type(&self) -> &'static str {
-                "bool"
-            }
-
-            fn callback_type(&self) -> &'static str {
                 "filter"
             }
         }
