@@ -2,12 +2,11 @@ from enum import Enum
 from typing import Any
 
 import pytest
-from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import PipelineConfig, RuntimeTranslator
 from sentry_streams.dummy.dummy_adapter import DummyAdapter
-from sentry_streams.pipeline.chain import Filter, Map, segment, streaming_source
+from sentry_streams.pipeline import Filter, Map, branch, streaming_source
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
 )
@@ -22,29 +21,27 @@ class RouterBranch(Enum):
 @pytest.fixture
 def create_pipeline() -> Pipeline:
     broadcast_branch_1 = (
-        segment("branch1", IngestMetric)
-        .apply_step("map2", Map(function=lambda x: x))
+        branch("branch1")
+        .apply(Map("map2", function=lambda x: x))
         .route(
             "router1",
-            routing_function=lambda x: RouterBranch.BRANCH1,
-            routes={
-                RouterBranch.BRANCH1: segment("map4_segment", IngestMetric).apply_step(
-                    "map4", Map(function=lambda x: x)
+            routing_function=lambda x: RouterBranch.BRANCH1.value,
+            routing_table={
+                RouterBranch.BRANCH1.value: branch("map4_segment").apply(
+                    Map("map4", function=lambda x: x)
                 ),
-                RouterBranch.BRANCH2: segment("map5_segment", IngestMetric).apply_step(
-                    "map5", Map(function=lambda x: x)
+                RouterBranch.BRANCH2.value: branch("map5_segment").apply(
+                    Map("map5", function=lambda x: x)
                 ),
             },
         )
     )
-    broadcast_branch_2 = segment("branch2", IngestMetric).apply_step(
-        "map3", Map(function=lambda x: x)
-    )
+    broadcast_branch_2 = branch("branch2").apply(Map("map3", function=lambda x: x))
 
     test_pipeline = (
         streaming_source("source1", stream_name="foo")
-        .apply_step("map1", Map(function=lambda x: x))
-        .apply_step("filter1", Filter(function=lambda x: True))
+        .apply(Map("map1", function=lambda x: x))
+        .apply(Filter("filter1", function=lambda x: True))
         .broadcast(
             "broadcast_to_maps",
             routes=[

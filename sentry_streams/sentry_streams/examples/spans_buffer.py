@@ -18,23 +18,23 @@ reduce_window = TumblingWindow(window_size=timedelta(seconds=5))
 
 pipeline = (
     streaming_source(name="myinput", stream_name="events")
-    .apply_step("mymap", Parser(msg_type=SpanEvent))
-    .apply_step(
-        "myreduce",
+    .apply(Parser("mymap", msg_type=SpanEvent))
+    .apply(
         Reducer(
+            "myreduce",
             window=reduce_window,
             aggregate_func=SpansBuffer,
         ),
     )
-    .apply_step(
-        "map_str",
+    .apply(
         Map(
+            "map_str",
             function=build_segment_json,
         ),
     )
-    .add_sink(
-        "kafkasink",
+    .sink(
         StreamSink(
+            "kafkasink",
             stream_name="transformed-events",
         ),
     )

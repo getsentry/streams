@@ -21,8 +21,8 @@ pipeline = streaming_source(
 )
 
 # TODO: Figure out why the concrete type of InputType is not showing up in the type hint of chain1
-parsed_batch = pipeline.apply_step("mybatch", Batch(batch_size=2)).apply_step(
-    "batch_parser", BatchParser(msg_type=IngestMetric)
+parsed_batch = pipeline.apply(Batch("mybatch", batch_size=2)).apply(
+    BatchParser("batch_parser", msg_type=IngestMetric)
 )
 
 schema = {
@@ -41,7 +41,5 @@ schema = {
     "retention_days": Int64(),
     "value": List(Int64()),
 }
-serializer = ParquetSerializer(schema)
-parsed_batch.apply_step("serializer", serializer).add_sink(
-    "mysink", StreamSink(stream_name="transformed-events")
-)
+serializer = ParquetSerializer("serializer", schema)
+parsed_batch.apply(serializer).sink(StreamSink("mysink", stream_name="transformed-events"))

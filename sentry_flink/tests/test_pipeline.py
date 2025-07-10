@@ -234,6 +234,7 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     return (pipeline, expected)
 
 
+@pytest.mark.skip(reason="Chain API is not supported in sentry streams")
 def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     pipeline = streaming_source(name="myinput", stream_name="events").broadcast(
         "mybroadcast",
