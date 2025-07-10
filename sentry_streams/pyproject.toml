@@ -36,6 +36,9 @@ dev = [
     "types-jsonschema>=4.23.0",
     "py-spy",
 ]
+build = [
+    "maturin>=1.5.1",
+]
 
 [tool.maturin]
 module-name = "sentry_streams.rust_streams"
