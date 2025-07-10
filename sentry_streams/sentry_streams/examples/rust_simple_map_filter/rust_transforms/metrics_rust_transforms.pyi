@@ -1,0 +1,39 @@
+"""
+Type stubs for metrics_rust_transforms Rust extension
+
+This file provides type information for mypy and other static type checkers.
+"""
+
+from typing import Any
+
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
+
+from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.rust_function_protocol import (
+    RustFilterFunction,
+    RustMapFunction,
+)
+
+class RustFilterEvents(RustFilterFunction[IngestMetric]):
+    """Rust filter function that accepts IngestMetric and returns bool"""
+
+    def __init__(self) -> None: ...
+    def __call__(self, msg: Message[IngestMetric]) -> bool: ...
+
+    # Rust-specific methods for runtime detection
+    def get_rust_function_pointer(self) -> int: ...
+    def input_type(self) -> str: ...
+    def output_type(self) -> str: ...
+    def callback_type(self) -> str: ...
+
+class RustTransformMsg(RustMapFunction[IngestMetric, Any]):
+    """Rust map function that accepts IngestMetric and returns JSON Value"""
+
+    def __init__(self) -> None: ...
+    def __call__(self, msg: Message[IngestMetric]) -> Message[Any]: ...
+
+    # Rust-specific methods for runtime detection
+    def get_rust_function_pointer(self) -> int: ...
+    def input_type(self) -> str: ...
+    def output_type(self) -> str: ...
+    def callback_type(self) -> str: ...
