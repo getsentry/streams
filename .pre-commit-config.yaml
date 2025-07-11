@@ -32,20 +32,23 @@ repos:
       - id: flake8
         language_version: python3.11
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v1.14.1'
+    rev: "v1.14.1"
     hooks:
-    -   id: mypy
+      - id: mypy
         args: [--config-file, sentry_streams/mypy.ini, --strict]
-        additional_dependencies: [
-          pytest==7.1.2,
-          types-requests,
-          responses,
-          "sentry-arroyo>=2.18.2",
-          types-pyYAML,
-          types-jsonschema,
-          "sentry-kafka-schemas>=1.2.0",
-          "polars==1.30.0",
-        ]
+        additional_dependencies:
+          [
+            pytest==7.1.2,
+            types-requests,
+            responses,
+            click,
+            types-confluent-kafka,
+            "sentry-arroyo>=2.18.2",
+            types-pyYAML,
+            types-jsonschema,
+            "sentry-kafka-schemas>=1.2.0",
+            "polars==1.30.0",
+          ]
         files: ^sentry_streams/.+
   - repo: https://github.com/pycqa/isort
     rev: 6.0.0

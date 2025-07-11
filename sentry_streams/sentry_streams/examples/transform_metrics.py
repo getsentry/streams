@@ -13,3 +13,8 @@ def transform_msg(msg: Message[IngestMetric]) -> Mapping[str, Any]:
     num += 1
     print(f"Current PID: {os.getpid()} {num}")
     return {**msg.payload, "transformed": True}
+
+
+def filter_events(msg: Message[IngestMetric]) -> bool:
+    print(f"Filtering event: {msg.payload}")
+    return bool(msg.payload["type"] == "c")

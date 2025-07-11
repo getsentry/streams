@@ -104,6 +104,7 @@ Note that if these topics don't exist, they will need to be created. With docker
     -n Batch \
     --config sentry_streams/deployment_config/<YOUR CONFIG FILE>.yaml \
     --adapter rust-arroyo \
+    --segment-id 0 \
     <YOUR PIPELINE FILE>
 
 for the above code example, use `sentry_streams/sentry_streams/deployment_config/simple_map_filter.yaml` for the deployment config file (assuming you have two local Kafka topics for source and sink)
