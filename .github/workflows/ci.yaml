@@ -53,5 +53,9 @@ jobs:
         run: |
           devservices up
 
+      - name: Install local package
+        run: |
+          pip install -e .
+
       - name: Run integration tests
         run: make tests-integration
