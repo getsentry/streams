@@ -41,6 +41,10 @@ jobs:
         run: |
           make install-dev
 
+      - name: Install devservices
+        run: |
+          pip install devservices
+
       - name: Start services
         id: setup
         run: |
