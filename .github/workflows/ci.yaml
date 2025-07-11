@@ -11,19 +11,40 @@ jobs:
     name: "Run tests"
     runs-on: ubuntu-latest
     steps:
-        - uses: actions/checkout@v3
-        - uses: actions/setup-python@v5
-          with:
-            python-version-file: sentry_streams/.python-version
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: sentry_streams/.python-version
 
-        - name: Make environment
-          run: |
-            make install-dev
+      - name: Make environment
+        run: |
+          make install-dev
 
-        - name: Run streams test
-          run: make tests-streams
+      - name: Run streams test
+        run: make tests-streams
 
-        - name: Run flink test
-          run: make tests-flink
-          env:
-            FLINK_LIBS: ./flink_libs
+      - name: Run flink test
+        run: make tests-flink
+        env:
+          FLINK_LIBS: ./flink_libs
+
+  integration-tests:
+    name: "Run integration tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: sentry_streams/.python-version
+
+      - name: Make environment
+        run: |
+          make install-dev
+
+      - name: Start services
+        id: setup
+        run: |
+          devservices up
+
+      - name: Run integration tests
+        run: make tests-integration
