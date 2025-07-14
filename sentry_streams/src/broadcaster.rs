@@ -1,7 +1,7 @@
 use crate::committable::clone_committable;
 use crate::routes::{Route, RoutedValue};
 use sentry_arroyo::processing::strategies::{
-    CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
+    CommitRequest, MessageRejected, ProcessingStrategy, StrategyError, SubmitError,
 };
 use sentry_arroyo::types::{Message, Partition};
 use std::collections::{BTreeMap, HashMap};
@@ -67,8 +67,8 @@ impl Broadcaster {
         }
     }
 
-    /// Attempts to re-submit a pending message, if successful deletes it from the pending buffer.
-    fn retry_pending_message(
+    /// Attempts to submit a pending message, if successful deletes it from the pending buffer.
+    fn submit_pending_message(
         &mut self,
         message: Message<RoutedValue>,
         identifier: &MessageIdentifier,
@@ -85,47 +85,13 @@ impl Broadcaster {
             let msg = self.pending_messages.get(&identifier).unwrap();
             // we only need to take action here if the returned error is `InvalidMessage`
             if let Err(SubmitError::InvalidMessage(e)) =
-                self.retry_pending_message(msg.clone(), &identifier)
+                self.submit_pending_message(msg.clone(), &identifier)
             {
                 self.pending_messages.remove(&identifier);
                 return Err(e.into());
             }
         }
         Ok(())
-    }
-
-    /// Attempts to submit a message to the next step, if backpressure
-    /// is raised then adds the message to the pending buffer.
-    fn submit_to_next_step(
-        &mut self,
-        message: Message<RoutedValue>,
-        identifier: MessageIdentifier,
-    ) -> Result<(), SubmitError<RoutedValue>> {
-        let msg_clone = message.clone();
-        match self.next_step.submit(message) {
-            Ok(..) => Ok(()),
-            Err(e) => {
-                self.pending_messages.insert(identifier, msg_clone);
-                Err(e)
-            }
-        }
-    }
-
-    // If the message is in the pending buffer, attempts to submit it to the
-    /// next step
-    fn handle_submit(
-        &mut self,
-        message: Message<RoutedValue>,
-    ) -> Result<(), SubmitError<RoutedValue>> {
-        let identifier = MessageIdentifier {
-            route: message.payload().route.clone(),
-            committable: clone_committable(&message),
-        };
-        if self.pending_messages.contains_key(&identifier) {
-            self.retry_pending_message(message, &identifier)
-        } else {
-            self.submit_to_next_step(message, identifier)
-        }
     }
 }
 
@@ -135,13 +101,24 @@ impl ProcessingStrategy<RoutedValue> for Broadcaster {
         self.next_step.poll()
     }
 
+    /// Instead of submitting messages to the next step, `submit` puts
+    /// the routed message clones into an in-memory buffer that gets flushed on `poll` and `join`.
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
+        // To preserve ordering we block new messages even if they're not routed for this branch
+        if !self.pending_messages.is_empty() {
+            return Err(SubmitError::MessageRejected(MessageRejected { message }));
+        }
         if self.route != message.payload().route {
             return self.next_step.submit(message);
         }
+
         let unfolded_messages = generate_broadcast_messages(&self.downstream_branches, message);
         for msg in unfolded_messages {
-            self.handle_submit(msg)?;
+            let msg_key = MessageIdentifier {
+                route: msg.payload().route.clone(),
+                committable: clone_committable(&msg),
+            };
+            self.pending_messages.insert(msg_key, msg);
         }
         Ok(())
     }
@@ -159,8 +136,11 @@ impl ProcessingStrategy<RoutedValue> for Broadcaster {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake_strategy::FakeStrategy;
-    use crate::fake_strategy::{assert_messages_match, assert_watermarks_match};
+    use crate::fake_strategy::{
+        assert_messages_match, assert_routes_match, assert_watermarks_match, submitted_payloads,
+        submitted_watermark_payloads,
+    };
+    use crate::fake_strategy::{submitted_routes, FakeStrategy};
     use crate::messages::{RoutedValuePayload, Watermark, WatermarkMessage};
     use crate::routes::Route;
     use crate::testutils::{build_routed_value, make_committable};
@@ -187,10 +167,10 @@ mod tests {
             let mut step = Broadcaster::new(
                 Box::new(next_step),
                 Route {
-                    source: String::from("source"),
+                    source: "source".to_string(),
                     waypoints: vec![],
                 },
-                vec![String::from("branch1"), String::from("branch2")],
+                vec!["branch1".to_string(), "branch2".to_string()],
             );
 
             // Assert MessageRejected adds message to pending
@@ -210,7 +190,7 @@ mod tests {
             let watermark = Message::new_any_message(
                 RoutedValue {
                     route: Route {
-                        source: String::from("source"),
+                        source: "source".to_string(),
                         waypoints: vec![],
                     },
                     payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(
@@ -240,22 +220,52 @@ mod tests {
             let _ = step.submit(message.clone());
             assert_eq!(step.pending_messages.len(), 1);
             let actual_messages = submitted_messages_clone.lock().unwrap();
+            let actual_payloads = submitted_payloads(actual_messages.deref());
             assert_messages_match(
                 py,
                 vec![
                     "test_message".into_py_any(py).unwrap(),
                     "test_message".into_py_any(py).unwrap(),
                 ],
-                actual_messages.deref(),
+                &actual_payloads,
+            );
+            let actual_routes = submitted_routes(actual_messages.deref());
+            assert_routes_match(
+                vec![
+                    Route {
+                        source: "source".to_string(),
+                        waypoints: vec!["branch1".to_string()],
+                    },
+                    Route {
+                        source: "source".to_string(),
+                        waypoints: vec!["branch2".to_string()],
+                    },
+                ],
+                &actual_routes,
             );
 
             // Assert poll clears remaining pending messages
             let _ = step.poll();
             assert_eq!(step.pending_messages.len(), 0);
             let actual_watermarks = submitted_watermarks_clone.lock().unwrap();
+            let watermark_payloads = submitted_watermark_payloads(actual_watermarks.deref());
             assert_watermarks_match(
                 vec![Watermark::new(make_committable(2, 0))],
-                actual_watermarks.deref(),
+                &watermark_payloads,
+            );
+            let actual_routes = submitted_routes(actual_watermarks.deref());
+            assert_routes_match(
+                vec![
+                    Route {
+                        source: "source".to_string(),
+                        waypoints: vec!["branch1".to_string()],
+                    },
+                    Route {
+                        source: "source".to_string(),
+                        waypoints: vec!["branch2".to_string()],
+                    },
+                ],
+                &actual_routes,
             );
         })
     }

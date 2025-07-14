@@ -271,8 +271,8 @@ impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
+    use crate::fake_strategy::{assert_messages_match, submitted_payloads};
     use crate::operators::RuntimeOperator;
     use crate::routes::Route;
     use crate::testutils::make_lambda;
@@ -379,8 +379,9 @@ mod tests {
                 .unwrap();
             let expected_messages = vec![value];
             let actual_messages = submitted_messages_clone.lock().unwrap();
+            let actual_payloads = submitted_payloads(actual_messages.deref());
 
-            assert_messages_match(py, expected_messages, actual_messages.deref());
+            assert_messages_match(py, expected_messages, &actual_payloads);
         })
     }
 }

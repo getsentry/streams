@@ -156,7 +156,7 @@ impl PyWatermark {
 /// instantiates it, it has to convert it into a Py<PyAnyMessage> before handing
 /// it to Python code. This can be done with the `into_pyany` function.
 #[pyclass]
-#[derive(Debug)]
+#[derive(Debug, FromPyObject)]
 pub struct PyAnyMessage {
     #[pyo3(get)]
     pub payload: Py<PyAny>,
@@ -230,7 +230,7 @@ impl PyAnyMessage {
 /// TODO: With FFI there should be a way to share a byte array between Rust and Python
 ///       without copying.
 #[pyclass]
-#[derive(Debug)]
+#[derive(Debug, FromPyObject)]
 pub struct RawMessage {
     pub payload: Vec<u8>,
 
@@ -324,18 +324,54 @@ pub enum PyStreamingMessage {
 
 impl Clone for PyStreamingMessage {
     fn clone(&self) -> Self {
-        match self {
-            PyStreamingMessage::PyAnyMessage { ref content } => {
-                let py_any_clone = traced_with_gil!(|py| content.clone_ref(py));
-                PyStreamingMessage::PyAnyMessage {
-                    content: py_any_clone,
+        traced_with_gil!(|py| {
+            let copy_module = PyModule::import(py, "copy").unwrap();
+            match self {
+                PyStreamingMessage::PyAnyMessage { ref content } => {
+                    let content_clone = copy_module
+                        .call_method1("deepcopy", (content,))
+                        .unwrap()
+                        .into_py_any(py)
+                        .unwrap();
+                    let py_any_clone = content_clone.extract::<PyAnyMessage>(py).unwrap();
+                    let headers = py_any_clone.headers.clone();
+                    let py_any_message = PyAnyMessage::new(
+                        py_any_clone.payload,
+                        headers_to_sequence(py, &headers).unwrap(),
+                        py_any_clone.timestamp,
+                        py_any_clone.schema,
+                        py,
+                    )
+                    .unwrap();
+                    let py_content = into_pyany(py, py_any_message).unwrap();
+                    PyStreamingMessage::PyAnyMessage {
+                        content: py_content,
+                    }
+                }
+                PyStreamingMessage::RawMessage { ref content } => {
+                    let content_clone = copy_module
+                        .call_method1("deepcopy", (content,))
+                        .unwrap()
+                        .into_py_any(py)
+                        .unwrap();
+                    let py_raw_clone = content_clone.extract::<RawMessage>(py).unwrap();
+                    let headers = py_raw_clone.headers.clone();
+                    let py_payload = PyBytes::new(py, &py_raw_clone.payload);
+                    let py_raw_message = RawMessage::new(
+                        py_payload.unbind(),
+                        headers_to_sequence(py, &headers).unwrap(),
+                        py_raw_clone.timestamp,
+                        py_raw_clone.schema,
+                        py,
+                    )
+                    .unwrap();
+                    let py_content = into_pyraw(py, py_raw_message).unwrap();
+                    PyStreamingMessage::RawMessage {
+                        content: py_content,
+                    }
                 }
             }
-            PyStreamingMessage::RawMessage { ref content } => {
-                let raw_clone = traced_with_gil!(|py| content.clone_ref(py));
-                PyStreamingMessage::RawMessage { content: raw_clone }
-            }
-        }
+        })
     }
 }
 
