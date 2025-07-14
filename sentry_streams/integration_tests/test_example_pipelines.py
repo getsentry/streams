@@ -147,7 +147,9 @@ def run_example_test(test: PipelineRun) -> None:
     print(f"{test.name}: Running pipeline")
     process = run_pipeline_cmd(test)
 
+    # Give the pipeline a chance to start up
     time.sleep(30)
+
     print(f"{test.name}: Sending messages")
     send_messages_to_topic(test.source_topic, test.input_messages)
 
