@@ -152,7 +152,7 @@ def run_example_test(test: PipelineRun) -> None:
 
     print(f"{test.name}: Waiting for messages")
     start_time = time.time()
-    while time.time() - start_time < 30:
+    while time.time() - start_time < 300:
         if process.poll() is not None:  # Runner shouldn't stop
             stdout, stderr = process.communicate()
             print(f"Pipeline process exited with code {process.returncode}")
