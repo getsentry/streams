@@ -2,9 +2,7 @@ use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // Import the macros from rust_streams
-use rust_streams::ffi::Message;
-use rust_streams::rust_filter_function;
-use rust_streams::rust_map_function;
+use rust_streams::{rust_filter_function, rust_map_function, Message};
 
 /// Test data structure for type validation tests
 #[derive(Serialize, Deserialize, Debug, Clone)]

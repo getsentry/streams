@@ -278,12 +278,7 @@ class TransformFunction(ABC, Generic[TransformFuncReturnType]):
     def has_rust_function(self) -> bool:
         """Check if this function provides a Rust implementation"""
         func = self.resolved_function
-        return (
-            hasattr(func, "get_rust_function_pointer")
-            and hasattr(func, "input_type")
-            and hasattr(func, "output_type")
-            and hasattr(func, "callback_type")
-        )
+        return hasattr(func, "is_rust_function") and func.is_rust_function()
 
     def get_rust_callback_info(self) -> Mapping[str, Any]:
         """Get information about the Rust callback function"""
@@ -292,7 +287,6 @@ class TransformFunction(ABC, Generic[TransformFuncReturnType]):
 
         func = self.resolved_function
         return {
-            "function_ptr": func.get_rust_function_pointer(),  # type: ignore[attr-defined]
             "input_type": func.input_type(),  # type: ignore[attr-defined]
             "output_type": func.output_type(),  # type: ignore[attr-defined]
             "callback_type": func.callback_type(),  # type: ignore[attr-defined]

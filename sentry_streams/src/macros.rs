@@ -1,33 +1,37 @@
-/// Base trait for all Rust callback functions that can be called from the streaming pipeline
 /// Macro to create a Rust map function that can be called from Python
 /// Usage: rust_map_function!(MyFunction, InputType, OutputType, |msg: Message<InputType>| -> Message<OutputType> { ... });
 #[macro_export]
 macro_rules! rust_map_function {
     ($name:ident, $input_type:ty, $output_type:ty, $transform_fn:expr) => {
         #[pyo3::pyclass]
-        pub struct $name {
-            rust_fn_ptr: usize,
-        }
+        pub struct $name;
 
         #[pyo3::pymethods]
         impl $name {
             #[new]
             pub fn new() -> Self {
-                Self {
-                    rust_fn_ptr: Self::get_rust_fn_ptr(),
-                }
+                Self
             }
 
             #[pyo3(name = "__call__")]
-            pub fn call(&self, _msg: pyo3::Py<pyo3::PyAny>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
-                // Python fallback - not implemented for performance reasons
-                Err(pyo3::PyErr::new::<pyo3::exceptions::PyNotImplementedError, _>(
-                    "This function should be called directly from Rust for performance"
-                ))
-            }
+            pub fn call(
+                &self,
+                py: pyo3::Python<'_>,
+                py_msg: pyo3::Py<pyo3::PyAny>,
+            ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+                // Convert Python message to typed Rust message
+                let rust_msg = $crate::convert_py_message_to_rust::<$input_type>(py, &py_msg)?;
 
-            pub fn get_rust_function_pointer(&self) -> usize {
-                self.rust_fn_ptr
+                // Release GIL and call Rust function
+                let result_msg = py.allow_threads(|| {
+                    let transform_fn: fn(
+                        $crate::message::Message<$input_type>,
+                    ) -> $crate::message::Message<$output_type> = $transform_fn;
+                    transform_fn(rust_msg)
+                });
+
+                // Convert result back to Python message
+                $crate::convert_rust_message_to_py(py, result_msg)
             }
 
             pub fn input_type(&self) -> &'static str {
@@ -41,29 +45,9 @@ macro_rules! rust_map_function {
             pub fn callback_type(&self) -> &'static str {
                 "map"
             }
-        }
 
-        // The actual Rust implementation function (unique name per macro invocation)
-        paste::paste! {
-            extern "C" fn [<rust_map_impl_ $name:snake>](
-                input: *const $crate::ffi::Message<$input_type>,
-            ) -> *const $crate::ffi::Message<$output_type> {
-                let input_msg = unsafe {
-                    $crate::ffi::ptr_to_message(input)
-                };
-
-                let transform_fn: fn($crate::ffi::Message<$input_type>) -> $crate::ffi::Message<$output_type> = $transform_fn;
-                let output_msg = transform_fn(input_msg);
-
-                $crate::ffi::message_to_ptr(output_msg)
-            }
-        }
-
-        impl $name {
-            fn get_rust_fn_ptr() -> usize {
-                paste::paste! {
-                    [<rust_map_impl_ $name:snake>] as usize
-                }
+            pub fn is_rust_function(&self) -> bool {
+                true
             }
         }
     };
@@ -75,31 +59,31 @@ macro_rules! rust_map_function {
 macro_rules! rust_filter_function {
     ($name:ident, $input_type:ty, $filter_fn:expr) => {
         #[pyo3::pyclass]
-        pub struct $name {
-            rust_fn_ptr: usize,
-        }
+        pub struct $name;
 
         #[pyo3::pymethods]
         impl $name {
             #[new]
             pub fn new() -> Self {
-                Self {
-                    rust_fn_ptr: Self::get_rust_fn_ptr(),
-                }
+                Self
             }
 
             #[pyo3(name = "__call__")]
-            pub fn call(&self, _msg: pyo3::Py<pyo3::PyAny>) -> pyo3::PyResult<bool> {
-                // Python fallback - not implemented for performance reasons
-                Err(
-                    pyo3::PyErr::new::<pyo3::exceptions::PyNotImplementedError, _>(
-                        "This function should be called directly from Rust for performance",
-                    ),
-                )
-            }
+            pub fn call(
+                &self,
+                py: pyo3::Python<'_>,
+                py_msg: pyo3::Py<pyo3::PyAny>,
+            ) -> pyo3::PyResult<bool> {
+                // Convert Python message to typed Rust message
+                let rust_msg = $crate::convert_py_message_to_rust::<$input_type>(py, &py_msg)?;
 
-            pub fn get_rust_function_pointer(&self) -> usize {
-                self.rust_fn_ptr
+                // Release GIL and call Rust function
+                let result = py.allow_threads(|| {
+                    let filter_fn: fn($crate::message::Message<$input_type>) -> bool = $filter_fn;
+                    filter_fn(rust_msg)
+                });
+
+                Ok(result)
             }
 
             pub fn input_type(&self) -> &'static str {
@@ -113,41 +97,10 @@ macro_rules! rust_filter_function {
             pub fn callback_type(&self) -> &'static str {
                 "filter"
             }
-        }
 
-        // The actual Rust implementation function (unique name per macro invocation)
-        paste::paste! {
-            extern "C" fn [<rust_filter_impl_ $name:snake>](
-                input: *const $crate::ffi::Message<$input_type>,
-            ) -> bool {
-                let input_msg = unsafe {
-                    $crate::ffi::ptr_to_message(input)
-                };
-
-                let filter_fn: fn($crate::ffi::Message<$input_type>) -> bool = $filter_fn;
-                filter_fn(input_msg)
+            pub fn is_rust_function(&self) -> bool {
+                true
             }
         }
-
-        impl $name {
-            fn get_rust_fn_ptr() -> usize {
-                paste::paste! {
-                    [<rust_filter_impl_ $name:snake>] as usize
-                }
-            }
-        }
-    };
-}
-
-/// Generic macro for creating any type of Rust callback function
-/// Usage: rust_callback_function!(map, MyFunction, InputType, OutputType, |msg| { ... });
-#[macro_export]
-macro_rules! rust_callback_function {
-    (map, $name:ident, $input_type:ty, $output_type:ty, $transform_fn:expr) => {
-        $crate::rust_map_function!($name, $input_type, $output_type, $transform_fn);
-    };
-
-    (filter, $name:ident, $input_type:ty, $filter_fn:expr) => {
-        $crate::rust_filter_function!($name, $input_type, $filter_fn);
     };
 }

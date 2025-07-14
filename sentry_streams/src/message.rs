@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-use serde::{Deserialize, Serialize};
-
 /// Generic Message struct for use with Rust callbacks
 /// This matches the PyMessage structure but with a generic payload
 #[derive(Debug, Clone)]
@@ -37,23 +34,6 @@ impl<T> Message<T> {
             timestamp: self.timestamp,
             schema: self.schema,
         }
-    }
-}
-
-/// Convert a boxed message to an opaque pointer for FFI
-pub fn message_to_ptr<T>(msg: Message<T>) -> *const Message<T> {
-    Box::into_raw(Box::new(msg))
-}
-
-/// Convert an opaque pointer back to a boxed message for FFI
-pub unsafe fn ptr_to_message<T>(ptr: *const Message<T>) -> Message<T> {
-    *Box::from_raw(ptr as *mut Message<T>)
-}
-
-/// Free a message pointer (used for cleanup)
-pub unsafe fn free_message_ptr<T>(ptr: *const Message<T>) {
-    if !ptr.is_null() {
-        let _ = Box::from_raw(ptr as *mut Message<T>);
     }
 }
 
@@ -110,28 +90,5 @@ mod tests {
 
         assert_eq!(transformed.payload.id, 2);
         assert_eq!(transformed.payload.name, "transformed_input");
-    }
-
-    #[test]
-    fn test_ptr_roundtrip() {
-        let original = Message::new(
-            TestPayload {
-                id: 99,
-                name: "ptr_test".to_string(),
-            },
-            vec![("header".to_string(), b"value".to_vec())],
-            123.456,
-            Some("schema".to_string()),
-        );
-
-        // Convert to pointer and back
-        let ptr = message_to_ptr(original.clone());
-        let recovered = unsafe { ptr_to_message(ptr) };
-
-        assert_eq!(original.payload.id, recovered.payload.id);
-        assert_eq!(original.payload.name, recovered.payload.name);
-        assert_eq!(original.headers, recovered.headers);
-        assert_eq!(original.timestamp, recovered.timestamp);
-        assert_eq!(original.schema, recovered.schema);
     }
 }
