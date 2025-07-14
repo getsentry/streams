@@ -55,7 +55,7 @@ jobs:
 
       - name: Install local package
         run: |
-          pip install -e .
+          pip install -e sentry_streams/.
 
       - name: Run integration tests
         run: make tests-integration
