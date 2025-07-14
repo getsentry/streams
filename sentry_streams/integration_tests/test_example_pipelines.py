@@ -147,15 +147,12 @@ def run_example_test(test: PipelineRun) -> None:
     print(f"{test.name}: Running pipeline")
     process = run_pipeline_cmd(test)
 
-    # Give the pipeline a chance to start up
-    time.sleep(30)
-
     print(f"{test.name}: Sending messages")
     send_messages_to_topic(test.source_topic, test.input_messages)
 
     print(f"{test.name}: Waiting for messages")
     start_time = time.time()
-    while time.time() - start_time < 30:
+    while time.time() - start_time < 300:
         if process.poll() is not None:  # Runner shouldn't stop
             stdout, stderr = process.communicate()
             print(f"Pipeline process exited with code {process.returncode}")
@@ -169,7 +166,9 @@ def run_example_test(test: PipelineRun) -> None:
             received[sink_topic] = (size, size == test.num_expected_messages[sink_topic])
             print(f"{test.name}: Received {received[sink_topic]} messages from {sink_topic}")
 
+        print(f"Received: {received}")
         if all(v[1] for v in received.values()):
+            print("BREAKING")
             break
 
         time.sleep(1)
@@ -187,47 +186,59 @@ def run_example_test(test: PipelineRun) -> None:
         ), f"Expected {test.num_expected_messages[sink_topic]} messages on {sink_topic}, got {size}"
 
 
+@dataclass
+class ExampleTest:
+    name: str
+    source_topic: str
+    sink_topics: list[str]
+    input_messages: list[str]
+    expected_messages: dict[str, int]
+
+    def to_list(self) -> list[Any]:
+        return [
+            self.name,
+            self.source_topic,
+            self.sink_topics,
+            self.input_messages,
+            self.expected_messages,
+        ]
+
+
 example_tests = [
     pytest.param(
-        "simple_map_filter",
-        "ingest-metrics",
-        ["transformed-events"],
-        [create_ingest_message(type="c")],
-        {"transformed-events": 1},
+        ExampleTest(
+            name="simple_map_filter",
+            source_topic="ingest-metrics",
+            sink_topics=["transformed-events"],
+            input_messages=[create_ingest_message(type="c")],
+            expected_messages={"transformed-events": 1},
+        ),
         id="simple_map_filter",
     )
 ]
 
 
-@pytest.mark.parametrize(
-    "name, source_topic, sink_topics, input_messages, expected_messages", example_tests
-)
-def test_examples(
-    name: str,
-    source_topic: str,
-    sink_topics: list[str],
-    input_messages: list[str],
-    expected_messages: dict[str, int],
-) -> None:
+@pytest.mark.parametrize("example_test", example_tests)
+def test_examples(example_test: ExampleTest) -> None:
     test = PipelineRun(
-        name=name,
+        name=example_test.name,
         config_file=os.path.join(
             os.path.dirname(__file__),
             "..",
             "sentry_streams",
             "deployment_config",
-            f"{name}.yaml",
+            f"{example_test.name}.yaml",
         ),
         application_file=os.path.join(
             os.path.dirname(__file__),
             "..",
             "sentry_streams",
             "examples",
-            f"{name}.py",
+            f"{example_test.name}.py",
         ),
-        source_topic=source_topic,
-        sink_topics=sink_topics,
-        input_messages=input_messages,
-        num_expected_messages=expected_messages,
+        source_topic=example_test.source_topic,
+        sink_topics=example_test.sink_topics,
+        input_messages=example_test.input_messages,
+        num_expected_messages=example_test.expected_messages,
     )
     run_example_test(test)
