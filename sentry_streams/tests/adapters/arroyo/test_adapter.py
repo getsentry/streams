@@ -54,7 +54,7 @@ def test_kafka_sources() -> None:
 
 def test_adapter(
     broker: LocalBroker[KafkaPayload],
-    pipeline: Pipeline,
+    pipeline: Pipeline[bytes],
     metric: IngestMetric,
     transformed_metric: IngestMetric,
 ) -> None:

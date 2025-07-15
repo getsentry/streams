@@ -5,7 +5,7 @@ from sentry_streams.examples.blq_fn import (
     should_send_to_blq,
 )
 from sentry_streams.pipeline import branch, streaming_source
-from sentry_streams.pipeline.pipeline import Parser, Pipeline, Serializer, StreamSink
+from sentry_streams.pipeline.pipeline import Parser, Serializer, StreamSink
 
 storage_branch = (
     branch("recent")

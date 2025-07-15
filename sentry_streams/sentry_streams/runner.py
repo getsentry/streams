@@ -49,7 +49,7 @@ def iterate_edges(
                 continue
 
             for output in output_steps:
-                next_step: WithInput = cast(WithInput, p_graph.steps[output])
+                next_step: WithInput[Any] = cast(WithInput[Any], p_graph.steps[output])
                 # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                 next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
                 for branch_name in next_step_stream:
@@ -128,7 +128,7 @@ def main() -> None:
         except Exception:
             raise
 
-    pipeline: Pipeline = pipeline_globals["pipeline"]
+    pipeline: Pipeline[Any] = pipeline_globals["pipeline"]
 
     # If set, SEGMENT_ID must correspond to the 0-indexed position in the segments array in config
     segment_var = os.environ.get("SEGMENT_ID")

@@ -9,6 +9,7 @@ from typing import (
     Any,
     Callable,
     Generic,
+    Iterable,
     Mapping,
     MutableMapping,
     MutableSequence,
@@ -514,13 +515,33 @@ class Batch(
 
 
 @dataclass
-class FlatMap(FunctionTransform[TIn, TOut], Generic[TIn, TOut]):
+class FlatMap(Transform[TIn, TOut], Generic[TIn, TOut]):
     """
     A generic step for mapping and flattening (and therefore alerting the shape of) inputs to
     get outputs. Takes a single input to 0...N outputs.
+    The function should return an Iterable[TOut], but the step itself outputs TOut.
     """
 
+    function: Union[Callable[[Message[TIn]], Iterable[TOut]], str]
     step_type: StepType = StepType.FLAT_MAP
+
+    @property
+    def resolved_function(self) -> Callable[[Message[TIn]], Iterable[TOut]]:
+        """
+        Returns a callable of the flatmap function defined, or referenced in this class
+        """
+        if callable(self.function):
+            return self.function
+
+        fn_path = self.function
+        mod, cls, fn = fn_path.rsplit(".", 2)
+
+        module = get_module(mod)
+
+        imported_cls = getattr(module, cls)
+        imported_func = cast(Callable[[Message[TIn]], Iterable[TOut]], getattr(imported_cls, fn))
+        function_callable = imported_func
+        return function_callable
 
 
 ######################

@@ -104,7 +104,7 @@ def transformer() -> Callable[[], TestTransformerBatch]:
 
 
 @pytest.fixture
-def pipeline() -> Pipeline:
+def pipeline() -> Pipeline[bytes]:
     pipeline = (
         streaming_source("myinput", stream_name="ingest-metrics")
         .apply(Parser("decoder", msg_type=IngestMetric))
@@ -118,7 +118,7 @@ def pipeline() -> Pipeline:
 
 
 @pytest.fixture
-def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline:
+def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline[bytes]:
     reduce_window = SlidingWindow(
         window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2)
     )
@@ -136,7 +136,7 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
 
 
 @pytest.fixture
-def router_pipeline() -> Pipeline:
+def router_pipeline() -> Pipeline[bytes]:
     branch_1 = (
         branch("set_branch")
         .apply(Serializer("serializer"))
@@ -158,17 +158,17 @@ def router_pipeline() -> Pipeline:
             "router",
             routing_function=lambda msg: "set" if msg.payload["type"] == "s" else "not_set",
             routing_table={
-                "set": branch_1,
-                "not_set": branch_2,
+                "set": branch_1,  # type: ignore[dict-item]
+                "not_set": branch_2,  # type: ignore[dict-item]
             },
         )
     )
 
-    return pipeline
+    return pipeline  # type: ignore[return-value]
 
 
 @pytest.fixture
-def broadcast_pipeline() -> Pipeline:
+def broadcast_pipeline() -> Pipeline[bytes]:
     branch_1 = (
         branch("even_branch")
         .apply(Map("mymap1", basic_map))
@@ -191,10 +191,10 @@ def broadcast_pipeline() -> Pipeline:
         .broadcast(
             "broadcast",
             routes=[
-                branch_1,
-                branch_2,
+                branch_1,  # type: ignore[list-item]
+                branch_2,  # type: ignore[list-item]
             ],
         )
     )
 
-    return pipeline
+    return pipeline  # type: ignore[return-value]

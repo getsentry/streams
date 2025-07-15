@@ -1,7 +1,6 @@
 from sentry_streams.examples.broadcast_fn import BroadcastFunctions
 from sentry_streams.pipeline.pipeline import (
     Branch,
-    Broadcast,
     Map,
     Pipeline,
     StreamSink,

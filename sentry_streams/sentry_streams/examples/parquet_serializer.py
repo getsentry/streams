@@ -32,6 +32,13 @@ def extract_bytes_from_batch(
     return [item[0] for item in msg.payload]
 
 
+# Convert Sequence to MutableSequence for ParquetSerializer
+def sequence_to_mutable_sequence(
+    msg: Message[Sequence[IngestMetric]],
+) -> MutableSequence[IngestMetric]:
+    return list(msg.payload)
+
+
 # TODO: Figure out why the concrete type of InputType is not showing up in the type hint of chain1
 parsed_batch = (
     pipeline.apply(Batch("mybatch", batch_size=2))
@@ -55,5 +62,7 @@ schema = {
     "retention_days": Int64(),
     "value": List(Int64()),
 }
-serializer = ParquetSerializer("serializer", schema)
-parsed_batch.apply(serializer).sink(StreamSink("mysink", stream_name="transformed-events"))
+serializer = ParquetSerializer[IngestMetric]("serializer", schema)
+parsed_batch.apply(Map("to_mutable", function=sequence_to_mutable_sequence)).apply(serializer).sink(
+    StreamSink[bytes]("mysink", stream_name="transformed-events")
+)
