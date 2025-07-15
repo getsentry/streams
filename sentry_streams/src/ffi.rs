@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use pyo3::IntoPyObjectExt;
 
 pub const RUST_FUNCTION_VERSION: usize = 1;
 
@@ -24,17 +25,24 @@ impl<T> Message<T> {
             },
         )
     }
+
+    /// Map the payload to a new type while preserving metadata
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Message<U> {
+        Message {
+            payload: f(self.payload),
+            headers: self.headers,
+            timestamp: self.timestamp,
+            schema: self.schema,
+        }
+    }
 }
 
 /// Convert a Python payload into a given Rust type
 ///
 /// You can implement this trait easiest by calling `convert_via_json!(MyType)`, provided your type
 /// is JSON-serializable and deserializable on both sides.
-pub trait FromPythonPayload {
-    fn from_python_payload(
-        py: pyo3::Python<'_>,
-        value: pyo3::Py<pyo3::PyAny>,
-    ) -> pyo3::PyResult<Self>;
+pub trait FromPythonPayload: Sized {
+    fn from_python_payload(value: pyo3::Bound<'_, pyo3::PyAny>) -> pyo3::PyResult<Self>;
 }
 
 /// Convert a Rust type back into a Python payload
@@ -42,21 +50,20 @@ pub trait FromPythonPayload {
 /// You can implement this trait easiest by calling `convert_via_json!(MyType)`, provided your type
 /// is JSON-serializable and deserializable with serde.
 pub trait IntoPythonPayload {
-    fn into_python_payload(self, py: pyo3::Python<'_>) -> pyo3::Py<pyo3::PyAny>;
+    fn into_python_payload(self, py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>>;
 }
 
 /// Implement type conversion from/to Python by roundtripping with `serde_json` and `json.loads`.
 ///
 /// You need `serde_json` and `pyo3` in your crate's dependencies.
+#[macro_export]
 macro_rules! convert_via_json {
     ($ty:ty) => {
-        impl FromPythonPayload for $ty {
-            fn from_python_payload(
-                py: pyo3::Python<'_>,
-                value: ::pyo3::Py<pyo3::PyAny>,
-            ) -> ::pyo3::PyResult<Self> {
+        impl $crate::ffi::FromPythonPayload for $ty {
+            fn from_python_payload(value: pyo3::Bound<'_, pyo3::PyAny>) -> ::pyo3::PyResult<Self> {
                 use pyo3::prelude::*;
 
+                let py = value.py();
                 let payload_json = py
                     .import("json")?
                     .getattr("dumps")?
@@ -74,11 +81,14 @@ macro_rules! convert_via_json {
             }
         }
 
-        impl IntoPythonPayload for $ty {
-            fn into_python_payload(self, py: ::pyo3::Python<'_>) -> ::pyo3::Py<pyo3::PyAny> {
+        impl $crate::ffi::IntoPythonPayload for $ty {
+            fn into_python_payload(
+                self,
+                py: ::pyo3::Python<'_>,
+            ) -> ::pyo3::PyResult<::pyo3::Py<pyo3::PyAny>> {
                 use pyo3::prelude::*;
 
-                let payload_json = ::serde_json::to_string(&rust_msg.payload).map_err(|e| {
+                let payload_json = ::serde_json::to_string(&self).map_err(|e| {
                     ::pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                         "Failed to serialize JSON: {}",
                         e
@@ -89,20 +99,18 @@ macro_rules! convert_via_json {
                     .getattr("loads")?
                     .call1((payload_json,))?;
 
-                Ok(payload_obj)
+                Ok(payload_obj.unbind())
             }
         }
     };
 }
-
-pub use convert_via_json;
 
 /// Convert a Python streaming message to a typed Rust Message format
 /// This function handles the conversion for any type that implements serde::Deserialize
 pub fn convert_py_message_to_rust<T>(
     py: pyo3::Python,
     py_msg: &pyo3::Py<pyo3::PyAny>,
-) -> pyo3::PyResult<crate::message::Message<T>>
+) -> pyo3::PyResult<Message<T>>
 where
     T: FromPythonPayload,
 {
@@ -113,22 +121,22 @@ where
     let timestamp: f64 = py_msg.bind(py).getattr("timestamp")?.extract()?;
     let schema: Option<String> = py_msg.bind(py).getattr("schema")?.extract()?;
 
-    Ok(crate::message::Message::new(
-        payload_value,
-        headers_py,
+    Ok(Message {
+        payload: payload_value?,
+        headers: headers_py,
         timestamp,
         schema,
-    ))
+    })
 }
 
 pub fn convert_rust_message_to_py<T>(
     py: pyo3::Python,
-    rust_msg: crate::message::Message<T>,
+    rust_msg: Message<T>,
 ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>>
 where
     T: IntoPythonPayload,
 {
-    let payload_obj = rust_msg.payload.into_python_payload()?;
+    let payload_obj = rust_msg.payload.into_python_payload(py)?;
 
     // Create a new Python message with the transformed payload
     let py_msg_class = py
@@ -149,6 +157,7 @@ where
 
 /// Macro to create a Rust map function that can be called from Python
 /// Usage: rust_map_function!(MyFunction, InputType, OutputType, |msg: Message<InputType>| -> OutputType { ... });
+#[macro_export]
 macro_rules! rust_function {
     ($name:ident, $input_type:ty, $output_type:ty, $transform_fn:expr) => {
         #[pyo3::pyclass]
@@ -168,15 +177,20 @@ macro_rules! rust_function {
                 py_msg: pyo3::Py<pyo3::PyAny>,
             ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
                 // If this cast fails, the user is not providing the right types
-                let transform_fn: fn(
-                    $crate::ffi::Message<$input_type>,
-                ) -> $crate::ffi::Message<$output_type> = $transform_fn;
+                let transform_fn: fn($crate::ffi::Message<$input_type>) -> $output_type =
+                    $transform_fn;
 
                 // Convert Python message to typed Rust message
                 let rust_msg = $crate::ffi::convert_py_message_to_rust::<$input_type>(py, &py_msg)?;
 
                 // Release GIL and call Rust function
-                let result_msg = py.allow_threads(|| transform_fn(rust_msg));
+                let result_msg = py.allow_threads(|| {
+                    // clone metadata, but try very hard to avoid cloning the payload
+                    let (payload, metadata) = rust_msg.take();
+                    let metadata_clone = metadata.clone();
+                    let result_payload = transform_fn(metadata.map(|()| payload));
+                    metadata_clone.map(|()| result_payload)
+                });
 
                 // Convert result back to Python message
                 $crate::ffi::convert_rust_message_to_py(py, result_msg)
@@ -197,6 +211,9 @@ macro_rules! rust_function {
     };
 }
 
-pub use rust_function;
-
-use crate::python_operator;
+// Built-in implementations for common types
+impl IntoPythonPayload for bool {
+    fn into_python_payload(self, py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+        Ok(pyo3::types::PyBool::new(py, self).into_py_any(py)?)
+    }
+}

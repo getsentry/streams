@@ -231,21 +231,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
-        # Check if this is a Rust function that should be handled directly
-        if step.has_rust_function():
-            # Handle Rust functions directly without going through the chain system
-            self.__close_chain(stream)
-
-            route = RustRoute(stream.source, stream.waypoints)
-            logger.info(f"Adding Rust map: {step.name} to pipeline")
-
-            # For Rust functions, pass the function directly - the Rust runtime will handle it
-            self.__consumers[stream.source].add_step(
-                RuntimeOperator.Map(route, step.resolved_function)
-            )
-
-            return stream
-
         # Handle Python functions with the existing chain system
         step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
         parallelism_config = step_config.get("parallelism")

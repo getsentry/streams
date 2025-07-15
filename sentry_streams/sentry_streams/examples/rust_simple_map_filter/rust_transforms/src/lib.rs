@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 // Import the macros from rust_streams (the actual crate name)
 // In practice: use sentry_streams::{rust_map_function, rust_filter_function, Message}; (when published)
-use rust_streams::{convert_via_json, rust_filter_function, rust_map_function, Message};
+use rust_streams::{convert_via_json, rust_function, Message};
 
 /// IngestMetric structure matching the schema from simple_map_filter.py
 /// This would normally be imported from sentry_kafka_schemas in a real implementation
@@ -34,7 +34,8 @@ rust_function!(RustFilterEvents, IngestMetric, bool, |msg: Message<
     IngestMetric,
 >|
  -> bool {
-    msg.payload.metric_type == "c"
+    let (payload, _) = msg.take();
+    payload.metric_type == "c"
 });
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -55,17 +56,16 @@ rust_function!(
     RustTransformMsg,
     IngestMetric,
     TransformedIngestMetric,
-    |msg: Message<IngestMetric>| -> Message<TransformedIngestMetric> {
-        let transformed_payload = TransformedIngestMetric {
-            metric_type: msg.payload.metric_type,
-            name: msg.payload.name,
-            value: msg.payload.value,
-            tags: msg.payload.tags,
-            timestamp: msg.payload.timestamp,
+    |msg: Message<IngestMetric>| -> TransformedIngestMetric {
+        let (payload, _) = msg.take();
+        TransformedIngestMetric {
+            metric_type: payload.metric_type,
+            name: payload.name,
+            value: payload.value,
+            tags: payload.tags,
+            timestamp: payload.timestamp,
             transformed: true,
-        };
-
-        transformed_payload
+        }
     }
 );
 
