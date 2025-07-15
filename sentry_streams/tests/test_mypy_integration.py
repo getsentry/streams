@@ -136,11 +136,8 @@ def test_rust_functions_have_proper_types(test_rust_extension) -> None:  # type:
     assert callable(wrong_func)
 
     # Check protocol compliance
-    from sentry_streams.pipeline.rust_function_protocol import (
-        RustFilterFunction,
-        RustMapFunction,
-    )
+    from sentry_streams.pipeline.rust_function_protocol import RustFunction
 
-    assert isinstance(filter_func, RustFilterFunction)
-    assert isinstance(map_func, RustMapFunction)
-    assert isinstance(wrong_func, RustMapFunction)
+    assert isinstance(filter_func, RustFunction)
+    assert isinstance(map_func, RustFunction)
+    assert isinstance(wrong_func, RustFunction)

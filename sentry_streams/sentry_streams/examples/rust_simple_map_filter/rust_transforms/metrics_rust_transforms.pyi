@@ -12,15 +12,12 @@ from typing import Any
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline.message import Message
-from sentry_streams.pipeline.rust_function_protocol import (
-    RustFilterFunction,
-    RustMapFunction,
-)
+from sentry_streams.pipeline.rust_function_protocol import RustFunction
 
-class RustFilterEvents(RustFilterFunction[IngestMetric]):
+class RustFilterEvents(RustFunction[IngestMetric, bool]):
     def __init__(self) -> None: ...
     def __call__(self, msg: Message[IngestMetric]) -> bool: ...
 
-class RustTransformMsg(RustMapFunction[IngestMetric, Any]):
+class RustTransformMsg(RustFunction[IngestMetric, Any]):
     def __init__(self) -> None: ...
-    def __call__(self, msg: Message[IngestMetric]) -> Message[Any]: ...
+    def __call__(self, msg: Message[IngestMetric]) -> Any: ...

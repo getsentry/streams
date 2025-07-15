@@ -217,3 +217,33 @@ impl IntoPythonPayload for bool {
         Ok(pyo3::types::PyBool::new(py, self).into_py_any(py)?)
     }
 }
+
+impl FromPythonPayload for bool {
+    fn from_python_payload(value: pyo3::Bound<'_, pyo3::PyAny>) -> pyo3::PyResult<Self> {
+        value.extract::<bool>()
+    }
+}
+
+impl IntoPythonPayload for String {
+    fn into_python_payload(self, py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+        Ok(pyo3::types::PyString::new(py, &self).into_py_any(py)?)
+    }
+}
+
+impl FromPythonPayload for String {
+    fn from_python_payload(value: pyo3::Bound<'_, pyo3::PyAny>) -> pyo3::PyResult<Self> {
+        value.extract::<String>()
+    }
+}
+
+impl IntoPythonPayload for u64 {
+    fn into_python_payload(self, py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+        Ok(self.into_py_any(py)?)
+    }
+}
+
+impl FromPythonPayload for u64 {
+    fn from_python_payload(value: pyo3::Bound<'_, pyo3::PyAny>) -> pyo3::PyResult<Self> {
+        value.extract::<u64>()
+    }
+}

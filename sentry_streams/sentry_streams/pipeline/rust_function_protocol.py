@@ -2,7 +2,7 @@
 Protocol definitions for Rust functions to integrate with Python's type system
 """
 
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, runtime_checkable
 
 from sentry_streams.pipeline.message import Message
 
@@ -11,6 +11,7 @@ TOutput = TypeVar("TOutput", covariant=True)
 
 
 # External interface that we need users to use in their stubs for type-safety
+@runtime_checkable
 class RustFunction(Protocol[TInput, TOutput]):
     def __call__(self, msg: Message[TInput]) -> TOutput: ...
 
