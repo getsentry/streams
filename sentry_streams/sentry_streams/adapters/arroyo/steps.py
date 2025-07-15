@@ -192,7 +192,7 @@ class RouterStep(ArroyoStep, Generic[RoutingFuncReturnType]):
     a message's `Route` object based on the result of the routing function.
     """
 
-    pipeline_step: Router[RoutingFuncReturnType]
+    pipeline_step: Router[RoutingFuncReturnType, Any]
 
     def build(
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit

@@ -241,7 +241,7 @@ def test_multiple_routes(
     consumer.add_step(
         RouterStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Router[str], router_pipeline.steps["router"]),
+            pipeline_step=cast(Router[str, Any], router_pipeline.steps["router"]),
         )
     )
     consumer.add_step(

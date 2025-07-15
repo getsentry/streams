@@ -264,7 +264,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
     def router(
         self,
-        step: Router[RoutingFuncReturnType],
+        step: Router[RoutingFuncReturnType, Any],
         stream: Route,
     ) -> Mapping[str, Route]:
         """

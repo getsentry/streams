@@ -82,7 +82,7 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
             ret[segment_branch.root.name] = segment_branch
         return ret
 
-    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> Any:
+    def router(self, step: Router[RoutingFuncReturnType, Any], stream: Any) -> Any:
         self.track_input_streams(cast(WithInput, step))
         ret = {}
         for branch in step.routing_table.values():
