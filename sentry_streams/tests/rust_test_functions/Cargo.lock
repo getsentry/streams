@@ -1256,11 +1256,9 @@ name = "rust_streams"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64",
  "chrono",
  "ctrlc",
  "log",
- "paste",
  "pyo3",
  "pyo3-build-config 0.25.1",
  "rdkafka",

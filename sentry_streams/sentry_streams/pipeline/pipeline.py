@@ -41,6 +41,7 @@ from sentry_streams.pipeline.msg_codecs import (
     resolve_polars_schema,
     serialize_to_parquet,
 )
+from sentry_streams.pipeline.rust_function_protocol import InternalRustFunction
 from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
 
 
@@ -268,29 +269,14 @@ class StreamSink(Sink):
 RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
 TransformFuncReturnType = TypeVar("TransformFuncReturnType")
 
+RUST_FUNCTION_VERSION = 1
+
 
 class TransformFunction(ABC, Generic[TransformFuncReturnType]):
     @property
     @abstractmethod
     def resolved_function(self) -> Callable[..., TransformFuncReturnType]:
         raise NotImplementedError()
-
-    def has_rust_function(self) -> bool:
-        """Check if this function provides a Rust implementation"""
-        func = self.resolved_function
-        return hasattr(func, "is_rust_function") and func.is_rust_function()
-
-    def get_rust_callback_info(self) -> Mapping[str, Any]:
-        """Get information about the Rust callback function"""
-        if not self.has_rust_function():
-            raise ValueError("Function does not have Rust implementation")
-
-        func = self.resolved_function
-        return {
-            "input_type": func.input_type(),  # type: ignore[attr-defined]
-            "output_type": func.output_type(),  # type: ignore[attr-defined]
-            "callback_type": func.callback_type(),  # type: ignore[attr-defined]
-        }
 
 
 @dataclass
@@ -323,6 +309,27 @@ class TransformStep(WithInput, TransformFunction[TransformFuncReturnType]):
         function_callable = imported_func
         return function_callable
 
+    def _validate_rust_function(self):
+        func = self.resolved_function
+        if not hasattr(func, "rust_function_version"):
+            # not a rust function
+            return None
+
+        rust_function_version = func.rust_function_version()  # type: ignore[attr-defined]
+        if rust_function_version != 1:
+            raise TypeError(
+                r"Invalid rust function version: {rust_function_version} -- if you are defining your own rust functions, maybe the version is out of date?"
+            )
+
+        return func
+
+    def post_rust_function_validation(self, func: InternalRustFunction) -> None:
+        # Overridden in Filter step
+        pass
+
+    def __post_init__(self) -> None:
+        self._validate_rust_function()
+
 
 @dataclass
 class Map(TransformStep[Any]):
@@ -340,23 +347,6 @@ class Map(TransformStep[Any]):
     # TODO: Allow product to both enable and access
     # configuration (e.g. a DB that is used as part of Map)
 
-    def __post_init__(self) -> None:
-        """Validate the function after initialization"""
-        if self.has_rust_function():
-            self._validate_rust_function_type("map")
-
-    def _validate_rust_function_type(self, expected_callback_type: str) -> None:
-        """Validate that the Rust function has the correct type"""
-        try:
-            info = self.get_rust_callback_info()
-            if info["callback_type"] != expected_callback_type:
-                raise TypeError(
-                    f"Function {self.function} is a {info['callback_type']} function, "
-                    f"but expected {expected_callback_type}"
-                )
-        except Exception as e:
-            raise TypeError(f"Invalid Rust function {self.function}: {e}")
-
 
 @dataclass
 class Filter(TransformStep[bool]):
@@ -366,28 +356,12 @@ class Filter(TransformStep[bool]):
 
     step_type: StepType = StepType.FILTER
 
-    def __post_init__(self) -> None:
-        """Validate the function after initialization"""
-        if self.has_rust_function():
-            self._validate_rust_function_type("filter")
-
-    def _validate_rust_function_type(self, expected_callback_type: str) -> None:
-        """Validate that the Rust function has the correct type"""
-        try:
-            info = self.get_rust_callback_info()
-            if info["callback_type"] != expected_callback_type:
-                raise TypeError(
-                    f"Function {self.function} is a {info['callback_type']} function, "
-                    f"but expected {expected_callback_type}"
-                )
-            # Additional validation for filter: output type should be bool
-            if expected_callback_type == "filter" and info["output_type"] != "bool":
-                raise TypeError(
-                    f"Filter function {self.function} should return bool, "
-                    f"but returns {info['output_type']}"
-                )
-        except Exception as e:
-            raise TypeError(f"Invalid Rust function {self.function}: {e}")
+    def post_rust_function_validation(self, func: InternalRustFunction) -> None:
+        output_type = func.output_type()
+        if output_type != "bool":
+            raise TypeError(
+                f"Filter function {func} should return bool, " f"but returns {output_type}"
+            )
 
 
 @dataclass

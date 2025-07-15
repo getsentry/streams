@@ -3,10 +3,13 @@ use serde::{Deserialize, Serialize};
 
 // Import the macros from rust_streams (the actual crate name)
 // In practice: use sentry_streams::{rust_map_function, rust_filter_function, Message}; (when published)
-use rust_streams::{rust_filter_function, rust_map_function, Message};
+use rust_streams::{convert_via_json, rust_filter_function, rust_map_function, Message};
 
 /// IngestMetric structure matching the schema from simple_map_filter.py
 /// This would normally be imported from sentry_kafka_schemas in a real implementation
+///
+/// Types are converted from/to Rust using JSON serialization. The input type must be
+/// JSON-serializable and be able to deserialize into this type.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IngestMetric {
     #[serde(rename = "type")]
@@ -17,16 +20,23 @@ pub struct IngestMetric {
     pub timestamp: u64,
 }
 
+// Implement the FromPythonPayload and IntoPythonPayload traits. This decides how IngestMetric is
+// going to be converted from the previous step's Python value.
+//
+// Currently, all values passed between steps are still Python objects, even between two Rust
+// steps.
+//
+// This macro implements these traits by roundtripping values via JSON.
+convert_via_json!(IngestMetric);
+
 // Rust equivalent of filter_events() from simple_map_filter.py
-rust_filter_function!(RustFilterEvents, IngestMetric, |msg: Message<
+rust_function!(RustFilterEvents, IngestMetric, bool, |msg: Message<
     IngestMetric,
 >|
  -> bool {
-    // Direct access to strongly typed payload - no JSON conversion needed!
     msg.payload.metric_type == "c"
 });
 
-// Enhanced IngestMetric with transform flag for output
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TransformedIngestMetric {
     #[serde(rename = "type")]
@@ -38,13 +48,14 @@ pub struct TransformedIngestMetric {
     pub transformed: bool,
 }
 
+convert_via_json!(TransformedIngestMetric);
+
 // Rust equivalent of transform_msg() from simple_map_filter.py
-rust_map_function!(
+rust_function!(
     RustTransformMsg,
     IngestMetric,
     TransformedIngestMetric,
     |msg: Message<IngestMetric>| -> Message<TransformedIngestMetric> {
-        // Direct access to strongly typed payload - no JSON conversion needed!
         let transformed_payload = TransformedIngestMetric {
             metric_type: msg.payload.metric_type,
             name: msg.payload.name,
@@ -54,7 +65,7 @@ rust_map_function!(
             transformed: true,
         };
 
-        Message::new(transformed_payload, msg.headers, msg.timestamp, msg.schema)
+        transformed_payload
     }
 );
 

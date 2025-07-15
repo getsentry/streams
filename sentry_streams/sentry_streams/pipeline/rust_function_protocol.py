@@ -2,27 +2,21 @@
 Protocol definitions for Rust functions to integrate with Python's type system
 """
 
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import Protocol, TypeVar
 
 from sentry_streams.pipeline.message import Message
 
 TInput = TypeVar("TInput")
-TOutput = TypeVar("TOutput")
+TOutput = TypeVar("TOutput", covariant=True)
 
 
-@runtime_checkable
-class RustFilterFunction(Protocol[TInput]):
-    """Protocol for Rust filter functions"""
-
-    def __call__(self, msg: Message[TInput]) -> bool:
-        """Filter function that returns True to keep the message"""
-        ...
+# External interface that we need users to use in their stubs for type-safety
+class RustFunction(Protocol[TInput, TOutput]):
+    def __call__(self, msg: Message[TInput]) -> TOutput: ...
 
 
-@runtime_checkable
-class RustMapFunction(Protocol[TInput, TOutput]):
-    """Protocol for Rust map functions"""
-
-    def __call__(self, msg: Message[TInput]) -> Message[TOutput]:
-        """Map function that transforms the message"""
-        ...
+# Methods that we use internally, but don't want the user to see (or have to write out in their stubfiles)
+class InternalRustFunction(RustFunction, Protocol):
+    def input_type(self) -> str: ...
+    def output_type(self) -> str: ...
+    def rust_function_version(self) -> int: ...
