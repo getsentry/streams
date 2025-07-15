@@ -90,7 +90,7 @@ class MapStep(ArroyoStep):
     one.
     """
 
-    pipeline_step: Map
+    pipeline_step: Map[Any, Any]
 
     def build(
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
@@ -126,7 +126,7 @@ class FilterStep(ArroyoStep):
     based on the result of a filter function.
     """
 
-    pipeline_step: Filter
+    pipeline_step: Filter[Any]
 
     def build(
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
@@ -167,7 +167,7 @@ class BroadcastStep(ArroyoStep):
     each copy having a Route matching one of the downstream branches.
     """
 
-    pipeline_step: Broadcast
+    pipeline_step: Broadcast[Any]
 
     def build(
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit

@@ -22,22 +22,22 @@ from sentry_streams.pipeline.window import MeasurementUnit
 
 
 @pytest.fixture
-def pipeline() -> Pipeline:
+def pipeline() -> Pipeline:  # type: ignore
     pipeline = (
         streaming_source(name="source", stream_name="events")
         .apply(
             Filter(
                 name="filter",
-                function=simple_filter,
+                function=simple_filter,  # type: ignore
             )
         )
-        .apply(Filter(name="filter2", function=simple_filter))
-        .apply(Map(name="map", function=simple_map))
-        .apply(Map(name="map2", function=simple_map))
+        .apply(Filter(name="filter2", function=simple_filter))  # type: ignore
+        .apply(Map(name="map", function=simple_map))  # type: ignore
+        .apply(Map(name="map2", function=simple_map))  # type: ignore
         .apply(
             Router(
                 "router",
-                routing_function=simple_router,
+                routing_function=simple_router,  # type: ignore
                 routing_table={
                     "branch1": Pipeline(Branch("branch1")).sink(
                         StreamSink(name="kafkasink1", stream_name="transformed-events")

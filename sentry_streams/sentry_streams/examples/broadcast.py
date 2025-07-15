@@ -20,8 +20,8 @@ pipeline = Pipeline(
     )
 )
 
-hello_branch = (
-    Pipeline(Branch("hello_branch"))
+hello_branch: Pipeline[str] = (
+    Pipeline(Branch[str]("hello_branch"))
     .apply(
         Map(
             name="hello_map",
@@ -36,8 +36,8 @@ hello_branch = (
     )
 )
 
-goodbye_branch = (
-    Pipeline(Branch("goodbye_branch"))
+goodbye_branch: Pipeline[str] = (
+    Pipeline(Branch[str]("goodbye_branch"))
     .apply(
         Map(
             name="goodbye_map",
@@ -52,9 +52,7 @@ goodbye_branch = (
     )
 )
 
-pipeline = pipeline.apply(
-    Broadcast(
-        "broadcast",
-        routes=[hello_branch, goodbye_branch],
-    )
+pipeline = pipeline.broadcast(
+    "broadcast",
+    routes=[hello_branch, goodbye_branch],
 )

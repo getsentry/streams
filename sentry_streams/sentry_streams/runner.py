@@ -23,7 +23,9 @@ from sentry_streams.pipeline.pipeline import (
 logger = logging.getLogger(__name__)
 
 
-def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[StreamT, StreamSinkT]) -> None:
+def iterate_edges(
+    p_graph: Pipeline[Any], translator: RuntimeTranslator[StreamT, StreamSinkT]
+) -> None:
     """
     Traverses over edges in a PipelineGraph, building the
     stream incrementally by applying steps and transformations

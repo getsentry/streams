@@ -75,7 +75,7 @@ class StreamSources:
         self.__source_topics: MutableMapping[str, Topic] = {}
         self.__sources: MutableMapping[str, KafkaConsumer] = {**sources_override}
 
-    def add_source(self, step: Source) -> None:
+    def add_source(self, step: Source[Any]) -> None:
         """
         Builds an Arroyo Kafka consumer as a stream source.
         By default it uses the configuration provided to the adapter.
@@ -130,7 +130,9 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__processors: Mapping[str, StreamProcessor[KafkaPayload]] = {}
 
-    def complex_step_override(self) -> dict[Type[ComplexStep], Callable[[ComplexStep], Route]]:
+    def complex_step_override(
+        self,
+    ) -> dict[Type[ComplexStep[Any, Any]], Callable[[ComplexStep[Any, Any]], Route]]:
         return {}
 
     @classmethod
@@ -144,7 +146,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
         return cls(steps_config, sources_override, sinks_override)
 
-    def source(self, step: Source) -> Route:
+    def source(self, step: Source[Any]) -> Route:
         """
         Builds an Arroyo Kafka consumer as a stream source.
         By default it uses the configuration provided to the adapter.
@@ -164,7 +166,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
         return Route(source_name, [])
 
-    def sink(self, step: Sink, stream: Route) -> Route:
+    def sink(self, step: Sink[Any], stream: Route) -> Route:
         """
         Builds an Arroyo Kafka producer as a stream sink.
         By default it uses the configuration provided to the adapter.
@@ -203,7 +205,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
         return stream
 
-    def map(self, step: Map, stream: Route) -> Route:
+    def map(self, step: Map[Any, Any], stream: Route) -> Route:
         """
         Builds a map operator for the platform the adapter supports.
         """
@@ -214,13 +216,13 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers[stream.source].add_step(MapStep(route=stream, pipeline_step=step))
         return stream
 
-    def flat_map(self, step: FlatMap, stream: Route) -> Route:
+    def flat_map(self, step: FlatMap[Any, Any], stream: Route) -> Route:
         """
         Builds a flat-map operator for the platform the adapter supports.
         """
         raise NotImplementedError
 
-    def filter(self, step: Filter, stream: Route) -> Route:
+    def filter(self, step: Filter[Any], stream: Route) -> Route:
         """
         Builds a filter operator for the platform the adapter supports.
         """
@@ -249,7 +251,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
     def broadcast(
         self,
-        step: Broadcast,
+        step: Broadcast[Any],
         stream: Route,
     ) -> Mapping[str, Route]:
         """

@@ -1,3 +1,5 @@
+from typing import MutableSequence, Optional, Sequence, Tuple
+
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline import (
@@ -14,15 +16,27 @@ from sentry_streams.pipeline.datatypes import (
     String,
     Struct,
 )
+from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.pipeline import Map
 
 pipeline = streaming_source(
     name="myinput",
     stream_name="ingest-metrics",
 )
 
+
+# Extract bytes from the batched tuples
+def extract_bytes_from_batch(
+    msg: Message[MutableSequence[Tuple[bytes, Optional[str]]]]
+) -> Sequence[bytes]:
+    return [item[0] for item in msg.payload]
+
+
 # TODO: Figure out why the concrete type of InputType is not showing up in the type hint of chain1
-parsed_batch = pipeline.apply(Batch("mybatch", batch_size=2)).apply(
-    BatchParser("batch_parser", msg_type=IngestMetric)
+parsed_batch = (
+    pipeline.apply(Batch("mybatch", batch_size=2))
+    .apply(Map("extract_bytes", function=extract_bytes_from_batch))
+    .apply(BatchParser("batch_parser", msg_type=IngestMetric))
 )
 
 schema = {
