@@ -96,6 +96,18 @@ wheels = [
 ]
 
 [[package]]
+name = "click"
+version = "8.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/60/6c/8ca2efa64cf75a977a0d7fac081354553ebe483345c734fb6b6515d96bbc/click-8.2.1.tar.gz", hash = "sha256:27c491cc05d968d271d5a1db13e3b5a184636d9d930f148c50b038f0d0646202", size = 286342, upload-time = "2025-05-20T23:19:49.832Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/85/32/10bb5764d90a8eee674e9dc6f4db6a0ab47c8c4d0d83c27f7c39ac415a4d/click-8.2.1-py3-none-any.whl", hash = "sha256:61a3265b914e850b85317d0b3109c7f8cd35a670f963866005d6ef1d5175a12b", size = 102215, upload-time = "2025-05-20T23:19:47.796Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -126,6 +138,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/96/25/124e14b20825084e96d1609e1c5d3775d85999f19a688f7487799f0c44b6/confluent_kafka-2.9.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:b21e4a4ba88374a1487a9353debcddc994dae385f89d6bc45f08ab372e238756", size = 3831584, upload-time = "2025-03-28T21:56:57.37Z" },
     { url = "https://files.pythonhosted.org/packages/c0/a2/728bb427df2491eaf811e44b9d68907f68c6a596cc75bf55ca4d780f38d0/confluent_kafka-2.9.0-cp313-cp313-win_amd64.whl", hash = "sha256:a26b91d4d352d4c77727582ec4013fa62814c54618c11f27545a9ce531406a15", size = 4021284, upload-time = "2025-03-28T21:56:59.272Z" },
     { url = "https://files.pythonhosted.org/packages/43/27/3050db41dccf9aae3685906e419e2bfcb59929a3f9826d50111c419ccf8f/confluent_kafka-2.9.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:e9408aa82578969123efa27b55e510e752728eb737db748f7c7ab9f18ec5af60", size = 15163212, upload-time = "2025-03-28T21:57:01.417Z" },
+]
+
+[[package]]
+name = "devservices"
+version = "1.1.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pyyaml" },
+    { name = "sentry-devenv" },
+    { name = "sentry-sdk" },
+    { name = "supervisor" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/49/96/dc48cd924b068628262708918eb68da62a0fd38e1de4440a8206ce78965c/devservices-1.1.5.tar.gz", hash = "sha256:14346e3f0f87d9a4529713fd1631896f9254aa4e59e401900ed2544b5bc70d4b", size = 75465, upload-time = "2025-05-05T22:56:56.227Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/a9/ddd63131b96a670c2a6bccd1194f5f1acaa1172f36c51f992c51a52a2456/devservices-1.1.5-py3-none-any.whl", hash = "sha256:7150dbdfde3f30abf1505ffc258b296c844bd1da0b47fe054819e0e25ec98a3a", size = 100355, upload-time = "2025-05-05T22:56:54.542Z" },
 ]
 
 [[package]]
@@ -795,6 +823,19 @@ wheels = [
 ]
 
 [[package]]
+name = "sentry-devenv"
+version = "1.21.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sentry-sdk" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/68/ee/368badc81561cbaaf338e6a060c53cad94b628d23359a10eeeea5daa42be/sentry_devenv-1.21.0.tar.gz", hash = "sha256:bd1dbfcda980392e98f03b94314910b84a7413225a07cb2ad8f40a4233f2a3d7", size = 47987, upload-time = "2025-05-21T13:43:32.323Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/84/46409ceae3eaf88cf8c7fa1f98971a5c36d78f023196473b95c04848b998/sentry_devenv-1.21.0-py3-none-any.whl", hash = "sha256:4005b9121b6aa78c32eaa14e5429ed601c9bfacd90952c51c1f89044c3c3af65", size = 65989, upload-time = "2025-05-21T13:43:31.202Z" },
+]
+
+[[package]]
 name = "sentry-kafka-schemas"
 version = "1.3.14"
 source = { registry = "https://pypi.org/simple" }
@@ -826,10 +867,24 @@ wheels = [
 ]
 
 [[package]]
+name = "sentry-sdk"
+version = "2.32.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/10/59/eb90c45cb836cf8bec973bba10230ddad1c55e2b2e9ffa9d7d7368948358/sentry_sdk-2.32.0.tar.gz", hash = "sha256:9016c75d9316b0f6921ac14c8cd4fb938f26002430ac5be9945ab280f78bec6b", size = 334932, upload-time = "2025-06-27T08:10:02.89Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/a1/fc4856bd02d2097324fb7ce05b3021fb850f864b83ca765f6e37e92ff8ca/sentry_sdk-2.32.0-py2.py3-none-any.whl", hash = "sha256:6cf51521b099562d7ce3606da928c473643abe99b00ce4cb5626ea735f4ec345", size = 356122, upload-time = "2025-06-27T08:10:01.424Z" },
+]
+
+[[package]]
 name = "sentry-streams"
 version = "0.0.25"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "jsonschema" },
     { name = "polars" },
     { name = "pyyaml" },
@@ -840,11 +895,13 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "devservices" },
     { name = "maturin" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "responses" },
+    { name = "types-confluent-kafka" },
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
     { name = "types-requests" },
@@ -857,6 +914,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.2.1" },
     { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "polars" },
     { name = "pyyaml", specifier = ">=6.0.2" },
@@ -867,11 +925,13 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "devservices", specifier = ">=1.1.5" },
     { name = "maturin", specifier = ">=1.5.1" },
     { name = "mypy", specifier = ">=1.14.1" },
     { name = "pre-commit", specifier = ">=4.1.0" },
     { name = "pytest", specifier = ">=8.3.4" },
     { name = "responses", specifier = ">=0.25.6" },
+    { name = "types-confluent-kafka", specifier = ">=1.3.4" },
     { name = "types-jsonschema", specifier = ">=4.23.0" },
     { name = "types-pyyaml", specifier = ">=6.0.12" },
     { name = "types-requests", specifier = ">=2.32.0" },
@@ -880,6 +940,15 @@ docs = [
     { name = "sphinx", specifier = ">=7.2.6" },
     { name = "sphinx-rtd-theme", specifier = ">=1.3.0" },
     { name = "sphinxcontrib-mermaid", specifier = ">=1.0.0" },
+]
+
+[[package]]
+name = "setuptools"
+version = "80.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/5d/3bf57dcd21979b887f014ea83c24ae194cfcd12b9e0fda66b957c69d1fca/setuptools-80.9.0.tar.gz", hash = "sha256:f36b47402ecde768dbfafc46e8e4207b4360c654f1f3bb84475f0a28628fb19c", size = 1319958, upload-time = "2025-05-27T00:56:51.443Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a3/dc/17031897dae0efacfea57dfd3a82fdd2a2aeb58e0ff71b77b87e44edc772/setuptools-80.9.0-py3-none-any.whl", hash = "sha256:062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922", size = 1201486, upload-time = "2025-05-27T00:56:49.664Z" },
 ]
 
 [[package]]
@@ -1010,6 +1079,27 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/3b/44/6716b257b0aa6bfd51a1b31665d1c205fb12cb5ad56de752dfa15657de2f/sphinxcontrib_serializinghtml-2.0.0.tar.gz", hash = "sha256:e9d912827f872c029017a53f0ef2180b327c3f7fd23c87229f7a8e8b70031d4d", size = 16080, upload-time = "2024-07-29T01:10:09.332Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/a7/d2782e4e3f77c8450f727ba74a8f12756d5ba823d81b941f1b04da9d033a/sphinxcontrib_serializinghtml-2.0.0-py3-none-any.whl", hash = "sha256:6e2cb0eef194e10c27ec0023bfeb25badbbb5868244cf5bc5bdc04e4464bf331", size = 92072, upload-time = "2024-07-29T01:10:08.203Z" },
+]
+
+[[package]]
+name = "supervisor"
+version = "4.2.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "setuptools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ce/37/517989b05849dd6eaa76c148f24517544704895830a50289cbbf53c7efb9/supervisor-4.2.5.tar.gz", hash = "sha256:34761bae1a23c58192281a5115fb07fbf22c9b0133c08166beffc70fed3ebc12", size = 466073, upload-time = "2022-12-24T01:02:43.705Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/7a/0ad3973941590c040475046fef37a2b08a76691e61aa59540828ee235a6e/supervisor-4.2.5-py2.py3-none-any.whl", hash = "sha256:2ecaede32fc25af814696374b79e42644ecaba5c09494c51016ffda9602d0f08", size = 319561, upload-time = "2022-12-24T01:02:40.814Z" },
+]
+
+[[package]]
+name = "types-confluent-kafka"
+version = "1.3.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/61/c41de4995ddca12b65fd5a05da08afc644299bcfd7e4298bc0376a18b30e/types_confluent_kafka-1.3.4.tar.gz", hash = "sha256:043135a9899699df43ab64c669086136b76dd30cfcf8dade2a0140a711d18de0", size = 22719, upload-time = "2025-07-10T05:03:29.408Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/f5/02b7e450ef98ea1790e8e751c8040a1754285bc7cf77bcd344914a219d6c/types_confluent_kafka-1.3.4-py3-none-any.whl", hash = "sha256:84c14db11d0b9edba7e898d9081d6a8529a0c151fb7288d742bbaf8cbd7bf34d", size = 35597, upload-time = "2025-07-10T05:03:28.077Z" },
 ]
 
 [[package]]
