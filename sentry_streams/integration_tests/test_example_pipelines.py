@@ -147,12 +147,15 @@ def run_example_test(test: PipelineRun) -> None:
     print(f"{test.name}: Running pipeline")
     process = run_pipeline_cmd(test)
 
+    # Give the pipeline a chance to start up
+    time.sleep(30)
+
     print(f"{test.name}: Sending messages")
     send_messages_to_topic(test.source_topic, test.input_messages)
 
     print(f"{test.name}: Waiting for messages")
     start_time = time.time()
-    while time.time() - start_time < 300:
+    while time.time() - start_time < 30:
         if process.poll() is not None:  # Runner shouldn't stop
             stdout, stderr = process.communicate()
             print(f"Pipeline process exited with code {process.returncode}")
@@ -166,9 +169,7 @@ def run_example_test(test: PipelineRun) -> None:
             received[sink_topic] = (size, size == test.num_expected_messages[sink_topic])
             print(f"{test.name}: Received {received[sink_topic]} messages from {sink_topic}")
 
-        print(f"Received: {received}")
         if all(v[1] for v in received.values()):
-            print("BREAKING")
             break
 
         time.sleep(1)
