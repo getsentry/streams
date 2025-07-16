@@ -7,6 +7,7 @@ from typing import (
     Mapping,
     MutableMapping,
     Self,
+    Sequence,
     Type,
     cast,
 )
@@ -334,7 +335,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             return branch.root.name
 
         logger.info(f"Adding router: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(RuntimeOperator.Router(route, routing_function))
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.Router(
+                route, routing_function, cast(Sequence[str], step.routing_table.values())
+            )
+        )
         return build_branches(stream, step.routing_table.values())
 
     def run(self) -> None:

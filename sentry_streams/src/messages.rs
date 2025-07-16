@@ -123,11 +123,15 @@ impl Clone for WatermarkMessage {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Watermark {
     pub committable: BTreeMap<Partition, u64>,
+    pub timestamp: u64,
 }
 
 impl Watermark {
-    pub fn new(committable: BTreeMap<Partition, u64>) -> Self {
-        Self { committable }
+    pub fn new(committable: BTreeMap<Partition, u64>, timestamp: u64) -> Self {
+        Self {
+            committable,
+            timestamp,
+        }
     }
 }
 
@@ -368,9 +372,10 @@ impl RoutedValuePayload {
         }
     }
 
-    pub fn make_watermark_payload(committable: BTreeMap<Partition, u64>) -> Self {
+    pub fn make_watermark_payload(committable: BTreeMap<Partition, u64>, timestamp: u64) -> Self {
         RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(Watermark::new(
             committable,
+            timestamp,
         )))
     }
 }
@@ -654,7 +659,7 @@ mod tests {
 
     #[test]
     fn test_is_watermark_message() {
-        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new());
+        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0);
         assert!(wmsg.is_watermark_msg());
     }
 
@@ -687,7 +692,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_unwrap_payload_watermark_msg() {
-        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new());
+        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0);
         wmsg.unwrap_payload();
     }
 }
