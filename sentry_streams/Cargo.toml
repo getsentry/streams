@@ -19,7 +19,7 @@ log = "0.4.27"
 
 [lib]
 name = "rust_streams"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [features]
 extension-module = ["pyo3/extension-module"]
