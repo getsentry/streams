@@ -116,13 +116,14 @@ impl ProcessingStrategy<RoutedValue> for WatermarkEmitter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake_strategy::FakeStrategy;
+    use crate::fake_strategy::{submitted_watermark_payloads, FakeStrategy};
     use crate::messages::Watermark;
     use crate::routes::Route;
     use crate::testutils::{build_routed_value, make_committable};
     use crate::utils::traced_with_gil;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
+    use std::ops::Deref;
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -174,10 +175,10 @@ mod tests {
             // submitted WatermarkMessage contains the last seen committable
             watermark.last_sent_timestamp = 0;
             let _ = watermark.poll();
-            assert_eq!(
-                submitted_watermarks_clone.lock().unwrap()[0],
-                Watermark::new(expected_committable)
-            );
+
+            let watermark_messages = submitted_watermarks_clone.lock().unwrap();
+            let watermark_payloads = submitted_watermark_payloads(watermark_messages.deref());
+            assert_eq!(watermark_payloads[0], Watermark::new(expected_committable));
         })
     }
 }

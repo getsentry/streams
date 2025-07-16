@@ -69,6 +69,8 @@ pub fn build_filter(
 mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
+    use crate::fake_strategy::submitted_payloads;
+    use crate::fake_strategy::submitted_watermark_payloads;
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::Watermark;
     use crate::routes::Route;
@@ -244,8 +246,9 @@ mod tests {
                 "test_message".into_py_any(py).unwrap(),
             ];
             let actual_messages = submitted_messages_clone.lock().unwrap();
+            let message_payloads = submitted_payloads(actual_messages.deref());
 
-            assert_messages_match(py, expected_messages, actual_messages.deref());
+            assert_messages_match(py, expected_messages, &message_payloads);
 
             let watermark_val = RoutedValue {
                 route: Route::new(String::from("source"), vec![]),
@@ -255,7 +258,8 @@ mod tests {
             let watermark_res = strategy.submit(watermark_msg);
             assert!(watermark_res.is_ok());
             let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-            assert_eq!(watermark_messages[0], Watermark::new(BTreeMap::new()));
+            let watermark_payloads = submitted_watermark_payloads(watermark_messages.deref());
+            assert_eq!(watermark_payloads[0], Watermark::new(BTreeMap::new()));
         });
     }
 }

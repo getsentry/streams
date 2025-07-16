@@ -1,5 +1,7 @@
 use super::*;
 use crate::messages::{PyStreamingMessage, RoutedValuePayload, Watermark, WatermarkMessage};
+#[cfg(test)]
+use crate::routes::Route;
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
 
@@ -13,16 +15,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub struct FakeStrategy {
-    pub submitted: Arc<Mutex<Vec<Py<PyAny>>>>,
-    pub submitted_watermarks: Arc<Mutex<Vec<Watermark>>>,
+    pub submitted: Arc<Mutex<Vec<RoutedValue>>>,
+    pub submitted_watermarks: Arc<Mutex<Vec<RoutedValue>>>,
     pub reject_message: bool,
     commit_request: Option<CommitRequest>,
 }
 
 impl FakeStrategy {
     pub fn new(
-        submitted: Arc<Mutex<Vec<Py<PyAny>>>>,
-        submitted_watermarks: Arc<Mutex<Vec<Watermark>>>,
+        submitted: Arc<Mutex<Vec<RoutedValue>>>,
+        submitted_watermarks: Arc<Mutex<Vec<RoutedValue>>>,
         reject_message: bool,
     ) -> Self {
         Self {
@@ -70,26 +72,14 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                 Some(build_commit_request(&message)),
             );
 
-            let msg_payload = message.into_payload().payload;
-            match msg_payload {
-                RoutedValuePayload::WatermarkMessage(msg) => match msg {
-                    WatermarkMessage::Watermark(watermark) => {
-                        self.submitted_watermarks.lock().unwrap().push(watermark)
-                    }
-                    WatermarkMessage::PyWatermark(..) => (),
-                },
-                RoutedValuePayload::PyStreamingMessage(py_payload) => {
-                    traced_with_gil!(|py| {
-                        let msg = match py_payload {
-                            PyStreamingMessage::PyAnyMessage { content } => {
-                                content.bind(py).getattr("payload").unwrap()
-                            }
-                            PyStreamingMessage::RawMessage { content } => {
-                                content.bind(py).getattr("payload").unwrap()
-                            }
-                        };
-                        self.submitted.lock().unwrap().push(msg.unbind());
-                    });
+            match message.payload().payload {
+                RoutedValuePayload::WatermarkMessage(..) => self
+                    .submitted_watermarks
+                    .lock()
+                    .unwrap()
+                    .push(message.into_payload()),
+                RoutedValuePayload::PyStreamingMessage(..) => {
+                    self.submitted.lock().unwrap().push(message.into_payload())
                 }
             }
             Ok(())
@@ -139,4 +129,54 @@ pub fn assert_watermarks_match(expected_messages: Vec<Watermark>, actual_message
     for (actual, expected) in actual_messages.iter().zip(expected_messages.iter()) {
         assert_eq!(actual, expected);
     }
+}
+
+#[cfg(test)]
+pub fn assert_routes_match(expected_routes: Vec<Route>, actual_routes: &[Route]) {
+    for (actual, expected) in actual_routes.iter().zip(expected_routes.iter()) {
+        assert_eq!(actual, expected);
+    }
+}
+
+#[cfg(test)]
+pub fn submitted_payloads(messages: &Vec<RoutedValue>) -> Vec<Py<PyAny>> {
+    let mut ret = vec![];
+    traced_with_gil!(|py| {
+        for msg in messages {
+            if let RoutedValuePayload::PyStreamingMessage(py_msg) = msg.payload.clone() {
+                let payload = match py_msg {
+                    PyStreamingMessage::PyAnyMessage { content } => {
+                        content.bind(py).getattr("payload").unwrap()
+                    }
+                    PyStreamingMessage::RawMessage { content } => {
+                        content.bind(py).getattr("payload").unwrap()
+                    }
+                };
+                ret.push(payload.unbind());
+            }
+        }
+    });
+    ret
+}
+
+#[cfg(test)]
+pub fn submitted_watermark_payloads(watermarks: &Vec<RoutedValue>) -> Vec<Watermark> {
+    let mut ret = vec![];
+    for msg in watermarks {
+        if let RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(watermark)) =
+            msg.payload.clone()
+        {
+            ret.push(watermark);
+        }
+    }
+    ret
+}
+
+#[cfg(test)]
+pub fn submitted_routes(messages: &Vec<RoutedValue>) -> Vec<Route> {
+    let mut ret = vec![];
+    for msg in messages {
+        ret.push(msg.route.clone())
+    }
+    ret
 }

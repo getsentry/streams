@@ -184,6 +184,8 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
 mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
+    use crate::fake_strategy::submitted_payloads;
+    use crate::fake_strategy::submitted_watermark_payloads;
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::{RoutedValuePayload, Watermark};
     use crate::routes::Route;
@@ -258,7 +260,8 @@ mod tests {
         let watermark_res = sink.submit(watermark_msg);
         assert!(watermark_res.is_ok());
         let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-        assert_eq!(watermark_messages[0], Watermark::new(BTreeMap::new()));
+        let watermark_payloads = submitted_watermark_payloads(watermark_messages.deref());
+        assert_eq!(watermark_payloads[0], Watermark::new(BTreeMap::new()));
     }
 
     #[test]
@@ -299,7 +302,8 @@ mod tests {
             {
                 let expected_messages = vec![PyBytes::new(py, b"test_message").into_any().unbind()];
                 let actual_messages = submitted_messages_clone.lock().unwrap();
-                assert_messages_match(py, expected_messages, actual_messages.deref());
+                let message_payloads = submitted_payloads(actual_messages.deref());
+                assert_messages_match(py, expected_messages, &message_payloads);
             } // Unlock the MutexGuard around `actual_messages`
 
             // Try to send to the producer
@@ -310,7 +314,8 @@ mod tests {
             sink.poll().unwrap();
             let expected_messages = vec![PyBytes::new(py, b"test_message").into_any().unbind()];
             let actual_messages = submitted_messages_clone.lock().unwrap();
-            assert_messages_match(py, expected_messages, actual_messages.deref());
+            let message_payloads = submitted_payloads(actual_messages.deref());
+            assert_messages_match(py, expected_messages, &message_payloads);
         });
     }
 }

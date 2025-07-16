@@ -261,6 +261,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
 mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
+    use crate::fake_strategy::submitted_payloads;
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::{PyWatermark, WatermarkMessage};
     use crate::testutils::build_routed_value;
@@ -459,7 +460,8 @@ class RustOperatorDelegateFactory:
                 let expected_messages =
                     vec!["ok".into_py_any(py).unwrap(), "ok".into_py_any(py).unwrap()];
                 let actual_messages = submitted_messages_clone.lock().unwrap();
-                assert_messages_match(py, expected_messages, actual_messages.deref());
+                let message_payloads = submitted_payloads(actual_messages.deref());
+                assert_messages_match(py, expected_messages, &message_payloads);
             } // Unlock the MutexGuard around `actual_messages`
 
             assert_eq!(
@@ -485,7 +487,8 @@ class RustOperatorDelegateFactory:
                     "ok".into_py_any(py).unwrap(),
                 ];
                 let actual_messages = submitted_messages_clone.lock().unwrap();
-                assert_messages_match(py, expected_messages, actual_messages.deref());
+                let message_payloads = submitted_payloads(actual_messages.deref());
+                assert_messages_match(py, expected_messages, &message_payloads);
             } // Unlock the MutexGuard around `actual_messages`
 
             let watermark_val = RoutedValue {
@@ -535,7 +538,8 @@ class RustOperatorDelegateFactory:
             {
                 let expected_messages = vec![];
                 let actual_messages = submitted_messages_clone.lock().unwrap();
-                assert_messages_match(py, expected_messages, actual_messages.deref());
+                let message_payloads = submitted_payloads(actual_messages.deref());
+                assert_messages_match(py, expected_messages, &message_payloads);
             } // Unlock the MutexGuard around `actual_messages`
         })
     }
