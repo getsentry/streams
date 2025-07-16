@@ -31,7 +31,7 @@ tests-flink:
 .PHONY: tests-flink
 
 typecheck:
-	cd ./sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms/ && maturin develop
+	. ./sentry_streams/.venv/bin/activate && cd ./sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms/ && maturin develop
 	./sentry_streams/.venv/bin/mypy --config-file sentry_streams/mypy.ini --strict sentry_streams/
 	./sentry_flink/.venv/bin/mypy --config-file sentry_flink/mypy.ini --strict sentry_flink/sentry_flink/
 .PHONY: typecheck
