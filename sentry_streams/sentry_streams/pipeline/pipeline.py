@@ -319,13 +319,15 @@ class FunctionTransform(Transform[TIn, TOut], Generic[TIn, TOut]):
         function_callable = imported_func
         return function_callable
 
-    def _validate_rust_function(self):
+    def _validate_rust_function(self) -> Callable[[Message[TIn]], TOut] | None:
         func = self.resolved_function
         if not hasattr(func, "rust_function_version"):
             # not a rust function
             return None
 
-        rust_function_version = func.rust_function_version()  # type: ignore[attr-defined]
+        func = cast(InternalRustFunction[TIn, TOut], func)
+
+        rust_function_version = func.rust_function_version()
         if rust_function_version != 1:
             raise TypeError(
                 r"Invalid rust function version: {rust_function_version} -- if you are defining your own rust functions, maybe the version is out of date?"
@@ -333,7 +335,7 @@ class FunctionTransform(Transform[TIn, TOut], Generic[TIn, TOut]):
 
         return func
 
-    def post_rust_function_validation(self, func: InternalRustFunction) -> None:
+    def post_rust_function_validation(self, func: InternalRustFunction[TIn, TOut]) -> None:
         # Overridden in Filter step
         pass
 
@@ -372,7 +374,7 @@ class Filter(Transform[TIn, TIn], Generic[TIn]):
     function: Union[Callable[[Message[TIn]], bool], str]
     step_type: StepType = StepType.FILTER
 
-    def post_rust_function_validation(self, func: InternalRustFunction) -> None:
+    def post_rust_function_validation(self, func: InternalRustFunction[TIn, TOut]) -> None:
         output_type = func.output_type()
         if output_type != "bool":
             raise TypeError(

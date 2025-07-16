@@ -12,7 +12,7 @@ import pytest
 
 
 @pytest.fixture(scope="module")
-def test_rust_extension():  # type: ignore[no-untyped-def]
+def test_rust_extension() -> object:
     """Build the test Rust extension before running tests"""
     test_crate_dir = Path(__file__).parent / "rust_test_functions"
 
@@ -135,7 +135,7 @@ def create_wrong_pipeline():
     assert "expected" in result.stdout and "Mapping" in result.stdout
 
 
-def test_mypy_detects_correct_pipeline_rust(tmp_path: Path, test_rust_extension) -> None:
+def test_mypy_detects_correct_pipeline_rust(tmp_path: Path, test_rust_extension: object) -> None:
     """Test that mypy accepts a correctly typed pipeline"""
 
     # Create a test file with correct types
@@ -182,7 +182,7 @@ def create_correct_pipeline():
     assert "Success: no issues found in 1 source file" in result.stdout
 
 
-def test_mypy_detects_type_mismatch_rust(tmp_path: Path, test_rust_extension) -> None:
+def test_mypy_detects_type_mismatch_rust(tmp_path: Path, test_rust_extension: object) -> None:
     """Test that mypy detects type mismatches in pipeline definitions"""
 
     wrong_code = """
