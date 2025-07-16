@@ -22,7 +22,9 @@ from sentry_streams.pipeline.pipeline import (
 logger = logging.getLogger(__name__)
 
 
-def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[StreamT, StreamSinkT]) -> None:
+def iterate_edges(
+    p_graph: Pipeline[Any], translator: RuntimeTranslator[StreamT, StreamSinkT]
+) -> None:
     """
     Traverses over edges in a PipelineGraph, building the
     stream incrementally by applying steps and transformations
@@ -46,7 +48,7 @@ def iterate_edges(p_graph: Pipeline, translator: RuntimeTranslator[StreamT, Stre
                 continue
 
             for output in output_steps:
-                next_step: WithInput = cast(WithInput, p_graph.steps[output])
+                next_step: WithInput[Any] = cast(WithInput[Any], p_graph.steps[output])
                 # TODO: Make the typing align with the streams being iterated through. Reconsider algorithm as needed.
                 next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
                 for branch_name in next_step_stream:
@@ -85,7 +87,7 @@ def runner(
             raise
 
     assigned_segment_id = int(segment_id) if segment_id else None
-    pipeline: Pipeline = pipeline_globals["pipeline"]
+    pipeline: Pipeline[Any] = pipeline_globals["pipeline"]
     runtime: Any = load_adapter(adapter, environment_config, assigned_segment_id)
     translator = RuntimeTranslator(runtime)
 

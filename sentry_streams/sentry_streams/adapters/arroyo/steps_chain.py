@@ -11,7 +11,7 @@ from sentry_streams.pipeline.pipeline import Map
 logger = logging.getLogger(__name__)
 
 
-def transform(chain: Sequence[Map], message: Message[Any]) -> Message[Any]:
+def transform(chain: Sequence[Map[Any, Any]], message: Message[Any]) -> Message[Any]:
     """
     Executes a series of chained transformations.
     This function needs to be outside of the `StepsChain` class to
@@ -50,7 +50,7 @@ def _hashable_route(route: Route) -> HashableRoute:
 
 @dataclass
 class ChainConfig:
-    steps: MutableSequence[Map]
+    steps: MutableSequence[Map[Any, Any]]
     # TODO: Support abstract config for multi threading and
     # single threaded. As of writing there is nothing to configure
     # for those cases.
@@ -82,7 +82,7 @@ class TransformChains:
             raise ValueError(f"Chain {route} already initialized")
         self.__chains[hashable_route] = ChainConfig([], config)
 
-    def add_map(self, route: Route, step: Map) -> None:
+    def add_map(self, route: Route, step: Map[Any, Any]) -> None:
         logger.info(f"Chaining map {step.name} to transform chain")
         hashable_route = _hashable_route(route)
         if hashable_route not in self.__chains:

@@ -1,10 +1,10 @@
-from typing import Iterable, Mapping
+from typing import Any, Iterable, Mapping
 
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.pipeline.pipeline import Pipeline
 
 
-def build_branches(current_route: Route, branches: Iterable[Pipeline]) -> Mapping[str, Route]:
+def build_branches(current_route: Route, branches: Iterable[Pipeline[Any]]) -> Mapping[str, Route]:
     """
     Build branches for the given route.
     """

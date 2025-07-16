@@ -2,15 +2,13 @@ from typing import Any, Callable, Mapping, Union
 
 import pytest
 
+from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
-    Broadcast,
     Filter,
     Map,
     Pipeline,
-    Router,
-    Step,
     StepType,
     StreamSink,
     TransformStep,
@@ -22,60 +20,65 @@ from sentry_streams.pipeline.window import MeasurementUnit
 
 
 @pytest.fixture
-def pipeline() -> Pipeline:
-    pipeline = (
+def pipeline() -> Pipeline[str]:
+    pipeline: Pipeline[str] = (
         streaming_source(name="source", stream_name="events")
         .apply(
-            Filter(
+            Filter[bytes](
                 name="filter",
                 function=simple_filter,
             )
         )
-        .apply(Filter(name="filter2", function=simple_filter))
-        .apply(Map(name="map", function=simple_map))
-        .apply(Map(name="map2", function=simple_map))
-        .apply(
-            Router(
-                "router",
-                routing_function=simple_router,
-                routing_table={
-                    "branch1": Pipeline(Branch("branch1")).sink(
-                        StreamSink(name="kafkasink1", stream_name="transformed-events")
-                    ),
-                    "branch2": Pipeline(Branch("branch2")).sink(
-                        StreamSink(name="kafkasink2", stream_name="transformed-events-2")
-                    ),
-                },
-            )
+        .apply(Filter[bytes](name="filter2", function=simple_filter))
+        .apply(Map[bytes, str](name="map", function=simple_map))
+        .apply(Map[str, str](name="map2", function=simple_map_str))
+        .route(
+            "router",
+            routing_function=simple_router,
+            routing_table={
+                "branch1": Pipeline(Branch[str]("branch1")).sink(
+                    StreamSink[str](name="kafkasink1", stream_name="transformed-events")
+                ),
+                "branch2": Pipeline(Branch[str]("branch2")).sink(
+                    StreamSink[str](name="kafkasink2", stream_name="transformed-events-2")
+                ),
+            },
         )
     )
 
     return pipeline
 
 
-def simple_filter(value: str) -> bool:
+def simple_filter(value: Message[bytes]) -> bool:
     # does nothing because it's not needed for tests
     return True
 
 
-def simple_map(value: str) -> str:
+def simple_map(value: Message[bytes]) -> str:
     # does nothing because it's not needed for tests
     return "nothing"
 
 
-def simple_router(value: str) -> str:
+def simple_map_str(value: Message[str]) -> str:
+    # does nothing because it's not needed for tests
+    return "nothing"
+
+
+def simple_router(value: Message[str]) -> str:
     # does nothing because it's not needed for tests
     return "branch1"
 
 
-def test_register_step(pipeline: Pipeline) -> None:
-    step = Step("new_step")
-    pipeline.apply(step)
-    assert "new_step" in pipeline.steps
-    assert pipeline.steps["new_step"] == step
+def test_register_step(pipeline: Pipeline[str]) -> None:
+    # Create a new pipeline that isn't closed
+    test_pipeline: Pipeline[bytes] = streaming_source(name="source", stream_name="events")
+    step = Map[bytes, str](name="new_step", function=lambda msg: "test")
+    test_pipeline.apply(step)
+    assert "new_step" in test_pipeline.steps
+    assert test_pipeline.steps["new_step"] == step
 
 
-def test_register_edge(pipeline: Pipeline) -> None:
+def test_register_edge(pipeline: Pipeline[str]) -> None:
     # when there is only one step going to the next step
     assert pipeline.incoming_edges["map"] == ["filter2"]
     assert pipeline.outgoing_edges["branch2"] == ["kafkasink2"]
@@ -90,12 +93,12 @@ def test_register_edge(pipeline: Pipeline) -> None:
     assert pipeline.incoming_edges["branch2"] == ["router"]
 
 
-def test_register_source(pipeline: Pipeline) -> None:
+def test_register_source(pipeline: Pipeline[str]) -> None:
     assert pipeline.root.name == "source"
 
 
 class ExampleClass:
-    def example_func(self, value: str) -> str:
+    def example_func(self, value: Message[Any]) -> str:
         return "nothing"
 
 
@@ -122,8 +125,8 @@ class ExampleClass:
 def test_resolve_function(
     function: Union[Callable[..., str], str], expected: Callable[..., str]
 ) -> None:
-    pipeline = streaming_source(name="source", stream_name="events")
-    step: TransformStep[Any] = TransformStep(
+    pipeline: Pipeline[bytes] = streaming_source(name="source", stream_name="events")
+    step: TransformStep[Any, str] = TransformStep(
         name="test_resolve_function",
         function=function,
         step_type=StepType.MAP,
@@ -133,8 +136,10 @@ def test_resolve_function(
 
 
 def test_merge_linear() -> None:
-    pipeline1 = streaming_source(name="source", stream_name="logical-events")
-    pipeline2 = branch("branch1").apply(Map(name="map", function=simple_map))
+    pipeline1: Pipeline[bytes] = streaming_source(name="source", stream_name="logical-events")
+    pipeline2: Pipeline[bytes] = branch("branch1").apply(
+        Map[Any, bytes](name="map", function=lambda msg: b"test")
+    )
 
     pipeline1._merge(pipeline2, merge_point="source")
 
@@ -150,11 +155,15 @@ def test_merge_linear() -> None:
 
 
 def test_merge_branches() -> None:
-    pipeline1 = streaming_source(name="source", stream_name="logical-events")
+    pipeline1: Pipeline[bytes] = streaming_source(name="source", stream_name="logical-events")
 
-    pipeline2 = branch(name="branch1").apply(Map(name="map1", function=simple_map))
+    pipeline2: Pipeline[bytes] = branch(name="branch1").apply(
+        Map[Any, bytes](name="map1", function=lambda msg: b"test1")
+    )
 
-    pipeline3 = branch(name="branch2").apply(Map(name="map2", function=simple_map))
+    pipeline3: Pipeline[bytes] = branch(name="branch2").apply(
+        Map[Any, bytes](name="map2", function=lambda msg: b"test2")
+    )
 
     pipeline1._merge(pipeline2, merge_point="source")
     pipeline1._merge(pipeline3, merge_point="source")
@@ -174,17 +183,19 @@ def test_merge_branches() -> None:
 
 
 def test_multi_broadcast() -> None:
-    pipeline1 = streaming_source(name="source", stream_name="logical-events")
+    pipeline1: Pipeline[bytes] = streaming_source(name="source", stream_name="logical-events")
 
-    pipeline2 = branch(name="pipeline2_start")
-    branch1 = Pipeline(Branch("branch1")).apply(Map(name="map1", function=simple_map))
-    branch2 = Pipeline(Branch("branch2")).apply(Map(name="map2", function=simple_map))
+    pipeline2: Pipeline[bytes] = branch(name="pipeline2_start")
+    branch1: Pipeline[bytes] = Pipeline(Branch[bytes]("branch1")).apply(
+        Map[bytes, bytes](name="map1", function=lambda msg: b"test1")
+    )
+    branch2: Pipeline[bytes] = Pipeline(Branch[bytes]("branch2")).apply(
+        Map[bytes, bytes](name="map2", function=lambda msg: b"test2")
+    )
 
-    pipeline2.apply(
-        Broadcast(
-            "broadcast1",
-            routes=[branch1, branch2],
-        )
+    pipeline2.broadcast(
+        "broadcast1",
+        routes=[branch1, branch2],
     )
 
     pipeline1._merge(pipeline2, merge_point="source")
@@ -226,9 +237,11 @@ def test_batch_step_override_config(
     default_batch_size: MeasurementUnit,
     expected: MeasurementUnit,
 ) -> None:
-    pipeline = streaming_source(name="mysource", stream_name="name")
+    pipeline: Pipeline[bytes] = streaming_source(name="mysource", stream_name="name")
 
-    step: BatchStep = BatchStep(name="test-batch", batch_size=default_batch_size)  # type: ignore
+    step: BatchStep[MeasurementUnit, bytes] = BatchStep(
+        name="test-batch", batch_size=default_batch_size
+    )
     pipeline.apply(step)
 
     step.override_config(loaded_config=loaded_batch_size)

@@ -43,8 +43,8 @@ def test_empty_chain() -> None:
 
 def test_transform_chain_with_two_steps() -> None:
     chain = [
-        Map(name="map1", function=lambda msg: msg.payload + "_t1"),
-        Map(name="map2", function=lambda msg: msg.payload + "_t2"),
+        Map[str, str](name="map1", function=lambda msg: msg.payload + "_t1"),
+        Map[str, str](name="map2", function=lambda msg: msg.payload + "_t2"),
     ]
     msg = make_message("bar")
     result = transform(chain, msg)
@@ -54,7 +54,7 @@ def test_transform_chain_with_two_steps() -> None:
 
 def test_transform_chain_with_bytes_output() -> None:
     chain = [
-        Map(name="map1", function=lambda msg: msg.payload.encode("utf-8")),
+        Map[str, bytes](name="map1", function=lambda msg: msg.payload.encode("utf-8")),
     ]
     msg = make_message("baz")
     result = transform(chain, msg)
@@ -78,7 +78,7 @@ CONFIG = MultiProcessConfig(
 def test_initialization() -> None:
     route = Route("route1", [])
     sc = TransformChains()
-    m1 = Map(name="map1", function=lambda msg: msg.payload + "_t1")
+    m1 = Map[str, str](name="map1", function=lambda msg: msg.payload + "_t1")
 
     assert not sc.exists(route)
     with pytest.raises(ValueError):
@@ -99,8 +99,8 @@ def test_map_with_multiple_chains() -> None:
     route = Route("route1", [])
     route2 = Route("route2", [])
     sc = TransformChains()
-    m1 = Map(name="map1", function=lambda msg: msg.payload + "_t1")
-    m2 = Map(name="map2", function=lambda msg: msg.payload + "_t2")
+    m1 = Map[str, str](name="map1", function=lambda msg: msg.payload + "_t1")
+    m2 = Map[str, str](name="map2", function=lambda msg: msg.payload + "_t2")
     sc.init_chain(route, CONFIG)
     sc.init_chain(route2, CONFIG)
     sc.add_map(route, m1)
@@ -118,15 +118,17 @@ def test_integration() -> None:
     # in a stable way in a unit test.
     route = Route("route1", [])
     sc = TransformChains()
-    m1 = Map(name="map1", function=lambda msg: msg.payload + "_t1")
-    m2 = Map(name="map2", function=lambda msg: msg.payload + "_t2")
+    m1 = Map[str, str](name="map1", function=lambda msg: msg.payload + "_t1")
+    m2 = Map[str, str](name="map2", function=lambda msg: msg.payload + "_t2")
 
     sc.init_chain(route, None)
     sc.add_map(route, m1)
     sc.add_map(route, m2)
     _, fn = sc.finalize(route)
 
-    retriever = OutputRetriever[Union[FilteredPayload, Message[str]]](mapped_msg_to_rust)
+    retriever: OutputRetriever[Union[FilteredPayload, Message[str]]] = OutputRetriever[
+        Union[FilteredPayload, Message[str]]
+    ](mapped_msg_to_rust)
 
     def transformer(msg: ArroyoMessage[Message[Any]]) -> Message[Any]:
         return fn(msg.payload)

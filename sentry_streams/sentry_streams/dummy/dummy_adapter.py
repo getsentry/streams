@@ -36,11 +36,13 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         self.input_streams: list[str] = []
         self.branches: list[str] = []
 
-    def complex_step_override(self) -> dict[Type[ComplexStep], Callable[[ComplexStep], Any]]:
+    def complex_step_override(
+        self,
+    ) -> dict[Type[ComplexStep[Any, Any]], Callable[[ComplexStep[Any, Any]], Any]]:
         return {}
 
     def track_input_streams(
-        self, step: WithInput, branches: Optional[Sequence[Branch]] = None
+        self, step: WithInput[Any], branches: Optional[Sequence[Branch[Any]]] = None
     ) -> None:
         self.input_streams.append(step.name)
         if branches:
@@ -51,39 +53,41 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         return cls(config)
 
     def source(self, step: Step) -> Any:
-        self.track_input_streams(cast(WithInput, step))
+        self.track_input_streams(cast(WithInput[Any], step))
         return self
 
-    def sink(self, step: Sink, stream: Any) -> Any:
-        self.track_input_streams(cast(WithInput, step))
+    def sink(self, step: Sink[Any], stream: Any) -> Any:
+        self.track_input_streams(cast(WithInput[Any], step))
         return self
 
-    def map(self, step: Map, stream: Any) -> Any:
-        self.track_input_streams(cast(WithInput, step))
+    def map(self, step: Map[Any, Any], stream: Any) -> Any:
+        self.track_input_streams(cast(WithInput[Any], step))
         return self
 
-    def filter(self, step: Filter, stream: Any) -> Any:
-        self.track_input_streams(cast(WithInput, step))
+    def filter(self, step: Filter[Any], stream: Any) -> Any:
+        self.track_input_streams(cast(WithInput[Any], step))
         return self
 
     def reduce(self, step: Reduce[MeasurementUnit, InputType, OutputType], stream: Any) -> Any:
-        self.track_input_streams(cast(WithInput, step))
+        self.track_input_streams(cast(WithInput[Any], step))
         return self
 
-    def flat_map(self, step: FlatMap, stream: Any) -> Any:
-        self.track_input_streams(cast(WithInput, step))
+    def flat_map(self, step: FlatMap[Any, Any], stream: Any) -> Any:
+        self.track_input_streams(cast(WithInput[Any], step))
         return self
 
-    def broadcast(self, step: Broadcast, stream: Any) -> Any:
-        self.track_input_streams(cast(WithInput, step), [cast(Branch, r.root) for r in step.routes])
+    def broadcast(self, step: Broadcast[Any], stream: Any) -> Any:
+        self.track_input_streams(
+            cast(WithInput[Any], step), [cast(Branch[Any], r.root) for r in step.routes]
+        )
         ret = {}
         for segment_branch in step.routes:
             self.branches.append(segment_branch.root.name)
             ret[segment_branch.root.name] = segment_branch
         return ret
 
-    def router(self, step: Router[RoutingFuncReturnType], stream: Any) -> Any:
-        self.track_input_streams(cast(WithInput, step))
+    def router(self, step: Router[RoutingFuncReturnType, Any], stream: Any) -> Any:
+        self.track_input_streams(cast(WithInput[Any], step))
         ret = {}
         for branch in step.routing_table.values():
             self.branches.append(branch.root.name)
