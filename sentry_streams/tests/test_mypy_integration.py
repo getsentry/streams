@@ -1,12 +1,11 @@
 """
-Test mypy integration for Rust functions
+Test mypy integration for type checking
 
-This test verifies that mypy can detect type mismatches in pipelines using Rust functions.
+This test verifies that mypy can detect type mismatches in pipelines.
 """
 
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -43,13 +42,113 @@ def test_rust_extension():  # type: ignore[no-untyped-def]
         pass
 
 
-def test_mypy_detects_correct_pipeline_rust(test_rust_extension) -> None:  # type: ignore[no-untyped-def]
+def test_mypy_detects_correct_pipeline(tmp_path: Path) -> None:
     """Test that mypy accepts a correctly typed pipeline"""
 
     # Create a test file with correct types
     correct_code = """
 from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
+from sentry_streams.pipeline.message import Message
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
+from sentry_streams.examples.transform_metrics import transform_msg
+from typing import Any, Mapping
+
+def filter_events(msg: Message[IngestMetric]) -> bool:
+    return bool(msg.payload["type"] == "c")
+
+def create_correct_pipeline():
+    return (
+        streaming_source("input", "test-stream")
+        .apply(Parser("parser", msg_type=IngestMetric))              # bytes -> IngestMetric
+        .apply(Filter("filter", function=filter_events))            # IngestMetric -> IngestMetric
+        .apply(Map("transform", function=transform_msg))            # IngestMetric -> Mapping[str, Any]
+        .sink(StreamSink("output", "output-stream"))
+    )
+"""
+
+    # Write to temp file and run mypy
+    test_file = tmp_path / "test_correct.py"
+    test_file.write_text(correct_code)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mypy",
+            str(test_file),
+            "--show-error-codes",
+            "--check-untyped-defs",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Success: no issues found in 1 source file" in result.stdout
+
+
+def test_mypy_detects_type_mismatch(tmp_path: Path) -> None:
+    """Test that mypy detects type mismatches in pipeline definitions"""
+
+    wrong_code = """
+from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
+from sentry_streams.pipeline.message import Message
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
+from sentry_streams.examples.transform_metrics import transform_msg
+from typing import Any, Mapping
+
+def filter_events(msg: Message[IngestMetric]) -> bool:
+    return bool(msg.payload["type"] == "c")
+
+# expect failure: second transform_msg expects Message[IngestMetric] but gets Message[Mapping[str, Any]]
+def create_wrong_pipeline():
+    return (
+        streaming_source("input", "test-stream")
+        .apply(Parser("parser", msg_type=IngestMetric))     # bytes -> IngestMetric
+        .apply(Filter("filter", function=filter_events))    # IngestMetric -> IngestMetric
+        .apply(Map("transform", function=transform_msg))    # IngestMetric -> Mapping[str, Any]
+        .apply(Map("wrong", function=transform_msg))        # Expects Message[IngestMetric], gets Message[Mapping[str, Any]]!
+        .sink(StreamSink("output", "output-stream"))
+    )
+"""
+
+    # Write to temp file and run mypy
+    test_file = tmp_path / "test_wrong.py"
+    test_file.write_text(wrong_code)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mypy",
+            str(test_file),
+            "--show-error-codes",
+            "--check-untyped-defs",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    # Should detect type mismatch
+    assert result.returncode > 0
+    assert 'Argument "function" to "Map" has incompatible type' in result.stdout
+    assert "expected" in result.stdout and "Mapping" in result.stdout
+
+
+def test_mypy_detects_correct_pipeline_rust(tmp_path: Path, test_rust_extension) -> None:
+    """Test that mypy accepts a correctly typed pipeline"""
+
+    # Create a test file with correct types
+    correct_code = """
 from rust_test_functions import TestFilterCorrect, TestMapCorrect, TestMapString, TestMessage
+from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
+from sentry_streams.pipeline.message import Message
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
+from sentry_streams.examples.transform_metrics import transform_msg
+from typing import Any, Mapping
+
+def filter_events(msg: Message[IngestMetric]) -> bool:
+    return bool(msg.payload["type"] == "c")
 
 def create_correct_pipeline():
     return (
@@ -63,27 +162,32 @@ def create_correct_pipeline():
 """
 
     # Write to temp file and run mypy
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(correct_code)
-        temp_file = f.name
+    test_file = tmp_path / "test_correct.py"
+    test_file.write_text(correct_code)
 
-        result = subprocess.run(
-            [sys.executable, "-m", "mypy", temp_file, "--show-error-codes", "--check-untyped-defs"],
-            capture_output=True,
-            text=True,
-        )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mypy",
+            str(test_file),
+            "--show-error-codes",
+            "--check-untyped-defs",
+        ],
+        capture_output=True,
+        text=True,
+    )
 
-        assert result.stdout == "Success: no issues found in 1 source file\n"
-        assert not result.stderr
-        assert result.returncode == 0
+    assert result.returncode == 0
+    assert "Success: no issues found in 1 source file" in result.stdout
 
 
-@pytest.mark.xfail(reason="Type checking not working for both Rust and Python, apparently")
-def test_mypy_detects_type_mismatch_rust(test_rust_extension) -> None:  # type: ignore[no-untyped-def]
+def test_mypy_detects_type_mismatch_rust(tmp_path: Path, test_rust_extension) -> None:
     """Test that mypy detects type mismatches in pipeline definitions"""
 
     wrong_code = """
 from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
+
 from rust_test_functions import TestFilterCorrect, TestMapCorrect, TestMapWrongType, TestMessage
 
 # expect failure: TestMapWrongType expects Message[bool] but gets Message[TestMessage]
@@ -98,70 +202,24 @@ def create_wrong_pipeline():
 """
 
     # Write to temp file and run mypy
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(wrong_code)
-        temp_file = f.name
+    test_file = tmp_path / "test_wrong.py"
+    test_file.write_text(wrong_code)
 
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "mypy", temp_file, "--show-error-codes", "--check-untyped-defs"],
-            capture_output=True,
-            text=True,
-        )
-
-        # Should detect type mismatch
-        assert result.returncode > 0
-        assert (
-            'Argument "function" to "Map" has incompatible type "TestMapWrongType"' in result.stdout
-        )
-
-    finally:
-        Path(temp_file).unlink()
-
-
-@pytest.mark.xfail(reason="Type checking not working for both Rust and Python, apparently")
-def test_mypy_detects_type_mismatch_python() -> None:  # type: ignore[no-untyped-def]
-    """Test that mypy detects type mismatches in pipeline definitions with Python functions"""
-
-    wrong_code = """
-from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
-from sentry_streams.pipeline.message import Message
-
-class TestMessage:
-    pass
-
-def filter_correct(msg: Message[TestMessage]) -> bool:
-    return True
-
-def map_wrong_type(msg: Message[bool]) -> str:  # This expects bool but will get TestMessage
-    return "test"
-
-# expect failure: map_wrong_type expects Message[bool] but gets Message[TestMessage]
-def create_wrong_pipeline():
-    return (
-        streaming_source("input", "test-stream")
-        .apply(Parser("parser", msg_type=TestMessage))              # bytes -> TestMessage
-        .apply(Filter("filter", function=filter_correct))           # TestMessage -> TestMessage
-        .apply(Map("wrong", function=map_wrong_type))               # Expects Message[bool], gets Message[TestMessage]!
-        .sink(StreamSink("output", "output-stream"))
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mypy",
+            str(test_file),
+            "--show-error-codes",
+            "--check-untyped-defs",
+        ],
+        capture_output=True,
+        text=True,
     )
-"""
 
-    # Write to temp file and run mypy
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(wrong_code)
-        temp_file = f.name
-
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "mypy", temp_file, "--show-error-codes", "--check-untyped-defs"],
-            capture_output=True,
-            text=True,
-        )
-
-        # Should detect type mismatch
-        assert result.returncode > 0
-        assert 'Argument "function" to "Map" has incompatible type' in result.stdout
-
-    finally:
-        Path(temp_file).unlink()
+    # Should detect type mismatch
+    assert result.returncode > 0
+    assert 'Argument "function" to "Map" has incompatible type' in result.stdout
+    assert "expected" in result.stdout
+    assert "TestMessage" in result.stdout

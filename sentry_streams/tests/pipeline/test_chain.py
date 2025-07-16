@@ -1,19 +1,20 @@
 from enum import Enum
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar, Union, cast
 from unittest import mock
 
 import pytest
 
 from sentry_streams.pipeline.pipeline import (
     Batch,
+    ComplexStep,
     Filter,
     FlatMap,
     Map,
     Pipeline,
     Reducer,
-    Step,
     StreamSink,
     StreamSource,
+    Transform,
     branch,
     make_edge_sets,
     streaming_source,
@@ -177,7 +178,7 @@ TOut = TypeVar("TOut")
         pytest.param(Batch("batch_step", batch_size=1), id="Create batch"),
     ],
 )
-def test_register_steps(step: Step) -> None:
+def test_register_steps(step: Union[Transform[Any, Any], ComplexStep[Any, Any]]) -> None:
     name = step.name
     pipeline = Pipeline(StreamSource(name="mysource", stream_name="name"))
     pipeline.apply(step)

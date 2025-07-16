@@ -19,28 +19,28 @@ class RouterBranch(Enum):
 
 
 @pytest.fixture
-def create_pipeline() -> Pipeline:
+def create_pipeline() -> Pipeline[bytes]:
     broadcast_branch_1 = (
         branch("branch1")
-        .apply(Map("map2", function=lambda x: x))
+        .apply(Map("map2", function=lambda x: x.payload))
         .route(
             "router1",
             routing_function=lambda x: RouterBranch.BRANCH1.value,
             routing_table={
                 RouterBranch.BRANCH1.value: branch("map4_segment").apply(
-                    Map("map4", function=lambda x: x)
+                    Map("map4", function=lambda x: x.payload)
                 ),
                 RouterBranch.BRANCH2.value: branch("map5_segment").apply(
-                    Map("map5", function=lambda x: x)
+                    Map("map5", function=lambda x: x.payload)
                 ),
             },
         )
     )
-    broadcast_branch_2 = branch("branch2").apply(Map("map3", function=lambda x: x))
+    broadcast_branch_2 = branch("branch2").apply(Map("map3", function=lambda x: x.payload))
 
     test_pipeline = (
         streaming_source("source1", stream_name="foo")
-        .apply(Map("map1", function=lambda x: x))
+        .apply(Map("map1", function=lambda x: x.payload))
         .apply(Filter("filter1", function=lambda x: True))
         .broadcast(
             "broadcast_to_maps",
@@ -54,7 +54,7 @@ def create_pipeline() -> Pipeline:
     return test_pipeline
 
 
-def test_iterate_edges(create_pipeline: Pipeline) -> None:
+def test_iterate_edges(create_pipeline: Pipeline[bytes]) -> None:
     dummy_config: PipelineConfig = {}
     runtime: DummyAdapter[Any, Any] = load_adapter("dummy", dummy_config, None)  # type: ignore
     translator: RuntimeTranslator[Any, Any] = RuntimeTranslator(runtime)

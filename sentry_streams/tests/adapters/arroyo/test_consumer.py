@@ -41,7 +41,7 @@ SCHEMA = get_codec("ingest-metrics")
 
 def test_single_route(
     broker: LocalBroker[KafkaPayload],
-    pipeline: Pipeline,
+    pipeline: Pipeline[bytes],
     metric: IngestMetric,
     transformed_metric: IngestMetric,
 ) -> None:
@@ -57,25 +57,31 @@ def test_single_route(
     consumer.add_step(
         MapStep(
             route=empty_route,
-            pipeline_step=cast(Map, cast(ComplexStep, pipeline.steps["decoder"]).convert()),
+            pipeline_step=cast(
+                Map[bytes, IngestMetric],
+                cast(ComplexStep[bytes, IngestMetric], pipeline.steps["decoder"]).convert(),
+            ),
         )
     )
     consumer.add_step(
         FilterStep(
             route=empty_route,
-            pipeline_step=cast(Filter, pipeline.steps["myfilter"]),
+            pipeline_step=cast(Filter[IngestMetric], pipeline.steps["myfilter"]),
         )
     )
     consumer.add_step(
         MapStep(
             route=empty_route,
-            pipeline_step=cast(Map, pipeline.steps["mymap"]),
+            pipeline_step=cast(Map[IngestMetric, IngestMetric], pipeline.steps["mymap"]),
         )
     )
     consumer.add_step(
         MapStep(
             route=empty_route,
-            pipeline_step=cast(Map, cast(ComplexStep, pipeline.steps["serializer"]).convert()),
+            pipeline_step=cast(
+                Map[IngestMetric, bytes],
+                cast(ComplexStep[IngestMetric, bytes], pipeline.steps["serializer"]).convert(),
+            ),
         )
     )
     consumer.add_step(
@@ -124,7 +130,7 @@ def test_single_route(
 
 def test_broadcast(
     broker: LocalBroker[KafkaPayload],
-    broadcast_pipeline: Pipeline,
+    broadcast_pipeline: Pipeline[bytes],
     metric: IngestMetric,
     transformed_metric: IngestMetric,
 ) -> None:
@@ -140,33 +146,39 @@ def test_broadcast(
         MapStep(
             route=Route(source="source1", waypoints=[]),
             pipeline_step=cast(
-                Map, cast(ComplexStep, broadcast_pipeline.steps["decoder"]).convert()
+                Map[bytes, IngestMetric],
+                cast(
+                    ComplexStep[bytes, IngestMetric], broadcast_pipeline.steps["decoder"]
+                ).convert(),
             ),
         )
     )
     consumer.add_step(
         BroadcastStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Broadcast, broadcast_pipeline.steps["broadcast"]),
+            pipeline_step=cast(Broadcast[IngestMetric], broadcast_pipeline.steps["broadcast"]),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=["even_branch"]),
-            pipeline_step=cast(Map, broadcast_pipeline.steps["mymap1"]),
+            pipeline_step=cast(Map[IngestMetric, IngestMetric], broadcast_pipeline.steps["mymap1"]),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=["odd_branch"]),
-            pipeline_step=cast(Map, broadcast_pipeline.steps["mymap2"]),
+            pipeline_step=cast(Map[IngestMetric, IngestMetric], broadcast_pipeline.steps["mymap2"]),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=["even_branch"]),
             pipeline_step=cast(
-                Map, cast(ComplexStep, broadcast_pipeline.steps["serializer"]).convert()
+                Map[IngestMetric, bytes],
+                cast(
+                    ComplexStep[IngestMetric, bytes], broadcast_pipeline.steps["serializer"]
+                ).convert(),
             ),
         )
     )
@@ -174,7 +186,10 @@ def test_broadcast(
         MapStep(
             route=Route(source="source1", waypoints=["odd_branch"]),
             pipeline_step=cast(
-                Map, cast(ComplexStep, broadcast_pipeline.steps["serializer2"]).convert()
+                Map[IngestMetric, bytes],
+                cast(
+                    ComplexStep[IngestMetric, bytes], broadcast_pipeline.steps["serializer2"]
+                ).convert(),
             ),
         )
     )
@@ -222,7 +237,7 @@ def test_broadcast(
 
 
 def test_multiple_routes(
-    broker: LocalBroker[KafkaPayload], router_pipeline: Pipeline, metric: IngestMetric
+    broker: LocalBroker[KafkaPayload], router_pipeline: Pipeline[bytes], metric: IngestMetric
 ) -> None:
     """
     Test the creation of an Arroyo Consumer from pipeline steps which
@@ -235,20 +250,26 @@ def test_multiple_routes(
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, cast(ComplexStep, router_pipeline.steps["decoder"]).convert()),
+            pipeline_step=cast(
+                Map[bytes, IngestMetric],
+                cast(ComplexStep[bytes, IngestMetric], router_pipeline.steps["decoder"]).convert(),
+            ),
         )
     )
     consumer.add_step(
         RouterStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Router[str], router_pipeline.steps["router"]),
+            pipeline_step=cast(Router[str, IngestMetric], router_pipeline.steps["router"]),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=["set_branch"]),
             pipeline_step=cast(
-                Map, cast(ComplexStep, router_pipeline.steps["serializer"]).convert()
+                Map[IngestMetric, bytes],
+                cast(
+                    ComplexStep[IngestMetric, bytes], router_pipeline.steps["serializer"]
+                ).convert(),
             ),
         )
     )
@@ -256,7 +277,10 @@ def test_multiple_routes(
         MapStep(
             route=Route(source="source1", waypoints=["not_set_branch"]),
             pipeline_step=cast(
-                Map, cast(ComplexStep, router_pipeline.steps["serializer2"]).convert()
+                Map[IngestMetric, bytes],
+                cast(
+                    ComplexStep[IngestMetric, bytes], router_pipeline.steps["serializer2"]
+                ).convert(),
             ),
         )
     )
@@ -319,7 +343,7 @@ def test_multiple_routes(
 
 def test_standard_reduce(
     broker: LocalBroker[KafkaPayload],
-    reduce_pipeline: Pipeline,
+    reduce_pipeline: Pipeline[bytes],
     metric: IngestMetric,
     transformed_metric: IngestMetric,
 ) -> None:
@@ -334,21 +358,24 @@ def test_standard_reduce(
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, cast(ComplexStep, reduce_pipeline.steps["decoder"]).convert()),
+            pipeline_step=cast(
+                Map[bytes, IngestMetric],
+                cast(ComplexStep[bytes, IngestMetric], reduce_pipeline.steps["decoder"]).convert(),
+            ),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, reduce_pipeline.steps["mymap"]),
+            pipeline_step=cast(Map[IngestMetric, IngestMetric], reduce_pipeline.steps["mymap"]),
         )
     )
     consumer.add_step(
         ReduceStep(
             route=Route(source="source1", waypoints=[]),
             pipeline_step=cast(
-                Reduce[timedelta, Any, Any],
-                cast(ComplexStep, reduce_pipeline.steps["myreduce"]).convert(),
+                Reduce[timedelta, IngestMetric, Any],
+                cast(ComplexStep[IngestMetric, Any], reduce_pipeline.steps["myreduce"]).convert(),
             ),
         )
     )
@@ -356,7 +383,8 @@ def test_standard_reduce(
         MapStep(
             route=Route(source="source1", waypoints=[]),
             pipeline_step=cast(
-                Map, cast(ComplexStep, reduce_pipeline.steps["serializer"]).convert()
+                Map[Any, bytes],
+                cast(ComplexStep[Any, bytes], reduce_pipeline.steps["serializer"]).convert(),
             ),
         )
     )
@@ -528,7 +556,7 @@ def test_standard_reduce(
 
 def test_reduce_with_gap(
     broker: LocalBroker[KafkaPayload],
-    reduce_pipeline: Pipeline,
+    reduce_pipeline: Pipeline[bytes],
     metric: IngestMetric,
     transformed_metric: IngestMetric,
 ) -> None:
@@ -543,21 +571,24 @@ def test_reduce_with_gap(
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, cast(ComplexStep, reduce_pipeline.steps["decoder"]).convert()),
+            pipeline_step=cast(
+                Map[bytes, IngestMetric],
+                cast(ComplexStep[bytes, IngestMetric], reduce_pipeline.steps["decoder"]).convert(),
+            ),
         )
     )
     consumer.add_step(
         MapStep(
             route=Route(source="source1", waypoints=[]),
-            pipeline_step=cast(Map, reduce_pipeline.steps["mymap"]),
+            pipeline_step=cast(Map[IngestMetric, IngestMetric], reduce_pipeline.steps["mymap"]),
         )
     )
     consumer.add_step(
         ReduceStep(
             route=Route(source="source1", waypoints=[]),
             pipeline_step=cast(
-                Reduce[timedelta, Any, Any],
-                cast(ComplexStep, reduce_pipeline.steps["myreduce"]).convert(),
+                Reduce[timedelta, IngestMetric, Any],
+                cast(ComplexStep[IngestMetric, Any], reduce_pipeline.steps["myreduce"]).convert(),
             ),
         )
     )
@@ -565,7 +596,8 @@ def test_reduce_with_gap(
         MapStep(
             route=Route(source="source1", waypoints=[]),
             pipeline_step=cast(
-                Map, cast(ComplexStep, reduce_pipeline.steps["serializer"]).convert()
+                Map[Any, bytes],
+                cast(ComplexStep[Any, bytes], reduce_pipeline.steps["serializer"]).convert(),
             ),
         )
     )

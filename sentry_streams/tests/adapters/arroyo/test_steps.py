@@ -1,7 +1,7 @@
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Callable
+from typing import Any, Callable
 from unittest import mock
 from unittest.mock import call
 
@@ -29,12 +29,14 @@ from sentry_streams.adapters.arroyo.steps import (
     StreamSinkStep,
 )
 from sentry_streams.examples.transformer import TransformerBatch
-from sentry_streams.pipeline.message import PyMessage as StreamsMessage
+from sentry_streams.pipeline.message import Message as StreamsMessage
+from sentry_streams.pipeline.message import PyMessage
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Broadcast,
     Filter,
     Map,
+    Parser,
     Router,
     branch,
     streaming_source,
@@ -51,8 +53,12 @@ def test_map_step(metric: IngestMetric) -> None:
 
     mapped_route = Route(source="source1", waypoints=["branch1"])
     other_route = Route(source="source1", waypoints=["branch2"])
-    pipeline = streaming_source(name="source", stream_name="events")
-    pipeline_map = Map(name="mymap", function=lambda msg: msg.payload)
+    pipeline = streaming_source(name="source", stream_name="events").apply(
+        Parser("parser", msg_type=IngestMetric)
+    )
+    pipeline_map: Map[IngestMetric, IngestMetric] = Map(
+        name="mymap", function=lambda msg: msg.payload
+    )
     pipeline.apply(pipeline_map)
     arroyo_map = MapStep(mapped_route, pipeline_map)
 
@@ -60,7 +66,7 @@ def test_map_step(metric: IngestMetric) -> None:
 
     strategy = arroyo_map.build(next_strategy, commit=mock.Mock(spec=Commit))
 
-    test_msg = StreamsMessage(metric, [], time.time(), None)
+    test_msg = PyMessage(metric, [], time.time(), None)
 
     messages = [
         make_msg(test_msg, mapped_route, 0),
@@ -97,9 +103,11 @@ def test_filter_step(metric: IngestMetric, transformed_metric: IngestMetric) -> 
     """
     mapped_route = Route(source="source1", waypoints=["branch1"])
     other_route = Route(source="source1", waypoints=["branch2"])
-    pipeline = streaming_source(name="source", stream_name="events")
+    pipeline = streaming_source(name="source", stream_name="events").apply(
+        Parser("parser", msg_type=IngestMetric)
+    )
 
-    pipeline_filter = Filter(
+    pipeline_filter: Filter[IngestMetric] = Filter(
         name="myfilter",
         function=lambda msg: msg.payload["name"] != "new_metric",
     )
@@ -109,8 +117,8 @@ def test_filter_step(metric: IngestMetric, transformed_metric: IngestMetric) -> 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
     strategy = arroyo_filter.build(next_strategy, commit=mock.Mock(spec=Commit))
 
-    msg = StreamsMessage(metric, [], time.time(), None)
-    filtered_msg = StreamsMessage(transformed_metric, [], time.time(), None)
+    msg = PyMessage(metric, [], time.time(), None)
+    filtered_msg = PyMessage(transformed_metric, [], time.time(), None)
     messages = [
         make_msg(msg, mapped_route, 0),
         make_msg(filtered_msg, mapped_route, 1),
@@ -148,12 +156,14 @@ def test_router(metric: IngestMetric, transformed_metric: IngestMetric) -> None:
     """
     mapped_route = Route(source="source1", waypoints=["map_branch"])
     other_route = Route(source="source1", waypoints=["other_branch"])
-    pipeline = streaming_source(name="source", stream_name="events")
+    pipeline = streaming_source(name="source", stream_name="events").apply(
+        Parser("parser", msg_type=IngestMetric)
+    )
 
     def dummy_routing_func(message: StreamsMessage[IngestMetric]) -> str:
         return "map" if message.payload["name"] != "new_metric" else "other"
 
-    pipeline_router = Router(
+    pipeline_router: Router[str, IngestMetric] = Router(
         name="myrouter",
         routing_function=dummy_routing_func,
         routing_table={
@@ -161,14 +171,14 @@ def test_router(metric: IngestMetric, transformed_metric: IngestMetric) -> None:
             "other": branch(name="other_branch"),
         },
     )
-    pipeline.apply(pipeline_router)
+    pipeline.apply(pipeline_router)  # type: ignore[arg-type]
     arroyo_router = RouterStep(Route(source="source1", waypoints=[]), pipeline_router)
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
     strategy = arroyo_router.build(next_strategy, commit=mock.Mock(spec=Commit))
 
-    msg = StreamsMessage(metric, [], time.time(), None)
-    filtered_msg = StreamsMessage(transformed_metric, [], time.time(), None)
+    msg = PyMessage(metric, [], time.time(), None)
+    filtered_msg = PyMessage(transformed_metric, [], time.time(), None)
 
     messages = [
         make_msg(msg, Route(source="source1", waypoints=[]), 0),
@@ -207,23 +217,25 @@ def test_broadcast(metric: IngestMetric, transformed_metric: IngestMetric) -> No
     """
     mapped_route = Route(source="source1", waypoints=["map_branch"])
     other_route = Route(source="source1", waypoints=["other_branch"])
-    pipeline = streaming_source(name="source", stream_name="events")
+    pipeline = streaming_source(name="source", stream_name="events").apply(
+        Parser("parser", msg_type=IngestMetric)
+    )
 
-    pipeline_router = Broadcast(
+    pipeline_router: Broadcast[IngestMetric] = Broadcast(
         name="mybroadcast",
         routes=[
             branch(name="map_branch"),
             branch(name="other_branch"),
         ],
     )
-    pipeline.apply(pipeline_router)
+    pipeline.apply(pipeline_router)  # type: ignore[arg-type]
     arroyo_broadcast = BroadcastStep(Route(source="source1", waypoints=[]), pipeline_router)
 
     next_strategy = mock.Mock(spec=ProcessingStrategy)
     strategy = arroyo_broadcast.build(next_strategy, commit=mock.Mock(spec=Commit))
 
-    msg = StreamsMessage(metric, [], time.time(), None)
-    filtered_msg = StreamsMessage(transformed_metric, [], time.time(), None)
+    msg = PyMessage(metric, [], time.time(), None)
+    filtered_msg = PyMessage(transformed_metric, [], time.time(), None)
 
     messages = [
         make_value_msg(
@@ -282,7 +294,7 @@ def test_sink(metric: IngestMetric) -> None:
     )
 
     # assume this is a serialized msg being produced to Kafka
-    msg = StreamsMessage(json.dumps(metric).encode("utf-8"), [], time.time(), None)
+    msg: PyMessage[bytes] = PyMessage(json.dumps(metric).encode("utf-8"), [], time.time(), None)
 
     messages = [
         make_msg(msg, mapped_route, 0),
@@ -305,13 +317,15 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch], metric: Ingest
 
     mapped_route = Route(source="source1", waypoints=["branch1"])
     other_route = Route(source="source1", waypoints=["branch2"])
-    pipeline = streaming_source(name="source", stream_name="events")
+    pipeline = streaming_source(name="source", stream_name="events").apply(
+        Parser("parser", msg_type=IngestMetric)
+    )
 
     reduce_window = SlidingWindow(
         window_size=timedelta(seconds=6), window_slide=timedelta(seconds=2)
     )
 
-    pipeline_reduce = Aggregate(
+    pipeline_reduce: Aggregate[timedelta, IngestMetric, Any] = Aggregate(
         name="myreduce",
         window=reduce_window,
         aggregate_func=transformer,
@@ -325,7 +339,7 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch], metric: Ingest
     with mock.patch("time.time", return_value=start_time):
         strategy = arroyo_reduce.build(next_strategy, commit=mock.Mock(spec=Commit))
 
-    msg = StreamsMessage(metric, [], datetime(2025, 1, 1, 12, 0).timestamp(), None)
+    msg = PyMessage(metric, [], datetime(2025, 1, 1, 12, 0).timestamp(), None)
     messages = [
         make_msg(msg, mapped_route, 0),
         make_msg(msg, other_route, 1),
@@ -339,7 +353,7 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch], metric: Ingest
     with mock.patch("time.time", return_value=start_time + 12.0):
         strategy.poll()
 
-    new_msg = StreamsMessage(
+    new_msg: PyMessage[list[IngestMetric]] = PyMessage(
         [metric], [], datetime(2025, 1, 1, 12, 0).timestamp() + 12, None
     )  # since Reduce produces a timestamp based on when the aggregate result is produced, we mock the timestamp
 

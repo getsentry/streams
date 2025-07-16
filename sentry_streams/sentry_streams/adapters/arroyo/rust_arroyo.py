@@ -159,10 +159,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             logger.info(f"Closing transformation chain: {stream} and adding to pipeline")
             self.__consumers[stream.source].add_step(finalize_chain(self.__chains, stream))
 
-    def complex_step_override(self) -> dict[Type[ComplexStep], Callable[[ComplexStep], Route]]:
+    def complex_step_override(
+        self,
+    ) -> dict[Type[ComplexStep[Any, Any]], Callable[[ComplexStep[Any, Any]], Route]]:
         return {}
 
-    def source(self, step: Source) -> Route:
+    def source(self, step: Source[Any]) -> Route:
         """
         Builds an Arroyo Kafka consumer as a stream source.
         By default it uses the configuration provided to the adapter.
@@ -183,7 +185,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         )
         return Route(source_name, [])
 
-    def sink(self, step: Sink, stream: Route) -> Route:
+    def sink(self, step: Sink[Any], stream: Route) -> Route:
         """
         Builds an Arroyo Kafka producer as a stream sink.
         By default it uses the configuration provided to the adapter.
@@ -223,7 +225,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         return stream
 
-    def map(self, step: Map, stream: Route) -> Route:
+    def map(self, step: Map[Any, Any], stream: Route) -> Route:
         """
         Builds a map operator for the platform the adapter supports.
         """
@@ -254,14 +256,14 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         return stream
 
-    def flat_map(self, step: FlatMap, stream: Route) -> Route:
+    def flat_map(self, step: FlatMap[Any, Any], stream: Route) -> Route:
         """
         Builds a flat-map operator for the platform the adapter supports.
         """
         logger.info(f"Adding flatMap: {step.name} to pipeline")
         raise NotImplementedError
 
-    def filter(self, step: Filter, stream: Route) -> Route:
+    def filter(self, step: Filter[Any], stream: Route) -> Route:
         """
         Builds a filter operator for the platform the adapter supports.
         """
@@ -300,7 +302,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
     def broadcast(
         self,
-        step: Broadcast,
+        step: Broadcast[Any],
         stream: Route,
     ) -> Mapping[str, Route]:
         """
@@ -318,7 +320,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
     def router(
         self,
-        step: Router[RoutingFuncReturnType],
+        step: Router[RoutingFuncReturnType, Any],
         stream: Route,
     ) -> Mapping[str, Route]:
         """

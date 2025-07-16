@@ -18,6 +18,10 @@ tests-streams:
 	./sentry_streams/.venv/bin/pytest -vv sentry_streams/tests
 .PHONY: tests-streams
 
+tests-integration:
+	./sentry_streams/.venv/bin/pytest -vv sentry_streams/integration_tests
+.PHONY: tests-integration
+
 test-rust-streams:
 	. sentry_streams/.venv/bin/activate && . scripts/rust-envvars && cd ./sentry_streams/ && cargo test
 .PHONY: tests-rust-streams
