@@ -67,6 +67,7 @@ pub enum RuntimeOperator {
     Router {
         route: Route,
         routing_function: Py<PyAny>,
+        downstream_routes: Py<PyAny>,
     },
     /// Delegates messages processing to a Python operator that provides
     /// the same kind of interface as an Arroyo strategy. This is meant
@@ -126,8 +127,12 @@ pub fn build(
         RuntimeOperator::Router {
             route,
             routing_function,
+            // TODO: Router step will use downstream_routes once it's fixed to work with watermarks
+            #[allow(unused_variables)]
+            downstream_routes,
         } => {
             let func_ref = traced_with_gil!(|py| { routing_function.clone_ref(py) });
+
             build_router(route, func_ref, next)
         }
         RuntimeOperator::PythonAdapter {

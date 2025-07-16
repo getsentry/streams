@@ -16,6 +16,7 @@ anyhow = "1.0.98"
 reqwest = "0.12.15"
 tokio = "1.45.0"
 log = "0.4.27"
+coarsetime = "0.1.36"
 
 [lib]
 name = "rust_streams"

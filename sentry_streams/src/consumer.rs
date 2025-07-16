@@ -5,6 +5,7 @@
 //! and all the steps following that source.
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
+use crate::commit_policy::WatermarkCommitOffsets;
 use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::operators::build;
@@ -198,11 +199,30 @@ fn build_chain(
     schema: &Option<String>,
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
     let mut next = ending_strategy;
+    let mut total_branches: u64 = 1;
     for step in steps.iter().rev() {
+        // calculating the number of downstream branches for the commit step
+        if let RuntimeOperator::Router {
+            downstream_routes, ..
+        } = step.get()
+        {
+            traced_with_gil!(|py| {
+                total_branches +=
+                    (downstream_routes.extract::<Vec<String>>(py).unwrap().len() - 1) as u64;
+            });
+        } else if let RuntimeOperator::Broadcast {
+            downstream_routes, ..
+        } = step.get()
+        {
+            traced_with_gil!(|py| {
+                total_branches +=
+                    (downstream_routes.extract::<Vec<String>>(py).unwrap().len() - 1) as u64;
+            });
+        }
         next = build(
             step,
             next,
-            Box::new(CommitOffsets::new(Duration::from_secs(5))),
+            Box::new(WatermarkCommitOffsets::new(total_branches)),
             concurrency_config,
         );
     }
