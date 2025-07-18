@@ -76,6 +76,27 @@ def create_topic(topic_name: str, num_partitions: int) -> None:
         raise Exception(f"Failed to create topic: {topic_name}")
 
 
+def delete_topic(topic_name: str) -> None:
+    print(f"Deleting topic: {topic_name}")
+    delete_topic_cmd = [
+        "docker",
+        "exec",
+        "kafka-kafka-1",
+        "kafka-topics",
+        "--bootstrap-server",
+        "localhost:9092",
+        "--delete",
+        "--topic",
+        topic_name,
+    ]
+    res = subprocess.run(delete_topic_cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"Got return code: {res.returncode}, when deleting topic")
+        print(f"Stdout: {res.stdout}")
+        print(f"Stderr: {res.stderr}")
+        # Don't raise exception for deletion failures as topics might not exist
+
+
 def run_pipeline_cmd(test: PipelineRun) -> subprocess.Popen[str]:
     """
     Run the pipeline using the command line interface.
@@ -139,52 +160,67 @@ def get_topic_size(topic_name: str) -> int:
 
 
 def run_example_test(test: PipelineRun) -> None:
-    print(f"{test.name}: Creating topics")
-    create_topic(test.source_topic, 1)
-    for sink_topic in test.sink_topics:
-        create_topic(sink_topic, 1)
-
-    print(f"{test.name}: Running pipeline")
-    process = run_pipeline_cmd(test)
-
-    # Give the pipeline a chance to start up
-    time.sleep(30)
-
-    print(f"{test.name}: Sending messages")
-    send_messages_to_topic(test.source_topic, test.input_messages)
-
-    print(f"{test.name}: Waiting for messages")
-    start_time = time.time()
-    while time.time() - start_time < 30:
-        if process.poll() is not None:  # Runner shouldn't stop
-            stdout, stderr = process.communicate()
-            print(f"Pipeline process exited with code {process.returncode}")
-            print(f"Stdout: {stdout}")
-            print(f"Stderr: {stderr}")
-            raise Exception(f"Pipeline process exited with code {process.returncode}")
-
-        received = {}
+    try:
+        print(f"{test.name}: Cleaning up existing topics")
+        delete_topic(test.source_topic)
         for sink_topic in test.sink_topics:
-            size = get_topic_size(sink_topic)
-            received[sink_topic] = (size, size == test.num_expected_messages[sink_topic])
-            print(f"{test.name}: Received {received[sink_topic]} messages from {sink_topic}")
+            delete_topic(sink_topic)
 
-        if all(v[1] for v in received.values()):
-            break
+        # Wait a moment for topic deletion to complete
+        time.sleep(2)
 
-        time.sleep(1)
+        print(f"{test.name}: Creating fresh topics")
+        create_topic(test.source_topic, 1)
+        for sink_topic in test.sink_topics:
+            create_topic(sink_topic, 1)
 
-    print(f"{test.name}: Waiting for process to exit")
-    process.send_signal(signal.SIGKILL)
-    process.wait()
-    stdout, stderr = process.communicate()
-    print(f"Stdout: {stdout}")
-    print(f"Stderr: {stderr}")
+        print(f"{test.name}: Running pipeline")
+        process = run_pipeline_cmd(test)
 
-    for sink_topic, (size, expected) in received.items():
-        assert (
-            expected
-        ), f"Expected {test.num_expected_messages[sink_topic]} messages on {sink_topic}, got {size}"
+        # Give the pipeline a chance to start up and connect to Kafka
+        time.sleep(30)
+
+        print(f"{test.name}: Sending messages")
+        send_messages_to_topic(test.source_topic, test.input_messages)
+
+        print(f"{test.name}: Waiting for messages")
+        start_time = time.time()
+        while time.time() - start_time < 30:
+            if process.poll() is not None:
+                stdout, stderr = process.communicate()
+                print(f"Pipeline process exited with code {process.returncode}")
+                print(f"Stdout: {stdout}")
+                print(f"Stderr: {stderr}")
+                raise Exception(f"Pipeline process exited with code {process.returncode}")
+
+            received = {}
+            for sink_topic in test.sink_topics:
+                size = get_topic_size(sink_topic)
+                received[sink_topic] = (size, size == test.num_expected_messages[sink_topic])
+                print(f"{test.name}: Received {received[sink_topic]} messages from {sink_topic}")
+
+            if all(v[1] for v in received.values()):
+                break
+
+            time.sleep(1)
+
+        print(f"{test.name}: Waiting for process to exit")
+        process.send_signal(signal.SIGKILL)
+        process.wait()
+        stdout, stderr = process.communicate()
+        print(f"Stdout: {stdout}")
+        print(f"Stderr: {stderr}")
+
+        for sink_topic, (size, expected) in received.items():
+            assert (
+                expected
+            ), f"Expected {test.num_expected_messages[sink_topic]} messages on {sink_topic}, got {size}"
+
+    finally:
+        print(f"{test.name}: Final cleanup")
+        delete_topic(test.source_topic)
+        for sink_topic in test.sink_topics:
+            delete_topic(sink_topic)
 
 
 @dataclass
@@ -215,7 +251,42 @@ example_tests = [
             expected_messages={"transformed-events": 1},
         ),
         id="simple_map_filter",
-    )
+    ),
+    pytest.param(
+        ExampleTest(
+            name="simple_batching",
+            source_topic="ingest-metrics",
+            sink_topics=["transformed-events"],
+            input_messages=[
+                create_ingest_message(type="c"),
+                create_ingest_message(type="c"),
+                create_ingest_message(type="c"),
+                create_ingest_message(type="c"),
+            ],
+            expected_messages={"transformed-events": 2},
+        ),
+        id="simple_batching",
+    ),
+    pytest.param(
+        ExampleTest(
+            name="parallel_processing",
+            source_topic="ingest-metrics",
+            sink_topics=["transformed-events"],
+            input_messages=[create_ingest_message(type="c")],
+            expected_messages={"transformed-events": 1},
+        ),
+        id="parallel_processing",
+    ),
+    pytest.param(
+        ExampleTest(
+            name="transformer",
+            source_topic="ingest-metrics",
+            sink_topics=["transformed-events"],
+            input_messages=[create_ingest_message(type="c")],
+            expected_messages={"transformed-events": 1},
+        ),
+        id="transformer",
+    ),
 ]
 
 
