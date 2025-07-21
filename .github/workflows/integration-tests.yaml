@@ -1,0 +1,90 @@
+name: Integration Tests
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+      - release-sentry-streams/**
+  pull_request:
+
+jobs:
+  setup:
+    name: "Setup integration test environment"
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: sentry_streams/.python-version
+
+      - name: Make environment
+        run: |
+          make install-dev
+
+      - name: Discover test items
+        id: set-matrix
+        run: |
+          # Since each example is horribly slow, run then all in separate jobs each. They are not required for PR merge for now
+          cd sentry_streams
+          TEST_ITEMS=$(.venv/bin/pytest integration_tests/ --collect-only -q | grep -E "^integration_tests/.+::.+" | jq -R -s -c 'split("\n")[:-1]')
+          echo "Discovered test items: $TEST_ITEMS"
+          echo "matrix=$TEST_ITEMS" >> $GITHUB_OUTPUT
+
+  integration-test:
+    name: "Test ${{ matrix.test-item }}"
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # Prevent individual tests from hanging
+    strategy:
+      fail-fast: false  # Continue running other tests if one fails
+      matrix:
+        test-item: ${{ fromJson(needs.setup.outputs.test-matrix) }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: sentry_streams/.python-version
+
+      - name: Make environment
+        run: |
+          make install-dev
+
+      - name: Install devservices
+        run: |
+          pip install devservices
+
+      - name: Start services
+        id: setup
+        run: |
+          devservices up
+
+      - name: Install local package
+        run: |
+          pip install -e sentry_streams/.
+
+      - name: Build Rust transforms for rust examples
+        if: contains(matrix.test-item, 'rust')
+        run: |
+          . sentry_streams/.venv/bin/activate
+          . scripts/rust-envvars
+          # Extract example name from test item if it contains rust
+          TEST_ITEM="${{ matrix.test-item }}"
+          if [[ "$TEST_ITEM" =~ test_examples\[([^]]+)\] ]]; then
+            EXAMPLE_NAME="${BASH_REMATCH[1]}"
+            if [ -d "sentry_streams/sentry_streams/examples/${EXAMPLE_NAME}/rust_transforms" ]; then
+              cd "sentry_streams/sentry_streams/examples/${EXAMPLE_NAME}/rust_transforms"
+              maturin develop
+            fi
+          fi
+
+      - name: Run integration test for ${{ matrix.test-item }}
+        run: |
+          cd sentry_streams
+          .venv/bin/pytest -vv "${{ matrix.test-item }}" -s
+        env:
+          RUST_BACKTRACE: 1
+          RUST_LOG: debug
