@@ -18,8 +18,8 @@ struct WatermarkTracker {
 
 #[derive(Clone, Debug)]
 pub struct WatermarkCommitOffsets {
+    pub num_branches: u64,
     watermarks: HashMap<u64, WatermarkTracker>,
-    num_branches: u64,
 }
 
 impl WatermarkCommitOffsets {

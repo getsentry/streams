@@ -17,7 +17,6 @@ use crate::watermark::WatermarkEmitter;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
-use sentry_arroyo::processing::strategies::commit_offsets::CommitOffsets;
 use sentry_arroyo::processing::strategies::noop::Noop;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
@@ -27,7 +26,6 @@ use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 use std::sync::Arc;
-use std::time::Duration;
 
 /// The class that represent the consumer.
 /// This class is exposed to python and it is the main entry point
@@ -198,33 +196,11 @@ fn build_chain(
     concurrency_config: &ConcurrencyConfig,
     schema: &Option<String>,
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
+    // get the total number of branches for the commit step
     let mut next = ending_strategy;
-    let mut total_branches: u64 = 1;
     for step in steps.iter().rev() {
         // calculating the number of downstream branches for the commit step
-        if let RuntimeOperator::Router {
-            downstream_routes, ..
-        } = step.get()
-        {
-            traced_with_gil!(|py| {
-                total_branches +=
-                    (downstream_routes.extract::<Vec<String>>(py).unwrap().len() - 1) as u64;
-            });
-        } else if let RuntimeOperator::Broadcast {
-            downstream_routes, ..
-        } = step.get()
-        {
-            traced_with_gil!(|py| {
-                total_branches +=
-                    (downstream_routes.extract::<Vec<String>>(py).unwrap().len() - 1) as u64;
-            });
-        }
-        next = build(
-            step,
-            next,
-            Box::new(WatermarkCommitOffsets::new(total_branches)),
-            concurrency_config,
-        );
+        next = build(step, next, Box::new(Noop {}), concurrency_config);
     }
     let watermark_step = Box::new(WatermarkEmitter::new(
         next,
@@ -282,7 +258,7 @@ impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
         build_chain(
             &self.source,
             &self.steps,
-            Box::new(Noop {}),
+            Box::new(WatermarkCommitOffsets::new(1)),
             &self.concurrency_config,
             &self.schema,
         )
