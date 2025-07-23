@@ -115,6 +115,8 @@ fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
                 }
             })
         }
+        // TODO: currently sink step just passes watermarks on to next_step, once a wrapper is built around the produce
+        // step to handle watermarks we'll be serializing watermarks as well
         RoutedValuePayload::WatermarkMessage(ref watermark_msg) => match watermark_msg {
             WatermarkMessage::PyWatermark(..) => {
                 panic!("PyWatermark is not supported in KafkaPayload conversion");
@@ -227,7 +229,9 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
-        if self.route != message.payload().route {
+        // TODO: pass watermark messages on to produce step once produce step is async and we have a wrapper
+        // around it to handle watermarks
+        if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             self.next_strategy.submit(message)
         } else {
             match self.produce_strategy.submit(to_kafka_payload(message)) {
