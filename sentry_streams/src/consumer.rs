@@ -196,10 +196,8 @@ fn build_chain(
     concurrency_config: &ConcurrencyConfig,
     schema: &Option<String>,
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
-    // get the total number of branches for the commit step
     let mut next = ending_strategy;
     for step in steps.iter().rev() {
-        // calculating the number of downstream branches for the commit step
         next = build(step, next, Box::new(Noop {}), concurrency_config);
     }
     let watermark_step = Box::new(WatermarkEmitter::new(
@@ -258,6 +256,8 @@ impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
         build_chain(
             &self.source,
             &self.steps,
+            // TODO: once Broadcast/Router work properly, count how many total downstream
+            // branches a pipeline has and pass that value to the Watermark
             Box::new(WatermarkCommitOffsets::new(1)),
             &self.concurrency_config,
             &self.schema,

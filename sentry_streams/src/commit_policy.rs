@@ -16,6 +16,16 @@ struct WatermarkTracker {
     time_added: coarsetime::Instant,
 }
 
+/// WatermarkCommitOffsets is a commit policy that only commits once it receives a copy of a Watermark
+/// for each downstream route.
+/// The algorithm works like so:
+/// - when a Watermark is submitted to the commit step, either add a new WatermarkTracker to the commit step's
+///   `watermarks` buffer or increment the existing WatermarkTracker's `num_watermarks` counter
+/// - when the commit step is polled, for each WatermarkTracker in the `watermarks` buffer, combine the committable
+///   of all watermarks that have `num_watermarks` == `num_branches` and return that as a CommitRequest
+/// - if any WatermarkTracker hasn't gotten the required number of Watermark copies in 5 min since the
+///   WatermarkTracker was created, delete that WatermarkTracker from the `watermarks` buffer
+///   (to prevent an unbounded buffer if one branch of a pipeline breaks and stops forwarding watermarks)
 #[derive(Clone, Debug)]
 pub struct WatermarkCommitOffsets {
     pub num_branches: u64,
