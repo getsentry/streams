@@ -17,6 +17,7 @@ dependencies = [
     "jsonschema>=4.23.0",
     "sentry-kafka-schemas>=1.2.0",
     "polars",
+    "click>=8.2.1",
 ]
 
 [dependency-groups]
@@ -34,6 +35,8 @@ dev = [
     "maturin>=1.5.1",
     "types-PyYAML>=6.0.12",
     "types-jsonschema>=4.23.0",
+    "devservices>=1.1.5",
+    "types-confluent-kafka>=1.3.4",
 ]
 
 [tool.maturin]

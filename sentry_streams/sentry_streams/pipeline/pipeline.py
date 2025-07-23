@@ -9,6 +9,7 @@ from typing import (
     Any,
     Callable,
     Generic,
+    Iterable,
     Mapping,
     MutableMapping,
     MutableSequence,
@@ -43,6 +44,13 @@ from sentry_streams.pipeline.msg_codecs import (
 )
 from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
 
+RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
+TransformFuncReturnType = TypeVar("TransformFuncReturnType")
+TIn = TypeVar("TIn")
+TOut = TypeVar("TOut")
+TNewOut = TypeVar("TNewOut")
+TBranch = TypeVar("TBranch")
+
 
 class StepType(Enum):
     BRANCH = "branch"
@@ -60,13 +68,13 @@ def make_edge_sets(edge_map: Mapping[str, Sequence[Any]]) -> Mapping[str, Set[An
     return {k: set(v) for k, v in edge_map.items()}
 
 
-class Pipeline:
+class Pipeline(Generic[TOut]):
     """
     A graph representing the connections between
     logical Steps.
     """
 
-    def __init__(self, source: Source | Branch) -> None:
+    def __init__(self, source: Source[TOut] | Branch[TOut]) -> None:
         self.steps: MutableMapping[str, Step] = {}
         self.incoming_edges: MutableMapping[str, list[str]] = defaultdict(list)
         self.outgoing_edges: MutableMapping[str, list[str]] = defaultdict(list)
@@ -84,7 +92,7 @@ class Pipeline:
         self.incoming_edges[_to.name].append(_from.name)
         self.outgoing_edges[_from.name].append(_to.name)
 
-    def _merge(self, other: Pipeline, merge_point: str) -> None:
+    def _merge(self, other: Pipeline[TOut], merge_point: str) -> None:
         """
         Merges another pipeline into this one after a provided step identified
         as `merge_point`
@@ -114,25 +122,27 @@ class Pipeline:
         for n in other_pipeline_sources:
             self.incoming_edges[n].append(merge_point)
 
-    def apply(self, step: Step) -> Pipeline:
+    def apply(
+        self, step: Union[Transform[TOut, TNewOut], ComplexStep[TOut, TNewOut]]
+    ) -> Pipeline[TNewOut]:
         assert not self._closed, "Cannot add to a pipeline after it has been closed"
         step.register(self, self.__last_added_step)
         self.__last_added_step = step
-        return self
+        return cast(Pipeline[TNewOut], self)
 
-    def sink(self, step: Sink) -> Pipeline:
+    def sink(self, step: Sink[TOut]) -> Pipeline[TOut]:
         assert not self._closed, "Cannot add to a pipeline after it has been closed"
         step.register(self, self.__last_added_step)
         self._closed = True
         return self
 
-    def broadcast(self, name: str, routes: Sequence[Pipeline]) -> Pipeline:
+    def broadcast(self, name: str, routes: Sequence[Pipeline[TOut]]) -> Pipeline[TOut]:
         """
         Broadcast a message to multiple branches. Adding a broadcast step will close the pipeline, since
         more steps can't be added after it. Thus it expects that all the branches are fully defined.
         """
         assert not self._closed, "Cannot add to a pipeline after it has been closed"
-        step = Broadcast(name=name, routes=routes)
+        step = Broadcast[TOut](name=name, routes=routes)
         step.register(self, self.__last_added_step)
         self.__last_added_step = step
         self._closed = True
@@ -141,22 +151,24 @@ class Pipeline:
     def route(
         self,
         name: str,
-        routing_function: Callable[..., RoutingFuncReturnType],
-        routing_table: Mapping[RoutingFuncReturnType, Pipeline],
-    ) -> Pipeline:
+        routing_function: Callable[[Message[TOut]], RoutingFuncReturnType],
+        routing_table: Mapping[RoutingFuncReturnType, Pipeline[TOut]],
+    ) -> Pipeline[TOut]:
         """
         Route a message to a specific branch based on a routing function. Adding a router step will close the pipeline, since
         more steps can't be added after it. Thus it expects that all the branches are fully defined.
         """
         assert not self._closed, "Cannot add to a pipeline after it has been closed"
-        step = Router(name=name, routing_function=routing_function, routing_table=routing_table)
+        step = Router[RoutingFuncReturnType, TOut](
+            name=name, routing_function=routing_function, routing_table=routing_table
+        )
         step.register(self, self.__last_added_step)
         self.__last_added_step = step
         self._closed = True
         return self
 
 
-def streaming_source(name: str, stream_name: str) -> Pipeline:
+def streaming_source(name: str, stream_name: str) -> Pipeline[bytes]:
     """
     Used to create a new pipeline with a streaming source, where the stream_name is the
     name of the Kafka topic to read from.
@@ -164,12 +176,12 @@ def streaming_source(name: str, stream_name: str) -> Pipeline:
     return Pipeline(StreamSource(name=name, stream_name=stream_name))
 
 
-def branch(name: str) -> Pipeline:
+def branch(name: str) -> Pipeline[Any]:
     """
     Used to create a new pipeline with a branch as the root step. This pipeline can then be added as part of
     a router or broadcast step.
     """
-    return Pipeline(Branch(name=name))
+    return Pipeline(Branch[Any](name=name))
 
 
 @dataclass
@@ -182,7 +194,7 @@ class Step:
 
     name: str
 
-    def register(self, ctx: Pipeline, previous: Step) -> None:
+    def register(self, ctx: Pipeline[Any], previous: Step) -> None:
         ctx.register(self)
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
@@ -193,26 +205,14 @@ class Step:
 
 
 @dataclass
-class ComplexStep(Step):
+class Source(Step, Generic[TOut]):
     """
-    A wrapper around a simple step that allows for syntactic sugar/more complex steps.
-    The convert() function must return a simple step.
-    """
-
-    @abstractmethod
-    def convert(self) -> Step:
-        raise NotImplementedError()
-
-
-@dataclass
-class Source(Step):
-    """
-    A generic Source.
+    A generic Source that produces output of type TOut.
     """
 
 
 @dataclass
-class StreamSource(Source):
+class StreamSource(Source[bytes]):
     """
     A Source which reads from Kafka.
     """
@@ -221,31 +221,53 @@ class StreamSource(Source):
     header_filter: Optional[Tuple[str, bytes]] = None
     step_type: StepType = StepType.SOURCE
 
-    def register(self, ctx: Pipeline, previous: Step) -> None:
+    def register(self, ctx: Pipeline[bytes], previous: Step) -> None:
         super().register(ctx, previous)
 
 
 @dataclass
-class WithInput(Step):
+class WithInput(Step, Generic[TIn]):
     """
     A generic Step representing a logical
-    step which has inputs.
+    step which has inputs of type TIn.
     """
 
-    def register(self, ctx: Pipeline, previous: Step) -> None:
+    def register(self, ctx: Pipeline[Any], previous: Step) -> None:
         super().register(ctx, previous)
         ctx.register_edge(previous, self)
 
 
 @dataclass
-class Sink(WithInput):
+class ComplexStep(WithInput[TIn], Generic[TIn, TOut]):
     """
-    A generic Sink.
+    A wrapper around a simple step that allows for syntactic sugar/more complex steps.
+    The convert() function must return a simple step.
+    ComplexStep[TIn, TOut] represents a step that transforms TIn to TOut.
+    """
+
+    @abstractmethod
+    def convert(self) -> Transform[TIn, TOut]:
+        raise NotImplementedError()
+
+
+@dataclass
+class Transform(WithInput[TIn], Generic[TIn, TOut]):
+    """
+    A step that transforms input of type TIn to output of type TOut.
+    """
+
+    pass
+
+
+@dataclass
+class Sink(WithInput[TIn]):
+    """
+    A generic Sink that consumes input of type TIn.
     """
 
 
 @dataclass
-class GCSSink(Sink):
+class GCSSink(Sink[TIn]):
     """
     A Sink which writes to GCS
     """
@@ -256,7 +278,7 @@ class GCSSink(Sink):
 
 
 @dataclass
-class StreamSink(Sink):
+class StreamSink(Sink[TIn]):
     """
     A Sink which specifically writes to Kafka.
     """
@@ -265,30 +287,18 @@ class StreamSink(Sink):
     step_type: StepType = StepType.SINK
 
 
-RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
-TransformFuncReturnType = TypeVar("TransformFuncReturnType")
-
-
-class TransformFunction(ABC, Generic[TransformFuncReturnType]):
-    @property
-    @abstractmethod
-    def resolved_function(self) -> Callable[..., TransformFuncReturnType]:
-        raise NotImplementedError()
-
-
 @dataclass
-class TransformStep(WithInput, TransformFunction[TransformFuncReturnType]):
+class FunctionTransform(Transform[TIn, TOut], Generic[TIn, TOut]):
     """
-    A generic step representing a step performing a transform operation
-    on input data.
+    A transform step that applies a function to transform TIn to TOut.
     function: supports reference to a function using dot notation, or a Callable
     """
 
-    function: Union[Callable[..., TransformFuncReturnType], str]
+    function: Union[Callable[[Message[TIn]], TOut], str]
     step_type: StepType
 
     @property
-    def resolved_function(self) -> Callable[..., TransformFuncReturnType]:
+    def resolved_function(self) -> Callable[[Message[TIn]], TOut]:
         """
         Returns a callable of the transform function defined, or referenced in the
         this class
@@ -302,13 +312,17 @@ class TransformStep(WithInput, TransformFunction[TransformFuncReturnType]):
         module = get_module(mod)
 
         imported_cls = getattr(module, cls)
-        imported_func = cast(Callable[..., TransformFuncReturnType], getattr(imported_cls, fn))
+        imported_func = cast(Callable[[Message[TIn]], TOut], getattr(imported_cls, fn))
         function_callable = imported_func
         return function_callable
 
 
+# Backward compatibility alias
+TransformStep = FunctionTransform
+
+
 @dataclass
-class Map(TransformStep[Any]):
+class Map(FunctionTransform[TIn, TOut], Generic[TIn, TOut]):
     """
     A simple 1:1 Map, taking a single input to single output.
     """
@@ -325,26 +339,47 @@ class Map(TransformStep[Any]):
 
 
 @dataclass
-class Filter(TransformStep[bool]):
+class Filter(Transform[TIn, TIn], Generic[TIn]):
     """
     A simple Filter, taking a single input and either returning it or None as output.
+    Note: Filter preserves the input type as output type.
     """
 
+    function: Union[Callable[[Message[TIn]], bool], str]
     step_type: StepType = StepType.FILTER
+
+    @property
+    def resolved_function(self) -> Callable[[Message[TIn]], bool]:
+        """
+        Returns a callable of the filter function defined, or referenced in the
+        this class
+        """
+        if callable(self.function):
+            return self.function
+
+        fn_path = self.function
+        mod, cls, fn = fn_path.rsplit(".", 2)
+
+        module = get_module(mod)
+
+        imported_cls = getattr(module, cls)
+        imported_func = cast(Callable[[Message[TIn]], bool], getattr(imported_cls, fn))
+        function_callable = imported_func
+        return function_callable
 
 
 @dataclass
-class Branch(Step):
+class Branch(WithInput[TIn], Generic[TIn]):
     """
     A Branch represents one branch in a pipeline, which is routed to
-    by a Router.
+    by a Router. Note: Branch preserves the input type as output type.
     """
 
     step_type: StepType = StepType.BRANCH
 
 
 @dataclass
-class Router(WithInput, Generic[RoutingFuncReturnType]):
+class Router(WithInput[TIn], Generic[RoutingFuncReturnType, TIn]):
     """
     A step which takes a routing table of Branches and sends messages
     to those branches based on a routing function.
@@ -352,33 +387,35 @@ class Router(WithInput, Generic[RoutingFuncReturnType]):
     to multiple branches simultaneously is not currently supported.
     """
 
-    routing_function: Callable[..., RoutingFuncReturnType]
-    routing_table: Mapping[RoutingFuncReturnType, Pipeline]
+    routing_function: Callable[[Message[TIn]], RoutingFuncReturnType]
+    routing_table: Mapping[RoutingFuncReturnType, Pipeline[TIn]]
     step_type: StepType = StepType.ROUTER
 
-    def register(self, ctx: Pipeline, previous: Step) -> None:
+    def register(self, ctx: Pipeline[TIn], previous: Step) -> None:
         super().register(ctx, previous)
         for pipeline in self.routing_table.values():
             ctx._merge(other=pipeline, merge_point=self.name)
 
 
 @dataclass
-class Broadcast(WithInput):
+class Broadcast(WithInput[TIn], Generic[TIn]):
     """
     A Broadcast step will forward messages to all downstream branches in a pipeline.
     """
 
-    routes: Sequence[Pipeline]
+    routes: Sequence[Pipeline[TIn]]
     step_type: StepType = StepType.BROADCAST
 
-    def register(self, ctx: Pipeline, previous: Step) -> None:
+    def register(self, ctx: Pipeline[TIn], previous: Step) -> None:
         super().register(ctx, previous)
         for chain in self.routes:
             ctx._merge(other=chain, merge_point=self.name)
 
 
 @dataclass
-class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
+class Reduce(
+    Transform[InputType, OutputType], ABC, Generic[MeasurementUnit, InputType, OutputType]
+):
     """
     A generic Step for a Reduce (or Accumulator-based) operation
     """
@@ -395,7 +432,7 @@ class Reduce(WithInput, ABC, Generic[MeasurementUnit, InputType, OutputType]):
 
     @property
     @abstractmethod
-    def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
+    def aggregate_fn(self) -> Callable[[], Accumulator[Message[InputType], OutputType]]:
         raise NotImplementedError()
 
 
@@ -408,7 +445,7 @@ class Aggregate(Reduce[MeasurementUnit, InputType, OutputType]):
     """
 
     window: Window[MeasurementUnit]
-    aggregate_func: Callable[[], Accumulator[InputType, OutputType]]
+    aggregate_func: Callable[[], Accumulator[Message[InputType], OutputType]]
     aggregate_backend: Optional[AggregationBackend[OutputType]] = None
     group_by_key: Optional[GroupBy] = None
     step_type: StepType = StepType.REDUCE
@@ -422,7 +459,7 @@ class Aggregate(Reduce[MeasurementUnit, InputType, OutputType]):
         return self.window
 
     @property
-    def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
+    def aggregate_fn(self) -> Callable[[], Accumulator[Message[InputType], OutputType]]:
         return self.aggregate_func
 
 
@@ -430,7 +467,10 @@ BatchInput = TypeVar("BatchInput")
 
 
 @dataclass
-class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[Tuple[InputType, Optional[str]]]]):
+class Batch(
+    Reduce[MeasurementUnit, InputType, MutableSequence[Tuple[InputType, Optional[str]]]],
+    Generic[MeasurementUnit, InputType],
+):
     """
     A step to Batch up the results of the prior step.
 
@@ -452,9 +492,18 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[Tuple[InputType, 
         return TumblingWindow(self.batch_size)
 
     @property
-    def aggregate_fn(self) -> Callable[[], Accumulator[InputType, OutputType]]:
-        batch_acc = BatchBuilder[BatchInput]
-        return cast(Callable[[], Accumulator[InputType, OutputType]], batch_acc)
+    def aggregate_fn(
+        self,
+    ) -> Callable[
+        [], Accumulator[Message[InputType], MutableSequence[Tuple[InputType, Optional[str]]]]
+    ]:
+        return cast(
+            Callable[
+                [],
+                Accumulator[Message[InputType], MutableSequence[Tuple[InputType, Optional[str]]]],
+            ],
+            BatchBuilder,
+        )
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
         merged_config = (
@@ -466,13 +515,33 @@ class Batch(Reduce[MeasurementUnit, InputType, MutableSequence[Tuple[InputType, 
 
 
 @dataclass
-class FlatMap(TransformStep[Any]):
+class FlatMap(Transform[TIn, TOut], Generic[TIn, TOut]):
     """
     A generic step for mapping and flattening (and therefore alerting the shape of) inputs to
     get outputs. Takes a single input to 0...N outputs.
+    The function should return an Iterable[TOut], but the step itself outputs TOut.
     """
 
+    function: Union[Callable[[Message[TIn]], Iterable[TOut]], str]
     step_type: StepType = StepType.FLAT_MAP
+
+    @property
+    def resolved_function(self) -> Callable[[Message[TIn]], Iterable[TOut]]:
+        """
+        Returns a callable of the flatmap function defined, or referenced in this class
+        """
+        if callable(self.function):
+            return self.function
+
+        fn_path = self.function
+        mod, cls, fn = fn_path.rsplit(".", 2)
+
+        module = get_module(mod)
+
+        imported_cls = getattr(module, cls)
+        imported_func = cast(Callable[[Message[TIn]], Iterable[TOut]], getattr(imported_cls, fn))
+        function_callable = imported_func
+        return function_callable
 
 
 ######################
@@ -481,7 +550,7 @@ class FlatMap(TransformStep[Any]):
 
 
 @dataclass
-class Parser(ComplexStep, WithInput, Generic[TransformFuncReturnType]):
+class Parser(ComplexStep[bytes, TransformFuncReturnType], Generic[TransformFuncReturnType]):
     """
     A step to decode bytes, deserialize the resulting message and validate it against the schema
     which corresponds to the message type provided. The message type should be one which
@@ -493,8 +562,8 @@ class Parser(ComplexStep, WithInput, Generic[TransformFuncReturnType]):
 
     msg_type: Type[TransformFuncReturnType]
 
-    def convert(self) -> Step:
-        return Map(
+    def convert(self) -> Transform[bytes, TransformFuncReturnType]:
+        return Map[bytes, TransformFuncReturnType](
             name=self.name,
             function=msg_parser,
         )
@@ -502,21 +571,20 @@ class Parser(ComplexStep, WithInput, Generic[TransformFuncReturnType]):
 
 @dataclass
 class BatchParser(
-    ComplexStep,
-    WithInput,
+    ComplexStep[Sequence[bytes], Sequence[TransformFuncReturnType]],
     Generic[TransformFuncReturnType],
 ):
     msg_type: Type[TransformFuncReturnType]
 
-    def convert(self) -> Step:
-        return Map(
+    def convert(self) -> Transform[Sequence[bytes], Sequence[TransformFuncReturnType]]:
+        return Map[Sequence[bytes], Sequence[TransformFuncReturnType]](
             name=self.name,
             function=batch_msg_parser,
         )
 
 
 @dataclass
-class Serializer(ComplexStep, WithInput):
+class Serializer(ComplexStep[TIn, bytes], Generic[TIn]):
     """
     A step to serialize and encode messages into bytes. These bytes can be written
     to sink data to a Kafka topic, for example. This step will need to precede a
@@ -525,22 +593,22 @@ class Serializer(ComplexStep, WithInput):
 
     dt_format: Optional[str] = None
 
-    def convert(self) -> Step:
-        return Map(
+    def convert(self) -> Transform[TIn, bytes]:
+        return Map[TIn, bytes](
             name=self.name,
             function=msg_serializer,
         )
 
 
 @dataclass
-class Reducer(ComplexStep, WithInput, Generic[MeasurementUnit, InputType, OutputType]):
+class Reducer(ComplexStep[InputType, OutputType], Generic[MeasurementUnit, InputType, OutputType]):
     window: Window[MeasurementUnit]
     aggregate_func: Callable[[], Accumulator[Message[InputType], OutputType]]
     aggregate_backend: AggregationBackend[OutputType] | None = None
     group_by_key: GroupBy | None = None
 
-    def convert(self) -> Step:
-        return Aggregate(
+    def convert(self) -> Transform[InputType, OutputType]:
+        return Aggregate[MeasurementUnit, InputType, OutputType](
             name=self.name,
             window=self.window,
             aggregate_func=self.aggregate_func,
@@ -550,19 +618,19 @@ class Reducer(ComplexStep, WithInput, Generic[MeasurementUnit, InputType, Output
 
 
 @dataclass
-class ParquetSerializer(ComplexStep, WithInput):
+class ParquetSerializer(ComplexStep[MutableSequence[TIn], bytes], Generic[TIn]):
     # TODO: because BatchParser outputs a MutableSequence, to satisfy type checking this must also be a MutableSequence
     schema_fields: Mapping[str, DataType]
     compression: Optional[ParquetCompression] = "snappy"
 
-    def convert(self) -> Step:
+    def convert(self) -> Transform[MutableSequence[TIn], bytes]:
         assert self.compression is not None
         polars_schema = resolve_polars_schema(self.schema_fields)
 
         serializer_fn = partial(
             serialize_to_parquet, polars_schema=polars_schema, compression=self.compression
         )
-        return Map(
+        return Map[MutableSequence[TIn], bytes](
             name=self.name,
             function=serializer_fn,
         )

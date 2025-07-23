@@ -67,7 +67,9 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
-    def complex_step_override(self) -> dict[Type[ComplexStep], Callable[[ComplexStep], StreamT]]:
+    def complex_step_override(
+        self,
+    ) -> dict[Type[ComplexStep[Any, Any]], Callable[[ComplexStep[Any, Any]], StreamT]]:
         """
         Allows an adapter to directly handle certain complex steps, instead of converting them to simple steps. The keys of the dict should be
         the class of the specific step being handled.
@@ -75,35 +77,35 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
-    def source(self, step: Source) -> StreamT:
+    def source(self, step: Source[Any]) -> StreamT:
         """
         Builds a stream source for the platform the adapter supports.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def sink(self, step: Sink, stream: StreamT) -> StreamSinkT:
+    def sink(self, step: Sink[Any], stream: StreamT) -> StreamSinkT:
         """
         Builds a stream sink for the platform the adapter supports.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def map(self, step: Map, stream: StreamT) -> StreamT:
+    def map(self, step: Map[Any, Any], stream: StreamT) -> StreamT:
         """
         Builds a map operator for the platform the adapter supports.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def flat_map(self, step: FlatMap, stream: StreamT) -> StreamT:
+    def flat_map(self, step: FlatMap[Any, Any], stream: StreamT) -> StreamT:
         """
         Builds a flat-map operator for the platform the adapter supports.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def filter(self, step: Filter, stream: StreamT) -> StreamT:
+    def filter(self, step: Filter[Any], stream: StreamT) -> StreamT:
         """
         Builds a filter operator for the platform the adapter supports.
         """
@@ -123,7 +125,7 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
     @abstractmethod
     def router(
         self,
-        step: Router[RoutingFuncReturnType],
+        step: Router[RoutingFuncReturnType, Any],
         stream: StreamT,
     ) -> Mapping[str, StreamT]:
         """
@@ -134,7 +136,7 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
     @abstractmethod
     def broadcast(
         self,
-        step: Broadcast,
+        step: Broadcast[Any],
         stream: StreamT,
     ) -> Mapping[str, StreamT]:
         """
