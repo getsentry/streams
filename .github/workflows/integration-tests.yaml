@@ -30,7 +30,7 @@ jobs:
         run: |
           # Since each example is horribly slow, run then all in separate jobs each. They are not required for PR merge for now
           cd sentry_streams
-          TEST_ITEMS=$(.venv/bin/pytest integration_tests/ --collect-only -q | grep -E "^integration_tests/.+::.+" | jq -R -s -c 'split("\n")[:-1]')
+          TEST_ITEMS=$(.venv/bin/pytest integration_tests/ --collect-only 2>&1 | grep -E "^integration_tests/.*::test_" | jq -R -s -c 'split("\n")[:-1] | map(select(length > 0))')
           echo "Discovered test items: $TEST_ITEMS"
           echo "matrix=$TEST_ITEMS" >> $GITHUB_OUTPUT
 
