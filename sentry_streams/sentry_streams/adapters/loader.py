@@ -54,6 +54,12 @@ def load_adapter(
 
         # TODO: Fix this type as above.
         return cast(StreamAdapter[Stream, Sink], RustArroyoAdapter.build(config))
+
+    if adapter_type == "dumping_arroyo":
+        from sentry_streams.adapters.arroyo.rust_arroyo import DumpingArroyoAdapter
+
+        # TODO: Fix this type as above.
+        return cast(StreamAdapter[Stream, Sink], DumpingArroyoAdapter.build(config))
     else:
         mod, cls = adapter_type.rsplit(".", 1)
 

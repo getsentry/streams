@@ -7,7 +7,6 @@ from typing import (
     Mapping,
     MutableMapping,
     Self,
-    Sequence,
     Type,
     cast,
 )
@@ -16,12 +15,20 @@ from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MultiprocessingPool,
 )
 
+from sentry_streams.adapters.arroyo.dumping_consumer import (
+    ArroyoConsumer as ArroyoConsumerState,
+)
+from sentry_streams.adapters.arroyo.dumping_consumer import (
+    DumpingConsumer,
+)
 from sentry_streams.adapters.arroyo.multi_process_delegate import (
     MultiprocessDelegateFactory,
 )
-from sentry_streams.adapters.arroyo.reduce_delegate import ReduceDelegateFactory
 from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
+from sentry_streams.adapters.arroyo.rust_consumer import (
+    RustArroyoConsumer as RustArroyoConsumerState,
+)
 from sentry_streams.adapters.arroyo.steps_chain import TransformChains
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.config_types import (
@@ -52,7 +59,6 @@ from sentry_streams.pipeline.pipeline import (
 )
 from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_streams.rust_streams import (
-    ArroyoConsumer,
     InitialOffset,
     PyKafkaConsumerConfig,
     PyKafkaProducerConfig,
@@ -143,7 +149,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
-        self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
+        self.__consumers: MutableMapping[str, ArroyoConsumerState] = {}
         self.__chains = TransformChains()
 
     @classmethod
@@ -165,6 +171,20 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     ) -> dict[Type[ComplexStep[Any, Any]], Callable[[ComplexStep[Any, Any]], Route]]:
         return {}
 
+    def _build_consumer(
+        self, source_name: str, kafka_config: PyKafkaConsumerConfig, topic: str, schema: str
+    ) -> ArroyoConsumerState:
+        """
+        Protected method to build a consumer instance.
+        Override this in subclasses to use different consumer implementations.
+        """
+        return RustArroyoConsumerState(
+            source=source_name,
+            kafka_config=kafka_config,
+            topic=topic,
+            schema=schema,
+        )
+
     def source(self, step: Source[Any]) -> Route:
         """
         Builds an Arroyo Kafka consumer as a stream source.
@@ -178,8 +198,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         source_config = self.steps_config.get(source_name)
         assert source_config is not None, f"Config not provided for source {source_name}"
 
-        self.__consumers[source_name] = ArroyoConsumer(
-            source=source_name,
+        self.__consumers[source_name] = self._build_consumer(
+            source_name=source_name,
             kafka_config=build_kafka_consumer_config(source_name, source_config),
             topic=step.stream_name,
             schema=step.stream_name,
@@ -208,20 +228,17 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             object_generator = step.object_generator
 
             logger.info(f"Adding GCS sink: {step.name} to pipeline")
-            self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, bucket, object_generator)
-            )
+            self.__consumers[stream.source].add_gcs_sink(step.name, route, bucket, step)
 
         # Our fallback for now since there's no other Sink type
         else:
             assert isinstance(step, StreamSink)
             logger.info(f"Adding stream sink: {step.name} to pipeline")
-            self.__consumers[stream.source].add_step(
-                RuntimeOperator.StreamSink(
-                    route,
-                    step.stream_name,
-                    build_kafka_producer_config(step.name, self.steps_config),
-                )
+            self.__consumers[stream.source].add_stream_sink(
+                step.name,
+                route,
+                step.stream_name,
+                build_kafka_producer_config(step.name, self.steps_config),
             )
 
         return stream
@@ -278,7 +295,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+        self.__consumers[stream.source].add_filter(step.name, route, step)
         return stream
 
     def reduce(
@@ -295,9 +312,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         loaded_config: Mapping[str, Any] = self.steps_config.get(name, {})
         step.override_config(loaded_config)
         logger.info(f"Adding reduce: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(
-            RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
-        )
+        self.__consumers[stream.source].add_reduce(step.name, route, step)
         return stream
 
     def broadcast(
@@ -311,11 +326,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self.__close_chain(stream)
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding broadcast: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(
-            RuntimeOperator.Broadcast(
-                route, downstream_routes=[branch.root.name for branch in step.routes]
-            )
-        )
+        self.__consumers[stream.source].add_broadcast(step.name, route, step)
         return build_branches(stream, step.routes)
 
     def router(
@@ -335,11 +346,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             return branch.root.name
 
         logger.info(f"Adding router: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(
-            RuntimeOperator.Router(
-                route, routing_function, cast(Sequence[str], step.routing_table.values())
-            )
-        )
+        self.__consumers[stream.source].add_router(step.name, route, step)
         return build_branches(stream, step.routing_table.values())
 
     def run(self) -> None:
@@ -357,3 +364,23 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         work.
         """
         raise NotImplementedError
+
+
+class DumpingArroyoAdapter(RustArroyoAdapter):
+    """
+    A subclass of RustArroyoAdapter that uses DumpingConsumer instead of RustArroyoConsumerState.
+    This generates YAML descriptions of the pipeline instead of building actual consumers.
+    """
+
+    def _build_consumer(
+        self, source_name: str, kafka_config: PyKafkaConsumerConfig, topic: str, schema: str
+    ) -> ArroyoConsumerState:
+        """
+        Override to build a DumpingConsumer instead of RustArroyoConsumerState.
+        """
+        return DumpingConsumer(
+            source=source_name,
+            kafka_config=kafka_config,
+            topic=topic,
+            schema=schema,
+        )
