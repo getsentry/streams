@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use sentry_arroyo::processing::strategies::{
     merge_commit_request, CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
@@ -13,7 +14,7 @@ use crate::routes::RoutedValue;
 struct WatermarkTracker {
     num_watermarks: u64,
     committable: HashMap<Partition, u64>,
-    time_added: coarsetime::Instant,
+    time_added: Instant,
 }
 
 /// WatermarkCommitOffsets is a commit policy that only commits once it receives a copy of a Watermark
@@ -62,7 +63,7 @@ impl WatermarkCommitOffsets {
                 to_remove.push(ts.clone());
             // Clean up any hanging watermarks which still haven't gotten all their copies in 5 min
             // from when the first copy was seen
-            } else if watermark.time_added.elapsed() >= coarsetime::Duration::from_secs(300) {
+            } else if watermark.time_added.elapsed() >= Duration::from_secs(300) {
                 to_remove.push(ts.clone());
             }
         }
@@ -108,7 +109,7 @@ impl ProcessingStrategy<RoutedValue> for WatermarkCommitOffsets {
                         WatermarkTracker {
                             num_watermarks: 1,
                             committable: committable,
-                            time_added: coarsetime::Instant::recent(),
+                            time_added: Instant::now(),
                         },
                     );
                 }

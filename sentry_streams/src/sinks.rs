@@ -98,37 +98,31 @@ fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
     // Convert the RoutedValue to KafkaPayload
     // This is a placeholder implementation
     let payload = match message.payload().payload {
-        RoutedValuePayload::PyStreamingMessage(ref py_msg) => {
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage { .. }) => {
+            panic!("PyAnyMessage is not supported in KafkaPayload conversion");
+        }
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { ref content }) => {
             traced_with_gil!(|py| {
-                match py_msg {
-                    PyStreamingMessage::PyAnyMessage { .. } => {
-                        panic!("PyAnyMessage is not supported in KafkaPayload conversion");
-                    }
-                    PyStreamingMessage::RawMessage { content } => {
-                        let payload_content = content.bind(py).getattr("payload").unwrap();
-                        let py_bytes: &Bound<PyBytes> = payload_content.downcast().unwrap();
-                        let raw_bytes = py_bytes.as_bytes();
-                        let mut headers = Headers::new();
-                        headers = headers.insert("is_watermark", Some(vec![0]));
-                        KafkaPayload::new(None, Some(headers), Some(raw_bytes.to_vec()))
-                    }
-                }
+                let payload_content = content.bind(py).getattr("payload").unwrap();
+                let py_bytes: &Bound<PyBytes> = payload_content.downcast().unwrap();
+                let raw_bytes = py_bytes.as_bytes();
+                let mut headers = Headers::new();
+                headers = headers.insert("is_watermark", Some(vec![0]));
+                KafkaPayload::new(None, Some(headers), Some(raw_bytes.to_vec()))
             })
         }
         // TODO: currently sink step just passes watermarks on to next_step, once a wrapper is built around the produce
         // step to handle watermarks we'll be serializing watermarks as well
-        RoutedValuePayload::WatermarkMessage(ref watermark_msg) => match watermark_msg {
-            WatermarkMessage::PyWatermark(..) => {
-                panic!("PyWatermark is not supported in KafkaPayload conversion");
-            }
-            WatermarkMessage::Watermark(watermark) => {
-                let serializable_watermark: SerializableWatermark = watermark.clone().into();
-                let json_payload = serde_json::to_vec(&serializable_watermark).unwrap();
-                let mut headers = Headers::new();
-                headers = headers.insert("is_watermark", Some(vec![1]));
-                KafkaPayload::new(None, Some(headers), Some(json_payload))
-            }
-        },
+        RoutedValuePayload::WatermarkMessage(WatermarkMessage::PyWatermark(..)) => {
+            panic!("PyWatermark is not supported in KafkaPayload conversion");
+        }
+        RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(ref watermark)) => {
+            let serializable_watermark: SerializableWatermark = watermark.clone().into();
+            let json_payload = serde_json::to_vec(&serializable_watermark).unwrap();
+            let mut headers = Headers::new();
+            headers = headers.insert("is_watermark", Some(vec![1]));
+            KafkaPayload::new(None, Some(headers), Some(json_payload))
+        }
     };
     message.replace(payload)
 }
