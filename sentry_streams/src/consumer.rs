@@ -5,6 +5,7 @@
 //! and all the steps following that source.
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
+use crate::commit_policy::WatermarkCommitOffsets;
 use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::operators::build;
@@ -16,7 +17,6 @@ use crate::watermark::WatermarkEmitter;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
-use sentry_arroyo::processing::strategies::commit_offsets::CommitOffsets;
 use sentry_arroyo::processing::strategies::noop::Noop;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
@@ -26,7 +26,6 @@ use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 use std::sync::Arc;
-use std::time::Duration;
 
 /// The class that represent the consumer.
 /// This class is exposed to python and it is the main entry point
@@ -199,12 +198,7 @@ fn build_chain(
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
     let mut next = ending_strategy;
     for step in steps.iter().rev() {
-        next = build(
-            step,
-            next,
-            Box::new(CommitOffsets::new(Duration::from_secs(5))),
-            concurrency_config,
-        );
+        next = build(step, next, Box::new(Noop {}), concurrency_config);
     }
     let watermark_step = Box::new(WatermarkEmitter::new(
         next,
@@ -262,7 +256,9 @@ impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
         build_chain(
             &self.source,
             &self.steps,
-            Box::new(Noop {}),
+            // TODO: once Broadcast/Router work properly, count how many total downstream
+            // branches a pipeline has and pass that value to the Watermark
+            Box::new(WatermarkCommitOffsets::new(1)),
             &self.concurrency_config,
             &self.schema,
         )
