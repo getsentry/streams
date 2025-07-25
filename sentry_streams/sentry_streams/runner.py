@@ -14,6 +14,11 @@ from sentry_streams.adapters.stream_adapter import (
     StreamSinkT,
     StreamT,
 )
+from sentry_streams.metrics import (
+    DatadogMetricsBackend,
+    DummyMetricsBackend,
+    configure_metrics,
+)
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
     WithInput,
@@ -61,6 +66,9 @@ def runner(
     adapter: str,
     config: str,
     segment_id: Optional[str],
+    datadog_host: Optional[str],
+    datadog_port: Optional[int],
+    datadog_tags: Optional[str],
     application: str,
 ) -> None:
     pipeline_globals: dict[str, Any] = {}
@@ -70,6 +78,29 @@ def runner(
         format="%(asctime)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+
+    if datadog_host and datadog_port:
+        if datadog_tags:
+            default_tags = json.loads(datadog_tags)
+        else:
+            default_tags = {}
+        default_tags["pipeline"] = name
+
+        metrics = DatadogMetricsBackend(
+            datadog_host,
+            datadog_port,
+            "sentry_streams",
+            default_tags,
+        )
+        configure_metrics(metrics)
+        metric_config = {
+            "datadog_host": datadog_host,
+            "datadog_port": datadog_port,
+            "datadog_tags": default_tags,
+        }
+    else:
+        configure_metrics(DummyMetricsBackend())
+        metric_config = {}
 
     with open(application) as f:
         exec(f.read(), pipeline_globals)
@@ -88,7 +119,7 @@ def runner(
 
     assigned_segment_id = int(segment_id) if segment_id else None
     pipeline: Pipeline[Any] = pipeline_globals["pipeline"]
-    runtime: Any = load_adapter(adapter, environment_config, assigned_segment_id)
+    runtime: Any = load_adapter(adapter, environment_config, assigned_segment_id, metric_config)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
@@ -146,6 +177,24 @@ def runner(
     type=str,
     help="The segment id to run the pipeline for",
 )
+@click.option(
+    "--datadog-host",
+    "-dh",
+    type=str,
+    help="The host of the Datadog agent",
+)
+@click.option(
+    "--datadog-port",
+    "-dp",
+    type=int,
+    help="The port of the Datadog agent",
+)
+@click.option(
+    "--datadog-tags",
+    "-dt",
+    type=str,
+    help="The JSON encoded tags to add to every metric",
+)
 @click.argument(
     "application",
     required=True,
@@ -156,9 +205,22 @@ def main(
     adapter: str,
     config: str,
     segment_id: Optional[str],
+    datadog_host: Optional[str],
+    datadog_port: Optional[int],
+    datadog_tags: Optional[str],
     application: str,
 ) -> None:
-    runner(name, log_level, adapter, config, segment_id, application)
+    runner(
+        name,
+        log_level,
+        adapter,
+        config,
+        segment_id,
+        datadog_host,
+        datadog_port,
+        datadog_tags,
+        application,
+    )
 
 
 if __name__ == "__main__":

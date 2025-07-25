@@ -7,6 +7,7 @@ mod filter_step;
 mod gcs_writer;
 mod kafka_config;
 mod messages;
+mod metrics;
 mod operators;
 mod python_operator;
 mod routers;

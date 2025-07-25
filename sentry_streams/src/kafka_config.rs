@@ -127,6 +127,46 @@ impl From<PyKafkaProducerConfig> for KafkaConfig {
         KafkaConfig::new_producer_config(py_config.bootstrap_servers, py_config.override_params)
     }
 }
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct PyMetricConfig {
+    datadog_host: String,
+    datadog_port: u16,
+    datadog_tags: Option<HashMap<String, String>>,
+}
+
+#[pymethods]
+impl PyMetricConfig {
+    #[new]
+    fn new(
+        datadog_host: String,
+        datadog_port: u16,
+        datadog_tags: Option<HashMap<String, String>>,
+    ) -> Self {
+        PyMetricConfig {
+            datadog_host,
+            datadog_port,
+            datadog_tags,
+        }
+    }
+
+    #[getter]
+    pub fn datadog_host(&self) -> &str {
+        &self.datadog_host
+    }
+
+    #[getter]
+    pub fn datadog_port(&self) -> u16 {
+        self.datadog_port
+    }
+
+    #[getter]
+    pub fn datadog_tags(&self) -> Option<HashMap<String, String>> {
+        self.datadog_tags.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

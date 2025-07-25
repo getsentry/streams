@@ -1,4 +1,5 @@
 import importlib.util as utils
+import json
 import sys
 from importlib import import_module
 from typing import Optional, TypeVar, cast
@@ -10,7 +11,10 @@ Sink = TypeVar("Sink")
 
 
 def load_adapter(
-    adapter_type: str, config: PipelineConfig, segment_id: Optional[int] = None
+    adapter_type: str,
+    config: PipelineConfig,
+    segment_id: Optional[int] = None,
+    metric_config: Optional[dict[str, str]] = None,
 ) -> StreamAdapter[Stream, Sink]:
     """
     Loads a StreamAdapter to run a pipeline.
@@ -51,9 +55,24 @@ def load_adapter(
 
     if adapter_type == "rust_arroyo":
         from sentry_streams.adapters.arroyo import RustArroyoAdapter
+        from sentry_streams.rust_streams import PyMetricConfig
+
+        # Convert dict metric_config to PyMetricConfig if provided
+        py_metric_config = None
+        if metric_config:
+            tags = (
+                json.loads(metric_config["datadog_tags"])
+                if "datadog_tags" in metric_config
+                else None
+            )
+            py_metric_config = PyMetricConfig(
+                datadog_host=metric_config["datadog_host"],
+                datadog_port=int(metric_config["datadog_port"]),
+                datadog_tags=tags,
+            )
 
         # TODO: Fix this type as above.
-        return cast(StreamAdapter[Stream, Sink], RustArroyoAdapter.build(config))
+        return cast(StreamAdapter[Stream, Sink], RustArroyoAdapter.build(config, py_metric_config))
     else:
         mod, cls = adapter_type.rsplit(".", 1)
 

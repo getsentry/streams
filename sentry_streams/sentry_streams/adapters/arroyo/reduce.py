@@ -1,6 +1,8 @@
 import logging
+import sys
 import time
 from datetime import timedelta
+from functools import partial
 from typing import (
     Any,
     Callable,
@@ -18,7 +20,15 @@ from arroyo.processing.strategies.reduce import Reduce
 from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.pipeline.function_template import Accumulator
+from sentry_streams.metrics import get_metrics
+from sentry_streams.pipeline.function_template import (
+    Accumulator,
+    GroupBy,
+    InputType,
+    OutputType,
+)
+from sentry_streams.pipeline.message import Message as PipelineMessage
+from sentry_streams.pipeline.pipeline import Reduce as PipelineReduce
 from sentry_streams.pipeline.window import (
     MeasurementUnit,
     SlidingWindow,
@@ -64,6 +74,65 @@ class ArroyoAccumulator:
         )
 
         return routed
+
+
+class MetricsAccumulator(Accumulator[Message[Any], Any]):
+
+    def __init__(self, acc: Callable[[], Accumulator[Any, Any]], name: str) -> None:
+        self.acc = acc()
+        self.start_time: float | None = None
+        self.metrics = get_metrics()
+        self.tags = {"step": name}
+
+    def add(self, value: Message[Any]) -> Self:
+        if self.start_time is None:
+            self.start_time = time.time()
+        self.metrics.increment("streams.pipeline.input.messages", tags=self.tags)
+        self.metrics.increment(
+            "streams.pipeline.input.bytes", tags=self.tags, value=sys.getsizeof(value.payload)
+        )
+
+        self.acc.add(value.payload)
+
+        return self
+
+    def get_value(self) -> Any:
+        result = self.acc.get_value()
+        self.metrics.increment("streams.pipeline.output.messages", tags=self.tags)
+        self.metrics.increment(
+            "streams.pipeline.output.bytes", tags=self.tags, value=sys.getsizeof(result)
+        )
+        assert self.start_time is not None
+        self.metrics.timing(
+            "streams.pipeline.duration", time.time() - self.start_time, tags=self.tags
+        )
+        return result
+
+    def merge(self, other: Self) -> Self:
+        self.acc.merge(other.acc)
+
+        return self
+
+
+class MetricsReduce(PipelineReduce[MeasurementUnit, InputType, OutputType]):
+
+    def __init__(
+        self, reduce: PipelineReduce[MeasurementUnit, InputType, OutputType], name: str
+    ) -> None:
+        self.reduce: PipelineReduce[MeasurementUnit, InputType, OutputType] = reduce
+        self.acc = partial(MetricsAccumulator, reduce.aggregate_fn, name)
+
+    @property
+    def group_by(self) -> Optional[GroupBy]:
+        return self.reduce.group_by
+
+    @property
+    def windowing(self) -> Window[MeasurementUnit]:
+        return self.reduce.windowing
+
+    @property
+    def aggregate_fn(self) -> Callable[[], Accumulator[PipelineMessage[InputType], OutputType]]:
+        return cast(Callable[[], Accumulator[PipelineMessage[InputType], OutputType]], self.acc)
 
 
 class KafkaAccumulator:
