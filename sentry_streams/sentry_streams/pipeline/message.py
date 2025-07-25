@@ -14,11 +14,17 @@ from typing import (
     cast,
 )
 
-from sentry_streams.rust_streams import PyAnyMessage, RawMessage
+from sentry_streams.rust_streams import (
+    Committable,
+    PyAnyMessage,
+    PyWatermark,
+    RawMessage,
+)
 
 TPayload = TypeVar("TPayload")
 
-RustMessage = Union[PyAnyMessage, RawMessage]
+PipelineMessage = Union[PyAnyMessage, RawMessage]
+RustMessage = Union[PyAnyMessage, RawMessage, PyWatermark]
 
 
 class Message(ABC, Generic[TPayload]):
@@ -152,7 +158,7 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
 
 class PyRawMessage(Message[bytes]):
     """
-    A wrapper for the Rust RawMessage so `RawMessage` extends `Messasge`.
+    A wrapper for the Rust RawMessage so `RawMessage` extends `Message`.
     """
 
     def __init__(
@@ -214,7 +220,55 @@ class PyRawMessage(Message[bytes]):
         )
 
 
-def rust_msg_equals(msg: RustMessage, other: RustMessage) -> bool:
+class Watermark(Message[Committable]):
+    """
+    A wrapper for the Rust `PyWatermark` so it extends `Message`.
+    """
+
+    def __init__(
+        self,
+        payload: Committable,
+        timestamp: int,
+    ) -> None:
+        self.inner = PyWatermark(payload, timestamp)
+
+    @property
+    def payload(self) -> Committable:
+        return self.inner.committable
+
+    @property
+    def timestamp(self) -> float:
+        return self.inner.timestamp
+
+    def __repr__(self) -> str:
+        return f"Watermark({self.inner.__repr__()})"
+
+    def __str__(self) -> str:
+        return repr(self)
+
+    def to_inner(self) -> RustMessage:
+        return self.inner
+
+    def deepcopy(self) -> Watermark:
+        return Watermark(
+            deepcopy(self.inner.committable),
+            self.inner.timestamp,
+        )
+
+    def __getstate__(self) -> Mapping[str, Any]:
+        return {
+            "committable": self.payload,
+            "timestamp": self.timestamp,
+        }
+
+    def __setstate__(self, state: Mapping[str, Any]) -> None:
+        self.inner = Watermark(
+            state["payload"],
+            state["timestamp"],
+        )
+
+
+def pipline_msg_equals(msg: PipelineMessage, other: PipelineMessage) -> bool:
     """
     PyAnyMessage/RawMessage are exposed by Rust and do not have an __eq__ method
     as of now. That would require delegating equality to python anyway

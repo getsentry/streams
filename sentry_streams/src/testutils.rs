@@ -3,6 +3,8 @@ use crate::messages::{into_pyany, into_pyraw, PyStreamingMessage, RawMessage, Ro
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use pyo3::prelude::*;
+#[cfg(test)]
+use pyo3::types::PyInt;
 use pyo3::IntoPyObjectExt;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 #[cfg(test)]
@@ -42,6 +44,11 @@ pub fn make_msg(payload: Option<Vec<u8>>) -> Message<KafkaPayload> {
         KafkaPayload::new(None, None, payload),
         std::collections::BTreeMap::new(),
     )
+}
+
+#[cfg(test)]
+pub fn make_py_int(py: Python<'_>, rust_num: u64) -> Py<PyInt> {
+    rust_num.into_pyobject(py).unwrap().unbind()
 }
 
 #[cfg(test)]

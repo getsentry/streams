@@ -3,13 +3,17 @@ from typing import Callable, Generic, Iterable, MutableSequence, Tuple, TypeVar
 
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
+from arroyo.processing.strategies.reduce import Reduce
 from arroyo.types import Message as ArroyoMessage
 
-from sentry_streams.pipeline.message import RustMessage
+from sentry_streams.adapters.arroyo.reduce import TimeWindowedReduce
+from sentry_streams.pipeline.message import PipelineMessage, RustMessage
 from sentry_streams.rust_streams import PyWatermark
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
+
+TMessage = TypeVar("TMessage", RustMessage, PipelineMessage)
 
 
 # This represents a set of committable offsets. These have to be
@@ -21,7 +25,7 @@ TOut = TypeVar("TOut")
 Committable = dict[Tuple[str, int], int]
 
 
-class RustOperatorDelegate(ABC):
+class RustOperatorDelegate(ABC, Generic[TMessage]):
     """
     A RustOperatorDelegate is an interface to be implemented to build
     streaming platform operators in Python and wire them up to the
@@ -54,7 +58,7 @@ class RustOperatorDelegate(ABC):
     """
 
     @abstractmethod
-    def submit(self, message: RustMessage, committable: Committable) -> None:
+    def submit(self, message: TMessage, committable: Committable) -> None:
         """
         Send a message to this step for processing.
 
@@ -74,7 +78,7 @@ class RustOperatorDelegate(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def poll(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def poll(self) -> Iterable[Tuple[TMessage, Committable]]:
         """
         Triggers asynchronous processing. This method is called periodically
         every time we poll from Kafka.
@@ -86,7 +90,7 @@ class RustOperatorDelegate(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[RustMessage, Committable]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[TMessage, Committable]]:
         """
         Wait for all processing to be completed and returns the results of
         the in flight processing. It also closes and clean up all the resource
@@ -111,7 +115,7 @@ class RustOperatorFactory(ABC):
     """
 
     @abstractmethod
-    def build(self) -> RustOperatorDelegate:
+    def build(self) -> RustOperatorDelegate[TMessage]:
         """
         Builds a RustOperatorDelegate that can be used to process messages
         in the Rust Streaming Adapter.
@@ -120,7 +124,7 @@ class RustOperatorFactory(ABC):
 
 
 class SingleMessageOperatorDelegate(
-    RustOperatorDelegate,
+    RustOperatorDelegate[PipelineMessage],
     ABC,
 ):
     """
@@ -132,11 +136,13 @@ class SingleMessageOperatorDelegate(
     """
 
     def __init__(self) -> None:
-        self.__message: RustMessage | None = None
+        self.__message: PipelineMessage | None = None
         self.__committable: Committable | None = None
 
     @abstractmethod
-    def _process_message(self, msg: RustMessage, committable: Committable) -> RustMessage | None:
+    def _process_message(
+        self, msg: PipelineMessage, committable: Committable
+    ) -> PipelineMessage | None:
         """
         Processes one message at a time. It receives the offsets to commit
         if needed by the processing but it does not allow the delegate to
@@ -146,7 +152,7 @@ class SingleMessageOperatorDelegate(
         """
         raise NotImplementedError
 
-    def __prepare_output(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def __prepare_output(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
         if self.__message is None:
             return []
         assert self.__committable is not None
@@ -162,16 +168,16 @@ class SingleMessageOperatorDelegate(
             self.__message = None
             self.__committable = None
 
-    def submit(self, message: RustMessage, committable: Committable) -> None:
+    def submit(self, message: PipelineMessage, committable: Committable) -> None:
         if self.__message is not None:
             raise MessageRejected()
         self.__message = message
         self.__committable = committable
 
-    def poll(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def poll(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
         return self.__prepare_output()
 
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[RustMessage, Committable]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
         return self.__prepare_output()
 
 
@@ -179,7 +185,7 @@ TStrategyIn = TypeVar("TStrategyIn")
 TStrategyOut = TypeVar("TStrategyOut")
 
 
-class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
+class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TMessage, TStrategyOut]):
     """
     This is an Arroyo strategy to be wired to another strategy used inside
     a `RustOperatorDelegate`. This strategy collects the result and return it to the
@@ -203,11 +209,11 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
     def __init__(
         self,
         out_transformer: Callable[
-            [ArroyoMessage[TStrategyOut]], Tuple[RustMessage, Committable] | None
+            [ArroyoMessage[TStrategyOut]], Tuple[TMessage, Committable] | None
         ],
     ) -> None:
         self.__out_transformer = out_transformer
-        self.__pending_messages: MutableSequence[Tuple[RustMessage, Committable]] = []
+        self.__pending_messages: MutableSequence[Tuple[TMessage, Committable]] = []
 
     def submit(self, message: ArroyoMessage[TStrategyOut]) -> None:
         transformed = self.__out_transformer(message)
@@ -226,7 +232,7 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
     def terminate(self) -> None:
         pass
 
-    def fetch(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def fetch(self) -> Iterable[Tuple[TMessage, Committable]]:
         """
         Fetches the output messages from the processing strategy.
         """
@@ -235,7 +241,9 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
         return ret
 
 
-class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrategyOut]):
+class ArroyoStrategyDelegate(
+    RustOperatorDelegate[TMessage], Generic[TMessage, TStrategyIn, TStrategyOut]
+):
     """
     This delegate wraps an existing Python Arroyo strategy so that it can be
     used as it is in a Rust consumer.
@@ -273,23 +281,23 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
     def __init__(
         self,
         inner: ProcessingStrategy[TStrategyIn],
-        in_transformer: Callable[[RustMessage, Committable], ArroyoMessage[TStrategyIn]],
+        in_transformer: Callable[[TMessage, Committable], ArroyoMessage[TStrategyIn]],
         retriever: OutputRetriever[TStrategyOut],
     ) -> None:
         self.__inner = inner
         self.__in_transformer = in_transformer
         self.__retriever = retriever
 
-    def submit(self, message: RustMessage, committable: Committable) -> None:
+    def submit(self, message: TMessage, committable: Committable) -> None:
         # TODO: handle watermark message inside of the OperatorDelegate
         if not isinstance(message, PyWatermark):
             arroyo_msg = self.__in_transformer(message, committable)
             self.__inner.submit(arroyo_msg)
 
-    def poll(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def poll(self) -> Iterable[Tuple[TMessage, Committable]]:
         self.__inner.poll()
         return self.__retriever.fetch()
 
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[RustMessage, Committable]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[TMessage, Committable]]:
         self.__inner.join(timeout)
         return self.__retriever.fetch()

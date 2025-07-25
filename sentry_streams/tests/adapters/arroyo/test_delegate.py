@@ -1,3 +1,5 @@
+from typing import cast
+
 import pytest
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected
@@ -8,15 +10,17 @@ from sentry_streams.adapters.arroyo.rust_step import (
     SingleMessageOperatorDelegate,
 )
 from sentry_streams.pipeline.message import (
+    PipelineMessage,
     PyMessage,
     RustMessage,
-    rust_msg_equals,
+    pipline_msg_equals,
 )
 from sentry_streams.rust_streams import PyAnyMessage
 
 
 class SingleMessageTransformer(SingleMessageOperatorDelegate):
     def _process_message(self, msg: RustMessage, committable: Committable) -> RustMessage | None:
+        msg = cast(PipelineMessage, msg)
         if msg.payload == "process":
             return PyMessage("processed", msg.headers, msg.timestamp, msg.schema).to_inner()
         if msg.payload == "filter":
@@ -27,7 +31,7 @@ class SingleMessageTransformer(SingleMessageOperatorDelegate):
 
 
 def test_rust_step() -> None:
-    def make_msg(payload: str) -> RustMessage:
+    def make_msg(payload: str) -> PipelineMessage:
         return PyAnyMessage(
             payload=payload, headers=[("head", "val".encode())], timestamp=0, schema=None
         )
@@ -36,7 +40,7 @@ def test_rust_step() -> None:
     # Transform one message
     step.submit(make_msg("process"), {("topic", 0): 0})
     ret = step.poll()
-    assert rust_msg_equals(list(ret)[0][0], make_msg("processed"))
+    assert pipline_msg_equals(cast(PipelineMessage, list(ret)[0][0]), make_msg("processed"))
     assert list(ret)[0][1] == {("topic", 0): 0}
 
     # The message is removed from the delegate after processing.
@@ -58,5 +62,5 @@ def test_rust_step() -> None:
     # Test that flush processes the message as well.
     step.submit(make_msg("process"), {("topic", 0): 0})
     ret = step.flush(0)
-    assert rust_msg_equals(list(ret)[0][0], make_msg("processed"))
+    assert pipline_msg_equals(cast(PipelineMessage, list(ret)[0][0]), make_msg("processed"))
     assert list(ret)[0][1] == {("topic", 0): 0}

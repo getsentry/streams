@@ -6,6 +6,8 @@ from sentry_streams.pipeline.message import Message
 
 TOut = TypeVar("TOut")
 
+Committable = dict[tuple[str, int], int]
+
 class Route:
     source: str
     waypoints: Sequence[str]
@@ -106,7 +108,10 @@ class RawMessage:
 class PyWatermark:
     def __init__(
         self,
-        committable: dict[Tuple[str, int], int],
+        committable: Committable,
+        timestamp: int,
     ) -> None: ...
     @property
-    def committable(self) -> dict[Tuple[str, int], int]: ...
+    def committable(self) -> Committable: ...
+    @property
+    def timestamp(self) -> int: ...

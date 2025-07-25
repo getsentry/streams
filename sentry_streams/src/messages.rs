@@ -35,7 +35,7 @@
 //!       impacting each operator.
 use std::collections::BTreeMap;
 
-use pyo3::types::{PyBytes, PyList, PyTuple};
+use pyo3::types::{PyBytes, PyInt, PyList, PyTuple};
 use pyo3::Python;
 use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
@@ -112,7 +112,11 @@ impl Clone for WatermarkMessage {
             WatermarkMessage::PyWatermark(py_watermark) => {
                 traced_with_gil!(|py| {
                     let committable = py_watermark.committable.clone_ref(py);
-                    WatermarkMessage::PyWatermark(PyWatermark { committable })
+                    let timestamp = py_watermark.timestamp.clone_ref(py);
+                    WatermarkMessage::PyWatermark(PyWatermark {
+                        committable,
+                        timestamp,
+                    })
                 })
             }
         }
@@ -142,13 +146,18 @@ impl Watermark {
 pub struct PyWatermark {
     #[pyo3(get)]
     pub committable: Py<PyAny>,
+    #[pyo3(get)]
+    pub timestamp: Py<PyInt>,
 }
 
 #[pymethods]
 impl PyWatermark {
     #[new]
-    pub fn new(committable: Py<PyAny>) -> PyResult<Self> {
-        Ok(Self { committable })
+    pub fn new(committable: Py<PyAny>, timestamp: Py<PyInt>) -> PyResult<Self> {
+        Ok(Self {
+            committable,
+            timestamp,
+        })
     }
 }
 
@@ -399,6 +408,7 @@ impl From<&WatermarkMessage> for Py<PyAny> {
             match &value {
                 WatermarkMessage::Watermark(watermark) => PyWatermark::new(
                     convert_committable_to_py(py, watermark.committable.clone()).unwrap(),
+                    watermark.timestamp.into_pyobject(py).unwrap().unbind(),
                 )
                 .unwrap()
                 .into_py_any(py)
@@ -471,6 +481,8 @@ pub enum StreamingMessage {
 #[cfg(test)]
 mod tests {
     use pyo3::types::PyDict;
+
+    use crate::testutils::make_py_int;
 
     use super::*;
 
@@ -644,8 +656,12 @@ mod tests {
             );
             let _ = committable.set_item(key.unwrap(), 0);
 
-            // Create PyAnyMessage
-            let msg = PyWatermark::new(committable.unbind().clone_ref(py).into_any()).unwrap();
+            // Create PyWatermark
+            let msg = PyWatermark::new(
+                committable.unbind().clone_ref(py).into_any(),
+                make_py_int(py, 0),
+            )
+            .unwrap();
 
             // Check payload
             let payload_val: BTreeMap<(String, u64), u64> =

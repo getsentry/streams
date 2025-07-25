@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import MutableSequence, Optional, Sequence, Tuple, TypeVar, Union
+from typing import MutableSequence, Optional, Sequence, Tuple, TypeVar, Union, cast
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import FilteredPayload
@@ -19,9 +19,10 @@ from sentry_streams.adapters.arroyo.rust_step import (
 )
 from sentry_streams.pipeline.message import (
     Message,
+    PipelineMessage,
     PyMessage,
     RustMessage,
-    rust_msg_equals,
+    pipline_msg_equals,
 )
 from sentry_streams.pipeline.pipeline import Batch
 
@@ -46,7 +47,7 @@ def test_retriever() -> None:
 
     assert len(output) == 2
 
-    assert rust_msg_equals(
+    assert pipline_msg_equals(
         output[0][0],
         PyMessage(
             payload="payload",
@@ -57,7 +58,7 @@ def test_retriever() -> None:
     )
     assert output[0][1] == {("test_topic", 0): 100}
 
-    assert rust_msg_equals(
+    assert pipline_msg_equals(
         output[1][0],
         PyMessage(
             payload="payload2",

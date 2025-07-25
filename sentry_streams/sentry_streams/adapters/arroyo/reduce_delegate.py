@@ -19,12 +19,13 @@ from sentry_streams.adapters.arroyo.rust_step import (
 )
 from sentry_streams.pipeline.message import (
     Message,
+    PipelineMessage,
     PyMessage,
     PyRawMessage,
     RustMessage,
 )
 from sentry_streams.pipeline.pipeline import Reduce
-from sentry_streams.rust_streams import PyAnyMessage, RawMessage
+from sentry_streams.rust_streams import PyAnyMessage, PyWatermark, RawMessage
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
@@ -38,12 +39,17 @@ def rust_msg_to_arroyo_reduce(
         for partition, offset in committable.items()
     }
 
-    if isinstance(message, PyAnyMessage):
-        to_send: Message[Any] = PyMessage(
-            message.payload, message.headers, message.timestamp, message.schema
-        )
-    elif isinstance(message, RawMessage):
-        to_send = PyRawMessage(message.payload, message.headers, message.timestamp, message.schema)
+    match message:
+        case PyAnyMessage():
+            to_send: Message[Any] = PyMessage(
+                message.payload, message.headers, message.timestamp, message.schema
+            )
+        case RawMessage():
+            to_send = PyRawMessage(
+                message.payload, message.headers, message.timestamp, message.schema
+            )
+        case PyWatermark():
+            to_send = Watermark
 
     msg = ArroyoMessage(
         Value(
@@ -59,7 +65,7 @@ def rust_msg_to_arroyo_reduce(
 
 def reduced_msg_to_rust(
     message: ArroyoMessage[Union[FilteredPayload, TIn]],
-) -> Tuple[RustMessage, Committable] | None:
+) -> Tuple[PipelineMessage, Committable] | None:
     if isinstance(message.payload, FilteredPayload):
         return None
     else:
