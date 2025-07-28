@@ -262,6 +262,7 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
+    use crate::messages::make_py_int;
     use crate::messages::{PyWatermark, WatermarkMessage};
     use crate::testutils::build_routed_value;
     use crate::testutils::make_committable;
@@ -337,7 +338,7 @@ class RustOperatorDelegateFactory:
     fn make_test_watermark(py: Python<'_>) -> Message<RoutedValue> {
         let committable = make_committable(2, 0);
         let py_committable = convert_committable_to_py(py, committable.clone()).unwrap();
-        let py_watermark = PyWatermark::new(py_committable).unwrap();
+        let py_watermark = PyWatermark::new(py_committable, make_py_int(py, 0)).unwrap();
         let routed_py_watermark = RoutedValue {
             route: Route {
                 source: "source".to_string(),
