@@ -10,7 +10,7 @@ readme = "README.md"
 # Cannot use 3.12 because of pyflink.
 requires-python = ">=3.11,<3.12"
 dependencies = [
-    "apache-flink==1.20.0",
+    "apache-flink==2.0.0",
     "jsonschema>=4.23.0",
     "requests>=2.32.3",
     "sentry-streams>=0.0.16",
