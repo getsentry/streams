@@ -19,11 +19,13 @@ from sentry_streams.adapters.arroyo.rust_step import (
 )
 from sentry_streams.pipeline.message import (
     Message,
+    PipelineMessage,
     PyMessage,
     RustMessage,
-    rust_msg_equals,
+    pipeline_msg_equals,
 )
 from sentry_streams.pipeline.pipeline import Batch
+from sentry_streams.rust_streams import PyWatermark
 
 TStrategyOut = TypeVar("TStrategyOut")
 
@@ -46,7 +48,7 @@ def test_retriever() -> None:
 
     assert len(output) == 2
 
-    assert rust_msg_equals(
+    assert pipeline_msg_equals(
         output[0][0],
         PyMessage(
             payload="payload",
@@ -57,7 +59,7 @@ def test_retriever() -> None:
     )
     assert output[0][1] == {("test_topic", 0): 100}
 
-    assert rust_msg_equals(
+    assert pipeline_msg_equals(
         output[1][0],
         PyMessage(
             payload="payload2",
@@ -107,7 +109,7 @@ class FakeReducer(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
         self.__next.terminate()
 
 
-def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[RustMessage, Committable]:
+def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[PipelineMessage, Committable]:
     msg, committable = build_py_msg(payload, timestamp, offset)
     return (msg.to_inner(), committable)
 
@@ -263,5 +265,6 @@ def test_reduce() -> None:
     for i, msg1 in enumerate(batch):
         msg2 = expected[i]
         assert msg1[0].payload == msg2[0].payload, f"Payload mismatch at index {i}"
-        assert msg1[0].schema == msg2[0].schema, "Missing schema after batch"
+        if not isinstance(msg1[0], PyWatermark) or not isinstance(msg1[0], PyWatermark):
+            assert msg1[0].schema == msg2[0].schema, "Missing schema after batch"
         assert msg1[1] == msg2[1], f"Committable mismatch at index {i}"

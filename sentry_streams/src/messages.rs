@@ -115,12 +115,9 @@ impl Clone for WatermarkMessage {
             }
             WatermarkMessage::PyWatermark(py_watermark) => {
                 traced_with_gil!(|py| {
-                    let committable = py_watermark.committable.clone_ref(py);
+                    let payload = py_watermark.payload.clone_ref(py);
                     let timestamp = py_watermark.timestamp.clone_ref(py);
-                    WatermarkMessage::PyWatermark(PyWatermark {
-                        committable,
-                        timestamp,
-                    })
+                    WatermarkMessage::PyWatermark(PyWatermark { payload, timestamp })
                 })
             }
         }
@@ -149,18 +146,15 @@ impl Watermark {
 #[pyclass]
 pub struct PyWatermark {
     #[pyo3(get)]
-    pub committable: Py<PyAny>,
+    pub payload: Py<PyAny>,
     pub timestamp: Py<PyInt>,
 }
 
 #[pymethods]
 impl PyWatermark {
     #[new]
-    pub fn new(committable: Py<PyAny>, timestamp: Py<PyInt>) -> PyResult<Self> {
-        Ok(Self {
-            committable,
-            timestamp,
-        })
+    pub fn new(payload: Py<PyAny>, timestamp: Py<PyInt>) -> PyResult<Self> {
+        Ok(Self { payload, timestamp })
     }
 }
 
@@ -417,7 +411,7 @@ impl From<&WatermarkMessage> for Py<PyAny> {
                 .into_py_any(py)
                 .unwrap(),
                 WatermarkMessage::PyWatermark(watermark) => {
-                    watermark.committable.clone_ref(py).into_any()
+                    watermark.payload.clone_ref(py).into_any()
                 }
             }
         })
@@ -665,8 +659,7 @@ mod tests {
             .unwrap();
 
             // Check payload
-            let payload_val: BTreeMap<(String, u64), u64> =
-                msg.committable.bind(py).extract().unwrap();
+            let payload_val: BTreeMap<(String, u64), u64> = msg.payload.bind(py).extract().unwrap();
             assert_eq!(
                 payload_val,
                 BTreeMap::from([(("topic1".to_string(), 1), 0),])

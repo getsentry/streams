@@ -18,8 +18,10 @@ from sentry_streams.rust_streams import PyAnyMessage, PyWatermark, RawMessage
 
 TPayload = TypeVar("TPayload")
 
+# Represents the Rust message types which can be sent into a delegate step
 RustMessage = Union[PyAnyMessage, PyWatermark, RawMessage]
-Committable = dict[tuple[str, int], int]
+# Represents the Rust message types which are actually processed by delegate steps
+PipelineMessage = Union[PyAnyMessage, RawMessage]
 
 
 class Message(ABC, Generic[TPayload]):
@@ -65,7 +67,7 @@ class Message(ABC, Generic[TPayload]):
         raise NotImplementedError
 
     @abstractmethod
-    def to_inner(self) -> RustMessage:
+    def to_inner(self) -> PipelineMessage:
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
@@ -123,7 +125,7 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
     def __str__(self) -> str:
         return repr(self)
 
-    def to_inner(self) -> RustMessage:
+    def to_inner(self) -> PipelineMessage:
         return self.inner
 
     def deepcopy(self) -> PyMessage[TPayload]:
@@ -187,7 +189,7 @@ class PyRawMessage(Message[bytes]):
     def __str__(self) -> str:
         return repr(self)
 
-    def to_inner(self) -> RustMessage:
+    def to_inner(self) -> PipelineMessage:
         return self.inner
 
     def deepcopy(self) -> PyRawMessage:
@@ -215,75 +217,13 @@ class PyRawMessage(Message[bytes]):
         )
 
 
-# TODO: This has a lot of unnecessary fields to make it quack like a Message,
-# we should probably replace the RustMessage union with a generic type everywhere instead
-class Watermark(Message[Committable]):
-    """
-    A wrapper for the Rust RawMessage so `RawMessage` extends `Messasge`.
-    """
-
-    def __init__(
-        self,
-        committable: Committable,
-        timestamp: int,
-    ) -> None:
-        self.inner = PyWatermark(committable, timestamp)
-
-    @property
-    def payload(self) -> Committable:
-        return self.inner.committable
-
-    @property
-    def headers(self) -> Sequence[Tuple[str, bytes]]:
-        return []
-
-    @property
-    def timestamp(self) -> float:
-        return self.inner.timestamp
-
-    @property
-    def schema(self) -> str | None:
-        return ""
-
-    def __repr__(self) -> str:
-        return f"Watermark({self.inner.__repr__()})"
-
-    def __str__(self) -> str:
-        return repr(self)
-
-    def to_inner(self) -> RustMessage:
-        return self.inner
-
-    def deepcopy(self) -> Watermark:
-        return Watermark(
-            deepcopy(self.inner.committable),
-            self.inner.timestamp,
-        )
-
-    def __getstate__(self) -> Mapping[str, Any]:
-        return {
-            "payload": self.payload,
-            "timestamp": self.timestamp,
-        }
-
-    def __setstate__(self, state: Mapping[str, Any]) -> None:
-        self.inner = PyWatermark(
-            state["payload"],
-            state["timestamp"],
-        )
-
-
-def rust_msg_equals(msg: RustMessage, other: RustMessage) -> bool:
+def pipeline_msg_equals(msg: PipelineMessage, other: PipelineMessage) -> bool:
     """
     PyAnyMessage/PyWatermark/RawMessage are exposed by Rust and do not have an __eq__ method
     as of now. That would require delegating equality to python anyway
     as the payload is a PyAny
     """
     if type(msg) is not type(other):
-        return False
-    if isinstance(msg, PyWatermark) and isinstance(other, PyWatermark):
-        return msg.committable == other.committable and msg.timestamp == other.timestamp
-    elif isinstance(msg, PyWatermark) or isinstance(other, PyWatermark):
         return False
     return (
         msg.payload == other.payload
