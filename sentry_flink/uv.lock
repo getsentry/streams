@@ -48,7 +48,7 @@ wheels = [
 
 [[package]]
 name = "apache-flink"
-version = "2.0.0"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "apache-beam" },
@@ -68,18 +68,18 @@ dependencies = [
     { name = "requests" },
     { name = "ruamel-yaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/49/a9/385044d06d997d221e006d3f64884a11558b189cf97fde314f68687b630a/apache-flink-2.0.0.tar.gz", hash = "sha256:ac669ab5442ed953f43cae3f1847d8b6a7444afc399a81b3d340254328abf334", size = 1506482 }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/3b/768ef13e9e5bfc5576f55d44563ce875e1eee76ebea8d284d75b92162274/apache_flink-2.1.0.tar.gz", hash = "sha256:7a69e0c8c4a7ed3e9272c7a289bc58dcb555d504594fd947a4fca46186a0421b", size = 1623741 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e3/7c/604c5ab83b8f719ce52e8ec22779296b5a5622d8fed4ad85a6d43a1d9832/apache_flink-2.0.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:5fff844e0a3c33e4a90eedb026f2ee5fda68716a57088c13f7374bf3b88ed790", size = 2485704 },
-    { url = "https://files.pythonhosted.org/packages/41/eb/5e77f1de205adc3341ba02a428685e558514323daaeea3ad5b718cde9250/apache_flink-2.0.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:a3e38b319f479d9a9c4944954847145bcc24f9f548352b73b0171e11a4027e27", size = 2401208 },
-    { url = "https://files.pythonhosted.org/packages/89/a7/6e14db170f9bd13bea2ef0b73ae46ec2890ef77700286a34221c7072f2cc/apache_flink-2.0.0-cp311-cp311-manylinux1_x86_64.whl", hash = "sha256:c01cb942ebf3667d5b2bb6fcfa770a10403d349de56dcd15cc13da7eebc154e8", size = 2688237 },
+    { url = "https://files.pythonhosted.org/packages/a6/d1/d657a9b2e29531b63d56970a5734659c6e32a79a9ff65c1e185d1164ecbc/apache_flink-2.1.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:65fec214e123021a7000184a158f5bd30ee46b3b70634a4319a0276f0de299d4", size = 2574506 },
+    { url = "https://files.pythonhosted.org/packages/64/c5/85083200d17ce99952a033fdc0b499eb826c041c84aad2a46556e82237ef/apache_flink-2.1.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:f8644e64a38f43e0b66535a33231a55f7bd28fb5cc94fe13f417d1dd2021eea9", size = 2502360 },
+    { url = "https://files.pythonhosted.org/packages/f5/3f/c5f06a0643bb0f759e3c80faa13b6aa25a5762a1bb106254976dc1bd4f33/apache_flink-2.1.0-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0685fc723c35e03360d9ce5e46c0066786635572d460d143271a4f5328782f7f", size = 2784124 },
 ]
 
 [[package]]
 name = "apache-flink-libraries"
-version = "2.0.0"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8d/2e/f23f76f6e00c0891e011a8cfb84eee9dca4cdabd41922593770ecbfe365b/apache-flink-libraries-2.0.0.tar.gz", hash = "sha256:916cdd32d870db6cf6409f621b3c5baedfaf1ad4bb7b638c68af488475f27f46", size = 309670733 }
+sdist = { url = "https://files.pythonhosted.org/packages/79/5c/5334d34e1f10f3110ca5fd300693911e4bf6f25d393bd300d7efbce39d5b/apache_flink_libraries-2.1.0.tar.gz", hash = "sha256:a8c12b411eefd45a33e54579ff65c29faa09e96a670f3c2c39ddeca35d8196c6", size = 309707709 }
 
 [[package]]
 name = "async-timeout"
@@ -495,16 +495,16 @@ wheels = [
 
 [[package]]
 name = "pemja"
-version = "0.4.1"
+version = "0.5.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "find-libpython" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/90/2b/2ca14e70edd1c8bb38fcef6c6902d08702fa9a3a1e60da81b1a9cb22a200/pemja-0.4.1.tar.gz", hash = "sha256:38b0466ba48822cd9fa65bf8465c45474bf3f048d6458388e0bf895904258e8c", size = 50674 }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/82/b2d937ffb79e5fb02114b9be2f2bcd07c75d9f7425373e3789464c8d3c12/pemja-0.5.3.tar.gz", hash = "sha256:bbcbc4d63a44455c93e865007c53c9882af4585b25bae9cb0bf9984e312e4969", size = 52550 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/71/00185346edecf9bb12e652e9c78ec61bd9d1879c58f0afb6e34e3d21089a/pemja-0.4.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:8b552ad0982f474eb40c5f9146a32aef1e2a0cf97341ab7620c91cd56cda3536", size = 52809 },
-    { url = "https://files.pythonhosted.org/packages/fb/70/01c8b19834b4620ce6a75288904a0a8717e6fecd3276ffc342448c0ea09a/pemja-0.4.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:ec20f1038da8925f7720961cfc9f7c41a5194fb835fb0b2e71d8c9d0f496b524", size = 53376 },
-    { url = "https://files.pythonhosted.org/packages/ac/08/18720708251bc2c3f1cf0128a8c66bb1113b6a024ead135f72350c148bec/pemja-0.4.1-cp311-cp311-manylinux1_x86_64.whl", hash = "sha256:78a4fa07bacc1b30b3acb88608e0622395cd8a34144dfe455ec8788e32fe3ca1", size = 63556 },
+    { url = "https://files.pythonhosted.org/packages/7c/a4/8af7367d156dfc6fadcfa458ceca651fbb36d763c22292e64edd31fcf0fe/pemja-0.5.3-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:60e87f04e4cd1fb5471bb4bb89d4c27759cc022b4ece259abb4a6b3aaca1c65c", size = 51445 },
+    { url = "https://files.pythonhosted.org/packages/f4/8a/9567b7c3f68e579d9693cf7406b7fab2fff0986e3c2721b8326ab058c581/pemja-0.5.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:bc88a1453bfca6fdc1d76d1f8c33a82f72d56117b6612cf2b0d3716bcf7b70c0", size = 52773 },
+    { url = "https://files.pythonhosted.org/packages/85/0f/36ee5c33e51e2083184ddfba184660e73bc140d51b447afc4c64f4c52c34/pemja-0.5.3-cp311-cp311-manylinux1_x86_64.whl", hash = "sha256:2ee619b49e2a982ee0be96597567becf5d5f23afb7878bce52be70c20a907fef", size = 64334 },
 ]
 
 [[package]]
@@ -888,7 +888,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "apache-flink", specifier = "==2.0.0" },
+    { name = "apache-flink", specifier = "==2.1.0" },
     { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "sentry-streams", specifier = ">=0.0.16" },
