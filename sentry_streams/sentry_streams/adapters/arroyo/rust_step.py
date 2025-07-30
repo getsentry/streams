@@ -301,10 +301,10 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
 
     def __yield_messages(self) -> Iterable[Tuple[RustMessage, Committable]]:
         for message, committable in self.__retriever.fetch():
+            yield (message, committable)
             for watermark in self.__watermarks:
                 if should_send_watermark(watermark, committable):
                     yield (watermark, watermark.payload)
-            yield (message, committable)
 
     def submit(self, message: RustMessage, committable: Committable) -> None:
         if isinstance(message, PyWatermark):
@@ -320,3 +320,6 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
     def flush(self, timeout: float | None = None) -> Iterable[Tuple[RustMessage, Committable]]:
         self.__inner.join(timeout)
         return self.__yield_messages()
+
+    def watermarks(self) -> MutableSequence[PyWatermark]:
+        return self.__watermarks

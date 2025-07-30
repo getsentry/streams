@@ -1,5 +1,12 @@
 from datetime import datetime
-from typing import MutableSequence, Optional, Sequence, Tuple, TypeVar, Union
+from typing import (
+    MutableSequence,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import FilteredPayload
@@ -36,12 +43,12 @@ def test_retriever() -> None:
     timestamp = datetime.now()
     retriever.submit(
         ArroyoMessage(
-            Value("payload", {Partition(Topic("test_topic"), 0): 100}, timestamp),
+            Value("payload", {Partition(Topic("topic0"), 0): 100}, timestamp),
         )
     )
     retriever.submit(
         ArroyoMessage(
-            Value("payload2", {Partition(Topic("test_topic"), 0): 200}, timestamp),
+            Value("payload2", {Partition(Topic("topic0"), 0): 200}, timestamp),
         )
     )
     output = list(retriever.fetch())
@@ -57,7 +64,7 @@ def test_retriever() -> None:
             schema=None,
         ).to_inner(),
     )
-    assert output[0][1] == {("test_topic", 0): 100}
+    assert output[0][1] == {("topic0", 0): 100}
 
     assert pipeline_msg_equals(
         output[1][0],
@@ -68,25 +75,27 @@ def test_retriever() -> None:
             schema=None,
         ).to_inner(),
     )
-    assert output[1][1] == {("test_topic", 0): 200}
+    assert output[1][1] == {("topic0", 0): 200}
 
 
 class FakeReducer(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
     def __init__(self, next: ProcessingStrategy[Sequence[Message[str]]]) -> None:
         self.__messages: MutableSequence[Message[str]] = []
+        self.__committable: dict[Partition, int] = {}
         self.__next = next
 
     def submit(self, message: ArroyoMessage[Union[FilteredPayload, RoutedValue]]) -> None:
         if isinstance(message.payload, FilteredPayload):
             return
         self.__messages.append(message.payload.payload)
+        self.__committable.update(message.committable)
 
     def _flush(self) -> None:
         self.__next.submit(
             ArroyoMessage(
                 Value(
                     self.__messages,
-                    {Partition(Topic("test_topic"), 0): 400},
+                    self.__committable,
                     timestamp=datetime.fromtimestamp(self.__messages[0].timestamp),
                 ),
             )
@@ -109,12 +118,16 @@ class FakeReducer(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
         self.__next.terminate()
 
 
-def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[PipelineMessage, Committable]:
-    msg, committable = build_py_msg(payload, timestamp, offset)
+def build_msg(
+    payload: str, timestamp: float, committable: Committable
+) -> Tuple[PipelineMessage, Committable]:
+    msg, committable = build_py_msg(payload, timestamp, committable)
     return (msg.to_inner(), committable)
 
 
-def build_py_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage[str], Committable]:
+def build_py_msg(
+    payload: str, timestamp: float, committable: Committable
+) -> Tuple[PyMessage[str], Committable]:
     return (
         PyMessage(
             payload=payload,
@@ -122,8 +135,22 @@ def build_py_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage
             timestamp=timestamp,
             schema="ingest-metrics",
         ),
-        {("test_topic", 0): offset},
+        committable,
     )
+
+
+def build_watermark(committable: Committable, timestamp: int) -> Tuple[RustMessage, Committable]:
+    return (
+        PyWatermark(
+            committable,
+            timestamp,
+        ),
+        committable,
+    )
+
+
+def build_committable(num_partitions: int, starting_offset: int) -> Committable:
+    return {(f"topic{i}", i): starting_offset + i for i in range(num_partitions)}
 
 
 def assert_equal_batches(
@@ -150,38 +177,50 @@ def test_reduce_poll() -> None:
     timestamp = datetime.now().timestamp()
     # Simulate the reducer processing messages
     delegate.submit(
-        *build_msg("message1", timestamp, 100),
+        *build_msg("message1", timestamp, {("topic0", 0): 100}),
     )
     assert len(list(delegate.poll())) == 0
 
     delegate.submit(
-        *build_msg("message2", timestamp, 200),
+        *build_msg("message2", timestamp, {("topic1", 1): 200}),
     )
     assert len(list(delegate.poll())) == 0
 
+    # Submitted watermark does not trigger processing, is recorded in watermark list
+    delegate.submit(*build_watermark(build_committable(3, 100), 0))
+    assert len(list(delegate.poll())) == 0
+    assert len(delegate.watermarks()) == 1
+
     delegate.submit(
-        *build_msg("message3", timestamp, 300),
+        *build_msg("message3", timestamp, {("topic2", 2): 300}),
     )
 
     # Poll to trigger processing
     batch = list(delegate.poll())
+
+    expected = [
+        (
+            PyMessage(
+                payload=[
+                    build_py_msg("message1", timestamp, {("topic0", 0): 100})[0],
+                    build_py_msg("message2", timestamp, {("topic1", 1): 200})[0],
+                    build_py_msg("message3", timestamp, {("topic2", 2): 300})[0],
+                ],
+                headers=[],
+                timestamp=timestamp,
+                schema=None,
+            ).to_inner(),
+            {
+                ("topic0", 0): 100,
+                ("topic1", 1): 200,
+                ("topic2", 2): 300,
+            },
+        ),
+        build_watermark(build_committable(3, 100), 0),
+    ]
     assert_equal_batches(
         batch,
-        [
-            (
-                PyMessage(
-                    payload=[
-                        build_py_msg("message1", timestamp, 100)[0],
-                        build_py_msg("message2", timestamp, 200)[0],
-                        build_py_msg("message3", timestamp, 300)[0],
-                    ],
-                    headers=[],
-                    timestamp=timestamp,
-                    schema=None,
-                ).to_inner(),
-                {("test_topic", 0): 400},
-            )
-        ],
+        expected,
     )
 
     assert len(list(delegate.poll())) == 0
@@ -201,7 +240,7 @@ def test_flush() -> None:
     timestamp = datetime.now().timestamp()
     # Simulate the reducer processing messages
     delegate.submit(
-        *build_msg("message1", timestamp, 100),
+        *build_msg("message1", timestamp, {("topic0", 0): 100}),
     )
     batch = list(delegate.flush())
     assert_equal_batches(
@@ -210,13 +249,13 @@ def test_flush() -> None:
             (
                 PyMessage(
                     payload=[
-                        build_py_msg("message1", timestamp, 100)[0],
+                        build_py_msg("message1", timestamp, {("topic0", 0): 100})[0],
                     ],
                     headers=[],
                     timestamp=timestamp,
                     schema=None,
                 ).to_inner(),
-                {("test_topic", 0): 400},
+                {("topic0", 0): 100},
             )
         ],
     )
@@ -231,22 +270,22 @@ def test_reduce() -> None:
     timestamp = datetime.now().timestamp()
     # Simulate the reducer processing messages
     delegate.submit(
-        *build_msg("message1", timestamp, 100),
+        *build_msg("message1", timestamp, {("topic0", 0): 100}),
     )
     assert len(list(delegate.poll())) == 0
 
     delegate.submit(
-        *build_msg("message2", timestamp, 200),
+        *build_msg("message2", timestamp, {("topic0", 0): 200}),
     )
 
     assert len(list(delegate.poll())) == 0
 
     delegate.submit(
-        *build_msg("message3", timestamp, 300),
+        *build_msg("message3", timestamp, {("topic0", 0): 300}),
     )
 
     delegate.submit(
-        *build_msg("message4", timestamp, 400),
+        *build_msg("message4", timestamp, {("topic0", 0): 400}),
     )
 
     batch = list(delegate.poll())
@@ -258,7 +297,7 @@ def test_reduce() -> None:
                 timestamp=timestamp,
                 schema="ingest-metrics",
             ).to_inner(),
-            {("test_topic", 0): 400},
+            {("topic0", 0): 400},
         )
     ]
     assert len(batch) == len(expected)
