@@ -21,7 +21,7 @@ TPayload = TypeVar("TPayload")
 # Represents the Rust message types which can be sent into a delegate step
 RustMessage = Union[PyAnyMessage, PyWatermark, RawMessage]
 # Represents the Rust message types which are actually processed by delegate steps
-PipelineMessage = Union[PyAnyMessage, RawMessage]
+KafkaMessage = Union[PyAnyMessage, RawMessage]
 
 
 class Message(ABC, Generic[TPayload]):
@@ -67,7 +67,7 @@ class Message(ABC, Generic[TPayload]):
         raise NotImplementedError
 
     @abstractmethod
-    def to_inner(self) -> PipelineMessage:
+    def to_inner(self) -> KafkaMessage:
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
@@ -125,7 +125,7 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
     def __str__(self) -> str:
         return repr(self)
 
-    def to_inner(self) -> PipelineMessage:
+    def to_inner(self) -> KafkaMessage:
         return self.inner
 
     def deepcopy(self) -> PyMessage[TPayload]:
@@ -189,7 +189,7 @@ class PyRawMessage(Message[bytes]):
     def __str__(self) -> str:
         return repr(self)
 
-    def to_inner(self) -> PipelineMessage:
+    def to_inner(self) -> KafkaMessage:
         return self.inner
 
     def deepcopy(self) -> PyRawMessage:
@@ -217,7 +217,7 @@ class PyRawMessage(Message[bytes]):
         )
 
 
-def pipeline_msg_equals(msg: PipelineMessage, other: PipelineMessage) -> bool:
+def pipeline_msg_equals(msg: KafkaMessage, other: KafkaMessage) -> bool:
     """
     PyAnyMessage/PyWatermark/RawMessage are exposed by Rust and do not have an __eq__ method
     as of now. That would require delegating equality to python anyway

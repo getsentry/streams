@@ -8,7 +8,7 @@ from sentry_streams.adapters.arroyo.rust_step import (
     SingleMessageOperatorDelegate,
 )
 from sentry_streams.pipeline.message import (
-    PipelineMessage,
+    KafkaMessage,
     PyMessage,
     pipeline_msg_equals,
 )
@@ -16,9 +16,7 @@ from sentry_streams.rust_streams import PyAnyMessage
 
 
 class SingleMessageTransformer(SingleMessageOperatorDelegate):
-    def _process_message(
-        self, msg: PipelineMessage, committable: Committable
-    ) -> PipelineMessage | None:
+    def _process_message(self, msg: KafkaMessage, committable: Committable) -> KafkaMessage | None:
         if msg.payload == "process":
             return PyMessage("processed", msg.headers, msg.timestamp, msg.schema).to_inner()
         if msg.payload == "filter":
@@ -29,7 +27,7 @@ class SingleMessageTransformer(SingleMessageOperatorDelegate):
 
 
 def test_rust_step() -> None:
-    def make_msg(payload: str) -> PipelineMessage:
+    def make_msg(payload: str) -> KafkaMessage:
         return PyAnyMessage(
             payload=payload, headers=[("head", "val".encode())], timestamp=0, schema=None
         )

@@ -5,7 +5,7 @@ from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Message as ArroyoMessage
 
-from sentry_streams.pipeline.message import PipelineMessage, RustMessage
+from sentry_streams.pipeline.message import KafkaMessage, RustMessage
 from sentry_streams.rust_streams import PyWatermark
 
 TIn = TypeVar("TIn")
@@ -54,7 +54,7 @@ class RustOperatorDelegate(ABC):
     """
 
     @abstractmethod
-    def submit(self, message: PipelineMessage, committable: Committable) -> None:
+    def submit(self, message: KafkaMessage, committable: Committable) -> None:
         """
         Send a message to this step for processing.
 
@@ -132,13 +132,11 @@ class SingleMessageOperatorDelegate(
     """
 
     def __init__(self) -> None:
-        self.__message: PipelineMessage | None = None
+        self.__message: KafkaMessage | None = None
         self.__committable: Committable | None = None
 
     @abstractmethod
-    def _process_message(
-        self, msg: PipelineMessage, committable: Committable
-    ) -> PipelineMessage | None:
+    def _process_message(self, msg: KafkaMessage, committable: Committable) -> KafkaMessage | None:
         """
         Processes one message at a time. It receives the offsets to commit
         if needed by the processing but it does not allow the delegate to
@@ -148,7 +146,7 @@ class SingleMessageOperatorDelegate(
         """
         raise NotImplementedError
 
-    def __prepare_output(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
+    def __prepare_output(self) -> Iterable[Tuple[KafkaMessage, Committable]]:
         if self.__message is None:
             return []
         assert self.__committable is not None
@@ -164,16 +162,16 @@ class SingleMessageOperatorDelegate(
             self.__message = None
             self.__committable = None
 
-    def submit(self, message: PipelineMessage, committable: Committable) -> None:
+    def submit(self, message: KafkaMessage, committable: Committable) -> None:
         if self.__message is not None:
             raise MessageRejected()
         self.__message = message
         self.__committable = committable
 
-    def poll(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
+    def poll(self) -> Iterable[Tuple[KafkaMessage, Committable]]:
         return self.__prepare_output()
 
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[KafkaMessage, Committable]]:
         return self.__prepare_output()
 
 
@@ -199,17 +197,17 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
     a format that we can return to the Rust Runtime. For example, existing Arroyo
     strategies may return something like ArroyoMsg[FilteredPayload, Something].
     A transformer can be provided to this class to turn the output into
-    a Tuple of `PipelineMessage` and `Committable`.
+    a Tuple of `KafkaMessage` and `Committable`.
     """
 
     def __init__(
         self,
         out_transformer: Callable[
-            [ArroyoMessage[TStrategyOut]], Tuple[PipelineMessage, Committable] | None
+            [ArroyoMessage[TStrategyOut]], Tuple[KafkaMessage, Committable] | None
         ],
     ) -> None:
         self.__out_transformer = out_transformer
-        self.__pending_messages: MutableSequence[Tuple[PipelineMessage, Committable]] = []
+        self.__pending_messages: MutableSequence[Tuple[KafkaMessage, Committable]] = []
 
     def submit(self, message: ArroyoMessage[TStrategyOut]) -> None:
         transformed = self.__out_transformer(message)
@@ -228,29 +226,13 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
     def terminate(self) -> None:
         pass
 
-    def fetch(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
+    def fetch(self) -> Iterable[Tuple[KafkaMessage, Committable]]:
         """
         Fetches the output messages from the processing strategy.
         """
         ret = self.__pending_messages
         self.__pending_messages = []
         return ret
-
-
-def should_send_watermark(watermark: PyWatermark, committable: Committable) -> bool:
-    """
-    Returns True if:
-    - all partitions in `watermark`'s payload are present in `committable`
-    - all offsets for those partitions in `watermark` are less than or equal to the corresponding
-      offsets in `committable`
-    """
-    try:
-        for partition, offset in watermark.payload.items():
-            if committable[partition] < offset:
-                return False
-    except KeyError:
-        return False
-    return True
 
 
 class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrategyOut]):
@@ -291,20 +273,39 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
     def __init__(
         self,
         inner: ProcessingStrategy[TStrategyIn],
-        in_transformer: Callable[[PipelineMessage, Committable], ArroyoMessage[TStrategyIn]],
+        in_transformer: Callable[[KafkaMessage, Committable], ArroyoMessage[TStrategyIn]],
         retriever: OutputRetriever[TStrategyOut],
     ) -> None:
         self.__inner = inner
         self.__in_transformer = in_transformer
         self.__retriever = retriever
         self.__watermarks: MutableSequence[PyWatermark] = []
+        # globbed_committable is the combined committable of all messages polled
+        # from the OutputRetriever
+        self.__globbed_committable: Committable = {}
+
+    def __should_send_watermark(self, watermark: PyWatermark) -> bool:
+        """
+        Returns True if:
+        - all partitions in `watermark`'s payload are present in `self.__globbed_committable`
+        - all offsets for those partitions in `watermark` are less than or equal to the corresponding
+        offsets in `self.__globbed_committable`
+        """
+        try:
+            for partition, offset in watermark.payload.items():
+                if self.__globbed_committable[partition] < offset:
+                    return False
+        except KeyError:
+            return False
+        return True
 
     def __yield_messages(self) -> Iterable[Tuple[RustMessage, Committable]]:
         for message, committable in self.__retriever.fetch():
             yield (message, committable)
+            self.__globbed_committable.update(committable)
             watermarks = self.__watermarks
             for wm in watermarks:
-                if should_send_watermark(wm, committable):
+                if self.__should_send_watermark(wm):
                     yield (wm, wm.payload)
                     self.__watermarks.remove(wm)
 

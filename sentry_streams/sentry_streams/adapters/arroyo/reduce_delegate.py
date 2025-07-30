@@ -18,8 +18,8 @@ from sentry_streams.adapters.arroyo.rust_step import (
     RustOperatorFactory,
 )
 from sentry_streams.pipeline.message import (
+    KafkaMessage,
     Message,
-    PipelineMessage,
     PyMessage,
     PyRawMessage,
 )
@@ -31,7 +31,7 @@ TOut = TypeVar("TOut")
 
 
 def rust_msg_to_arroyo_reduce(
-    message: PipelineMessage, committable: Committable
+    message: KafkaMessage, committable: Committable
 ) -> ArroyoMessage[RoutedValue]:
     arroyo_committable = {
         Partition(Topic(partition[0]), partition[1]): offset
@@ -59,7 +59,7 @@ def rust_msg_to_arroyo_reduce(
 
 def reduced_msg_to_rust(
     message: ArroyoMessage[Union[FilteredPayload, TIn]],
-) -> Tuple[PipelineMessage, Committable] | None:
+) -> Tuple[KafkaMessage, Committable] | None:
     if isinstance(message.payload, FilteredPayload):
         return None
     else:

@@ -25,8 +25,8 @@ from sentry_streams.adapters.arroyo.rust_step import (
     OutputRetriever,
 )
 from sentry_streams.pipeline.message import (
+    KafkaMessage,
     Message,
-    PipelineMessage,
     PyMessage,
     RustMessage,
     pipeline_msg_equals,
@@ -120,7 +120,7 @@ class FakeReducer(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
 
 def build_msg(
     payload: str, timestamp: float, committable: Committable
-) -> Tuple[PipelineMessage, Committable]:
+) -> Tuple[KafkaMessage, Committable]:
     msg, committable = build_py_msg(payload, timestamp, committable)
     return (msg.to_inner(), committable)
 
