@@ -302,9 +302,11 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
     def __yield_messages(self) -> Iterable[Tuple[RustMessage, Committable]]:
         for message, committable in self.__retriever.fetch():
             yield (message, committable)
-            for watermark in self.__watermarks:
-                if should_send_watermark(watermark, committable):
-                    yield (watermark, watermark.payload)
+            watermarks = self.__watermarks
+            for wm in watermarks:
+                if should_send_watermark(wm, committable):
+                    yield (wm, wm.payload)
+                    self.__watermarks.remove(wm)
 
     def submit(self, message: RustMessage, committable: Committable) -> None:
         if isinstance(message, PyWatermark):
