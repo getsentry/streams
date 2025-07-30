@@ -14,12 +14,11 @@ from typing import (
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import OutputTag, StreamExecutionEnvironment
-from pyflink.datastream.connectors import (  # type: ignore[attr-defined]
-    FlinkKafkaConsumer,
-)
 from pyflink.datastream.connectors.kafka import (
+    KafkaOffsetsInitializer,
     KafkaRecordSerializationSchema,
     KafkaSink,
+    KafkaSource,
 )
 from pyflink.datastream.data_stream import (
     AllWindowedStream,
@@ -108,10 +107,10 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
         if libs_path:
             jar_file = os.path.join(
-                os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
+                os.path.abspath(libs_path), "flink-sql-connector-kafka-4.0.0-2.0.jar"
             )
             kafka_jar_file = os.path.join(
-                os.path.abspath(libs_path), "flink-sql-connector-kafka-3.4.0-1.20.jar"
+                os.path.abspath(libs_path), "flink-sql-connector-kafka-4.0.0-2.0.jar"
             )
             env.add_jars(f"file://{jar_file}", f"file://{kafka_jar_file}")
 
@@ -167,16 +166,19 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
         deserialization_schema = SimpleStringSchema()
 
         # TODO: Look into using KafkaSource instead
-        kafka_consumer = FlinkKafkaConsumer(
-            topics=topic,
-            deserialization_schema=deserialization_schema,
-            properties={
-                "bootstrap.servers": consumer_config.get("bootstrap_servers", "kafka:9093"),
-                "group.id": f"pipeline-{step.name}",
-            },
+        kafka_consumer = (
+            KafkaSource.builder()
+            .set_bootstrap_servers(consumer_config.get("bootstrap_servers", "kafka:9093"))
+            .set_group_id(f"pipeline-{step.name}")
+            .set_topics(topic)
+            .set_value_only_deserializer(deserialization_schema)
+            .set_starting_offsets(KafkaOffsetsInitializer.earliest())
+            .build()
         )
 
-        source_stream = self.env.add_source(kafka_consumer)
+        source_stream = self.env.from_source(
+            kafka_consumer, WatermarkStrategy.for_monotonous_timestamps(), step.name
+        )
         return self.resolve_outoing_chain(step, source_stream)
 
     def sink(self, step: Sink, stream: DataStream) -> DataStreamSink:

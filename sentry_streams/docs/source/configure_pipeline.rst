@@ -119,7 +119,8 @@ The diagram above could be achieved with a configuration like this
                         processes: 3
             sink:
                 starts_segment: True
-                parallelism: 1
+                parallelism:
+                    threads: 1
 
 A segment is defined by marking a step in the configuration with the
 step with `starts_segment: True`.

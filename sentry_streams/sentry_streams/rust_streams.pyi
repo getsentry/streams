@@ -51,7 +51,9 @@ class RuntimeOperator:
         cls, route: Route, topic_name: str, kafka_config: PyKafkaProducerConfig
     ) -> Self: ...
     @classmethod
-    def GCSSink(cls, route: Route, bucket: str, object_generator: Callable[[], str]) -> Self: ...
+    def GCSSink(
+        cls, route: Route, bucket: str, object_generator: Callable[[], str], thread_count: int
+    ) -> Self: ...
     @classmethod
     def Router(
         cls, route: Route, function: Callable[[Message[Any]], str], downstream_routes: Sequence[str]
