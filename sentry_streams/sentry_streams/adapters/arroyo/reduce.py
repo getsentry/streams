@@ -177,13 +177,12 @@ class TimeWindowedReduce(
             merged_window.merge(acc)
 
         payload = merged_window.get_value()
-        # We only pass on the offsets from the first acc as it's the one being dropped,
-        # meaning those offsets are safe to commit
-        offsets_to_commit = self.accs[first_acc_id].get_offsets()
 
         # If there is a gap in the data, it is possible to have empty flushes
         if payload:
-            self.msg_wrap_step.submit(Message(Value(cast(TResult, payload), offsets_to_commit)))
+            self.msg_wrap_step.submit(
+                Message(Value(cast(TResult, payload), merged_window.get_offsets()))
+            )
 
         # Refresh only the accumulator that was the first
         # accumulator in the flushed window
