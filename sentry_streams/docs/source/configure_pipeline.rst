@@ -120,7 +120,7 @@ The diagram above could be achieved with a configuration like this
             sink:
                 starts_segment: True
                 parallelism:
-                    thread_count: 1
+                    threads: 1
 
 A segment is defined by marking a step in the configuration with the
 step with `starts_segment: True`.
