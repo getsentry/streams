@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Tuple
 
 from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.types import (
@@ -12,6 +12,8 @@ from arroyo.types import (
 )
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
+from sentry_streams.adapters.arroyo.rust_step import Committable
+from sentry_streams.pipeline.message import PyMessage, RustMessage
 
 TEST_PARTITION = Partition(Topic("test_topic"), 0)
 
@@ -78,4 +80,25 @@ def make_kafka_msg(
             offset=offset,
             timestamp=datetime.now(),
         )
+    )
+
+
+def build_rust_msg(
+    payload: str, timestamp: float, committable: Committable
+) -> Tuple[RustMessage, Committable]:
+    msg, committable = build_py_msg(payload, timestamp, committable)
+    return (msg.to_inner(), committable)
+
+
+def build_py_msg(
+    payload: str, timestamp: float, committable: Committable
+) -> Tuple[PyMessage[str], Committable]:
+    return (
+        PyMessage(
+            payload=payload,
+            headers=[],
+            timestamp=timestamp,
+            schema="ingest-metrics",
+        ),
+        committable,
     )
