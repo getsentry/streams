@@ -18,7 +18,7 @@ from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
 TPayload = TypeVar("TPayload")
 
-RustMessage = Union[PyAnyMessage, RawMessage]
+PipelineMessage = Union[PyAnyMessage, RawMessage]
 
 
 class Message(ABC, Generic[TPayload]):
@@ -64,7 +64,7 @@ class Message(ABC, Generic[TPayload]):
         raise NotImplementedError
 
     @abstractmethod
-    def to_inner(self) -> RustMessage:
+    def to_inner(self) -> PipelineMessage:
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
@@ -122,7 +122,7 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
     def __str__(self) -> str:
         return repr(self)
 
-    def to_inner(self) -> RustMessage:
+    def to_inner(self) -> PipelineMessage:
         return self.inner
 
     def deepcopy(self) -> PyMessage[TPayload]:
@@ -186,7 +186,7 @@ class PyRawMessage(Message[bytes]):
     def __str__(self) -> str:
         return repr(self)
 
-    def to_inner(self) -> RustMessage:
+    def to_inner(self) -> PipelineMessage:
         return self.inner
 
     def deepcopy(self) -> PyRawMessage:
@@ -214,7 +214,7 @@ class PyRawMessage(Message[bytes]):
         )
 
 
-def rust_msg_equals(msg: RustMessage, other: RustMessage) -> bool:
+def rust_msg_equals(msg: PipelineMessage, other: PipelineMessage) -> bool:
     """
     PyAnyMessage/RawMessage are exposed by Rust and do not have an __eq__ method
     as of now. That would require delegating equality to python anyway

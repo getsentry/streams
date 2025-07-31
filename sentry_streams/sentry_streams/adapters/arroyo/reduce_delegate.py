@@ -19,9 +19,9 @@ from sentry_streams.adapters.arroyo.rust_step import (
 )
 from sentry_streams.pipeline.message import (
     Message,
+    PipelineMessage,
     PyMessage,
     PyRawMessage,
-    RustMessage,
 )
 from sentry_streams.pipeline.pipeline import Reduce
 from sentry_streams.rust_streams import PyAnyMessage, RawMessage
@@ -31,7 +31,7 @@ TOut = TypeVar("TOut")
 
 
 def rust_msg_to_arroyo_reduce(
-    message: RustMessage, committable: Committable
+    message: PipelineMessage, committable: Committable
 ) -> ArroyoMessage[RoutedValue]:
     arroyo_committable = {
         Partition(Topic(partition[0]), partition[1]): offset
@@ -59,7 +59,7 @@ def rust_msg_to_arroyo_reduce(
 
 def reduced_msg_to_rust(
     message: ArroyoMessage[Union[FilteredPayload, TIn]],
-) -> Tuple[RustMessage, Committable] | None:
+) -> Tuple[PipelineMessage, Committable] | None:
     if isinstance(message.payload, FilteredPayload):
         return None
     else:

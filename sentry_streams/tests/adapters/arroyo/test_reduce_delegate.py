@@ -19,8 +19,8 @@ from sentry_streams.adapters.arroyo.rust_step import (
 )
 from sentry_streams.pipeline.message import (
     Message,
+    PipelineMessage,
     PyMessage,
-    RustMessage,
     rust_msg_equals,
 )
 from sentry_streams.pipeline.pipeline import Batch
@@ -107,7 +107,7 @@ class FakeReducer(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
         self.__next.terminate()
 
 
-def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[RustMessage, Committable]:
+def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[PipelineMessage, Committable]:
     msg, committable = build_py_msg(payload, timestamp, offset)
     return (msg.to_inner(), committable)
 
@@ -125,8 +125,8 @@ def build_py_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage
 
 
 def assert_equal_batches(
-    batch1: Sequence[Tuple[RustMessage, Committable]],
-    batch2: Sequence[Tuple[RustMessage, Committable]],
+    batch1: Sequence[Tuple[PipelineMessage, Committable]],
+    batch2: Sequence[Tuple[PipelineMessage, Committable]],
 ) -> None:
     assert len(batch1) == len(batch2)
     for i, msg1 in enumerate(batch1):

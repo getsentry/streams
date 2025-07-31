@@ -5,7 +5,7 @@ from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Message as ArroyoMessage
 
-from sentry_streams.pipeline.message import RustMessage
+from sentry_streams.pipeline.message import PipelineMessage
 from sentry_streams.rust_streams import PyWatermark
 
 TIn = TypeVar("TIn")
@@ -54,7 +54,7 @@ class RustOperatorDelegate(ABC):
     """
 
     @abstractmethod
-    def submit(self, message: RustMessage, committable: Committable) -> None:
+    def submit(self, message: PipelineMessage, committable: Committable) -> None:
         """
         Send a message to this step for processing.
 
@@ -74,7 +74,7 @@ class RustOperatorDelegate(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def poll(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def poll(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
         """
         Triggers asynchronous processing. This method is called periodically
         every time we poll from Kafka.
@@ -86,7 +86,7 @@ class RustOperatorDelegate(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[RustMessage, Committable]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
         """
         Wait for all processing to be completed and returns the results of
         the in flight processing. It also closes and clean up all the resource
@@ -132,11 +132,13 @@ class SingleMessageOperatorDelegate(
     """
 
     def __init__(self) -> None:
-        self.__message: RustMessage | None = None
+        self.__message: PipelineMessage | None = None
         self.__committable: Committable | None = None
 
     @abstractmethod
-    def _process_message(self, msg: RustMessage, committable: Committable) -> RustMessage | None:
+    def _process_message(
+        self, msg: PipelineMessage, committable: Committable
+    ) -> PipelineMessage | None:
         """
         Processes one message at a time. It receives the offsets to commit
         if needed by the processing but it does not allow the delegate to
@@ -146,7 +148,7 @@ class SingleMessageOperatorDelegate(
         """
         raise NotImplementedError
 
-    def __prepare_output(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def __prepare_output(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
         if self.__message is None:
             return []
         assert self.__committable is not None
@@ -162,16 +164,16 @@ class SingleMessageOperatorDelegate(
             self.__message = None
             self.__committable = None
 
-    def submit(self, message: RustMessage, committable: Committable) -> None:
+    def submit(self, message: PipelineMessage, committable: Committable) -> None:
         if self.__message is not None:
             raise MessageRejected()
         self.__message = message
         self.__committable = committable
 
-    def poll(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def poll(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
         return self.__prepare_output()
 
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[RustMessage, Committable]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
         return self.__prepare_output()
 
 
@@ -197,17 +199,17 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
     a format that we can return to the Rust Runtime. For example, existing Arroyo
     strategies may return something like ArroyoMsg[FilteredPayload, Something].
     A transformer can be provided to this class to turn the output into
-    a Tuple of `RustMessage` and `Committable`.
+    a Tuple of `PipelineMessage` and `Committable`.
     """
 
     def __init__(
         self,
         out_transformer: Callable[
-            [ArroyoMessage[TStrategyOut]], Tuple[RustMessage, Committable] | None
+            [ArroyoMessage[TStrategyOut]], Tuple[PipelineMessage, Committable] | None
         ],
     ) -> None:
         self.__out_transformer = out_transformer
-        self.__pending_messages: MutableSequence[Tuple[RustMessage, Committable]] = []
+        self.__pending_messages: MutableSequence[Tuple[PipelineMessage, Committable]] = []
 
     def submit(self, message: ArroyoMessage[TStrategyOut]) -> None:
         transformed = self.__out_transformer(message)
@@ -226,7 +228,7 @@ class OutputRetriever(ProcessingStrategy[TStrategyOut], Generic[TStrategyOut]):
     def terminate(self) -> None:
         pass
 
-    def fetch(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def fetch(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
         """
         Fetches the output messages from the processing strategy.
         """
@@ -273,23 +275,23 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
     def __init__(
         self,
         inner: ProcessingStrategy[TStrategyIn],
-        in_transformer: Callable[[RustMessage, Committable], ArroyoMessage[TStrategyIn]],
+        in_transformer: Callable[[PipelineMessage, Committable], ArroyoMessage[TStrategyIn]],
         retriever: OutputRetriever[TStrategyOut],
     ) -> None:
         self.__inner = inner
         self.__in_transformer = in_transformer
         self.__retriever = retriever
 
-    def submit(self, message: RustMessage, committable: Committable) -> None:
+    def submit(self, message: PipelineMessage, committable: Committable) -> None:
         # TODO: handle watermark message inside of the OperatorDelegate
         if not isinstance(message, PyWatermark):
             arroyo_msg = self.__in_transformer(message, committable)
             self.__inner.submit(arroyo_msg)
 
-    def poll(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def poll(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
         self.__inner.poll()
         return self.__retriever.fetch()
 
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[RustMessage, Committable]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
         self.__inner.join(timeout)
         return self.__retriever.fetch()

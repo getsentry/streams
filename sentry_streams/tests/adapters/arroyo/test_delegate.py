@@ -8,15 +8,17 @@ from sentry_streams.adapters.arroyo.rust_step import (
     SingleMessageOperatorDelegate,
 )
 from sentry_streams.pipeline.message import (
+    PipelineMessage,
     PyMessage,
-    RustMessage,
     rust_msg_equals,
 )
 from sentry_streams.rust_streams import PyAnyMessage
 
 
 class SingleMessageTransformer(SingleMessageOperatorDelegate):
-    def _process_message(self, msg: RustMessage, committable: Committable) -> RustMessage | None:
+    def _process_message(
+        self, msg: PipelineMessage, committable: Committable
+    ) -> PipelineMessage | None:
         if msg.payload == "process":
             return PyMessage("processed", msg.headers, msg.timestamp, msg.schema).to_inner()
         if msg.payload == "filter":
@@ -27,7 +29,7 @@ class SingleMessageTransformer(SingleMessageOperatorDelegate):
 
 
 def test_rust_step() -> None:
-    def make_msg(payload: str) -> RustMessage:
+    def make_msg(payload: str) -> PipelineMessage:
         return PyAnyMessage(
             payload=payload, headers=[("head", "val".encode())], timestamp=0, schema=None
         )
