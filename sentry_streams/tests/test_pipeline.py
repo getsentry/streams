@@ -1,7 +1,13 @@
+from datetime import timedelta
+from sentry_streams.adapters.arroyo.routes import Route
 from typing import Any, Callable, Mapping, Union
+from unittest import mock
 
 import pytest
+from arroyo.processing.strategies.abstract import ProcessingStrategy
 
+from sentry_streams.adapters.arroyo.reduce import build_arroyo_windowed_reduce
+from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
@@ -16,7 +22,7 @@ from sentry_streams.pipeline.pipeline import (
     make_edge_sets,
     streaming_source,
 )
-from sentry_streams.pipeline.window import MeasurementUnit
+from sentry_streams.pipeline.window import MeasurementUnit, SlidingWindow
 
 
 @pytest.fixture
@@ -247,3 +253,33 @@ def test_batch_step_override_config(
     step.override_config(loaded_config=loaded_batch_size)
 
     assert step.batch_size == expected
+
+def test_batch_step_invalid_window_args():
+    with pytest.raises(ValueError) as e:
+        BatchStep[MeasurementUnit, bytes] = BatchStep(
+        name="test-batch", batch_size=10, batch_timedelta=timedelta(seconds=2)
+    )
+    assert "Only one of 'batch_size' or 'batch_timedelta' may be set, not both." in str(e.value)
+    with pytest.raises(ValueError) as e:
+        BatchStep[MeasurementUnit, bytes] = BatchStep(
+        name="test-batch"
+    )
+    assert "One of 'batch_size' or 'batch_timedelta' must be set." in str(e.value)
+
+# def test_bat_step_tumbling_window_batch_size():
+#     next_step = mock.Mock(spec=ProcessingStrategy)
+#     acc = mock.Mock(spec=Accumulator)
+#     route = mock.Mock(spec=Route)
+
+#     reduce_window = SlidingWindow(
+#         window_size=timedelta(seconds=6), window_slide=timedelta(seconds=0)
+#     )
+
+#     with pytest.raises(ValueError):
+#         build_arroyo_windowed_reduce(reduce_window, acc, next_step, route)
+        
+# def test_batch_step_tumbling_window_batch_timedelta():
+
+# def test_batch_step_sliding_window_batch_size():
+
+# def test_batch_step_sliding_window_batch_timedelta():

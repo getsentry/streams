@@ -1,9 +1,13 @@
 from dataclasses import dataclass
 from datetime import timedelta
+from enum import Enum
 from typing import Generic, TypeVar
 
 MeasurementUnit = TypeVar("MeasurementUnit", int, timedelta)
 
+class WindowType(Enum):
+    SLIDING = 'SLIDING'
+    TUMBLING = 'TUMBLING'
 
 @dataclass
 class Window(Generic[MeasurementUnit]):

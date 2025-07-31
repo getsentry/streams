@@ -42,7 +42,7 @@ from sentry_streams.pipeline.msg_codecs import (
     resolve_polars_schema,
     serialize_to_parquet,
 )
-from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
+from sentry_streams.pipeline.window import MeasurementUnit, SlidingWindow, TumblingWindow, Window, WindowType
 
 RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
 TransformFuncReturnType = TypeVar("TransformFuncReturnType")
@@ -480,8 +480,20 @@ class Batch(
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
-    batch_size: MeasurementUnit
+    window_type: WindowType | None = WindowType.TUMBLING
+    batch_size: MeasurementUnit | None = None
+    batch_timedelta: MeasurementUnit | None = None
     step_type: StepType = StepType.REDUCE
+
+    def __post_init__(self) -> None:
+        """
+        For now to close a batch, it can either use batch_size or batch_timedelta. It cannot use both.
+        This behavior may be modified in the future to support closing the batch using whichever is reached first.
+        """
+        if self.batch_size and self.batch_timedelta:
+            raise ValueError("Only one of 'batch_size' or 'batch_timedelta' may be set, not both.")
+        if not self.batch_size and not self.batch_timedelta:
+            raise ValueError("One of 'batch_size' or 'batch_timedelta' must be set.")
 
     @property
     def group_by(self) -> Optional[GroupBy]:
@@ -489,7 +501,11 @@ class Batch(
 
     @property
     def windowing(self) -> Window[MeasurementUnit]:
-        return TumblingWindow(self.batch_size)
+        batch_closing_arg = self.batch_size if self.batch_size else self.batch_timedelta
+        if self.window_type == WindowType.TUMBLING:
+            return TumblingWindow(batch_closing_arg)
+        elif self.window_type == WindowType.SLIDING:
+            return SlidingWindow(batch_closing_arg)
 
     @property
     def aggregate_fn(
