@@ -6,7 +6,7 @@ import pytest
 from sentry_streams.pipeline.message import (
     PyMessage,
     PyRawMessage,
-    pipeline_msg_equals,
+    rust_msg_equals,
 )
 from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
@@ -53,7 +53,7 @@ def test_message_access(
     assert copy.timestamp == message.timestamp
     assert copy.schema == message.schema
 
-    assert pipeline_msg_equals(copy.to_inner(), message.to_inner())
+    assert rust_msg_equals(copy.to_inner(), message.to_inner())
 
     reloaded = pickle.loads(pickle.dumps(message))
 
@@ -62,4 +62,4 @@ def test_message_access(
     assert reloaded.timestamp == message.timestamp
     assert reloaded.schema == message.schema
 
-    assert pipeline_msg_equals(reloaded.to_inner(), message.to_inner())
+    assert rust_msg_equals(reloaded.to_inner(), message.to_inner())

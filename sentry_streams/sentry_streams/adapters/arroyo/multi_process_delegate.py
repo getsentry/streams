@@ -19,10 +19,10 @@ from sentry_streams.adapters.arroyo.rust_step import (
     RustOperatorFactory,
 )
 from sentry_streams.pipeline.message import (
-    KafkaMessage,
     Message,
     PyMessage,
     PyRawMessage,
+    RustMessage,
 )
 from sentry_streams.rust_streams import PyAnyMessage, RawMessage
 
@@ -45,7 +45,7 @@ def process_message(
 
 def mapped_msg_to_rust(
     message: ArroyoMessage[Union[FilteredPayload, Message[TMapOut]]],
-) -> Tuple[KafkaMessage, Committable] | None:
+) -> Tuple[RustMessage, Committable] | None:
     """
     Unpack the message provided by the RunTaskInMultiprocessing step
     and returns the payload in a form that the Rust Runtime can
@@ -63,7 +63,7 @@ def mapped_msg_to_rust(
 
 
 def rust_to_arroyo_msg(
-    message: KafkaMessage, committable: Committable
+    message: RustMessage, committable: Committable
 ) -> ArroyoMessage[Message[TMapIn]]:
     """
     Prepares messages for the RunTaskInMultiprocessing strategy.

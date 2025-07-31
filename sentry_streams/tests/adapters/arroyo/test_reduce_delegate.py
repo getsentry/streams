@@ -25,11 +25,11 @@ from sentry_streams.adapters.arroyo.rust_step import (
     OutputRetriever,
 )
 from sentry_streams.pipeline.message import (
-    KafkaMessage,
     Message,
+    PipelineMessage,
     PyMessage,
     RustMessage,
-    pipeline_msg_equals,
+    rust_msg_equals,
 )
 from sentry_streams.pipeline.pipeline import Batch
 from sentry_streams.rust_streams import PyWatermark
@@ -55,7 +55,7 @@ def test_retriever() -> None:
 
     assert len(output) == 2
 
-    assert pipeline_msg_equals(
+    assert rust_msg_equals(
         output[0][0],
         PyMessage(
             payload="payload",
@@ -66,7 +66,7 @@ def test_retriever() -> None:
     )
     assert output[0][1] == {("topic0", 0): 100}
 
-    assert pipeline_msg_equals(
+    assert rust_msg_equals(
         output[1][0],
         PyMessage(
             payload="payload2",
@@ -120,7 +120,7 @@ class FakeReducer(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
 
 def build_msg(
     payload: str, timestamp: float, committable: Committable
-) -> Tuple[KafkaMessage, Committable]:
+) -> Tuple[RustMessage, Committable]:
     msg, committable = build_py_msg(payload, timestamp, committable)
     return (msg.to_inner(), committable)
 
@@ -139,7 +139,9 @@ def build_py_msg(
     )
 
 
-def build_watermark(committable: Committable, timestamp: int) -> Tuple[RustMessage, Committable]:
+def build_watermark(
+    committable: Committable, timestamp: int
+) -> Tuple[PipelineMessage, Committable]:
     return (
         PyWatermark(
             committable,
@@ -154,8 +156,8 @@ def build_committable(num_partitions: int, starting_offset: int) -> Committable:
 
 
 def assert_equal_batches(
-    batch1: Sequence[Tuple[RustMessage, Committable]],
-    batch2: Sequence[Tuple[RustMessage, Committable]],
+    batch1: Sequence[Tuple[PipelineMessage, Committable]],
+    batch2: Sequence[Tuple[PipelineMessage, Committable]],
 ) -> None:
     assert len(batch1) == len(batch2)
     for i, msg1 in enumerate(batch1):
