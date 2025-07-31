@@ -84,15 +84,14 @@ def test_submit_and_poll() -> None:
     acc = mock.Mock(spec=Accumulator)
     route = mock.Mock(spec=Route)
 
-    reduce: TimeWindowedReduce[Any, Any] = TimeWindowedReduce(
-        window_size=6.0,
-        window_slide=2.0,
-        acc=acc,
-        next_step=next_step,
-        route=route,
-    )
-    # fix start_time so we can control what acc a message goes to
-    reduce.start_time = 0
+    with mock.patch("time.time", return_value=0):
+        reduce: TimeWindowedReduce[Any, Any] = TimeWindowedReduce(
+            window_size=6.0,
+            window_slide=2.0,
+            acc=acc,
+            next_step=next_step,
+            route=route,
+        )
 
     cur_time = 0
 
