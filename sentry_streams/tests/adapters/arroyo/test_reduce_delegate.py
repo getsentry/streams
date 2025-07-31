@@ -24,6 +24,7 @@ from sentry_streams.pipeline.message import (
     rust_msg_equals,
 )
 from sentry_streams.pipeline.pipeline import Batch
+from tests.adapters.arroyo.message_helpers import build_py_msg, build_rust_msg
 
 TStrategyOut = TypeVar("TStrategyOut")
 
@@ -107,23 +108,6 @@ class FakeReducer(ProcessingStrategy[Union[FilteredPayload, RoutedValue]]):
         self.__next.terminate()
 
 
-def build_msg(payload: str, timestamp: float, offset: int) -> Tuple[RustMessage, Committable]:
-    msg, committable = build_py_msg(payload, timestamp, offset)
-    return (msg.to_inner(), committable)
-
-
-def build_py_msg(payload: str, timestamp: float, offset: int) -> Tuple[PyMessage[str], Committable]:
-    return (
-        PyMessage(
-            payload=payload,
-            headers=[],
-            timestamp=timestamp,
-            schema="ingest-metrics",
-        ),
-        {("test_topic", 0): offset},
-    )
-
-
 def assert_equal_batches(
     batch1: Sequence[Tuple[RustMessage, Committable]],
     batch2: Sequence[Tuple[RustMessage, Committable]],
@@ -148,17 +132,17 @@ def test_reduce_poll() -> None:
     timestamp = datetime.now().timestamp()
     # Simulate the reducer processing messages
     delegate.submit(
-        *build_msg("message1", timestamp, 100),
+        *build_rust_msg("message1", timestamp, 100),
     )
     assert len(list(delegate.poll())) == 0
 
     delegate.submit(
-        *build_msg("message2", timestamp, 200),
+        *build_rust_msg("message2", timestamp, 200),
     )
     assert len(list(delegate.poll())) == 0
 
     delegate.submit(
-        *build_msg("message3", timestamp, 300),
+        *build_rust_msg("message3", timestamp, 300),
     )
 
     # Poll to trigger processing
@@ -199,7 +183,7 @@ def test_flush() -> None:
     timestamp = datetime.now().timestamp()
     # Simulate the reducer processing messages
     delegate.submit(
-        *build_msg("message1", timestamp, 100),
+        *build_rust_msg("message1", timestamp, 100),
     )
     batch = list(delegate.flush())
     assert_equal_batches(
@@ -229,22 +213,22 @@ def test_reduce() -> None:
     timestamp = datetime.now().timestamp()
     # Simulate the reducer processing messages
     delegate.submit(
-        *build_msg("message1", timestamp, 100),
+        *build_rust_msg("message1", timestamp, 100),
     )
     assert len(list(delegate.poll())) == 0
 
     delegate.submit(
-        *build_msg("message2", timestamp, 200),
+        *build_rust_msg("message2", timestamp, 200),
     )
 
     assert len(list(delegate.poll())) == 0
 
     delegate.submit(
-        *build_msg("message3", timestamp, 300),
+        *build_rust_msg("message3", timestamp, 300),
     )
 
     delegate.submit(
-        *build_msg("message4", timestamp, 400),
+        *build_rust_msg("message4", timestamp, 400),
     )
 
     batch = list(delegate.poll())
