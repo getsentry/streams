@@ -87,11 +87,15 @@ pub fn build(
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     match step.get() {
         RuntimeOperator::Map { function, route } => {
+            // All functions (Python and Rust) are called the same way now
+            // Rust functions automatically release the GIL internally
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_map(route, func_ref, next)
         }
         RuntimeOperator::Filter { function, route } => {
-            let func_ref = traced_with_gil!(|py| { function.clone_ref(py) });
+            // All functions (Python and Rust) are called the same way now
+            // Rust functions automatically release the GIL internally
+            let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_filter(route, func_ref, next)
         }
         RuntimeOperator::StreamSink {

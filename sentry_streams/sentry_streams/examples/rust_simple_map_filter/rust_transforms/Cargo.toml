@@ -1,0 +1,22 @@
+[package]
+name = "metrics_rust_transforms"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "metrics_rust_transforms"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.24" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# In practice, users would depend on the published sentry_streams crate
+# which would re-export the macros
+# sentry_streams = "0.1"
+
+# For this example, we'll include the dependencies directly
+[dependencies.rust_streams]
+path = "../../../../"  # Point to the main rust_streams crate
+default-features = false  # Disable default features to avoid loading pyo3 a second time

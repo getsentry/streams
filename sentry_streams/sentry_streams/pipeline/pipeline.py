@@ -42,6 +42,7 @@ from sentry_streams.pipeline.msg_codecs import (
     resolve_polars_schema,
     serialize_to_parquet,
 )
+from sentry_streams.pipeline.rust_function_protocol import InternalRustFunction
 from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
 
 RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
@@ -50,6 +51,8 @@ TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 TNewOut = TypeVar("TNewOut")
 TBranch = TypeVar("TBranch")
+
+RUST_FUNCTION_VERSION = 1
 
 
 class StepType(Enum):
@@ -316,6 +319,29 @@ class FunctionTransform(Transform[TIn, TOut], Generic[TIn, TOut]):
         function_callable = imported_func
         return function_callable
 
+    def _validate_rust_function(self) -> Callable[[Message[TIn]], TOut] | None:
+        func = self.resolved_function
+        if not hasattr(func, "rust_function_version"):
+            # not a rust function
+            return None
+
+        func = cast(InternalRustFunction[TIn, TOut], func)
+
+        rust_function_version = func.rust_function_version()
+        if rust_function_version != 1:
+            raise TypeError(
+                r"Invalid rust function version: {rust_function_version} -- if you are defining your own rust functions, maybe the version is out of date?"
+            )
+
+        return func
+
+    def post_rust_function_validation(self, func: InternalRustFunction[TIn, TOut]) -> None:
+        # Overridden in Filter step
+        pass
+
+    def __post_init__(self) -> None:
+        self._validate_rust_function()
+
 
 # Backward compatibility alias
 TransformStep = FunctionTransform
@@ -347,6 +373,13 @@ class Filter(Transform[TIn, TIn], Generic[TIn]):
 
     function: Union[Callable[[Message[TIn]], bool], str]
     step_type: StepType = StepType.FILTER
+
+    def post_rust_function_validation(self, func: InternalRustFunction[TIn, TOut]) -> None:
+        output_type = func.output_type()
+        if output_type != "bool":
+            raise TypeError(
+                f"Filter function {func} should return bool, " f"but returns {output_type}"
+            )
 
     @property
     def resolved_function(self) -> Callable[[Message[TIn]], bool]:
