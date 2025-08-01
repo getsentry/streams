@@ -88,15 +88,13 @@ def test_arroyo_delegate_sends_right_watermark() -> None:
         RunTask(str_transformer, retriever), rust_to_arroyo_msg, retriever
     )
 
+    delegate.submit(*build_rust_msg("payload", 0, build_committable(1, 42)))
+
     delegate.submit(*build_watermark(build_committable(1, 42), timestamp=0))
-    assert len(delegate.watermarks()) == 1
 
     # second watermark has a higher offset
     delegate.submit(*build_watermark(build_committable(1, 43), timestamp=0))
-    assert len(delegate.watermarks()) == 2
 
-    # Message with the same committable as a watermark triggers the watermark
-    delegate.submit(*build_rust_msg("payload", 0, build_committable(1, 42)))
     ret = list(delegate.poll())
 
     expected = [
@@ -110,7 +108,6 @@ def test_arroyo_delegate_sends_right_watermark() -> None:
         ret,
         expected,
     )
-    assert len(delegate.watermarks()) == 1
 
 
 def test_arroyo_delegate_globs_watermarks() -> None:
@@ -121,35 +118,18 @@ def test_arroyo_delegate_globs_watermarks() -> None:
     )
 
     delegate.submit(*build_watermark(build_committable(3, 100), timestamp=0))
-    assert len(delegate.watermarks()) == 1
-
     delegate.submit(*build_watermark(build_committable(4, 100), timestamp=0))
-    assert len(delegate.watermarks()) == 2
 
     delegate.submit(*build_rust_msg("payload", 0, {("test_topic", 0): 101}))
     # casting to consume the generator
     list(delegate.poll())
-    assert len(delegate.watermarks()) == 2
-    assert delegate.globbed_committable() == {("test_topic", 0): 101}
 
     delegate.submit(*build_rust_msg("payload", 0, {("test_topic", 1): 200}))
     # casting to consume the generator
     list(delegate.poll())
-    assert len(delegate.watermarks()) == 2
-    assert delegate.globbed_committable() == {
-        ("test_topic", 0): 101,
-        ("test_topic", 1): 200,
-    }
 
     delegate.submit(*build_rust_msg("payload", 0, {("test_topic", 2): 300}))
-    assert len(delegate.watermarks()) == 2
     ret = list(delegate.poll())
-    assert delegate.globbed_committable() == {
-        ("test_topic", 0): 101,
-        ("test_topic", 1): 200,
-        ("test_topic", 2): 300,
-    }
-
     expected = [
         build_rust_msg("transformed payload", 0, {("test_topic", 2): 300}),
         build_watermark(
@@ -161,4 +141,3 @@ def test_arroyo_delegate_globs_watermarks() -> None:
         ret,
         expected,
     )
-    assert len(delegate.watermarks()) == 1

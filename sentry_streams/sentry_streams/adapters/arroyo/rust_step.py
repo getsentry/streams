@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Generic, Iterable, MutableSequence, Tuple, TypeVar
+from typing import Callable, Generic, Iterable, MutableSequence, Set, Tuple, TypeVar
 
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
@@ -279,7 +279,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         self.__inner = inner
         self.__in_transformer = in_transformer
         self.__retriever = retriever
-        self.__watermarks: MutableSequence[PyWatermark] = []
+        self.__watermarks: Set[PyWatermark] = set()
         # globbed_committable is the combined committable of all messages polled
         # from the OutputRetriever
         self.__globbed_committable: Committable = {}
@@ -303,7 +303,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         for message, committable in self.__retriever.fetch():
             yield (message, committable)
             self.__globbed_committable.update(committable)
-            watermarks = self.__watermarks
+            watermarks = self.__watermarks.copy()
             for wm in watermarks:
                 if self.__should_send_watermark(wm):
                     yield (wm, wm.payload)
@@ -311,7 +311,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
 
     def submit(self, message: PipelineMessage, committable: Committable) -> None:
         if isinstance(message, PyWatermark):
-            self.__watermarks.append(message)
+            self.__watermarks.add(message)
         else:
             arroyo_msg = self.__in_transformer(message, committable)
             self.__inner.submit(arroyo_msg)
@@ -323,9 +323,3 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
     def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
         self.__inner.join(timeout)
         return self.__yield_messages()
-
-    def watermarks(self) -> MutableSequence[PyWatermark]:
-        return self.__watermarks
-
-    def globbed_committable(self) -> Committable:
-        return self.__globbed_committable

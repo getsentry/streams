@@ -35,7 +35,7 @@
 //!       impacting each operator.
 use std::collections::BTreeMap;
 
-use pyo3::types::{PyBytes, PyInt, PyList, PyTuple};
+use pyo3::types::{PyBytes, PyDict, PyInt, PyList, PyTuple};
 use pyo3::Python;
 use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
@@ -146,14 +146,14 @@ impl Watermark {
 #[pyclass]
 pub struct PyWatermark {
     #[pyo3(get)]
-    pub payload: Py<PyAny>,
+    pub payload: Py<PyDict>,
     pub timestamp: Py<PyInt>,
 }
 
 #[pymethods]
 impl PyWatermark {
     #[new]
-    pub fn new(payload: Py<PyAny>, timestamp: Py<PyInt>) -> PyResult<Self> {
+    pub fn new(payload: Py<PyDict>, timestamp: Py<PyInt>) -> PyResult<Self> {
         Ok(Self { payload, timestamp })
     }
 }
@@ -652,11 +652,8 @@ mod tests {
             let _ = committable.set_item(key.unwrap(), 0);
 
             // Create PyAnyMessage
-            let msg = PyWatermark::new(
-                committable.unbind().clone_ref(py).into_any(),
-                make_py_int(py, 0),
-            )
-            .unwrap();
+            let msg =
+                PyWatermark::new(committable.unbind().clone_ref(py), make_py_int(py, 0)).unwrap();
 
             // Check payload
             let payload_val: BTreeMap<(String, u64), u64> = msg.payload.bind(py).extract().unwrap();

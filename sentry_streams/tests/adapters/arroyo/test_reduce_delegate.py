@@ -146,13 +146,11 @@ def test_reduce_poll() -> None:
     # Submitted watermark does not trigger processing, is recorded in watermark list
     delegate.submit(*build_watermark(build_committable(3, 100), 0))
     assert len(list(delegate.poll())) == 0
-    assert len(delegate.watermarks()) == 1
 
     # Watermark should not be processed as it has more partitions in its committable
     # than the combined reduced message committable
     delegate.submit(*build_watermark(build_committable(10, 100), 0))
     assert len(list(delegate.poll())) == 0
-    assert len(delegate.watermarks()) == 2
 
     delegate.submit(
         *build_rust_msg("message3", timestamp, {("test_topic", 2): 300}),
@@ -188,7 +186,6 @@ def test_reduce_poll() -> None:
 
     assert len(list(delegate.poll())) == 0
     assert len(list(retriever.fetch())) == 0
-    assert len(delegate.watermarks()) == 1
 
 
 def test_flush() -> None:

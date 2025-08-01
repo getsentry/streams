@@ -6,7 +6,7 @@ use crate::committable::{clone_committable, convert_committable_to_py, convert_p
 use crate::messages::{RoutedValuePayload, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
-use pyo3::types::PyTuple;
+use pyo3::types::{PyDict, PyTuple};
 use pyo3::Python;
 use pyo3::{import_exception, prelude::*};
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
@@ -68,12 +68,17 @@ impl PythonAdapter {
             let entry = py_payload.downcast_bound::<PyTuple>(py).unwrap();
             let payload: Py<PyAny> = entry.get_item(0).unwrap().unbind();
             let committable: Py<PyAny> = entry.get_item(1).unwrap().unbind();
+            let committable_dict = committable
+                .downcast_bound::<PyDict>(py)
+                .unwrap()
+                .as_unbound()
+                .clone_ref(py);
             let message = Message::new_any_message(
                 RoutedValue {
                     route: self.route.clone(),
                     payload: RoutedValuePayload::PyStreamingMessage(payload.into()),
                 },
-                convert_py_committable(py, committable).unwrap(),
+                convert_py_committable(py, committable_dict).unwrap(),
             );
 
             self.transformed_messages.push_back(message);
