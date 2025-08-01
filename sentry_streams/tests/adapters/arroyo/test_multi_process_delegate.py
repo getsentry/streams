@@ -19,7 +19,7 @@ from sentry_streams.pipeline.message import (
     Message,
     PyMessage,
 )
-from sentry_streams.rust_streams import PyAnyMessage, PyWatermark
+from sentry_streams.rust_streams import PyAnyMessage
 from tests.adapters.arroyo.helpers.delegate_helpers import str_transformer
 
 
@@ -35,7 +35,7 @@ def test_process_message() -> None:
             PyMessage(
                 payload="foo".encode(), headers=[("h", "v".encode())], timestamp=123, schema="s"
             ),
-            {Partition(Topic("test_topic"), 0): 0},
+            {Partition(Topic("topic1"), 0): 0},
         )
     )
 
@@ -95,26 +95,6 @@ def test_integration() -> None:
         RunTask(str_transformer, retriever), rust_to_arroyo_msg, retriever
     )
 
-    # first watermark has equal committable to submitted msg
-    watermark_committable = {
-        ("t", 1): 42,
-    }
-    delegate.submit(
-        PyWatermark(payload=watermark_committable, timestamp=0),
-        watermark_committable,
-    )
-    assert len(delegate.watermarks()) == 1
-
-    # second watermark has a higher offset
-    watermark_committable = {
-        ("t", 1): 43,
-    }
-    delegate.submit(
-        PyWatermark(payload=watermark_committable, timestamp=0),
-        watermark_committable,
-    )
-    assert len(delegate.watermarks()) == 2
-
     delegate.submit(
         PyAnyMessage(payload="foo", headers=[("h", "v".encode())], timestamp=123, schema="s"),
         committable={
@@ -122,26 +102,15 @@ def test_integration() -> None:
         },
     )
     ret = list(delegate.poll())
-    assert len(ret) == 2
-    assert len(delegate.watermarks()) == 1
-    msg, _ = ret[0]
+    assert len(ret) == 1
+    ret_msg, _ = ret[0]
+    ret_msg = cast(PyAnyMessage, ret_msg)
 
     expected = PyMessage(
         "transformed foo", headers=[("h", "v".encode())], timestamp=123, schema="s"
     ).inner
-    msg = cast(PyAnyMessage, msg)
 
-    assert msg.payload == expected.payload
-    assert msg.headers == expected.headers
-    assert msg.timestamp == expected.timestamp
-    assert msg.schema == expected.schema
-
-    watermark, _ = ret[1]
-
-    expected_watermark = PyWatermark(
-        payload={
-            ("t", 1): 42,
-        },
-        timestamp=0,
-    )
-    assert watermark.payload == expected_watermark.payload
+    assert ret_msg.payload == expected.payload
+    assert ret_msg.headers == expected.headers
+    assert ret_msg.timestamp == expected.timestamp
+    assert ret_msg.schema == expected.schema

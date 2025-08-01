@@ -22,7 +22,5 @@ def assert_equal_batches(
     assert len(batch1) == len(batch2)
     for i, msg1 in enumerate(batch1):
         msg2 = batch2[i]
-        assert (
-            msg1[0].payload == msg2[0].payload
-        ), f"Payload mismatch at index {i}: {msg1[0].payload!r} vs {msg2[0].payload!r}"
+        assert msg1[0].payload == msg2[0].payload, f"Payload mismatch at index {i}"
         assert msg1[1] == msg2[1], f"Committable mismatch at index {i}"

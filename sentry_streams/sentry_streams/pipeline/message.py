@@ -219,7 +219,7 @@ class PyRawMessage(Message[bytes]):
 
 def rust_msg_equals(msg: RustMessage, other: RustMessage) -> bool:
     """
-    PyAnyMessage/PyWatermark/RawMessage are exposed by Rust and do not have an __eq__ method
+    PyAnyMessage/RawMessage are exposed by Rust and do not have an __eq__ method
     as of now. That would require delegating equality to python anyway
     as the payload is a PyAny
     """
