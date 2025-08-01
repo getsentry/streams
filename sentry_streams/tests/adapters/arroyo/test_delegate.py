@@ -1,18 +1,37 @@
+from typing import Union
+
 import pytest
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected
-from arroyo.types import Partition, Topic
+from arroyo.processing.strategies.run_task import RunTask
+from arroyo.types import FilteredPayload, Partition, Topic
 
+from sentry_streams.adapters.arroyo.multi_process_delegate import (
+    mapped_msg_to_rust,
+    rust_to_arroyo_msg,
+)
 from sentry_streams.adapters.arroyo.rust_step import (
+    ArroyoStrategyDelegate,
     Committable,
+    OutputRetriever,
     SingleMessageOperatorDelegate,
 )
 from sentry_streams.pipeline.message import (
+    Message,
     PyMessage,
     RustMessage,
     rust_msg_equals,
 )
 from sentry_streams.rust_streams import PyAnyMessage
+from tests.adapters.arroyo.helpers.delegate_helpers import (
+    assert_equal_batches,
+    str_transformer,
+)
+from tests.adapters.arroyo.helpers.message_helpers import (
+    build_committable,
+    build_rust_msg,
+    build_watermark,
+)
 
 
 class SingleMessageTransformer(SingleMessageOperatorDelegate):
@@ -60,3 +79,86 @@ def test_rust_step() -> None:
     ret = step.flush(0)
     assert rust_msg_equals(list(ret)[0][0], make_msg("processed"))
     assert list(ret)[0][1] == {("topic", 0): 0}
+
+
+def test_arroyo_delegate_sends_right_watermark() -> None:
+    retriever = OutputRetriever[Union[FilteredPayload, Message[str]]](mapped_msg_to_rust)
+
+    delegate = ArroyoStrategyDelegate(
+        RunTask(str_transformer, retriever), rust_to_arroyo_msg, retriever
+    )
+
+    delegate.submit(*build_watermark(build_committable(1, 42), timestamp=0))
+    assert len(delegate.watermarks()) == 1
+
+    # second watermark has a higher offset
+    delegate.submit(*build_watermark(build_committable(1, 43), timestamp=0))
+    assert len(delegate.watermarks()) == 2
+
+    # Message with the same committable as a watermark triggers the watermark
+    delegate.submit(*build_rust_msg("payload", 0, build_committable(1, 42)))
+    ret = list(delegate.poll())
+
+    expected = [
+        build_rust_msg("transformed payload", 0, build_committable(1, 42)),
+        build_watermark(
+            build_committable(1, 42),
+            timestamp=0,
+        ),
+    ]
+    assert_equal_batches(
+        ret,
+        expected,
+    )
+    assert len(delegate.watermarks()) == 1
+
+
+def test_arroyo_delegate_globs_watermarks() -> None:
+    retriever = OutputRetriever[Union[FilteredPayload, Message[str]]](mapped_msg_to_rust)
+
+    delegate = ArroyoStrategyDelegate(
+        RunTask(str_transformer, retriever), rust_to_arroyo_msg, retriever
+    )
+
+    delegate.submit(*build_watermark(build_committable(3, 100), timestamp=0))
+    assert len(delegate.watermarks()) == 1
+
+    delegate.submit(*build_watermark(build_committable(4, 100), timestamp=0))
+    assert len(delegate.watermarks()) == 2
+
+    delegate.submit(*build_rust_msg("payload", 0, {("test_topic", 0): 101}))
+    # casting to consume the generator
+    list(delegate.poll())
+    assert len(delegate.watermarks()) == 2
+    assert delegate.globbed_committable() == {("test_topic", 0): 101}
+
+    delegate.submit(*build_rust_msg("payload", 0, {("test_topic", 1): 200}))
+    # casting to consume the generator
+    list(delegate.poll())
+    assert len(delegate.watermarks()) == 2
+    assert delegate.globbed_committable() == {
+        ("test_topic", 0): 101,
+        ("test_topic", 1): 200,
+    }
+
+    delegate.submit(*build_rust_msg("payload", 0, {("test_topic", 2): 300}))
+    assert len(delegate.watermarks()) == 2
+    ret = list(delegate.poll())
+    assert delegate.globbed_committable() == {
+        ("test_topic", 0): 101,
+        ("test_topic", 1): 200,
+        ("test_topic", 2): 300,
+    }
+
+    expected = [
+        build_rust_msg("transformed payload", 0, {("test_topic", 2): 300}),
+        build_watermark(
+            build_committable(3, 100),
+            timestamp=0,
+        ),
+    ]
+    assert_equal_batches(
+        ret,
+        expected,
+    )
+    assert len(delegate.watermarks()) == 1

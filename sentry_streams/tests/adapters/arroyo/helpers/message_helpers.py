@@ -13,7 +13,8 @@ from arroyo.types import (
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.adapters.arroyo.rust_step import Committable
-from sentry_streams.pipeline.message import PyMessage, RustMessage
+from sentry_streams.pipeline.message import PipelineMessage, PyMessage, RustMessage
+from sentry_streams.rust_streams import PyWatermark
 
 TEST_PARTITION = Partition(Topic("test_topic"), 0)
 
@@ -102,3 +103,19 @@ def build_py_msg(
         ),
         committable,
     )
+
+
+def build_watermark(
+    committable: Committable, timestamp: int
+) -> Tuple[PipelineMessage, Committable]:
+    return (
+        PyWatermark(
+            committable,
+            timestamp,
+        ),
+        committable,
+    )
+
+
+def build_committable(num_partitions: int, starting_offset: int) -> Committable:
+    return {("test_topic", i): starting_offset + i for i in range(num_partitions)}

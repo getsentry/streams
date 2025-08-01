@@ -326,3 +326,6 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
 
     def watermarks(self) -> MutableSequence[PyWatermark]:
         return self.__watermarks
+
+    def globbed_committable(self) -> Committable:
+        return self.__globbed_committable

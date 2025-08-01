@@ -223,8 +223,6 @@ def rust_msg_equals(msg: RustMessage, other: RustMessage) -> bool:
     as of now. That would require delegating equality to python anyway
     as the payload is a PyAny
     """
-    if type(msg) is not type(other):
-        return False
     return (
         msg.payload == other.payload
         and msg.headers == other.headers
