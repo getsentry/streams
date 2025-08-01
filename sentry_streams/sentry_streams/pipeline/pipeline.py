@@ -465,6 +465,10 @@ class Aggregate(Reduce[MeasurementUnit, InputType, OutputType]):
 
 BatchInput = TypeVar("BatchInput")
 
+@dataclass
+class WindowSize():
+    batch_timedelta: MeasurementUnit
+    batch_size: MeasurementUnit
 
 @dataclass
 class Batch(
@@ -480,8 +484,14 @@ class Batch(
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
-    batch_size: MeasurementUnit
+
+    batch_timedelta: MeasurementUnit | None = None
+    batch_size: MeasurementUnit | None = None
     step_type: StepType = StepType.REDUCE
+
+    def __post_init__(self):
+        if self.batch_size is None and self.batch_timedelta is None:
+            raise ValueError("Exactly one of batch_size or batch_timedelta must be set.")
 
     @property
     def group_by(self) -> Optional[GroupBy]:
@@ -489,7 +499,7 @@ class Batch(
 
     @property
     def windowing(self) -> Window[MeasurementUnit]:
-        return TumblingWindow(self.batch_size)
+        return TumblingWindow(self.batch_size, self.batch_timedelta)
 
     @property
     def aggregate_fn(

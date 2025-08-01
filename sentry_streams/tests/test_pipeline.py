@@ -247,3 +247,9 @@ def test_batch_step_override_config(
     step.override_config(loaded_config=loaded_batch_size)
 
     assert step.batch_size == expected
+
+def test_batch_step_both_window_args_are_not_none():
+    with pytest.raises(ValueError) as e:
+        BatchStep[MeasurementUnit, bytes](name="test-batch")
+
+    assert "Exactly one of batch_size or batch_timedelta must be set." in str(e.value)
