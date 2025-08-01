@@ -1,4 +1,4 @@
-from typing import Any, Union
+from typing import Any, Union, cast
 
 import pytest
 from arroyo.processing.strategies.run_task import RunTask
@@ -151,6 +151,7 @@ def test_integration() -> None:
         "foo_t1_t2", headers=[("h", "v".encode())], timestamp=123, schema="s"
     ).inner
 
+    ret_msg = cast(PyAnyMessage, ret_msg)
     assert ret_msg.payload == expected.payload
     assert ret_msg.headers == expected.headers
     assert ret_msg.timestamp == expected.timestamp

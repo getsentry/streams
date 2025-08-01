@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Union
+from typing import Any, Union, cast
 
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import FilteredPayload
@@ -103,7 +103,8 @@ def test_integration() -> None:
     )
     ret = list(delegate.poll())
     assert len(ret) == 1
-    ret_msg, committable = ret[0]
+    ret_msg, _ = ret[0]
+    ret_msg = cast(PyAnyMessage, ret_msg)
 
     expected = PyMessage(
         "transformed foo", headers=[("h", "v".encode())], timestamp=123, schema="s"
