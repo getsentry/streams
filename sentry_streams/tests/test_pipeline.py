@@ -1,7 +1,15 @@
+from datetime import timedelta
 from typing import Any, Callable, Mapping, Union
+from unittest import mock
 
 import pytest
+from arroyo.processing.strategies.abstract import ProcessingStrategy
 
+from sentry_streams.adapters.arroyo.reduce import (
+    ArroyoAccumulator,
+    build_arroyo_windowed_reduce,
+)
+from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
@@ -16,7 +24,7 @@ from sentry_streams.pipeline.pipeline import (
     make_edge_sets,
     streaming_source,
 )
-from sentry_streams.pipeline.window import MeasurementUnit
+from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow
 
 
 @pytest.fixture
@@ -247,3 +255,61 @@ def test_batch_step_override_config(
     step.override_config(loaded_config=loaded_batch_size)
 
     assert step.batch_size == expected
+
+
+def test_batch_step_both_window_args_are_not_none() -> None:
+    with pytest.raises(ValueError) as e:
+        BatchStep(name="test-batch")
+
+    assert "Exactly one of batch_size or batch_timedelta must be set." in str(e.value)
+
+
+def test_batch_step_winodw_size_and_window_timedelta() -> None:
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    acc = mock.Mock(spec=ArroyoAccumulator)
+    route = mock.Mock(spec=Route)
+
+    window_size = 100
+    window_timedelta = timedelta(seconds=2)
+
+    reduce_window = TumblingWindow(window_size=window_size, window_timedelta=window_timedelta)
+
+    with mock.patch("sentry_streams.adapters.arroyo.reduce.Reduce") as MockReduce:
+        build_arroyo_windowed_reduce(reduce_window, acc, next_step, route)
+
+        args, _ = MockReduce.call_args
+        assert args[0] == window_size
+        assert args[1] == window_timedelta.total_seconds()
+
+
+def test_batch_step_only_window_timedelta() -> None:
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    acc = mock.Mock(spec=ArroyoAccumulator)
+    route = mock.Mock(spec=Route)
+
+    window_timedelta = timedelta(seconds=2)
+
+    reduce_window = TumblingWindow(window_timedelta=window_timedelta)
+
+    with mock.patch("sentry_streams.adapters.arroyo.reduce.TimeWindowedReduce") as MockReduce:
+        build_arroyo_windowed_reduce(reduce_window, acc, next_step, route)
+
+        args, _ = MockReduce.call_args
+        assert args[0] == args[1] == window_timedelta.total_seconds()
+
+
+def test_batch_step_only_window_size() -> None:
+    next_step = mock.Mock(spec=ProcessingStrategy)
+    acc = mock.Mock(spec=ArroyoAccumulator)
+    route = mock.Mock(spec=Route)
+
+    window_size = 100
+
+    reduce_window = TumblingWindow(window_size=window_size)
+
+    with mock.patch("sentry_streams.adapters.arroyo.reduce.Reduce") as MockReduce:
+        build_arroyo_windowed_reduce(reduce_window, acc, next_step, route)
+
+        args, _ = MockReduce.call_args
+        assert args[0] == window_size
+        assert args[1] == float("inf")
