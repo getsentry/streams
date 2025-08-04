@@ -129,32 +129,6 @@ where
     })
 }
 
-pub fn convert_rust_message_to_py<T>(
-    py: pyo3::Python,
-    rust_msg: Message<T>,
-) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>>
-where
-    T: IntoPythonPayload,
-{
-    let payload_obj = rust_msg.payload.into_python_payload(py)?;
-
-    // Create a new Python message with the transformed payload
-    let py_msg_class = py
-        .import("sentry_streams.rust_streams")?
-        .getattr("PyAnyMessage")?;
-
-    let result = py_msg_class
-        .call1((
-            payload_obj,
-            rust_msg.headers,
-            rust_msg.timestamp,
-            rust_msg.schema,
-        ))?
-        .unbind();
-
-    Ok(result)
-}
-
 /// Macro to create a Rust map function that can be called from Python
 /// Usage: rust_map_function!(MyFunction, InputType, OutputType, |msg: Message<InputType>| -> OutputType { ... });
 #[macro_export]
@@ -192,8 +166,9 @@ macro_rules! rust_function {
                     metadata_clone.map(|()| result_payload)
                 });
 
-                // Convert result back to Python message
-                $crate::ffi::convert_rust_message_to_py(py, result_msg)
+                // Return the raw payload directly (not wrapped in a message)
+                let (payload, _) = result_msg.take();
+                $crate::ffi::IntoPythonPayload::into_python_payload(payload, py)
             }
 
             pub fn input_type(&self) -> &'static str {
