@@ -16,9 +16,11 @@ def test_rust_extension() -> object:
     """Build the test Rust extension before running tests"""
     test_crate_dir = Path(__file__).parent / "rust_test_functions"
 
+    maturin_path = Path(sys.exec_prefix) / "bin/maturin"
+
     # Build the extension
     result = subprocess.run(
-        ["maturin", "develop"], cwd=test_crate_dir, capture_output=True, text=True
+        [maturin_path, "develop"], cwd=test_crate_dir, capture_output=True, text=True
     )
 
     if result.returncode != 0:
