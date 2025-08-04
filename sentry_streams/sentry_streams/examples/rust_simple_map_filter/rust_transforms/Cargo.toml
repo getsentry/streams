@@ -7,6 +7,11 @@ edition = "2021"
 name = "metrics_rust_transforms"
 crate-type = ["cdylib"]
 
+[[bin]]
+name = "runner"
+path = "src/main.rs"
+
+
 [dependencies]
 pyo3 = { version = "0.24" }
 serde = { version = "1.0", features = ["derive"] }

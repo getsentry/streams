@@ -59,6 +59,10 @@ pub struct ArroyoConsumer {
     concurrency_config: Arc<ConcurrencyConfig>,
 }
 
+impl ArroyoConsumer {
+    pub fn load_rust_native_fns(&mut self) {}
+}
+
 #[pymethods]
 impl ArroyoConsumer {
     #[new]
