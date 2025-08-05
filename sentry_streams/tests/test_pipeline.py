@@ -24,7 +24,7 @@ from sentry_streams.pipeline.pipeline import (
     make_edge_sets,
     streaming_source,
 )
-from sentry_streams.pipeline.window import TumblingWindow
+from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow
 
 
 @pytest.fixture
@@ -234,56 +234,44 @@ def test_multi_broadcast() -> None:
 
 
 @pytest.mark.parametrize(
-    "loaded_batch_size, default_batch_size, expected",
-    [
-        pytest.param({"batch_size": 50}, 100, 50, id="Have both loaded and default values"),
-        pytest.param({}, 100, 100, id="Only has default app value"),
-    ],
-)
-def test_batch_size_override_config(
-    loaded_batch_size: Mapping[str, int],
-    default_batch_size: int,
-    expected: int,
-) -> None:
-    pipeline: Pipeline[bytes] = streaming_source(name="mysource", stream_name="name")
-
-    step: BatchStep[int, bytes] = BatchStep(name="test-batch", batch_size=default_batch_size)
-    pipeline.apply(step)
-
-    step.override_config(loaded_config=loaded_batch_size)
-
-    assert step.batch_size == expected
-
-
-@pytest.mark.parametrize(
-    "loaded_batch_timedelta, default_batch_timedelta, expected",
+    "loaded_config, default_batch_size, expected_batch_size, default_batch_timedelta, expected_timedelta",
     [
         pytest.param(
-            {"batch_timedelta": timedelta(seconds=2)},
+            {"batch_size": 50, "batch_timedelta": timedelta(seconds=2)},
+            100,
+            50,
             timedelta(seconds=1),
             timedelta(seconds=2),
             id="Have both loaded and default values",
         ),
         pytest.param(
-            {}, timedelta(seconds=1), timedelta(seconds=1), id="Only has default app value"
+            {},
+            100,
+            100,
+            timedelta(seconds=1),
+            timedelta(seconds=1),
+            id="Only has default app value",
         ),
     ],
 )
-def test_batch_timedelta_override_config(
-    loaded_batch_timedelta: Mapping[str, timedelta],
+def test_batch_size_override_config(
+    loaded_config: Mapping[str, MeasurementUnit],
+    default_batch_size: int,
+    expected_batch_size: int,
     default_batch_timedelta: timedelta,
-    expected: timedelta,
+    expected_timedelta: timedelta,
 ) -> None:
     pipeline: Pipeline[bytes] = streaming_source(name="mysource", stream_name="name")
 
-    step: BatchStep[timedelta, bytes] = BatchStep(
-        name="test-batch", batch_timedelta=default_batch_timedelta
+    step: BatchStep[MeasurementUnit, bytes] = BatchStep(
+        name="test-batch", batch_size=default_batch_size, batch_timedelta=default_batch_timedelta
     )
     pipeline.apply(step)
 
-    step.override_config(loaded_config=loaded_batch_timedelta)
+    step.override_config(loaded_config=loaded_config)
 
-    assert step.batch_timedelta == expected
+    assert step.batch_size == expected_batch_size
+    assert step.batch_timedelta == expected_timedelta
 
 
 def test_batch_step_both_window_args_are_not_none() -> None:
