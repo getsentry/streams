@@ -8,39 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
-
-@pytest.fixture(scope="module")
-def test_rust_extension() -> object:
-    """Build the test Rust extension before running tests"""
-    test_crate_dir = Path(__file__).parent / "rust_test_functions"
-
-    # Build the extension
-    result = subprocess.run(
-        ["maturin", "develop"], cwd=test_crate_dir, capture_output=True, text=True
-    )
-
-    if result.returncode != 0:
-        pytest.fail(f"Failed to build test Rust extension: {result.stderr}")
-
-    # Import and return the module
-    try:
-        import rust_test_functions  # type: ignore[import-not-found]
-    except ImportError as e:
-        pytest.fail(f"Failed to import test Rust extension: {e}")
-
-    yield rust_test_functions
-
-    # Try to uninstall the test extension (best effort)
-    try:
-        subprocess.run(
-            ["uv", "pip", "uninstall", "rust-test-functions"],
-            capture_output=True,
-        )
-    except Exception:
-        pass
-
 
 def test_mypy_detects_correct_pipeline(tmp_path: Path) -> None:
     """Test that mypy accepts a correctly typed pipeline"""
@@ -135,7 +102,7 @@ def create_wrong_pipeline():
     assert "expected" in result.stdout and "Mapping" in result.stdout
 
 
-def test_mypy_detects_correct_pipeline_rust(tmp_path: Path, test_rust_extension: object) -> None:
+def test_mypy_detects_correct_pipeline_rust(tmp_path: Path, rust_test_functions: object) -> None:
     """Test that mypy accepts a correctly typed pipeline"""
 
     # Create a test file with correct types
@@ -182,7 +149,7 @@ def create_correct_pipeline():
     assert "Success: no issues found in 1 source file" in result.stdout
 
 
-def test_mypy_detects_type_mismatch_rust(tmp_path: Path, test_rust_extension: object) -> None:
+def test_mypy_detects_type_mismatch_rust(tmp_path: Path, rust_test_functions: object) -> None:
     """Test that mypy detects type mismatches in pipeline definitions"""
 
     wrong_code = """

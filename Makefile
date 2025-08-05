@@ -22,7 +22,10 @@ tests-integration:
 	./sentry_streams/.venv/bin/pytest -vv sentry_streams/integration_tests
 .PHONY: tests-integration
 
-test-rust-streams:
+test-rust-streams: tests-rust-streams
+.PHONY: test-rust-streams
+
+tests-rust-streams:
 	. sentry_streams/.venv/bin/activate && . scripts/rust-envvars && cd ./sentry_streams/ && cargo test
 .PHONY: tests-rust-streams
 
@@ -32,6 +35,7 @@ tests-flink:
 
 typecheck:
 	. ./sentry_streams/.venv/bin/activate && cd ./sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms/ && maturin develop
+	. ./sentry_streams/.venv/bin/activate && cd ./sentry_streams/tests/rust_test_functions/ && maturin develop
 	./sentry_streams/.venv/bin/mypy --config-file sentry_streams/mypy.ini --strict sentry_streams/
 	./sentry_flink/.venv/bin/mypy --config-file sentry_flink/mypy.ini --strict sentry_flink/sentry_flink/
 .PHONY: typecheck

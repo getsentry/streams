@@ -34,7 +34,7 @@ from sentry_streams.pipeline.pipeline import (
     Reduce,
     Router,
 )
-from tests.adapters.arroyo.message_helpers import make_kafka_msg
+from tests.adapters.arroyo.helpers.message_helpers import make_kafka_msg
 
 SCHEMA = get_codec("ingest-metrics")
 

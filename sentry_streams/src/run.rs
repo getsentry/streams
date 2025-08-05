@@ -50,6 +50,6 @@ pub fn run(
     plan_config: PhysicalPlanConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     pyo3::prepare_freethreaded_python();
-    load_physical_plan(py_config, plan_config).unwrap();
+    load_physical_plan(py_config, plan_config)?;
     Ok(())
 }

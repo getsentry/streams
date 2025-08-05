@@ -42,7 +42,7 @@ from sentry_streams.pipeline.pipeline import (
     streaming_source,
 )
 from sentry_streams.pipeline.window import SlidingWindow
-from tests.adapters.arroyo.message_helpers import make_msg, make_value_msg
+from tests.adapters.arroyo.helpers.message_helpers import make_msg, make_value_msg
 
 
 def test_map_step(metric: IngestMetric) -> None:
