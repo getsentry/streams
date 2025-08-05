@@ -531,7 +531,7 @@ class Batch(
             else self.batch_timedelta
         )
         self.batch_size = merged_batch_size
-        self.merged_batch_timedelta = merged_batch_timedelta
+        self.batch_timedelta = merged_batch_timedelta
 
 
 @dataclass
