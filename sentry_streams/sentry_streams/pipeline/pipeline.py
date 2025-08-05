@@ -488,8 +488,8 @@ class Batch(
     # TODO: Use concept of custom triggers to close window
     # by either size or time
 
-    batch_timedelta: timedelta | None = None
     batch_size: int | None = None
+    batch_timedelta: timedelta | None = None
     step_type: StepType = StepType.REDUCE
 
     def __post_init__(self) -> None:
@@ -519,19 +519,13 @@ class Batch(
         )
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
-        merged_batch_size = (
-            loaded_config.get("batch_size")
-            if loaded_config.get("batch_size") is not None
-            else self.batch_size
-        )
+        if loaded_config.get("batch_size") is not None:
+            self.batch_size = loaded_config.get("batch_size")
 
-        merged_batch_timedelta = (
-            loaded_config.get("batch_timedelta")
-            if loaded_config.get("batch_timedelta") is not None
-            else self.batch_timedelta
-        )
-        self.batch_size = merged_batch_size
-        self.batch_timedelta = merged_batch_timedelta
+        if loaded_config.get("batch_timedelta") is not None:
+            loaded_kwargs = loaded_config.get("batch_timedelta")
+            assert isinstance(loaded_kwargs, Mapping)
+            self.batch_timedelta = timedelta(**loaded_kwargs)
 
 
 @dataclass

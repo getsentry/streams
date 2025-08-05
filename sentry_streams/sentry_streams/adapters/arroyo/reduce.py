@@ -276,6 +276,10 @@ def build_arroyo_windowed_reduce(
                     )
 
         case TumblingWindow(window_size, window_timedelta):
+            print("window_size is ")
+            print(window_size)
+            print("window_timedelta is")
+            print(window_timedelta)
             arroyo_acc = ArroyoAccumulator(accumulator)
 
             if window_size is not None and window_timedelta is not None:

@@ -237,7 +237,7 @@ def test_multi_broadcast() -> None:
     "loaded_config, default_batch_size, expected_batch_size, default_batch_timedelta, expected_timedelta",
     [
         pytest.param(
-            {"batch_size": 50, "batch_timedelta": timedelta(seconds=2)},
+            {"batch_size": 50, "batch_timedelta": {"seconds": 2}},
             100,
             50,
             timedelta(seconds=1),
