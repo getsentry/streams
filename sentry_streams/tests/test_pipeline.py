@@ -242,7 +242,7 @@ def test_multi_broadcast() -> None:
 )
 def test_batch_step_override_config(
     loaded_batch_size: Mapping[str, int],
-    default_batch_size: MeasurementUnit,
+    default_batch_size: int,
     expected: MeasurementUnit,
 ) -> None:
     pipeline: Pipeline[bytes] = streaming_source(name="mysource", stream_name="name")
