@@ -9,6 +9,6 @@ pipeline:
         mybatch:
           batch_size: 2
           batch_timedelta:
-            seconds: 5
+            seconds: 20
         mysink:
           bootstrap_servers: ["127.0.0.1:9092"]
