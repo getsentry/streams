@@ -468,12 +468,6 @@ BatchInput = TypeVar("BatchInput")
 
 
 @dataclass
-class WindowSize(Generic[MeasurementUnit, InputType]):
-    batch_timedelta: MeasurementUnit
-    batch_size: MeasurementUnit
-
-
-@dataclass
 class Batch(
     Reduce[MeasurementUnit, InputType, MutableSequence[Tuple[InputType, Optional[str]]]],
     Generic[MeasurementUnit, InputType],
