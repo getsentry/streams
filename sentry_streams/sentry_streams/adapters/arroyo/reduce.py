@@ -278,10 +278,15 @@ def build_arroyo_windowed_reduce(
         case TumblingWindow(window_size, window_timedelta):
             arroyo_acc = ArroyoAccumulator(accumulator)
 
-            if window_size is not None and window_timedelta is not None:
+            if window_size is not None:
+                max_batch_time = (
+                    window_timedelta.total_seconds()
+                    if window_timedelta is not None
+                    else float("inf")
+                )
                 return Reduce(
                     window_size,
-                    window_timedelta.total_seconds(),
+                    max_batch_time,
                     cast(
                         Callable[
                             [FilteredPayload | TPayload, BaseValue[TPayload]],
@@ -301,22 +306,8 @@ def build_arroyo_windowed_reduce(
                     msg_wrapper,
                     route,
                 )
-
             else:
-                assert isinstance(window_size, int)
-                return Reduce(
-                    window_size,
-                    float("inf"),
-                    cast(
-                        Callable[
-                            [FilteredPayload | TPayload, BaseValue[TPayload]],
-                            FilteredPayload | TPayload,
-                        ],
-                        arroyo_acc.accumulator,
-                    ),
-                    arroyo_acc.initial_value,
-                    msg_wrapper,
-                )
+                raise
 
         case _:
             raise TypeError(f"{streams_window} is not a supported Window type")
