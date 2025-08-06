@@ -494,7 +494,7 @@ class Batch(
 
     def __post_init__(self) -> None:
         if self.batch_size is None and self.batch_timedelta is None:
-            raise ValueError("Exactly one of batch_size or batch_timedelta must be set.")
+            raise ValueError("At least one of batch_size or batch_timedelta must be set.")
 
     @property
     def group_by(self) -> Optional[GroupBy]:
