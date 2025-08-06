@@ -307,7 +307,6 @@ def build_arroyo_windowed_reduce(
                     route,
                 )
             else:
-                raise
-
+                raise ValueError("Invalid window_size and window_timedelta values.")
         case _:
             raise TypeError(f"{streams_window} is not a supported Window type")
