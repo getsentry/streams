@@ -7,6 +7,7 @@ from arroyo.processing.strategies.abstract import ProcessingStrategy
 
 from sentry_streams.adapters.arroyo.reduce import (
     ArroyoAccumulator,
+    TimeWindowedReduce,
     build_arroyo_windowed_reduce,
 )
 from sentry_streams.adapters.arroyo.routes import Route
@@ -308,11 +309,12 @@ def test_batch_step_only_window_timedelta() -> None:
 
     reduce_window = TumblingWindow(window_timedelta=window_timedelta)
 
-    with mock.patch("sentry_streams.adapters.arroyo.reduce.TimeWindowedReduce") as MockReduce:
-        build_arroyo_windowed_reduce(reduce_window, acc, next_step, route)
-
-        args, _ = MockReduce.call_args
-        assert args[0] == args[1] == window_timedelta.total_seconds()
+    returned_reduce = build_arroyo_windowed_reduce(reduce_window, acc, next_step, route)
+    assert isinstance(returned_reduce, TimeWindowedReduce)
+    size = slide = window_timedelta.total_seconds()
+    assert returned_reduce.window_count == int(size / slide)
+    assert returned_reduce.window_size == int(size)
+    assert returned_reduce.window_slide == int(slide)
 
 
 def test_batch_step_only_window_size() -> None:
