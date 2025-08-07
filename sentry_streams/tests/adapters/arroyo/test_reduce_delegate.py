@@ -265,6 +265,6 @@ def test_reduce() -> None:
     for i, msg1 in enumerate(batch):
         msg2 = expected[i]
         assert msg1[0].payload == msg2[0].payload, f"Payload mismatch at index {i}"
-        if not isinstance(msg1[0], PyWatermark) or not isinstance(msg1[0], PyWatermark):
+        if not isinstance(msg1[0], PyWatermark) and not isinstance(msg2[0], PyWatermark):
             assert msg1[0].schema == msg2[0].schema, "Missing schema after batch"
         assert msg1[1] == msg2[1], f"Committable mismatch at index {i}"

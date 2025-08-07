@@ -410,9 +410,13 @@ impl From<&WatermarkMessage> for Py<PyAny> {
                 .unwrap()
                 .into_py_any(py)
                 .unwrap(),
-                WatermarkMessage::PyWatermark(watermark) => {
-                    watermark.payload.clone_ref(py).into_any()
-                }
+                WatermarkMessage::PyWatermark(watermark) => PyWatermark::new(
+                    watermark.payload.clone_ref(py),
+                    watermark.timestamp.clone_ref(py),
+                )
+                .unwrap()
+                .into_py_any(py)
+                .unwrap(),
             }
         })
     }
