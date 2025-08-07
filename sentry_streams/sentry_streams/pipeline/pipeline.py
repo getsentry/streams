@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import Enum
 from functools import partial
 from typing import (
@@ -513,8 +514,14 @@ class Batch(
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
-    batch_size: MeasurementUnit
+
+    batch_size: int | None = None
+    batch_timedelta: timedelta | None = None
     step_type: StepType = StepType.REDUCE
+
+    def __post_init__(self) -> None:
+        if self.batch_size is None and self.batch_timedelta is None:
+            raise ValueError("At least one of batch_size or batch_timedelta must be set.")
 
     @property
     def group_by(self) -> Optional[GroupBy]:
@@ -522,7 +529,7 @@ class Batch(
 
     @property
     def windowing(self) -> Window[MeasurementUnit]:
-        return TumblingWindow(self.batch_size)
+        return TumblingWindow(self.batch_size, self.batch_timedelta)
 
     @property
     def aggregate_fn(
@@ -539,12 +546,13 @@ class Batch(
         )
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
-        merged_config = (
-            loaded_config.get("batch_size")
-            if loaded_config.get("batch_size") is not None
-            else self.batch_size
-        )
-        self.batch_size = cast(MeasurementUnit, merged_config)
+        if loaded_config.get("batch_size") is not None:
+            self.batch_size = loaded_config.get("batch_size")
+
+        if loaded_config.get("batch_timedelta") is not None:
+            loaded_kwargs = loaded_config.get("batch_timedelta")
+            assert isinstance(loaded_kwargs, Mapping)
+            self.batch_timedelta = timedelta(**loaded_kwargs)
 
 
 @dataclass
