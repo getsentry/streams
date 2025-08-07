@@ -1,0 +1,16 @@
+from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.rust_function_protocol import RustFunction
+
+class TestMessage: ...
+
+class TestFilterCorrect(RustFunction[TestMessage, bool]):
+    def __call__(self, msg: Message[TestMessage]) -> bool: ...
+
+class TestMapCorrect(RustFunction[TestMessage, str]):
+    def __call__(self, msg: Message[TestMessage]) -> str: ...
+
+class TestMapWrongType(RustFunction[bool, str]):
+    def __call__(self, msg: Message[bool]) -> str: ...
+
+class TestMapString(RustFunction[str, int]):
+    def __call__(self, msg: Message[str]) -> int: ...

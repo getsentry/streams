@@ -8,7 +8,7 @@
 ///
 /// # Examples
 ///
-/// ```
+/// ```nocheck
 /// let py_err = ...;
 /// traced_with_gil!(|py| { py_err.print(py) }).unwrap();
 ///
