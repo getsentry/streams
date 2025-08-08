@@ -3,7 +3,7 @@ from typing import Sequence, Tuple
 from arroyo.types import Message as ArroyoMessage
 
 from sentry_streams.adapters.arroyo.rust_step import Committable
-from sentry_streams.pipeline.message import Message, PyMessage, RustMessage
+from sentry_streams.pipeline.message import Message, PipelineMessage, PyMessage
 
 
 def str_transformer(msg: ArroyoMessage[Message[str]]) -> Message[str]:
@@ -16,8 +16,8 @@ def str_transformer(msg: ArroyoMessage[Message[str]]) -> Message[str]:
 
 
 def assert_equal_batches(
-    batch1: Sequence[Tuple[RustMessage, Committable]],
-    batch2: Sequence[Tuple[RustMessage, Committable]],
+    batch1: Sequence[Tuple[PipelineMessage, Committable]],
+    batch2: Sequence[Tuple[PipelineMessage, Committable]],
 ) -> None:
     assert len(batch1) == len(batch2)
     for i, msg1 in enumerate(batch1):
