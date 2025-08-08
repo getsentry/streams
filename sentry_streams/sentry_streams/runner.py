@@ -55,21 +55,13 @@ def iterate_edges(
                     step_streams[branch_name] = next_step_stream[branch_name]
 
 
-def runner(
-    name: str,
-    log_level: str,
+def load_physical_plan(
     adapter: str,
     config: str,
     segment_id: Optional[str],
     application: str,
-) -> None:
+) -> Any:
     pipeline_globals: dict[str, Any] = {}
-
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
 
     with open(application) as f:
         exec(f.read(), pipeline_globals)
@@ -93,14 +85,7 @@ def runner(
 
     iterate_edges(pipeline, translator)
 
-    def signal_handler(sig: int, frame: Any) -> None:
-        logger.info("Signal received, terminating the runner...")
-        runtime.shutdown()
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    runtime.run()
+    return runtime.get_consumers()
 
 
 @click.command()
@@ -158,7 +143,22 @@ def main(
     segment_id: Optional[str],
     application: str,
 ) -> None:
-    runner(name, log_level, adapter, config, segment_id, application)
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    runtime = load_physical_plan(adapter, config, segment_id, application)
+
+    def signal_handler(sig: int, frame: Any) -> None:
+        logger.info("Signal received, terminating the runner...")
+        runtime.shutdown()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    runtime.run()
 
 
 if __name__ == "__main__":

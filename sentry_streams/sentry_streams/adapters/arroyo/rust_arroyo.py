@@ -4,6 +4,7 @@ import logging
 from typing import (
     Any,
     Callable,
+    List,
     Mapping,
     MutableMapping,
     Self,
@@ -348,6 +349,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             )
         )
         return build_branches(stream, step.routing_table.values())
+
+    def get_consumers(self) -> List[ArroyoConsumer]:
+        return list(self.__consumers.values())
 
     def run(self) -> None:
         """
