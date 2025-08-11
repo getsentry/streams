@@ -18,7 +18,6 @@ from typing import (
     Sequence,
     Set,
     Tuple,
-    Type,
     TypeVar,
     Union,
     cast,
@@ -601,8 +600,6 @@ class Parser(ComplexStep[bytes, TransformFuncReturnType], Generic[TransformFuncR
     Supports both JSON and protobuf.
     """
 
-    msg_type: Type[TransformFuncReturnType]
-
     def convert(self) -> Transform[bytes, TransformFuncReturnType]:
         return Map[bytes, TransformFuncReturnType](
             name=self.name,
@@ -615,7 +612,6 @@ class BatchParser(
     ComplexStep[Sequence[bytes], Sequence[TransformFuncReturnType]],
     Generic[TransformFuncReturnType],
 ):
-    msg_type: Type[TransformFuncReturnType]
 
     def convert(self) -> Transform[Sequence[bytes], Sequence[TransformFuncReturnType]]:
         return Map[Sequence[bytes], Sequence[TransformFuncReturnType]](

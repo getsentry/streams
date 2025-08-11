@@ -14,9 +14,8 @@ pipeline = (
         stream_name="ingest-metrics",
     )
     .apply(
-        Parser(
+        Parser[IngestMetric](
             "parser",
-            msg_type=IngestMetric,
         ),
     )
     .apply(Map("transform", function=transform_msg))

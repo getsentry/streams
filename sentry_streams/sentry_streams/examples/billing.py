@@ -71,7 +71,7 @@ pipeline = (
         name="myinput",
         stream_name="events",
     )
-    .apply(Parser("myparser", msg_type=Outcome))
+    .apply(Parser[Outcome]("myparser"))
     .apply(
         Reducer(
             "myreduce",

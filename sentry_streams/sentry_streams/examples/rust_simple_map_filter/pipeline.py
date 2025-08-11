@@ -33,7 +33,7 @@ pipeline = streaming_source(
 )
 
 (
-    pipeline.apply(Parser("parser", msg_type=IngestMetric))
+    pipeline.apply(Parser[IngestMetric]("parser"))
     # This filter will run in native Rust with zero Python overhead
     .apply(Filter("filter", function=RustFilterEvents()))
     # This transform will run in native Rust with zero Python overhead

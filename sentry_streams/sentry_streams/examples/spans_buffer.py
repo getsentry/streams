@@ -18,7 +18,7 @@ reduce_window = TumblingWindow(window_timedelta=timedelta(seconds=5))
 
 pipeline = (
     streaming_source(name="myinput", stream_name="events")
-    .apply(Parser("mymap", msg_type=SpanEvent))
+    .apply(Parser[SpanEvent]("mymap"))
     .apply(
         Reducer(
             "myreduce",
