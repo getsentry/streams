@@ -5,16 +5,13 @@ use sentry_arroyo::processing::strategies::{
 };
 use sentry_arroyo::types::{Message, Partition};
 use std::collections::BTreeMap;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tracing::warn;
 
-/// Returns the current Unix epoch
-fn current_epoch() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
+#[cfg(test)]
+use crate::mocks::current_epoch;
+#[cfg(not(test))]
+use crate::time_helpers::current_epoch;
 
 /// A strategy that periodically sends watermark messages.
 /// This strategy is added as the first step in a consumer.
@@ -119,13 +116,19 @@ impl ProcessingStrategy<RoutedValue> for WatermarkEmitter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commit_policy::WatermarkCommitOffsets;
     use crate::fake_strategy::{assert_watermarks_match, FakeStrategy};
     use crate::messages::Watermark;
+    use crate::mocks::set_timestamp;
     use crate::routes::Route;
-    use crate::testutils::{build_routed_value, make_committable};
+    use crate::testutils::{build_routed_value, make_committable, make_lambda};
+    use crate::transformer::build_map;
     use crate::utils::traced_with_gil;
+    use pyo3::ffi::c_str;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
+    use sentry_arroyo::types::Topic;
+    use std::collections::HashMap;
     use std::ops::Deref;
     use std::sync::{Arc, Mutex};
 
@@ -177,11 +180,71 @@ mod tests {
 
             // submitted WatermarkMessage contains the last seen committable
             watermark.last_sent_timestamp = 0;
+            set_timestamp(20);
             let _ = watermark.poll();
             assert_watermarks_match(
                 vec![Watermark::new(expected_committable, 0)],
                 submitted_watermarks_clone.lock().unwrap().deref(),
             );
+            set_timestamp(0);
         })
+    }
+
+    #[test]
+    fn test_watermark_to_commit_step() {
+        // TODO: once Router works with watermarks, ensure commit request is not returned
+        // from commit step if messages from all routes haven't reached commit step
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let callable = make_lambda(py, c_str!("lambda x: x"));
+            let commit_step = Box::new(WatermarkCommitOffsets::new(1));
+            let map_step = build_map(
+                &Route::new("source".to_string(), vec![]),
+                callable,
+                commit_step,
+            );
+            let mut watermark_step = Box::new(WatermarkEmitter::new(
+                map_step,
+                Route::new("source".to_string(), vec![]),
+                10,
+            ));
+
+            let msg1 = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source",
+                    vec![],
+                ),
+                BTreeMap::from([(Partition::new(Topic::new("test_topic"), 0), 100)]),
+            );
+            let _ = watermark_step.submit(msg1);
+
+            let msg2 = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message".into_py_any(py).unwrap(),
+                    "source",
+                    vec![],
+                ),
+                BTreeMap::from([(Partition::new(Topic::new("test_topic"), 1), 80)]),
+            );
+            let _ = watermark_step.submit(msg2);
+            let res = watermark_step.poll().unwrap();
+            assert!(res.is_none());
+
+            set_timestamp(20);
+            let res = watermark_step.poll().unwrap();
+            println!("{:?}", res);
+            assert_eq!(
+                res,
+                Some(CommitRequest {
+                    positions: HashMap::from([
+                        (Partition::new(Topic::new("test_topic"), 0), 100),
+                        (Partition::new(Topic::new("test_topic"), 1), 80),
+                    ])
+                })
+            );
+        });
     }
 }
