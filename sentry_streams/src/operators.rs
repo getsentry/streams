@@ -67,6 +67,7 @@ pub enum RuntimeOperator {
     Router {
         route: Route,
         routing_function: Py<PyAny>,
+        downstream_routes: Py<PyAny>,
     },
     /// Delegates messages processing to a Python operator that provides
     /// the same kind of interface as an Arroyo strategy. This is meant
@@ -86,11 +87,15 @@ pub fn build(
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     match step.get() {
         RuntimeOperator::Map { function, route } => {
+            // All functions (Python and Rust) are called the same way now
+            // Rust functions automatically release the GIL internally
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_map(route, func_ref, next)
         }
         RuntimeOperator::Filter { function, route } => {
-            let func_ref = traced_with_gil!(|py| { function.clone_ref(py) });
+            // All functions (Python and Rust) are called the same way now
+            // Rust functions automatically release the GIL internally
+            let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_filter(route, func_ref, next)
         }
         RuntimeOperator::StreamSink {
@@ -126,8 +131,12 @@ pub fn build(
         RuntimeOperator::Router {
             route,
             routing_function,
+            // TODO: Router step will use downstream_routes once it's fixed to work with watermarks
+            #[allow(unused_variables)]
+            downstream_routes,
         } => {
             let func_ref = traced_with_gil!(|py| { routing_function.clone_ref(py) });
+
             build_router(route, func_ref, next)
         }
         RuntimeOperator::PythonAdapter {

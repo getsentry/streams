@@ -21,7 +21,7 @@ pipeline = (
         name="myinput",
         stream_name="events",
     )
-    .apply(Parser("parser", msg_type=InsertEvent))
+    .apply(Parser[InsertEvent]("parser"))
     # We add a FlatMap so that we can take a stream of events (as above)
     # And then materialize (potentially multiple) time series data points per
     # event. A time series point is materialized per alert rule that the event

@@ -4,16 +4,16 @@
 //! As all the strategies in the Arroyo streaming pipeline adapter,
 //! This checks whether a message should be processed or forwarded
 //! via the `Route` attribute.
-use crate::messages::PyStreamingMessage;
+use crate::messages::{PyStreamingMessage, RoutedValuePayload, Watermark, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use pyo3::types::PyBytes;
-use sentry_arroyo::backends::kafka::types::KafkaPayload;
+use sentry_arroyo::backends::kafka::types::{Headers, KafkaPayload};
 use sentry_arroyo::backends::Producer;
 use sentry_arroyo::processing::strategies::MessageRejected;
-use sentry_arroyo::types::{Message, Topic};
+use sentry_arroyo::types::{Message, Partition, Topic};
 
 use core::panic;
 use sentry_arroyo::processing::strategies::produce::Produce;
@@ -21,7 +21,72 @@ use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfi
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::processing::strategies::SubmitError;
 use sentry_arroyo::processing::strategies::{merge_commit_request, CommitRequest, StrategyError};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
+
+/// Represents a Watermark in a form that can be serialized, which allows watermarks
+/// to be passed to our Produce step.
+/// Since this struct exists to be serialized into JSON, and JSON keys must be strings
+/// (and not tuples), we repackage the committable to be in the format:
+/// ```json
+/// {
+///     topic_name:
+///         [
+///             {"index": index1, "offset": offset1},
+///             {"index": index2, "offset": offset2},
+///         ]
+/// }
+/// ```
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct SerializableWatermark {
+    committable: HashMap<String, Vec<HashMap<String, u64>>>,
+    timestamp: u64,
+}
+
+impl From<Watermark> for SerializableWatermark {
+    fn from(value: Watermark) -> Self {
+        let mut committable: HashMap<String, Vec<HashMap<String, u64>>> = Default::default();
+        for (partition, offset) in value.committable {
+            let topic_name = partition.topic.to_string();
+            let index = partition.index;
+            let new_entry = HashMap::from([
+                ("index".to_string(), index as u64),
+                ("offset".to_string(), offset),
+            ]);
+            match committable.get_mut(&topic_name) {
+                Some(vec) => {
+                    vec.push(new_entry);
+                }
+                None => {
+                    committable.insert(topic_name, vec![new_entry]);
+                }
+            }
+        }
+        SerializableWatermark {
+            committable,
+            timestamp: value.timestamp,
+        }
+    }
+}
+
+impl From<SerializableWatermark> for Watermark {
+    fn from(value: SerializableWatermark) -> Self {
+        let mut committable = BTreeMap::new();
+        for (topic, topic_info) in value.committable {
+            let topic = Topic::new(&topic);
+            for partition_info in topic_info {
+                let index = partition_info.get("index").unwrap().to_owned() as u16;
+                let offset = partition_info.get("offset").unwrap().to_owned();
+                committable.insert(Partition { topic, index }, offset);
+            }
+        }
+        Watermark {
+            committable,
+            timestamp: value.timestamp,
+        }
+    }
+}
 
 /// Turns a `Message<RoutedValue` passed among streaming primitives into
 /// a `Message<KafkaPayload>` to be produced on a Kafka topic.
@@ -32,20 +97,33 @@ use std::time::Duration;
 fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
     // Convert the RoutedValue to KafkaPayload
     // This is a placeholder implementation
-    let payload = traced_with_gil!(|py| {
-        let payload = &message.payload().payload.unwrap_payload();
-        match payload {
-            PyStreamingMessage::PyAnyMessage { .. } => {
-                panic!("PyAnyMessage is not supported in KafkaPayload conversion");
-            }
-            PyStreamingMessage::RawMessage { content } => {
+    let payload = match message.payload().payload {
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage { .. }) => {
+            panic!("PyAnyMessage is not supported in KafkaPayload conversion");
+        }
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { ref content }) => {
+            traced_with_gil!(|py| {
                 let payload_content = content.bind(py).getattr("payload").unwrap();
                 let py_bytes: &Bound<PyBytes> = payload_content.downcast().unwrap();
                 let raw_bytes = py_bytes.as_bytes();
-                KafkaPayload::new(None, None, Some(raw_bytes.to_vec()))
-            }
+                let mut headers = Headers::new();
+                headers = headers.insert("is_watermark", Some(vec![0]));
+                KafkaPayload::new(None, Some(headers), Some(raw_bytes.to_vec()))
+            })
         }
-    });
+        // TODO: currently sink step just passes watermarks on to next_step, once a wrapper is built around the produce
+        // step to handle watermarks we'll be serializing watermarks as well
+        RoutedValuePayload::WatermarkMessage(WatermarkMessage::PyWatermark(..)) => {
+            panic!("PyWatermark is not supported in KafkaPayload conversion");
+        }
+        RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(ref watermark)) => {
+            let serializable_watermark: SerializableWatermark = watermark.clone().into();
+            let json_payload = serde_json::to_vec(&serializable_watermark).unwrap();
+            let mut headers = Headers::new();
+            headers = headers.insert("is_watermark", Some(vec![1]));
+            KafkaPayload::new(None, Some(headers), Some(json_payload))
+        }
+    };
     message.replace(payload)
 }
 
@@ -145,7 +223,8 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
-        // TODO: pass watermark message on to produce step instead of next step here
+        // TODO: pass watermark messages on to produce step once produce step is async and we have a wrapper
+        // around it to handle watermarks
         if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             self.next_strategy.submit(message)
         } else {
@@ -207,6 +286,22 @@ mod tests {
     use std::time::SystemTime;
 
     #[test]
+    fn test_serializable_watermark_conversion() {
+        let watermark = Watermark::new(
+            BTreeMap::from([
+                (Partition::new(Topic::new("Topic1"), 0), 0),
+                (Partition::new(Topic::new("Topic1"), 1), 1),
+                (Partition::new(Topic::new("Topic3"), 0), 0),
+            ]),
+            0,
+        );
+
+        let serializable_watermark: SerializableWatermark = watermark.clone().into();
+        let converted_watermark: Watermark = serializable_watermark.into();
+        assert_eq!(watermark, converted_watermark)
+    }
+
+    #[test]
     fn test_kafka_payload() {
         crate::testutils::initialize_python();
         traced_with_gil!(|py| {
@@ -223,6 +318,32 @@ mod tests {
             assert!(kafka_payload.is_some());
             assert_eq!(kafka_payload.unwrap(), b"test_message");
         });
+
+        let watermark_payload = Watermark::new(
+            BTreeMap::from([
+                (Partition::new(Topic::new("Topic1"), 0), 0),
+                (Partition::new(Topic::new("Topic1"), 1), 1),
+                (Partition::new(Topic::new("Topic3"), 0), 0),
+            ]),
+            0,
+        );
+        let watermark = Message::new_any_message(
+            RoutedValue {
+                route: Route {
+                    source: "source1".to_string(),
+                    waypoints: vec![],
+                },
+                payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(
+                    watermark_payload.clone(),
+                )),
+            },
+            BTreeMap::new(),
+        );
+        let kafka_payload = to_kafka_payload(watermark);
+        let bytes_payload = kafka_payload.payload().payload().unwrap().to_owned();
+        let deserialized: SerializableWatermark = serde_json::from_slice(&bytes_payload).unwrap();
+        let converted_watermark: Watermark = deserialized.into();
+        assert_eq!(watermark_payload, converted_watermark)
     }
 
     #[test]
@@ -252,13 +373,13 @@ mod tests {
 
         let watermark_val = RoutedValue {
             route: Route::new(String::from("source"), vec![]),
-            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new()),
+            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0),
         };
         let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
         let watermark_res = sink.submit(watermark_msg);
         assert!(watermark_res.is_ok());
         let watermark_messages = submitted_watermarks_clone.lock().unwrap();
-        assert_eq!(watermark_messages[0], Watermark::new(BTreeMap::new()));
+        assert_eq!(watermark_messages[0], Watermark::new(BTreeMap::new(), 0));
     }
 
     #[test]

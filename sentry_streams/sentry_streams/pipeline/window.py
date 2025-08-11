@@ -40,4 +40,5 @@ class TumblingWindow(Window[MeasurementUnit]):
     or in terms of event time (timedelta).
     """
 
-    window_size: MeasurementUnit
+    window_size: int | None = None
+    window_timedelta: timedelta | None = None

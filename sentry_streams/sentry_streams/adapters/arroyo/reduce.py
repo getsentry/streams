@@ -312,7 +312,6 @@ def build_arroyo_windowed_reduce(
     msg_wrapper: ProcessingStrategy[Union[FilteredPayload, TPayload]],
     route: Route,
 ) -> ProcessingStrategy[Union[FilteredPayload, TPayload]]:
-
     match streams_window:
         case SlidingWindow(window_size, window_slide):
             match (window_size, window_slide):
@@ -345,39 +344,38 @@ def build_arroyo_windowed_reduce(
                         f"({type(window_size)}, {type(window_slide)}) is not a supported MeasurementUnit type combination for SlidingWindow"
                     )
 
-        case TumblingWindow(window_size):
-
+        case TumblingWindow(window_size, window_timedelta):
             arroyo_acc = ArroyoAccumulator(accumulator)
 
-            match window_size:
-                case int():
-                    return Reduce(
-                        window_size,
-                        float("inf"),
-                        cast(
-                            Callable[
-                                [FilteredPayload | TPayload, BaseValue[TPayload]],
-                                FilteredPayload | TPayload,
-                            ],
-                            arroyo_acc.accumulator,
-                        ),
-                        arroyo_acc.initial_value,
-                        msg_wrapper,
-                    )
+            if window_size is not None:
+                max_batch_time = (
+                    window_timedelta.total_seconds()
+                    if window_timedelta is not None
+                    else float("inf")
+                )
+                return Reduce(
+                    window_size,
+                    max_batch_time,
+                    cast(
+                        Callable[
+                            [FilteredPayload | TPayload, BaseValue[TPayload]],
+                            FilteredPayload | TPayload,
+                        ],
+                        arroyo_acc.accumulator,
+                    ),
+                    arroyo_acc.initial_value,
+                    msg_wrapper,
+                )
 
-                case timedelta():
-                    return TimeWindowedReduce(
-                        window_size.total_seconds(),
-                        window_size.total_seconds(),
-                        accumulator,
-                        msg_wrapper,
-                        route,
-                    )
-
-                case _:
-                    raise TypeError(
-                        f"{type(window_size)} is not a supported MeasurementUnit type for TumblingWindow"
-                    )
-
+            elif window_size is None and window_timedelta is not None:
+                return TimeWindowedReduce(
+                    window_timedelta.total_seconds(),
+                    window_timedelta.total_seconds(),
+                    accumulator,
+                    msg_wrapper,
+                    route,
+                )
+            else:
+                raise ValueError("Invalid window_size and window_timedelta values.")
         case _:
             raise TypeError(f"{streams_window} is not a supported Window type")

@@ -214,7 +214,7 @@ mod tests {
                         waypoints: vec![],
                     },
                     payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(
-                        Watermark::new(make_committable(2, 0)),
+                        Watermark::new(make_committable(2, 0), 0),
                     )),
                 },
                 make_committable(2, 0),
@@ -254,7 +254,7 @@ mod tests {
             assert_eq!(step.pending_messages.len(), 0);
             let actual_watermarks = submitted_watermarks_clone.lock().unwrap();
             assert_watermarks_match(
-                vec![Watermark::new(make_committable(2, 0))],
+                vec![Watermark::new(make_committable(2, 0), 0)],
                 actual_watermarks.deref(),
             );
         })

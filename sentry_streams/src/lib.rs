@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 mod broadcaster;
 mod callers;
+mod commit_policy;
 mod committable;
 mod consumer;
 mod filter_step;
@@ -17,6 +18,10 @@ mod store_sinks;
 mod transformer;
 mod utils;
 mod watermark;
+
+#[doc(hidden)]
+pub mod ffi;
+pub use ffi::Message;
 
 #[cfg(test)]
 mod fake_strategy;

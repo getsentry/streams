@@ -10,6 +10,7 @@ from typing import (
     Mapping,
     MutableMapping,
     Self,
+    Sequence,
     Type,
     cast,
 )
@@ -232,8 +233,14 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 bucket = (
                     step.bucket if not sink_config.get("bucket") else str(sink_config.get("bucket"))
                 )
+                parallelism_config = cast(Mapping[str, Any], sink_config.get("parallelism"))
+                if parallelism_config:
+                    thread_count = cast(int, parallelism_config["threads"])
+                else:
+                    thread_count = 1
             else:
                 bucket = step.bucket
+                thread_count = 1
 
             def wrapped_generator() -> str:
                 start_time = input_metrics(step.name, None)
@@ -250,7 +257,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
             logger.info(f"Adding GCS sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, bucket, wrapped_generator)
+                RuntimeOperator.GCSSink(route, bucket, wrapped_generator, thread_count)
             )
 
         # Our fallback for now since there's no other Sink type
@@ -344,7 +351,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
+
         self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+
         return stream
 
     def reduce(
@@ -412,7 +421,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 output_metrics(step.name, has_error, start_time, None)
 
         logger.info(f"Adding router: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(RuntimeOperator.Router(route, routing_function))
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.Router(
+                route, routing_function, cast(Sequence[str], step.routing_table.values())
+            )
+        )
         return build_branches(stream, step.routing_table.values())
 
     def run(self) -> None:

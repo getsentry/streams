@@ -6,7 +6,7 @@ from unittest.mock import call
 
 import pytest
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import BrokerValue, Message, Partition, Topic
+from arroyo.types import BrokerValue, Message, Partition, Topic, Value
 
 from sentry_streams.adapters.arroyo.reduce import (
     TimeWindowedReduce,
@@ -84,24 +84,36 @@ def test_submit_and_poll() -> None:
     acc = mock.Mock(spec=Accumulator)
     route = mock.Mock(spec=Route)
 
-    reduce: TimeWindowedReduce[Any, Any] = TimeWindowedReduce(
-        window_size=6.0,
-        window_slide=2.0,
-        acc=acc,
-        next_step=next_step,
-        route=route,
-    )
+    with mock.patch("time.time", return_value=0):
+        reduce: TimeWindowedReduce[Any, Any] = TimeWindowedReduce(
+            window_size=6.0,
+            window_slide=2.0,
+            acc=acc,
+            next_step=next_step,
+            route=route,
+        )
 
-    cur_time = time.time()
+    cur_time = 0
 
-    reduce.submit(make_msg("test-payload", route, 0))
-    reduce.submit(make_msg("test-payload", route, 1))
-    reduce.submit(make_msg("test-payload", route, 2))
+    # first 2 payloads go to acc_id 0
+    with mock.patch("time.time", return_value=cur_time):
+        reduce.submit(make_msg("test-payload", route, 0))
+        reduce.submit(make_msg("test-payload", route, 1))
 
+    # next payload goes to acc_id 1
+    with mock.patch("time.time", return_value=cur_time + 2.0):
+        reduce.submit(make_msg("test-payload", route, 2))
+
+    # poll flushes the current window, should only submit committable for
+    # messages in acc_id 0
     with mock.patch("time.time", return_value=cur_time + 6.0):
         reduce.poll()
 
-    next_step.submit.assert_called_once()
+    # BrokerMessage adds 1 to the committable offset for some reason, so
+    # offset 2 here corresponds to the 2nd message submitted above
+    expected = Message(Value(mock.ANY, {Partition(Topic("test_topic"), 0): 2}))
+
+    next_step.submit.assert_called_once_with(expected)
     next_step.poll.assert_called_once()
 
 
