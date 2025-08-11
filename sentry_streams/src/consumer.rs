@@ -6,9 +6,10 @@
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
 use crate::commit_policy::WatermarkCommitOffsets;
-use crate::kafka_config::{PyKafkaConsumerConfig, PyMetricConfig};
+use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::metrics::configure_metrics;
+use crate::metrics_config::PyMetricConfig;
 use crate::operators::build;
 use crate::operators::RuntimeOperator;
 use crate::routes::Route;

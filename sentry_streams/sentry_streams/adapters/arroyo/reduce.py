@@ -1,5 +1,4 @@
 import logging
-import sys
 import time
 from datetime import timedelta
 from functools import partial
@@ -20,7 +19,7 @@ from arroyo.processing.strategies.reduce import Reduce
 from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.metrics import get_metrics
+from sentry_streams.metrics import Metric, get_metrics, get_size
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     GroupBy,
@@ -87,10 +86,10 @@ class MetricsAccumulator(Accumulator[Message[Any], Any]):
     def add(self, value: Message[Any]) -> Self:
         if self.start_time is None:
             self.start_time = time.time()
-        self.metrics.increment("streams.pipeline.input.messages", tags=self.tags)
-        self.metrics.increment(
-            "streams.pipeline.input.bytes", tags=self.tags, value=sys.getsizeof(value.payload)
-        )
+        self.metrics.increment(Metric.INPUT_MESSAGES, tags=self.tags)
+        size = get_size(value.payload)
+        if size is not None:
+            self.metrics.increment(Metric.INPUT_BYTES, tags=self.tags, value=size)
 
         self.acc.add(value.payload)
 
@@ -98,14 +97,12 @@ class MetricsAccumulator(Accumulator[Message[Any], Any]):
 
     def get_value(self) -> Any:
         result = self.acc.get_value()
-        self.metrics.increment("streams.pipeline.output.messages", tags=self.tags)
-        self.metrics.increment(
-            "streams.pipeline.output.bytes", tags=self.tags, value=sys.getsizeof(result)
-        )
+        self.metrics.increment(Metric.OUTPUT_MESSAGES, tags=self.tags)
+        size = get_size(result)
+        if size is not None:
+            self.metrics.increment(Metric.OUTPUT_BYTES, tags=self.tags, value=size)
         assert self.start_time is not None
-        self.metrics.timing(
-            "streams.pipeline.duration", time.time() - self.start_time, tags=self.tags
-        )
+        self.metrics.timing(Metric.DURATION, time.time() - self.start_time, tags=self.tags)
         return result
 
     def merge(self, other: Self) -> Self:

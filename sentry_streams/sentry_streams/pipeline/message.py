@@ -67,6 +67,10 @@ class Message(ABC, Generic[TPayload]):
     def to_inner(self) -> RustMessage:
         raise NotImplementedError
 
+    @abstractmethod
+    def size(self) -> int | None:
+        raise NotImplementedError
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Message):
             return False
@@ -115,6 +119,11 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
     @property
     def schema(self) -> str | None:
         return self.inner.schema
+
+    def size(self) -> int | None:
+        if isinstance(self.inner.payload, (str, bytes)):
+            return len(self.inner.payload)
+        return None
 
     def __repr__(self) -> str:
         return f"PyMessage({self.inner.__repr__()})"
@@ -179,6 +188,9 @@ class PyRawMessage(Message[bytes]):
     @property
     def schema(self) -> str | None:
         return self.inner.schema
+
+    def size(self) -> int | None:
+        return len(self.inner.payload)
 
     def __repr__(self) -> str:
         return f"RawMessage({self.inner.__repr__()})"

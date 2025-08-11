@@ -9,6 +9,7 @@ mod gcs_writer;
 mod kafka_config;
 mod messages;
 mod metrics;
+mod metrics_config;
 mod operators;
 mod python_operator;
 mod routers;
