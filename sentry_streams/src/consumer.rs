@@ -18,8 +18,6 @@ use crate::watermark::WatermarkEmitter;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
-use sentry_arroyo::metrics::{init, MetricSink, StatsdRecorder};
-use sentry_arroyo::processing::strategies::commit_offsets::CommitOffsets;
 use sentry_arroyo::processing::strategies::noop::Noop;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
@@ -28,7 +26,6 @@ use sentry_arroyo::processing::strategies::ProcessingStrategyFactory;
 use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
-use std::net::UdpSocket;
 use std::sync::Arc;
 
 /// The class that represent the consumer.
