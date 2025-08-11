@@ -25,7 +25,14 @@ use sentry_arroyo::processing::strategies::ProcessingStrategyFactory;
 use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, LazyLock, Mutex};
+
+static RUST_NATIVE_FNS: LazyLock<Mutex<BTreeMap<String, u32>>> = LazyLock::new(Default::default);
+
+pub fn add_fn(symbol: String, val: u32) {
+    RUST_NATIVE_FNS.lock().unwrap().insert(symbol, val);
+}
 
 /// The class that represent the consumer.
 /// This class is exposed to python and it is the main entry point
@@ -59,10 +66,6 @@ pub struct ArroyoConsumer {
     concurrency_config: Arc<ConcurrencyConfig>,
 }
 
-impl ArroyoConsumer {
-    pub fn load_rust_native_fns(&mut self) {}
-}
-
 #[pymethods]
 impl ArroyoConsumer {
     #[new]
@@ -81,6 +84,18 @@ impl ArroyoConsumer {
             handle: None,
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
         }
+    }
+
+    fn read_fn(&mut self) {
+        println!("djcm.");
+        {
+            RUST_NATIVE_FNS.lock().unwrap().insert("key".into(), 123);
+        }
+        RUST_NATIVE_FNS
+            .lock()
+            .unwrap()
+            .iter()
+            .for_each(|(key, val)| println!("Key: {}, Val: {}", key, val));
     }
 
     /// Add a step to the Consumer pipeline at the end of it.
