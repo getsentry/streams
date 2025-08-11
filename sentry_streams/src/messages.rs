@@ -115,9 +115,12 @@ impl Clone for WatermarkMessage {
             }
             WatermarkMessage::PyWatermark(py_watermark) => {
                 traced_with_gil!(|py| {
-                    let payload = py_watermark.payload.clone_ref(py);
+                    let committable = py_watermark.committable.clone_ref(py);
                     let timestamp = py_watermark.timestamp.clone_ref(py);
-                    WatermarkMessage::PyWatermark(PyWatermark { payload, timestamp })
+                    WatermarkMessage::PyWatermark(PyWatermark {
+                        committable,
+                        timestamp,
+                    })
                 })
             }
         }
@@ -146,15 +149,18 @@ impl Watermark {
 #[pyclass]
 pub struct PyWatermark {
     #[pyo3(get)]
-    pub payload: Py<PyDict>,
+    pub committable: Py<PyDict>,
     pub timestamp: Py<PyInt>,
 }
 
 #[pymethods]
 impl PyWatermark {
     #[new]
-    pub fn new(payload: Py<PyDict>, timestamp: Py<PyInt>) -> PyResult<Self> {
-        Ok(Self { payload, timestamp })
+    pub fn new(committable: Py<PyDict>, timestamp: Py<PyInt>) -> PyResult<Self> {
+        Ok(Self {
+            committable,
+            timestamp,
+        })
     }
 }
 
@@ -411,7 +417,7 @@ impl From<&WatermarkMessage> for Py<PyAny> {
                 .into_py_any(py)
                 .unwrap(),
                 WatermarkMessage::PyWatermark(watermark) => PyWatermark::new(
-                    watermark.payload.clone_ref(py),
+                    watermark.committable.clone_ref(py),
                     watermark.timestamp.clone_ref(py),
                 )
                 .unwrap()
@@ -660,7 +666,8 @@ mod tests {
                 PyWatermark::new(committable.unbind().clone_ref(py), make_py_int(py, 0)).unwrap();
 
             // Check payload
-            let payload_val: BTreeMap<(String, u64), u64> = msg.payload.bind(py).extract().unwrap();
+            let payload_val: BTreeMap<(String, u64), u64> =
+                msg.committable.bind(py).extract().unwrap();
             assert_eq!(
                 payload_val,
                 BTreeMap::from([(("topic1".to_string(), 1), 0),])

@@ -5,6 +5,7 @@ from typing import (
     Sequence,
     TypeVar,
     Union,
+    cast,
 )
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
@@ -28,7 +29,7 @@ from sentry_streams.pipeline.message import (
     rust_msg_equals,
 )
 from sentry_streams.pipeline.pipeline import Batch
-from sentry_streams.rust_streams import PyWatermark
+from sentry_streams.rust_streams import PyAnyMessage
 from tests.adapters.arroyo.helpers.delegate_helpers import assert_equal_batches
 from tests.adapters.arroyo.helpers.message_helpers import (
     build_committable,
@@ -263,8 +264,8 @@ def test_reduce() -> None:
     ]
     assert len(batch) == len(expected)
     for i, msg1 in enumerate(batch):
+        delegate_msg = cast(PyAnyMessage, msg1[0])
         msg2 = expected[i]
-        assert msg1[0].payload == msg2[0].payload, f"Payload mismatch at index {i}"
-        if not isinstance(msg1[0], PyWatermark) and not isinstance(msg2[0], PyWatermark):
-            assert msg1[0].schema == msg2[0].schema, "Missing schema after batch"
+        assert delegate_msg.payload == msg2[0].payload, f"Payload mismatch at index {i}"
+        assert delegate_msg.schema == msg2[0].schema, "Missing schema after batch"
         assert msg1[1] == msg2[1], f"Committable mismatch at index {i}"

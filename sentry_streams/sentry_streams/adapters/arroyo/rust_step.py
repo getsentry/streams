@@ -292,7 +292,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         offsets in `self.__globbed_committable`
         """
         try:
-            for partition, offset in watermark.payload.items():
+            for partition, offset in watermark.committable.items():
                 if self.__globbed_committable[partition] < offset:
                     return False
         except KeyError:
@@ -300,13 +300,21 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         return True
 
     def __yield_messages(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
+        """
+        Yields messages polled from the OutputRetriever, as well as any stored watermarks that
+        can be sent after each message.
+        As currently implemented, watermarks can move backwards in message order (as watermarks
+        are always yielded after messages), but can never move earlier (meaning we don't commit messages before
+        they're finished processing).
+        """
+        # TODO: ensure watermarks leave the delegate in the same order they entered it
         for message, committable in self.__retriever.fetch():
             yield (message, committable)
             self.__globbed_committable.update(committable)
             watermarks = self.__watermarks.copy()
             for wm in watermarks:
                 if self.__should_send_watermark(wm):
-                    yield (wm, wm.payload)
+                    yield (wm, wm.committable)
                     self.__watermarks.remove(wm)
 
     def submit(self, message: PipelineMessage, committable: Committable) -> None:
