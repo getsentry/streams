@@ -26,7 +26,7 @@ def filter_events(msg: Message[IngestMetric]) -> bool:
 def create_correct_pipeline():
     return (
         streaming_source("input", "test-stream")
-        .apply(Parser("parser", msg_type=IngestMetric))              # bytes -> IngestMetric
+        .apply(Parser[IngestMetric]("parser"))              # bytes -> IngestMetric
         .apply(Filter("filter", function=filter_events))            # IngestMetric -> IngestMetric
         .apply(Map("transform", function=transform_msg))            # IngestMetric -> Mapping[str, Any]
         .sink(StreamSink("output", "output-stream"))
@@ -71,7 +71,7 @@ def filter_events(msg: Message[IngestMetric]) -> bool:
 def create_wrong_pipeline():
     return (
         streaming_source("input", "test-stream")
-        .apply(Parser("parser", msg_type=IngestMetric))     # bytes -> IngestMetric
+        .apply(Parser[IngestMetric]("parser"))     # bytes -> IngestMetric
         .apply(Filter("filter", function=filter_events))    # IngestMetric -> IngestMetric
         .apply(Map("transform", function=transform_msg))    # IngestMetric -> Mapping[str, Any]
         .apply(Map("wrong", function=transform_msg))        # Expects Message[IngestMetric], gets Message[Mapping[str, Any]]!
@@ -120,7 +120,7 @@ def filter_events(msg: Message[IngestMetric]) -> bool:
 def create_correct_pipeline():
     return (
         streaming_source("input", "test-stream")
-        .apply(Parser("parser", msg_type=TestMessage))              # bytes -> TestMessage
+        .apply(Parser[TestMessage]("parser"))              # bytes -> TestMessage
         .apply(Filter("filter", function=TestFilterCorrect()))      # TestMessage -> TestMessage
         .apply(Map("transform", function=TestMapCorrect()))         # TestMessage -> String
         .apply(Map("length", function=TestMapString()))             # String -> u64
@@ -161,7 +161,7 @@ from rust_test_functions import TestFilterCorrect, TestMapCorrect, TestMapWrongT
 def create_wrong_pipeline():
     return (
         streaming_source("input", "test-stream")
-        .apply(Parser("parser", msg_type=TestMessage))              # bytes -> TestMessage
+        .apply(Parser[TestMessage]("parser"))              # bytes -> TestMessage
         .apply(Filter("filter", function=TestFilterCorrect()))      # TestMessage -> TestMessage
         .apply(Map("wrong", function=TestMapWrongType()))           # Expects Message[bool], gets Message[TestMessage]!
         .sink(StreamSink("output", "output-stream"))

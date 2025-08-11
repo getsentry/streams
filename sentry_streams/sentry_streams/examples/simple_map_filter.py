@@ -13,7 +13,7 @@ from sentry_streams.pipeline.pipeline import (
 pipeline = streaming_source(name="myinput", stream_name="ingest-metrics")
 
 (
-    pipeline.apply(Parser("parser", msg_type=IngestMetric))
+    pipeline.apply(Parser[IngestMetric]("parser"))
     .apply(Filter("filter", function=filter_events))
     .apply(Map("transform", function=transform_msg))
     .apply(Serializer("serializer"))
