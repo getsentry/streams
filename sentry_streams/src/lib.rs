@@ -20,6 +20,10 @@ mod transformer;
 mod utils;
 mod watermark;
 
+#[doc(hidden)]
+pub mod ffi;
+pub use ffi::Message;
+
 #[cfg(test)]
 mod fake_strategy;
 #[cfg(test)]

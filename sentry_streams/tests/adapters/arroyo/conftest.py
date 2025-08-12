@@ -107,7 +107,7 @@ def transformer() -> Callable[[], TestTransformerBatch]:
 def pipeline() -> Pipeline[bytes]:
     pipeline = (
         streaming_source("myinput", stream_name="ingest-metrics")
-        .apply(Parser("decoder", msg_type=IngestMetric))
+        .apply(Parser[IngestMetric]("decoder"))
         .apply(Filter("myfilter", lambda msg: msg.payload["type"] == "s"))
         .apply(Map("mymap", basic_map))
         .apply(Serializer("serializer"))
@@ -125,7 +125,7 @@ def reduce_pipeline(transformer: Callable[[], TestTransformerBatch]) -> Pipeline
 
     pipeline = (
         streaming_source("myinput", stream_name="ingest-metrics")
-        .apply(Parser("decoder", msg_type=IngestMetric))
+        .apply(Parser[IngestMetric]("decoder"))
         .apply(Map("mymap", basic_map))
         .apply(Reducer("myreduce", reduce_window, transformer))
         .apply(Serializer("serializer"))
@@ -153,7 +153,7 @@ def router_pipeline() -> Pipeline[bytes]:
             name="ingest",
             stream_name="ingest-metrics",
         )
-        .apply(Parser("decoder", msg_type=IngestMetric))
+        .apply(Parser[IngestMetric]("decoder"))
         .route(
             "router",
             routing_function=lambda msg: "set" if msg.payload["type"] == "s" else "not_set",
@@ -187,7 +187,7 @@ def broadcast_pipeline() -> Pipeline[bytes]:
             name="ingest",
             stream_name="ingest-metrics",
         )
-        .apply(Parser("decoder", msg_type=IngestMetric))
+        .apply(Parser[IngestMetric]("decoder"))
         .broadcast(
             "broadcast",
             routes=[

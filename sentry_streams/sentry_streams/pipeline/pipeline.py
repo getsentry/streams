@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import Enum
 from functools import partial
 from typing import (
@@ -17,7 +18,6 @@ from typing import (
     Sequence,
     Set,
     Tuple,
-    Type,
     TypeVar,
     Union,
     cast,
@@ -42,6 +42,7 @@ from sentry_streams.pipeline.msg_codecs import (
     resolve_polars_schema,
     serialize_to_parquet,
 )
+from sentry_streams.pipeline.rust_function_protocol import InternalRustFunction
 from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
 
 RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
@@ -50,6 +51,8 @@ TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 TNewOut = TypeVar("TNewOut")
 TBranch = TypeVar("TBranch")
+
+RUST_FUNCTION_VERSION = 1
 
 
 class StepType(Enum):
@@ -316,6 +319,29 @@ class FunctionTransform(Transform[TIn, TOut], Generic[TIn, TOut]):
         function_callable = imported_func
         return function_callable
 
+    def _validate_rust_function(self) -> Callable[[Message[TIn]], TOut] | None:
+        func = self.resolved_function
+        if not hasattr(func, "rust_function_version"):
+            # not a rust function
+            return None
+
+        func = cast(InternalRustFunction[TIn, TOut], func)
+
+        rust_function_version = func.rust_function_version()
+        if rust_function_version != 1:
+            raise TypeError(
+                r"Invalid rust function version: {rust_function_version} -- if you are defining your own rust functions, maybe the version is out of date?"
+            )
+
+        return func
+
+    def post_rust_function_validation(self, func: InternalRustFunction[TIn, TOut]) -> None:
+        # Overridden in Filter step
+        pass
+
+    def __post_init__(self) -> None:
+        self._validate_rust_function()
+
 
 # Backward compatibility alias
 TransformStep = FunctionTransform
@@ -347,6 +373,13 @@ class Filter(Transform[TIn, TIn], Generic[TIn]):
 
     function: Union[Callable[[Message[TIn]], bool], str]
     step_type: StepType = StepType.FILTER
+
+    def post_rust_function_validation(self, func: InternalRustFunction[TIn, TOut]) -> None:
+        output_type = func.output_type()
+        if output_type != "bool":
+            raise TypeError(
+                f"Filter function {func} should return bool, " f"but returns {output_type}"
+            )
 
     @property
     def resolved_function(self) -> Callable[[Message[TIn]], bool]:
@@ -480,8 +513,14 @@ class Batch(
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
-    batch_size: MeasurementUnit
+
+    batch_size: int | None = None
+    batch_timedelta: timedelta | None = None
     step_type: StepType = StepType.REDUCE
+
+    def __post_init__(self) -> None:
+        if self.batch_size is None and self.batch_timedelta is None:
+            raise ValueError("At least one of batch_size or batch_timedelta must be set.")
 
     @property
     def group_by(self) -> Optional[GroupBy]:
@@ -489,7 +528,7 @@ class Batch(
 
     @property
     def windowing(self) -> Window[MeasurementUnit]:
-        return TumblingWindow(self.batch_size)
+        return TumblingWindow(self.batch_size, self.batch_timedelta)
 
     @property
     def aggregate_fn(
@@ -506,12 +545,13 @@ class Batch(
         )
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
-        merged_config = (
-            loaded_config.get("batch_size")
-            if loaded_config.get("batch_size") is not None
-            else self.batch_size
-        )
-        self.batch_size = cast(MeasurementUnit, merged_config)
+        if loaded_config.get("batch_size") is not None:
+            self.batch_size = loaded_config.get("batch_size")
+
+        if loaded_config.get("batch_timedelta") is not None:
+            loaded_kwargs = loaded_config.get("batch_timedelta")
+            assert isinstance(loaded_kwargs, Mapping)
+            self.batch_timedelta = timedelta(**loaded_kwargs)
 
 
 @dataclass
@@ -560,8 +600,6 @@ class Parser(ComplexStep[bytes, TransformFuncReturnType], Generic[TransformFuncR
     Supports both JSON and protobuf.
     """
 
-    msg_type: Type[TransformFuncReturnType]
-
     def convert(self) -> Transform[bytes, TransformFuncReturnType]:
         return Map[bytes, TransformFuncReturnType](
             name=self.name,
@@ -574,7 +612,6 @@ class BatchParser(
     ComplexStep[Sequence[bytes], Sequence[TransformFuncReturnType]],
     Generic[TransformFuncReturnType],
 ):
-    msg_type: Type[TransformFuncReturnType]
 
     def convert(self) -> Transform[Sequence[bytes], Sequence[TransformFuncReturnType]]:
         return Map[Sequence[bytes], Sequence[TransformFuncReturnType]](

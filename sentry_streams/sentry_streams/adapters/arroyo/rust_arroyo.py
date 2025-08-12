@@ -279,12 +279,13 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
-        def filter_msg(msg: Message[Any]) -> bool:
-            return step.resolved_function(msg)
-
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.Filter(route, step.resolved_function)
+        )
+
         return stream
 
     def reduce(

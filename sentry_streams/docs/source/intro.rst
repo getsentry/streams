@@ -78,7 +78,7 @@ For local development, instead of using pip, install the package from the source
             name="myinput",
             stream_name="ingest-metrics",
         )
-        .apply(Parser("parse_msg", msg_type=IngestMetric))
+        .apply(Parser[IngestMetric]("parse_msg"))
         .apply(Serializer("serializer"))
         .sink(
             StreamSink(name="mysink", stream_name="transformed-events"),
