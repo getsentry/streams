@@ -235,7 +235,6 @@ mod tests {
 
             set_timestamp(20);
             let res = watermark_step.poll().unwrap();
-            println!("{:?}", res);
             assert_eq!(
                 res,
                 Some(CommitRequest {
@@ -245,6 +244,7 @@ mod tests {
                     ])
                 })
             );
+            set_timestamp(0);
         });
     }
 }
