@@ -7,6 +7,10 @@ edition = "2021"
 name = "metrics_rust_transforms"
 crate-type = ["cdylib"]
 
+[[bin]]
+name = "runner"
+path = "src/main.rs"
+
 [dependencies]
 pyo3 = { version = "0.24" }
 serde = { version = "1.0", features = ["derive"] }
@@ -20,3 +24,4 @@ serde_json = "1.0"
 [dependencies.rust_streams]
 path = "../../../../"  # Point to the main rust_streams crate
 default-features = false  # Disable default features to avoid loading pyo3 a second time
+features = ["cli"]
