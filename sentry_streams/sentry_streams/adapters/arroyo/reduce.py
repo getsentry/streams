@@ -101,8 +101,9 @@ class MetricsAccumulator(Accumulator[Message[Any], Any]):
         size = get_size(result)
         if size is not None:
             self.metrics.increment(Metric.OUTPUT_BYTES, tags=self.tags, value=size)
-        assert self.start_time is not None
-        self.metrics.timing(Metric.DURATION, time.time() - self.start_time, tags=self.tags)
+
+        duration = time.time() - self.start_time if self.start_time is not None else 0
+        self.metrics.timing(Metric.DURATION, duration, tags=self.tags)
         return result
 
     def merge(self, other: Self) -> Self:
