@@ -123,7 +123,13 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     Err(RunTaskError::RetryableError)
                 }
             } else {
-                Ok(message)
+                Ok(message);
+                let object_name =
+                    object_gen_fn(object_generator.clone(), Python::acquire_gil().python())
+                        .expect("Failed to generate object name");
+
+                // Log the file name being written to GCS
+                tracing::info!("Writing file to GCS: {}", object_name);
             }
         })
     }
