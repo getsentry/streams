@@ -285,7 +285,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         parallelism_config = step_config.get("parallelism")
 
         def wrapped_function(msg: Message[Any]) -> Any:
-            start_time = input_metrics(step.name, msg.size())
+            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+            start_time = input_metrics(step.name, msg_size)
             has_error = output_size = None
             try:
                 result = step.resolved_function(msg)
@@ -336,7 +337,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
         def filter_msg(msg: Message[Any]) -> bool:
-            start_time = input_metrics(step.name, msg.size())
+            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+            start_time = input_metrics(step.name, msg_size)
             has_error = output_size = None
             try:
                 result = step.resolved_function(msg)
@@ -407,7 +409,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
 
         def routing_function(msg: Message[Any]) -> str:
-            start_time = input_metrics(step.name, msg.size())
+            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+            start_time = input_metrics(step.name, msg_size)
             has_error = None
             try:
                 waypoint = step.routing_function(msg)

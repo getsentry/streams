@@ -1,6 +1,5 @@
 //! This module provides an implementation of the structs to
-//! configure Kafka producers and consumers that can be used in Python
-//! code.
+//! configure metrics backends.
 //!
 //! Arroyo rust provides similar structures, but those are not pyclass
 //! so we need an alternative implementation.
