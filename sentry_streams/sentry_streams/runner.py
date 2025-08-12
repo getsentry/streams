@@ -1,7 +1,6 @@
 import importlib
 import json
 import logging
-import signal
 from typing import Any, Optional, cast
 
 import click
@@ -60,21 +59,22 @@ def iterate_edges(
                     step_streams[branch_name] = next_step_stream[branch_name]
 
 
-def runner(
+def load_runtime(
     name: str,
     log_level: str,
     adapter: str,
     config: str,
     segment_id: Optional[str],
     application: str,
-) -> None:
-    pipeline_globals: dict[str, Any] = {}
+) -> Any:
 
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+
+    pipeline_globals: dict[str, Any] = {}
 
     with open(application) as f:
         exec(f.read(), pipeline_globals)
@@ -119,14 +119,7 @@ def runner(
 
     iterate_edges(pipeline, translator)
 
-    def signal_handler(sig: int, frame: Any) -> None:
-        logger.info("Signal received, terminating the runner...")
-        runtime.shutdown()
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    runtime.run()
+    return runtime
 
 
 @click.command()
@@ -184,14 +177,8 @@ def main(
     segment_id: Optional[str],
     application: str,
 ) -> None:
-    runner(
-        name,
-        log_level,
-        adapter,
-        config,
-        segment_id,
-        application,
-    )
+    runtime = load_runtime(name, log_level, adapter, config, segment_id, application)
+    runtime.run()
 
 
 if __name__ == "__main__":
