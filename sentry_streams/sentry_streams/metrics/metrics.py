@@ -8,7 +8,7 @@ from typing import Any, Mapping, Optional, Protocol, Union, runtime_checkable
 from arroyo.utils.metric_defs import MetricName as ArroyoMetricName
 from arroyo.utils.metrics import DummyMetricsBackend as ArroyoDummyMetricsBackend
 from arroyo.utils.metrics import configure_metrics as arroyo_configure_metrics
-from datadog import DogStatsd  # type: ignore[import-not-found]
+from datadog import DogStatsd
 
 Tags = Mapping[str, str]
 
