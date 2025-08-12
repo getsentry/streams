@@ -1,8 +1,7 @@
 import importlib.util as utils
-import json
 import sys
 from importlib import import_module
-from typing import Optional, TypeVar, cast
+from typing import Any, Optional, TypeVar, cast
 
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 
@@ -14,7 +13,7 @@ def load_adapter(
     adapter_type: str,
     config: PipelineConfig,
     segment_id: Optional[int] = None,
-    metric_config: Optional[dict[str, str]] = None,
+    metric_config: Optional[dict[str, Any]] = None,
 ) -> StreamAdapter[Stream, Sink]:
     """
     Loads a StreamAdapter to run a pipeline.
@@ -60,15 +59,10 @@ def load_adapter(
         # Convert dict metric_config to PyMetricConfig if provided
         py_metric_config = None
         if metric_config:
-            tags = (
-                json.loads(metric_config["datadog_tags"])
-                if "datadog_tags" in metric_config
-                else None
-            )
             py_metric_config = PyMetricConfig(
-                datadog_host=metric_config["datadog_host"],
-                datadog_port=int(metric_config["datadog_port"]),
-                datadog_tags=tags,
+                host=metric_config["host"],
+                port=metric_config["port"],
+                tags=metric_config["tags"],
             )
 
         # TODO: Fix this type as above.

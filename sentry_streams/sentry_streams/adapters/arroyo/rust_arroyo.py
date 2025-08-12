@@ -74,7 +74,7 @@ def input_metrics(name: str, message_size: int | None) -> float:
     metrics = get_metrics()
     tags = {"step": name}
     metrics.increment(Metric.INPUT_MESSAGES, tags=tags)
-    if message_size:
+    if message_size is not None:
         metrics.increment(Metric.INPUT_BYTES, tags=tags, value=message_size)
     return time.time()
 
@@ -89,7 +89,7 @@ def output_metrics(
         metrics.increment(Metric.ERRORS, tags=tags)
 
     metrics.increment(Metric.OUTPUT_MESSAGES, tags=tags)
-    if message_size:
+    if message_size is not None:
         metrics.increment(Metric.OUTPUT_BYTES, tags=tags, value=message_size)
     metrics.timing(Metric.DURATION, time.time() - start_time, tags=tags)
 
