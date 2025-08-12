@@ -1,8 +1,8 @@
-use std::ffi::OsString;
+use std::{collections::BTreeMap, ffi::OsString};
 
 use pyo3::{prelude::*, types::PyList};
 
-use crate::consumer::ArroyoConsumer;
+use crate::consumer::{Callable, RustNativeFns};
 
 pub struct PyConfig {
     pub exec_path: OsString,
@@ -16,19 +16,30 @@ pub struct PhysicalPlanConfig {
     pub application_name: String,
 }
 
-fn load_physical_plan(
-    py_config: PyConfig,
-    plan_config: PhysicalPlanConfig,
-) -> PyResult<Py<ArroyoConsumer>> {
+struct MyCallable {}
+
+impl Callable for MyCallable {
+    fn call(&self) {
+        println!("Hello world!");
+    }
+}
+
+fn load_physical_plan(py_config: PyConfig, plan_config: PhysicalPlanConfig) -> PyResult<()> {
     Python::with_gil(|py| -> PyResult<()> {
         PyModule::import(py, "sys")?.setattr("executable", py_config.exec_path)?;
         PyModule::import(py, "sys")?.setattr("path", py_config.module_paths)?;
         Ok(())
     })?;
 
+    let fns = RustNativeFns {
+        fns: BTreeMap::<String, Box<dyn Callable>>::from([(
+            "fn".to_string(),
+            Box::new(MyCallable {}) as Box<dyn Callable>,
+        )]),
+    };
+
     Python::with_gil(|py| {
-        Ok(py
-            .import("sentry_streams.runner")?
+        py.import("sentry_streams.runner")?
             .getattr("load_physical_plan")?
             .call1((
                 plan_config.adapter_name,
@@ -38,10 +49,8 @@ fn load_physical_plan(
             ))?
             .downcast::<PyList>()?
             .get_item(0)?
-            .downcast::<ArroyoConsumer>()
-            .unwrap()
-            .clone()
-            .unbind())
+            .call_method1("add_rust_fns", (fns,))?;
+        Ok(())
     })
 }
 

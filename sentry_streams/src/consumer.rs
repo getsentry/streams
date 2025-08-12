@@ -25,7 +25,17 @@ use sentry_arroyo::processing::strategies::ProcessingStrategyFactory;
 use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
+use std::collections::BTreeMap;
 use std::sync::Arc;
+
+pub trait Callable: Send + Sync {
+    fn call(&self) {}
+}
+
+#[pyclass]
+pub struct RustNativeFns {
+    pub fns: BTreeMap<String, Box<dyn Callable>>,
+}
 
 /// The class that represent the consumer.
 /// This class is exposed to python and it is the main entry point
@@ -59,10 +69,6 @@ pub struct ArroyoConsumer {
     concurrency_config: Arc<ConcurrencyConfig>,
 }
 
-impl ArroyoConsumer {
-    pub fn load_rust_native_fns(&mut self) {}
-}
-
 #[pymethods]
 impl ArroyoConsumer {
     #[new]
@@ -81,6 +87,12 @@ impl ArroyoConsumer {
             handle: None,
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
         }
+    }
+
+    fn add_rust_fns(&mut self, fns: Py<RustNativeFns>) {
+        traced_with_gil!(|py| {
+            fns.borrow(py).fns.get("fn").unwrap().call();
+        });
     }
 
     /// Add a step to the Consumer pipeline at the end of it.
