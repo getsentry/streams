@@ -1,3 +1,22 @@
+## 0.0.26
+
+### Various fixes & improvements
+
+- feat(batch): TumblingWindow by batch time (#193) by @victoria-yining-huang
+- feat: Barely functional version of Rust map and Rust filter (#177) by @untitaker
+- fix(reduce): test that the right committable is submitted (#187) by @bmckerry
+- ref(tests): create helpers module, break out delegate helpers (#192) by @bmckerry
+- ref: move make_msg functions into message_helpers.py (#191) by @bmckerry
+- update readme (#189) by @victoria-yining-huang
+- ref: consistently name example deployment config files (#185) by @bmckerry
+- expose thread_count to GCSSink (#188) by @victoria-yining-huang
+- feat(watermarks): add custom commit step for watermarks (#181) by @bmckerry
+- ref(pipeline): Restore type checking between steps (#180) by @untitaker
+- feat(tests): Add an integration test for an example pipeline (#178) by @evanh
+- feat(api): Remove the chains.py API (#173) by @evanh
+- feat(api): Allow the Pipeline to have a chain API (#162) by @evanh
+- fix(examples): Rewrite examples using the chain style API (#147) by @evanh
+
 ## 0.0.25
 
 ### Various fixes & improvements

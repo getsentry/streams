@@ -20,6 +20,7 @@ from sentry_streams.pipeline.message import (
     PyMessage,
 )
 from sentry_streams.rust_streams import PyAnyMessage
+from tests.adapters.arroyo.helpers.delegate_helpers import str_transformer
 
 
 def transformer(msg: Message[bytes]) -> Message[str]:
@@ -83,15 +84,6 @@ def test_rust_to_arroyo_msg_with_pyanymessage() -> None:
     assert arroyo_msg.payload.schema == "s"
     assert Partition(Topic("topic"), 0) in arroyo_msg.committable
     assert arroyo_msg.committable[Partition(Topic("topic"), 0)] == 123
-
-
-def str_transformer(msg: ArroyoMessage[Message[str]]) -> Message[str]:
-    return PyMessage(
-        f"transformed {msg.payload.payload}",
-        msg.payload.headers,
-        msg.payload.timestamp,
-        msg.payload.schema,
-    )
 
 
 def test_integration() -> None:

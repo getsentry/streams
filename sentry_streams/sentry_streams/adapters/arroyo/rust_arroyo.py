@@ -7,6 +7,7 @@ from typing import (
     Mapping,
     MutableMapping,
     Self,
+    Sequence,
     Type,
     cast,
 )
@@ -201,14 +202,20 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 bucket = (
                     step.bucket if not sink_config.get("bucket") else str(sink_config.get("bucket"))
                 )
+                parallelism_config = cast(Mapping[str, Any], sink_config.get("parallelism"))
+                if parallelism_config:
+                    thread_count = cast(int, parallelism_config["threads"])
+                else:
+                    thread_count = 1
             else:
                 bucket = step.bucket
+                thread_count = 1
 
             object_generator = step.object_generator
 
             logger.info(f"Adding GCS sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, bucket, object_generator)
+                RuntimeOperator.GCSSink(route, bucket, object_generator, thread_count)
             )
 
         # Our fallback for now since there's no other Sink type
@@ -272,12 +279,13 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
-        def filter_msg(msg: Message[Any]) -> bool:
-            return step.resolved_function(msg)
-
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.Filter(route, step.resolved_function)
+        )
+
         return stream
 
     def reduce(
@@ -334,7 +342,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             return branch.root.name
 
         logger.info(f"Adding router: {step.name} to pipeline")
-        self.__consumers[stream.source].add_step(RuntimeOperator.Router(route, routing_function))
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.Router(
+                route, routing_function, cast(Sequence[str], step.routing_table.values())
+            )
+        )
         return build_branches(stream, step.routing_table.values())
 
     def run(self) -> None:

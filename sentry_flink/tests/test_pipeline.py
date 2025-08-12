@@ -34,7 +34,7 @@ from sentry_streams.runner import iterate_edges
 from sentry_flink.flink.flink_adapter import FlinkAdapter
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def setup_basic_flink_env() -> (
     Generator[
         tuple[StreamExecutionEnvironment, RuntimeTranslator[DataStream, DataStreamSink]], None, None
@@ -83,9 +83,9 @@ def basic() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
         "nodes": [
             {
                 "id": 1,
-                "type": "Source: Custom Source",
+                "type": "Source: myinput",
                 "pact": "Data Source",
-                "contents": "Source: Custom Source",
+                "contents": "Source: myinput",
                 "parallelism": 1,
             },
             {
@@ -136,35 +136,35 @@ def basic_map() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]:
     expected = {
         "nodes": [
             {
-                "id": 7,
-                "type": "Source: Custom Source",
+                "id": 8,
+                "type": "Source: myinput",
                 "pact": "Data Source",
-                "contents": "Source: Custom Source",
+                "contents": "Source: myinput",
                 "parallelism": 1,
             },
             {
-                "id": 8,
+                "id": 9,
                 "type": "Map",
                 "pact": "Operator",
                 "contents": "Map",
                 "parallelism": 1,
-                "predecessors": [{"id": 7, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 8, "ship_strategy": "FORWARD", "side": "second"}],
             },
             {
-                "id": 10,
+                "id": 11,
                 "type": "Sink: Writer",
                 "pact": "Operator",
                 "contents": "Sink: Writer",
                 "parallelism": 1,
-                "predecessors": [{"id": 8, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 9, "ship_strategy": "FORWARD", "side": "second"}],
             },
             {
-                "id": 12,
+                "id": 13,
                 "type": "Sink: Committer",
                 "pact": "Operator",
                 "contents": "Sink: Committer",
                 "parallelism": 1,
-                "predecessors": [{"id": 10, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 11, "ship_strategy": "FORWARD", "side": "second"}],
             },
         ]
     }
@@ -198,35 +198,35 @@ def basic_filter() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     expected = {
         "nodes": [
             {
-                "id": 14,
-                "type": "Source: Custom Source",
+                "id": 16,
+                "type": "Source: myinput",
                 "pact": "Data Source",
-                "contents": "Source: Custom Source",
+                "contents": "Source: myinput",
                 "parallelism": 1,
             },
             {
-                "id": 15,
+                "id": 17,
                 "type": "Filter",
                 "pact": "Operator",
                 "contents": "Filter",
                 "parallelism": 1,
-                "predecessors": [{"id": 14, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 16, "ship_strategy": "FORWARD", "side": "second"}],
             },
             {
-                "id": 17,
+                "id": 19,
                 "type": "Sink: Writer",
                 "pact": "Operator",
                 "contents": "Sink: Writer",
                 "parallelism": 1,
-                "predecessors": [{"id": 15, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 17, "ship_strategy": "FORWARD", "side": "second"}],
             },
             {
-                "id": 19,
+                "id": 21,
                 "type": "Sink: Committer",
                 "pact": "Operator",
                 "contents": "Sink: Committer",
                 "parallelism": 1,
-                "predecessors": [{"id": 17, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 19, "ship_strategy": "FORWARD", "side": "second"}],
             },
         ]
     }
@@ -247,20 +247,20 @@ def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]
     expected = {
         "nodes": [
             {
-                "id": 55,
-                "type": "Source: Custom Source",
+                "id": 61,
+                "type": "Source: myinput",
                 "pact": "Data Source",
-                "contents": "Source: Custom Source",
+                "contents": "Source: myinput",
                 "parallelism": 1,
             },
             {
                 "contents": "Sink: Writer",
-                "id": 58,
+                "id": 64,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 55,
+                        "id": 61,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
@@ -269,12 +269,12 @@ def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]
             },
             {
                 "contents": "Sink: Committer",
-                "id": 60,
+                "id": 66,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 58,
+                        "id": 64,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
@@ -283,12 +283,12 @@ def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]
             },
             {
                 "contents": "Sink: Writer",
-                "id": 62,
+                "id": 69,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 55,
+                        "id": 61,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
@@ -297,12 +297,12 @@ def basic_broadcast() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]
             },
             {
                 "contents": "Sink: Committer",
-                "id": 64,
+                "id": 71,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 62,
+                        "id": 69,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
@@ -351,28 +351,28 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
     expected = {
         "nodes": [
             {
-                "id": 21,
-                "type": "Source: Custom Source",
+                "id": 24,
+                "type": "Source: myinput",
                 "pact": "Data Source",
-                "contents": "Source: Custom Source",
+                "contents": "Source: myinput",
                 "parallelism": 1,
             },
             {
-                "id": 22,
+                "id": 25,
                 "type": "Map",
                 "pact": "Operator",
                 "contents": "Map",
                 "parallelism": 1,
-                "predecessors": [{"id": 21, "ship_strategy": "FORWARD", "side": "second"}],
+                "predecessors": [{"id": 24, "ship_strategy": "FORWARD", "side": "second"}],
             },
             {
                 "contents": "Timestamps/Watermarks",
-                "id": 23,
+                "id": 26,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 22,
+                        "id": 25,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
@@ -381,35 +381,7 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
             },
             {
                 "contents": "_stream_key_by_map_operator",
-                "id": 24,
-                "pact": "Operator",
-                "parallelism": 1,
-                "predecessors": [
-                    {
-                        "id": 23,
-                        "ship_strategy": "FORWARD",
-                        "side": "second",
-                    },
-                ],
-                "type": "_stream_key_by_map_operator",
-            },
-            {
-                "contents": "Window(CountTumblingWindowAssigner(3), CountTrigger, FlinkAggregate)",
-                "id": 26,
-                "pact": "Operator",
-                "parallelism": 1,
-                "predecessors": [
-                    {
-                        "id": 24,
-                        "ship_strategy": "HASH",
-                        "side": "second",
-                    },
-                ],
-                "type": "CountTumblingWindowAssigner",
-            },
-            {
-                "contents": "Sink: Writer",
-                "id": 31,
+                "id": 27,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
@@ -419,16 +391,44 @@ def basic_map_reduce() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any
                         "side": "second",
                     },
                 ],
-                "type": "Sink: Writer",
+                "type": "_stream_key_by_map_operator",
             },
             {
-                "contents": "Sink: Committer",
-                "id": 33,
+                "contents": "Window(CountTumblingWindowAssigner(3), CountTrigger, FlinkAggregate)",
+                "id": 29,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 31,
+                        "id": 27,
+                        "ship_strategy": "HASH",
+                        "side": "second",
+                    },
+                ],
+                "type": "CountTumblingWindowAssigner",
+            },
+            {
+                "contents": "Sink: Writer",
+                "id": 34,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 29,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
+            },
+            {
+                "contents": "Sink: Committer",
+                "id": 36,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 34,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
@@ -485,20 +485,20 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
     expected = {
         "nodes": [
             {
-                "contents": "Source: Custom Source",
-                "id": 35,
+                "contents": "Source: myinput",
+                "id": 39,
                 "pact": "Data Source",
                 "parallelism": 1,
-                "type": "Source: Custom Source",
+                "type": "Source: myinput",
             },
             {
                 "contents": "Map",
-                "id": 39,
+                "id": 43,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 44,
+                        "id": 48,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
@@ -507,12 +507,12 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
             },
             {
                 "contents": "Map",
-                "id": 41,
+                "id": 45,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 44,
+                        "id": 48,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
@@ -521,21 +521,7 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
             },
             {
                 "contents": "Map, PROCESS",
-                "id": 44,
-                "pact": "Operator",
-                "parallelism": 1,
-                "predecessors": [
-                    {
-                        "id": 35,
-                        "ship_strategy": "FORWARD",
-                        "side": "second",
-                    },
-                ],
-                "type": "Map, PROCESS",
-            },
-            {
-                "contents": "Sink: Writer",
-                "id": 47,
+                "id": 48,
                 "pact": "Operator",
                 "parallelism": 1,
                 "predecessors": [
@@ -545,21 +531,7 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
                         "side": "second",
                     },
                 ],
-                "type": "Sink: Writer",
-            },
-            {
-                "contents": "Sink: Committer",
-                "id": 49,
-                "pact": "Operator",
-                "parallelism": 1,
-                "predecessors": [
-                    {
-                        "id": 47,
-                        "ship_strategy": "FORWARD",
-                        "side": "second",
-                    },
-                ],
-                "type": "Sink: Committer",
+                "type": "Map, PROCESS",
             },
             {
                 "contents": "Sink: Writer",
@@ -568,7 +540,7 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
                 "parallelism": 1,
                 "predecessors": [
                     {
-                        "id": 41,
+                        "id": 43,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
@@ -583,6 +555,34 @@ def basic_router() -> tuple[Pipeline, MutableMapping[str, list[dict[str, Any]]]]
                 "predecessors": [
                     {
                         "id": 51,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Committer",
+            },
+            {
+                "contents": "Sink: Writer",
+                "id": 56,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 45,
+                        "ship_strategy": "FORWARD",
+                        "side": "second",
+                    },
+                ],
+                "type": "Sink: Writer",
+            },
+            {
+                "contents": "Sink: Committer",
+                "id": 58,
+                "pact": "Operator",
+                "parallelism": 1,
+                "predecessors": [
+                    {
+                        "id": 56,
                         "ship_strategy": "FORWARD",
                         "side": "second",
                     },
