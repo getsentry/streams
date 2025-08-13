@@ -21,7 +21,7 @@ from arroyo.processing.strategies.run_task_with_multiprocessing import (
 from sentry_streams.adapters.arroyo.multi_process_delegate import (
     MultiprocessDelegateFactory,
 )
-from sentry_streams.adapters.arroyo.reduce import MetricsReduce
+from sentry_streams.adapters.arroyo.reduce import MetricsReportingReduce
 from sentry_streams.adapters.arroyo.reduce_delegate import ReduceDelegateFactory
 from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
@@ -192,6 +192,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             logger.info(f"Closing transformation chain: {stream} and adding to pipeline")
             self.__consumers[stream.source].add_step(finalize_chain(self.__chains, stream))
 
+    def get_consumer(self, source: str) -> ArroyoConsumer:
+        return self.__consumers[source]
+
     def complex_step_override(
         self,
     ) -> dict[Type[ComplexStep[Any, Any]], Callable[[ComplexStep[Any, Any]], Route]]:
@@ -283,13 +286,14 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
         parallelism_config = step_config.get("parallelism")
+        application_function = step.resolved_function
 
         def wrapped_function(msg: Message[Any]) -> Any:
             msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
             start_time = input_metrics(step.name, msg_size)
             has_error = output_size = None
             try:
-                result = step.resolved_function(msg)
+                result = application_function(msg)
                 output_size = get_size(result)
                 return result
             except Exception as e:
@@ -370,7 +374,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         name = step.name
         loaded_config: Mapping[str, Any] = self.steps_config.get(name, {})
         step.override_config(loaded_config)
-        step = MetricsReduce(step, name)
+        step = MetricsReportingReduce(step, name)
 
         logger.info(f"Adding reduce: {step.name} to pipeline")
 

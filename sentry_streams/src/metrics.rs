@@ -11,7 +11,8 @@ struct UdpMetricSink {
 
 impl UdpMetricSink {
     fn new(host: &str, port: u16) -> Result<Self, std::io::Error> {
-        let socket = UdpSocket::bind("0.0.0.0:0")?;
+        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+        socket.set_nonblocking(true).unwrap();
         let addr = format!("{}:{}", host, port);
         Ok(Self { socket, addr })
     }

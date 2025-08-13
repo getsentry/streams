@@ -10,18 +10,30 @@ from arroyo.utils.metrics import DummyMetricsBackend as ArroyoDummyMetricsBacken
 from arroyo.utils.metrics import configure_metrics as arroyo_configure_metrics
 from datadog import DogStatsd  # type: ignore[attr-defined]
 
-Tags = Mapping[str, str]
+Tags = dict[str, str]
 
 
 METRICS_FREQUENCY_SEC = 10
 
 
 class Metric(Enum):
+    # This counts how many messages were input into the step in the pipeline.
+    # Tags: step, pipeline
     INPUT_MESSAGES = "streams.pipeline.input.messages"
+    # This counts how many bytes were input into the step in the pipeline.
+    # Tags: step, pipeline
     INPUT_BYTES = "streams.pipeline.input.bytes"
+    # This counts how many messages were output from the step in the pipeline. Useful for filter/batch steps.
+    # Tags: step, pipeline
     OUTPUT_MESSAGES = "streams.pipeline.output.messages"
+    # This counts how many bytes were output from the step in the pipeline. Useful for filter/batch steps.
+    # Tags: step, pipeline
     OUTPUT_BYTES = "streams.pipeline.output.bytes"
+    # This times how long the application code in the step took to run.
+    # Tags: step, pipeline
     DURATION = "streams.pipeline.duration"
+    # This counts how many errors were encountered in the step in the pipeline.
+    # Tags: step, pipeline, error_type
     ERRORS = "streams.pipeline.errors"
 
 
@@ -57,6 +69,20 @@ class Metrics(Protocol):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def add_global_tags(self, tags: Tags) -> None:
+        """
+        Adds global tags to the metrics.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def remove_global_tags(self, tags: Tags) -> None:
+        """
+        Removes global tags from the metrics.
+        """
+        raise NotImplementedError
+
 
 class DummyMetricsBackend(Metrics):
     """
@@ -77,6 +103,12 @@ class DummyMetricsBackend(Metrics):
     def timing(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         pass
 
+    def add_global_tags(self, tags: Tags) -> None:
+        pass
+
+    def remove_global_tags(self, tags: Tags) -> None:
+        pass
+
 
 BufferedMetric = tuple[Metric, float, list[str] | None]
 
@@ -89,15 +121,14 @@ class DatadogMetricsBackend(Metrics):
     def __init__(self, host: str, port: int, prefix: str, tags: Optional[Tags] = None) -> None:
         self.host = host
         self.port = port
-        self.prefix = prefix
+        self.prefix = prefix if prefix.endswith(".") else prefix + "."
         self.tags = tags
+        self.__normalized_tags = self.__normalize_tags(tags) if tags is not None else []
         self.datadog_client = DogStatsd(
             host=host,
             port=port,
-            namespace=prefix,
-            constant_tags=(
-                [f"{key}:{value}" for key, value in tags.items()] if tags is not None else None
-            ),
+            namespace=self.prefix,
+            constant_tags=self.__normalized_tags,
         )
         self.__timers: dict[int, BufferedMetric] = {}
         self.__counters: dict[int, BufferedMetric] = {}
@@ -114,9 +145,9 @@ class DatadogMetricsBackend(Metrics):
     ) -> None:
         if tags is None:
             key = hash(name)
-            normalized_tags = None
+            normalized_tags = self.__normalized_tags
         else:
-            normalized_tags = self.__normalize_tags(tags)
+            normalized_tags = self.__normalize_tags(tags) + self.__normalized_tags
             key = hash((name, frozenset(normalized_tags)))
 
         if key in buffer:
@@ -138,20 +169,34 @@ class DatadogMetricsBackend(Metrics):
         self.__throttled_record()
 
     def gauge(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
-        self.__add_to_buffer(self.__gauges, name, value, tags)
+        self.__add_to_buffer(self.__gauges, name, value, tags, replace=True)
         self.__throttled_record()
 
     def timing(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         self.__add_to_buffer(self.__timers, name, value, tags)
         self.__throttled_record()
 
+    def add_global_tags(self, tags: Tags) -> None:
+        if self.tags is None:
+            self.tags = tags
+        else:
+            self.tags.update(tags)
+
+        self.__normalized_tags = self.__normalize_tags(self.tags)
+
+    def remove_global_tags(self, tags: Tags) -> None:
+        if self.tags:
+            for tag in tags:
+                self.tags.pop(tag, None)
+            self.__normalized_tags = self.__normalize_tags(self.tags)
+
     def flush(self) -> None:
         for name, value, tags in self.__timers.values():
-            self.datadog_client.timing(name.value, value, tags=tags)
+            self.datadog_client.timing(self.prefix + name.value, value, tags=tags)
         for name, value, tags in self.__counters.values():
-            self.datadog_client.increment(name.value, value, tags=tags)
+            self.datadog_client.increment(self.prefix + name.value, value, tags=tags)
         for name, value, tags in self.__gauges.values():
-            self.datadog_client.gauge(name.value, value, tags=tags)
+            self.datadog_client.gauge(self.prefix + name.value, value, tags=tags)
 
         self.__reset()
 
@@ -174,26 +219,32 @@ class ArroyoDatadogMetricsBackend:
     def __init__(self, datadog_client: DogStatsd) -> None:
         self.__datadog_client = datadog_client
 
-    def __normalize_tags(self, tags: Tags) -> list[str]:
+    def __normalize_tags(self, tags: Mapping[str, str]) -> list[str]:
         return [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
 
     def increment(
         self,
         name: ArroyoMetricName,
         value: Union[int, float] = 1,
-        tags: Optional[Tags] = None,
+        tags: Optional[Mapping[str, str]] = None,
     ) -> None:
         self.__datadog_client.increment(
             name, value, tags=self.__normalize_tags(tags) if tags else None
         )
 
     def gauge(
-        self, name: ArroyoMetricName, value: Union[int, float], tags: Optional[Tags] = None
+        self,
+        name: ArroyoMetricName,
+        value: Union[int, float],
+        tags: Optional[Mapping[str, str]] = None,
     ) -> None:
         self.__datadog_client.gauge(name, value, tags=self.__normalize_tags(tags) if tags else None)
 
     def timing(
-        self, name: ArroyoMetricName, value: Union[int, float], tags: Optional[Tags] = None
+        self,
+        name: ArroyoMetricName,
+        value: Union[int, float],
+        tags: Optional[Mapping[str, str]] = None,
     ) -> None:
         self.__datadog_client.timing(
             name, value, tags=self.__normalize_tags(tags) if tags else None
@@ -231,6 +282,7 @@ def get_metrics() -> Metrics:
 
 
 def get_size(obj: Any) -> int | None:
+    # TODO: Make this work for all types
     if isinstance(obj, (str, bytes)):
         return len(obj)
     return None

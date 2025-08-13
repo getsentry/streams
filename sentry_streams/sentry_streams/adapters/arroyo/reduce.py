@@ -75,15 +75,17 @@ class ArroyoAccumulator:
         return routed
 
 
-class MetricsAccumulator(Accumulator[Message[Any], Any]):
+class MetricsReportingAccumulator(Accumulator[PipelineMessage[InputType], OutputType]):
 
-    def __init__(self, acc: Callable[[], Accumulator[Any, Any]], name: str) -> None:
+    def __init__(
+        self, acc: Callable[[], Accumulator[PipelineMessage[InputType], OutputType]], name: str
+    ) -> None:
         self.acc = acc()
         self.start_time: float | None = None
         self.metrics = get_metrics()
         self.tags = {"step": name}
 
-    def add(self, value: Message[Any]) -> Self:
+    def add(self, value: PipelineMessage[InputType]) -> Self:
         if self.start_time is None:
             self.start_time = time.time()
         self.metrics.increment(Metric.INPUT_MESSAGES, tags=self.tags)
@@ -91,11 +93,11 @@ class MetricsAccumulator(Accumulator[Message[Any], Any]):
         if size is not None:
             self.metrics.increment(Metric.INPUT_BYTES, tags=self.tags, value=size)
 
-        self.acc.add(value.payload)
+        self.acc.add(value)
 
         return self
 
-    def get_value(self) -> Any:
+    def get_value(self) -> OutputType:
         result = self.acc.get_value()
         self.metrics.increment(Metric.OUTPUT_MESSAGES, tags=self.tags)
         size = get_size(result)
@@ -112,13 +114,14 @@ class MetricsAccumulator(Accumulator[Message[Any], Any]):
         return self
 
 
-class MetricsReduce(PipelineReduce[MeasurementUnit, InputType, OutputType]):
+class MetricsReportingReduce(PipelineReduce[MeasurementUnit, InputType, OutputType]):
 
     def __init__(
         self, reduce: PipelineReduce[MeasurementUnit, InputType, OutputType], name: str
     ) -> None:
         self.reduce: PipelineReduce[MeasurementUnit, InputType, OutputType] = reduce
-        self.acc = partial(MetricsAccumulator, reduce.aggregate_fn, name)
+        self.acc = partial(MetricsReportingAccumulator, reduce.aggregate_fn, name)
+        self.name = name
 
     @property
     def group_by(self) -> Optional[GroupBy]:
