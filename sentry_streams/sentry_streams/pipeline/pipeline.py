@@ -278,6 +278,8 @@ class GCSSink(Sink[TIn]):
     bucket: str
     object_generator: Callable[[], str]
     step_type: StepType = StepType.SINK
+    def __post_init__(self) -> None:
+        print("is this thing on?")
 
 
 @dataclass

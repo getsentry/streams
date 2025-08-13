@@ -79,13 +79,20 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         let object =
             traced_with_gil!(|py| { object_gen_fn(self.object_generator.clone_ref(py), py) })
                 .unwrap();
+        let object_name = object.clone();
 
         let url = format!(
             "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
             self.bucket.clone(),
             object
         );
-
+        let bucket_str = format!("{}", self.bucket);
+        // tracing::info!("object name is");
+        // tracing::info!(object_name);
+        // tracing::info!("bucket name is");
+        
+        tracing::info!("here");
+        
         let route = message.payload().route.clone();
         let actual_route = self.route.clone();
 
@@ -94,6 +101,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 traced_with_gil!(|py| pybytes_to_bytes(py_message, py)).unwrap()
             }
             RoutedValuePayload::WatermarkMessage(..) => {
+                tracing::info!("early return?");
                 return Box::pin(async move { Ok(message) })
             }
         };
@@ -101,13 +109,15 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         Box::pin(async move {
             // TODO: This route-based forwarding does not need to be
             // run with multiple threads. Look into removing this from the async task.
+            tracing::info!("in async move");
             if route != actual_route {
+                tracing::info!("in weird route stuff");
                 return Ok(message);
             }
 
             let res: Result<reqwest::Response, reqwest::Error> =
                 client.post(&url).body(bytes).send().await;
-
+            tracing::info!("here after post");
             let response = res.unwrap();
             let status = response.status();
 
@@ -123,6 +133,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     Err(RunTaskError::RetryableError)
                 }
             } else {
+                tracing::info!("Writing file to GCS bucket: {}, file name: {}", bucket_str,object_name);
                 Ok(message)
             }
         })

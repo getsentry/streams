@@ -1,0 +1,14 @@
+
+# Default configuration
+# As of now, the assumption is that local adapters (like Arroyo)
+# do not require overrides of this file
+env: {}
+
+pipeline:
+  segments:
+    - steps_config:
+        myinput:
+          starts_segment: True
+          bootstrap_servers: ["127.0.0.1:9092"]
+        mysink:
+          bootstrap_servers: ["127.0.0.1:9092"]
