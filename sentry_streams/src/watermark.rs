@@ -117,15 +117,18 @@ impl ProcessingStrategy<RoutedValue> for WatermarkEmitter {
 mod tests {
     use super::*;
     use crate::commit_policy::WatermarkCommitOffsets;
+    use crate::consumer::build_chain;
     use crate::fake_strategy::{assert_watermarks_match, FakeStrategy};
     use crate::messages::Watermark;
     use crate::mocks::set_timestamp;
+    use crate::operators::RuntimeOperator;
     use crate::routes::Route;
-    use crate::testutils::{build_routed_value, make_committable, make_lambda};
-    use crate::transformer::build_map;
+    use crate::testutils::{build_routed_value, make_committable, make_lambda, make_msg};
     use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
+    use pyo3::prelude::*;
     use pyo3::IntoPyObjectExt;
+    use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
     use sentry_arroyo::types::Topic;
     use std::collections::HashMap;
@@ -197,36 +200,30 @@ mod tests {
         crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: x"));
-            let commit_step = Box::new(WatermarkCommitOffsets::new(1));
-            let map_step = build_map(
-                &Route::new("source".to_string(), vec![]),
-                callable,
-                commit_step,
+            let map_step = Py::new(
+                py,
+                RuntimeOperator::Map {
+                    route: Route::new("source".to_string(), vec![]),
+                    function: callable,
+                },
+            )
+            .unwrap();
+            let mut watermark_step = build_chain(
+                "source",
+                &[map_step],
+                Box::new(WatermarkCommitOffsets::new(1)),
+                &ConcurrencyConfig::new(1),
+                &None,
             );
-            let mut watermark_step = Box::new(WatermarkEmitter::new(
-                map_step,
-                Route::new("source".to_string(), vec![]),
-                10,
-            ));
 
-            let msg1 = Message::new_any_message(
-                build_routed_value(
-                    py,
-                    "test_message".into_py_any(py).unwrap(),
-                    "source",
-                    vec![],
-                ),
+            let msg1 = make_msg(
+                Some(b"test_message".to_vec()),
                 BTreeMap::from([(Partition::new(Topic::new("test_topic"), 0), 100)]),
             );
             let _ = watermark_step.submit(msg1);
 
-            let msg2 = Message::new_any_message(
-                build_routed_value(
-                    py,
-                    "test_message".into_py_any(py).unwrap(),
-                    "source",
-                    vec![],
-                ),
+            let msg2 = make_msg(
+                Some(b"test_message2".to_vec()),
                 BTreeMap::from([(Partition::new(Topic::new("test_topic"), 1), 80)]),
             );
             let _ = watermark_step.submit(msg2);
