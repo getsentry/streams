@@ -53,6 +53,7 @@ pub enum RuntimeOperator {
         route: Route,
         bucket: String,
         object_generator: Py<PyAny>,
+        thread_count: usize,
     },
     /// Represents a Broadcast step in the pipeline that takes a single
     /// message and submits a copy of that message to each downstream route.
@@ -117,6 +118,7 @@ pub fn build(
             route,
             bucket,
             object_generator,
+            thread_count,
         } => {
             let func_ref = traced_with_gil!(|py| { object_generator.clone_ref(py) });
 
