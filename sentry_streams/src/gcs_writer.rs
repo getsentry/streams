@@ -79,7 +79,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         let object =
             traced_with_gil!(|py| { object_gen_fn(self.object_generator.clone_ref(py), py) })
                 .unwrap();
-
+        let object_name = object.clone();
         let url = format!(
             "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
             self.bucket.clone(),
@@ -123,13 +123,8 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     Err(RunTaskError::RetryableError)
                 }
             } else {
-                Ok(message);
-                let object_name =
-                    object_gen_fn(object_generator.clone(), Python::acquire_gil().python())
-                        .expect("Failed to generate object name");
-
-                // Log the file name being written to GCS
                 tracing::info!("Writing file to GCS: {}", object_name);
+                Ok(message)
             }
         })
     }
