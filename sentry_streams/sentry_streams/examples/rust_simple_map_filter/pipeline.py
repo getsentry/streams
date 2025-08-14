@@ -15,7 +15,10 @@ from sentry_streams.pipeline.pipeline import (
 
 # Import the compiled Rust functions
 try:
-    from metrics_rust_transforms import RustFilterEvents, RustTransformMsg
+    from metrics_rust_transforms import (  # type: ignore[import-not-found]
+        RustFilterEvents,
+        RustTransformMsg,
+    )
 except ImportError as e:
     raise ImportError(
         "Rust extension 'metrics_rust_transforms' not found. "
