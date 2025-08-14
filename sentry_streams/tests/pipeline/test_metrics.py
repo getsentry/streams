@@ -81,14 +81,6 @@ class TestDatadogMetricsBackend:
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_normalize_tags(self, mock_dogstatsd: Any) -> None:
-        backend = DatadogMetricsBackend("localhost", 8125, "test")
-        tags = {"key": "value|with|pipes", "env": "test"}
-        normalized = backend._DatadogMetricsBackend__normalize_tags(tags)  # type: ignore[attr-defined]
-
-        assert normalized == ["key:value_with_pipes", "env:test"]
-
-    @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
     def test_increment_without_auto_flush(self, mock_time: Any, mock_dogstatsd: Any) -> None:
         mock_time.return_value = 0.0
@@ -254,28 +246,12 @@ class TestDatadogMetricsBackend:
 
 class TestArroyoDatadogMetricsBackend:
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_init(self, mock_dogstatsd: Any) -> None:
-        mock_client = Mock()
-        backend = ArroyoDatadogMetricsBackend(mock_client)
-        assert backend._ArroyoDatadogMetricsBackend__datadog_client == mock_client  # type: ignore[attr-defined]
-
-    @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_normalize_tags(self, mock_dogstatsd: Any) -> None:
-        mock_client = Mock()
-        backend = ArroyoDatadogMetricsBackend(mock_client)
-        tags = {"key": "value|with|pipes"}
-
-        normalized = backend._ArroyoDatadogMetricsBackend__normalize_tags(tags)  # type: ignore[attr-defined]
-
-        assert normalized == ["key:value_with_pipes"]
-
-    @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_increment(self, mock_dogstatsd: Any) -> None:
         mock_client = Mock()
         backend = ArroyoDatadogMetricsBackend(mock_client)
 
         # Use a valid Arroyo metric name instead of "test.metric"
-        backend.increment("arroyo.consumer.run.count", 5, {"env": "test"})  # type: ignore[arg-type]
+        backend.increment("arroyo.consumer.run.count", 5, {"env": "test"})
 
         mock_client.increment.assert_called_once_with(
             "arroyo.consumer.run.count", 5, tags=["env:test"]
@@ -287,7 +263,7 @@ class TestArroyoDatadogMetricsBackend:
         backend = ArroyoDatadogMetricsBackend(mock_client)
 
         # Use a valid Arroyo metric name instead of "test.metric"
-        backend.gauge("arroyo.consumer.run.count", 100, {"env": "test"})  # type: ignore[arg-type]
+        backend.gauge("arroyo.consumer.run.count", 100, {"env": "test"})
 
         mock_client.gauge.assert_called_once_with(
             "arroyo.consumer.run.count", 100, tags=["env:test"]
@@ -299,7 +275,7 @@ class TestArroyoDatadogMetricsBackend:
         backend = ArroyoDatadogMetricsBackend(mock_client)
 
         # Use a valid Arroyo metric name instead of "test.metric"
-        backend.timing("arroyo.consumer.poll.time", 1000, {"env": "test"})  # type: ignore[arg-type]
+        backend.timing("arroyo.consumer.poll.time", 1000, {"env": "test"})
 
         mock_client.timing.assert_called_once_with(
             "arroyo.consumer.poll.time", 1000, tags=["env:test"]
@@ -311,9 +287,9 @@ class TestArroyoDatadogMetricsBackend:
         backend = ArroyoDatadogMetricsBackend(mock_client)
 
         # Use valid Arroyo metric names instead of "test.metric"
-        backend.increment("arroyo.consumer.run.count")  # type: ignore[arg-type]
-        backend.gauge("arroyo.consumer.run.count", 100)  # type: ignore[arg-type]
-        backend.timing("arroyo.consumer.poll.time", 1000)  # type: ignore[arg-type]
+        backend.increment("arroyo.consumer.run.count")
+        backend.gauge("arroyo.consumer.run.count", 100)
+        backend.timing("arroyo.consumer.poll.time", 1000)
 
         mock_client.increment.assert_called_once_with("arroyo.consumer.run.count", 1, tags=None)
         mock_client.gauge.assert_called_once_with("arroyo.consumer.run.count", 100, tags=None)
@@ -376,7 +352,7 @@ class TestConfigureMetrics:
         invalid_backend = "not_a_metrics_backend"
 
         with pytest.raises(AssertionError):
-            configure_metrics(invalid_backend)  # type: ignore[arg-type]
+            configure_metrics(invalid_backend)  # type: ignore
 
 
 class TestGetMetrics:

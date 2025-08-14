@@ -15,7 +15,7 @@ from sentry_streams.pipeline.pipeline import (
 
 # Import the compiled Rust functions
 try:
-    from metrics_rust_transforms import (  # type: ignore[import-not-found]
+    from metrics_rust_transforms import (
         RustFilterEvents,
         RustTransformMsg,
     )
