@@ -79,22 +79,24 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         let object =
             traced_with_gil!(|py| { object_gen_fn(self.object_generator.clone_ref(py), py) })
                 .unwrap();
+        let object_name = object.clone();
 
         let url = format!(
             "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
             self.bucket.clone(),
             object
         );
+        let bucket_str = format!("{}", self.bucket);
 
         let route = message.payload().route.clone();
         let actual_route = self.route.clone();
 
-        let bytes = match message.payload().payload {
+        let bytes: Vec<u8> = match message.payload().payload {
             RoutedValuePayload::PyStreamingMessage(ref py_message) => {
                 traced_with_gil!(|py| pybytes_to_bytes(py_message, py)).unwrap()
             }
             RoutedValuePayload::WatermarkMessage(..) => {
-                return Box::pin(async move { Ok(message) })
+                return Box::pin(async move { Ok(message) });
             }
         };
 
@@ -107,7 +109,6 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 
             let res: Result<reqwest::Response, reqwest::Error> =
                 client.post(&url).body(bytes).send().await;
-
             let response = res.unwrap();
             let status = response.status();
 
@@ -123,6 +124,11 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     Err(RunTaskError::RetryableError)
                 }
             } else {
+                tracing::info!(
+                    "Writing file to GCS bucket: {}, file name: {}",
+                    bucket_str,
+                    object_name
+                );
                 Ok(message)
             }
         })
