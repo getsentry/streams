@@ -16,6 +16,7 @@ from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
     Filter,
+    GCSSink,
     Map,
     Pipeline,
     StepType,
@@ -332,3 +333,12 @@ def test_batch_step_only_window_size() -> None:
         args, _ = MockReduce.call_args
         assert args[0] == window_size
         assert args[1] == float("inf")
+
+
+def test_gcssink_instantiation() -> None:
+    def generate_file_name() -> str:
+        return "test-file.txt"
+
+    sink: GCSSink = GCSSink(name="gcssink", bucket="my-bucket", object_generator=generate_file_name)
+    assert sink.name == "gcssink"
+    assert sink.bucket == "my-bucket"
