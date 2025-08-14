@@ -306,6 +306,8 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         As currently implemented, watermarks can move backwards in message order (as watermarks
         are always yielded after messages), but can never move earlier (meaning we don't commit messages before
         they're finished processing).
+
+        Currently, if no new messages are received, watermarks will not be sent further down the pipeline from a delegate.
         """
         # TODO: ensure watermarks leave the delegate in the same order they entered it
         for message, committable in self.__retriever.fetch():
