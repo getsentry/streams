@@ -14,11 +14,14 @@ from typing import (
     cast,
 )
 
-from sentry_streams.rust_streams import PyAnyMessage, RawMessage
+from sentry_streams.rust_streams import PyAnyMessage, PyWatermark, RawMessage
 
 TPayload = TypeVar("TPayload")
 
+# Represents the Rust message types which are actually processed by delegate steps
 RustMessage = Union[PyAnyMessage, RawMessage]
+# Represents the Rust message types which can be sent into a delegate step
+PipelineMessage = Union[RustMessage, PyWatermark]
 
 
 class Message(ABC, Generic[TPayload]):

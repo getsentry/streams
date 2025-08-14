@@ -17,7 +17,7 @@ pub fn clone_committable(message: &Message<RoutedValue>) -> BTreeMap<Partition, 
 pub fn convert_committable_to_py(
     py: Python<'_>,
     committable: BTreeMap<Partition, u64>,
-) -> Result<Py<PyAny>, PyErr> {
+) -> Result<Py<PyDict>, PyErr> {
     let dict = PyDict::new(py);
     for (partition, offset) in committable {
         let key = PyTuple::new(
@@ -35,10 +35,10 @@ pub fn convert_committable_to_py(
 /// Converts a python dict containing a committable into a rust BTreeMap
 pub fn convert_py_committable(
     py: Python<'_>,
-    py_committable: Py<PyAny>,
+    py_committable: Py<PyDict>,
 ) -> Result<BTreeMap<Partition, u64>, PyErr> {
     let mut committable = BTreeMap::new();
-    let dict = py_committable.downcast_bound::<PyDict>(py)?;
+    let dict = py_committable.bind(py);
     for (key, value) in dict.iter() {
         let partition = key.downcast::<PyTuple>()?;
         let topic: String = partition.get_item(0)?.extract()?;
