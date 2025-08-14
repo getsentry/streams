@@ -23,6 +23,8 @@ mod watermark;
 #[doc(hidden)]
 pub mod ffi;
 pub use ffi::Message;
+#[cfg(feature = "cli")]
+pub mod run;
 
 #[cfg(test)]
 mod fake_strategy;
