@@ -189,7 +189,7 @@ fn to_routed_value(
 /// by the caller. This is generally a CommitOffsets step but it can
 /// be customized.
 /// It also adds a Watermark step which periodically sends watermark messages downstream.
-fn build_chain(
+pub fn build_chain(
     source: &str,
     steps: &[Py<RuntimeOperator>],
     ending_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
@@ -276,6 +276,7 @@ mod tests {
     use pyo3::ffi::c_str;
     use pyo3::types::PyBytes;
     use pyo3::IntoPyObjectExt;
+    use std::collections::BTreeMap;
     use std::ops::Deref;
     use std::sync::{Arc, Mutex};
 
@@ -284,7 +285,7 @@ mod tests {
         crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let payload_data = b"test_payload";
-            let message = make_msg(Some(payload_data.to_vec()));
+            let message = make_msg(Some(payload_data.to_vec()), BTreeMap::new());
 
             let python_message = to_routed_value("source", message, &Some("schema".to_string()));
 
@@ -309,7 +310,7 @@ mod tests {
     fn test_to_none_python() {
         crate::testutils::initialize_python();
         traced_with_gil!(|py| {
-            let message = make_msg(None);
+            let message = make_msg(None, BTreeMap::new());
             let python_message = to_routed_value("source", message, &Some("schema".to_string()));
             let msg_payload = &python_message.payload();
             let py_payload = msg_payload.payload.unwrap_payload();
@@ -364,7 +365,7 @@ mod tests {
                 &concurrency_config,
                 &Some("schema".to_string()),
             );
-            let message = make_msg(Some(b"test_payload".to_vec()));
+            let message = make_msg(Some(b"test_payload".to_vec()), BTreeMap::new());
 
             chain.submit(message).unwrap();
 

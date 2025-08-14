@@ -54,7 +54,7 @@ def test_map_step(metric: IngestMetric) -> None:
     mapped_route = Route(source="source1", waypoints=["branch1"])
     other_route = Route(source="source1", waypoints=["branch2"])
     pipeline = streaming_source(name="source", stream_name="events").apply(
-        Parser("parser", msg_type=IngestMetric)
+        Parser[IngestMetric]("parser")
     )
     pipeline_map: Map[IngestMetric, IngestMetric] = Map(
         name="mymap", function=lambda msg: msg.payload
@@ -104,7 +104,7 @@ def test_filter_step(metric: IngestMetric, transformed_metric: IngestMetric) -> 
     mapped_route = Route(source="source1", waypoints=["branch1"])
     other_route = Route(source="source1", waypoints=["branch2"])
     pipeline = streaming_source(name="source", stream_name="events").apply(
-        Parser("parser", msg_type=IngestMetric)
+        Parser[IngestMetric]("parser")
     )
 
     pipeline_filter: Filter[IngestMetric] = Filter(
@@ -157,7 +157,7 @@ def test_router(metric: IngestMetric, transformed_metric: IngestMetric) -> None:
     mapped_route = Route(source="source1", waypoints=["map_branch"])
     other_route = Route(source="source1", waypoints=["other_branch"])
     pipeline = streaming_source(name="source", stream_name="events").apply(
-        Parser("parser", msg_type=IngestMetric)
+        Parser[IngestMetric]("parser")
     )
 
     def dummy_routing_func(message: StreamsMessage[IngestMetric]) -> str:
@@ -218,7 +218,7 @@ def test_broadcast(metric: IngestMetric, transformed_metric: IngestMetric) -> No
     mapped_route = Route(source="source1", waypoints=["map_branch"])
     other_route = Route(source="source1", waypoints=["other_branch"])
     pipeline = streaming_source(name="source", stream_name="events").apply(
-        Parser("parser", msg_type=IngestMetric)
+        Parser[IngestMetric]("parser")
     )
 
     pipeline_router: Broadcast[IngestMetric] = Broadcast(
@@ -318,7 +318,7 @@ def test_reduce_step(transformer: Callable[[], TransformerBatch], metric: Ingest
     mapped_route = Route(source="source1", waypoints=["branch1"])
     other_route = Route(source="source1", waypoints=["branch2"])
     pipeline = streaming_source(name="source", stream_name="events").apply(
-        Parser("parser", msg_type=IngestMetric)
+        Parser[IngestMetric]("parser")
     )
 
     reduce_window = SlidingWindow(

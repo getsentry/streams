@@ -30,7 +30,7 @@ def extract_bytes_from_batch(
 parsed_batch = (
     pipeline.apply(Batch("mybatch", batch_size=2))
     .apply(Map("extract_bytes", function=extract_bytes_from_batch))
-    .apply(BatchParser("batch_parser", msg_type=IngestMetric))
+    .apply(BatchParser[IngestMetric]("batch_parser"))
 )
 
 parsed_batch.apply(Serializer("serializer")).sink(

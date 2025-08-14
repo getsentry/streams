@@ -226,7 +226,7 @@ def test_flush() -> None:
 
 
 def test_reduce() -> None:
-    factory = ReduceDelegateFactory[Sequence[str]](Batch("batch", 4))
+    factory = ReduceDelegateFactory[Sequence[str]](Batch("batch", batch_size=4))
     delegate = factory.build()
 
     timestamp = datetime.now().timestamp()

@@ -8,7 +8,7 @@ from sentry_streams.pipeline.window import TumblingWindow
 
 # A sample window.
 # Windows are open for 5 seconds max
-reduce_window = TumblingWindow(window_size=timedelta(seconds=5))
+reduce_window = TumblingWindow(window_timedelta=timedelta(seconds=5))
 
 # TODO: This example effectively needs a Custom Trigger.
 # A Segment can be considered ready if a span named "end" arrives
@@ -18,7 +18,7 @@ reduce_window = TumblingWindow(window_size=timedelta(seconds=5))
 
 pipeline = (
     streaming_source(name="myinput", stream_name="events")
-    .apply(Parser("mymap", msg_type=SpanEvent))
+    .apply(Parser[SpanEvent]("mymap"))
     .apply(
         Reducer(
             "myreduce",

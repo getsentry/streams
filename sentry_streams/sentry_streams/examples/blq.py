@@ -32,7 +32,7 @@ pipeline = (
         name="ingest",
         stream_name="ingest-metrics",
     )
-    .apply(Parser("parser", msg_type=IngestMetric))
+    .apply(Parser[IngestMetric]("parser"))
     .route(
         "blq_router",
         routing_function=should_send_to_blq,
