@@ -5,16 +5,13 @@ use sentry_arroyo::processing::strategies::{
 };
 use sentry_arroyo::types::{Message, Partition};
 use std::collections::BTreeMap;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tracing::warn;
 
-/// Returns the current Unix epoch
-fn current_epoch() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
+#[cfg(test)]
+use crate::mocks::current_epoch;
+#[cfg(not(test))]
+use crate::time_helpers::current_epoch;
 
 /// A strategy that periodically sends watermark messages.
 /// This strategy is added as the first step in a consumer.
@@ -119,13 +116,22 @@ impl ProcessingStrategy<RoutedValue> for WatermarkEmitter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commit_policy::WatermarkCommitOffsets;
+    use crate::consumer::build_chain;
     use crate::fake_strategy::{assert_watermarks_match, FakeStrategy};
     use crate::messages::Watermark;
+    use crate::mocks::set_timestamp;
+    use crate::operators::RuntimeOperator;
     use crate::routes::Route;
-    use crate::testutils::{build_routed_value, make_committable};
+    use crate::testutils::{build_routed_value, make_committable, make_lambda, make_msg};
     use crate::utils::traced_with_gil;
+    use pyo3::ffi::c_str;
+    use pyo3::prelude::*;
     use pyo3::IntoPyObjectExt;
+    use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
+    use sentry_arroyo::types::Topic;
+    use std::collections::HashMap;
     use std::ops::Deref;
     use std::sync::{Arc, Mutex};
 
@@ -177,11 +183,65 @@ mod tests {
 
             // submitted WatermarkMessage contains the last seen committable
             watermark.last_sent_timestamp = 0;
+            set_timestamp(20);
             let _ = watermark.poll();
             assert_watermarks_match(
                 vec![Watermark::new(expected_committable, 0)],
                 submitted_watermarks_clone.lock().unwrap().deref(),
             );
+            set_timestamp(0);
         })
+    }
+
+    #[test]
+    fn test_watermark_to_commit_step() {
+        // TODO: once Router works with watermarks, ensure commit request is not returned
+        // from commit step if messages from all routes haven't reached commit step
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let callable = make_lambda(py, c_str!("lambda x: x"));
+            let map_step = Py::new(
+                py,
+                RuntimeOperator::Map {
+                    route: Route::new("source".to_string(), vec![]),
+                    function: callable,
+                },
+            )
+            .unwrap();
+            let mut watermark_step = build_chain(
+                "source",
+                &[map_step],
+                Box::new(WatermarkCommitOffsets::new(1)),
+                &ConcurrencyConfig::new(1),
+                &None,
+            );
+
+            let msg1 = make_msg(
+                Some(b"test_message".to_vec()),
+                BTreeMap::from([(Partition::new(Topic::new("test_topic"), 0), 100)]),
+            );
+            let _ = watermark_step.submit(msg1);
+
+            let msg2 = make_msg(
+                Some(b"test_message2".to_vec()),
+                BTreeMap::from([(Partition::new(Topic::new("test_topic"), 1), 80)]),
+            );
+            let _ = watermark_step.submit(msg2);
+            let res = watermark_step.poll().unwrap();
+            assert!(res.is_none());
+
+            set_timestamp(20);
+            let res = watermark_step.poll().unwrap();
+            assert_eq!(
+                res,
+                Some(CommitRequest {
+                    positions: HashMap::from([
+                        (Partition::new(Topic::new("test_topic"), 0), 100),
+                        (Partition::new(Topic::new("test_topic"), 1), 80),
+                    ])
+                })
+            );
+            set_timestamp(0);
+        });
     }
 }
