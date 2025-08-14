@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
@@ -15,7 +16,7 @@ from sentry_streams.metrics.metrics import (
 
 
 class TestMetric:
-    def test_metric_enum_values(self):
+    def test_metric_enum_values(self) -> None:
         assert Metric.INPUT_MESSAGES.value == "streams.pipeline.input.messages"
         assert Metric.INPUT_BYTES.value == "streams.pipeline.input.bytes"
         assert Metric.OUTPUT_MESSAGES.value == "streams.pipeline.output.messages"
@@ -25,33 +26,33 @@ class TestMetric:
 
 
 class TestDummyMetricsBackend:
-    def test_increment(self):
+    def test_increment(self) -> None:
         backend = DummyMetricsBackend()
         backend.increment(Metric.INPUT_MESSAGES, 5)
         backend.increment(Metric.INPUT_MESSAGES, tags={"key": "value"})
 
-    def test_gauge(self):
+    def test_gauge(self) -> None:
         backend = DummyMetricsBackend()
         backend.gauge(Metric.INPUT_BYTES, 100)
         backend.gauge(Metric.INPUT_BYTES, 200.5, tags={"key": "value"})
 
-    def test_timing(self):
+    def test_timing(self) -> None:
         backend = DummyMetricsBackend()
         backend.timing(Metric.DURATION, 1000)
         backend.timing(Metric.DURATION, 1500.5, tags={"key": "value"})
 
-    def test_add_global_tags(self):
+    def test_add_global_tags(self) -> None:
         backend = DummyMetricsBackend()
         backend.add_global_tags({"env": "test"})
 
-    def test_remove_global_tags(self):
+    def test_remove_global_tags(self) -> None:
         backend = DummyMetricsBackend()
         backend.remove_global_tags({"env": "test"})
 
 
 class TestDatadogMetricsBackend:
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_init_with_prefix_dot(self, mock_dogstatsd):
+    def test_init_with_prefix_dot(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test.")
         assert backend.prefix == "test."
         mock_dogstatsd.assert_called_once_with(
@@ -62,12 +63,12 @@ class TestDatadogMetricsBackend:
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_init_without_prefix_dot(self, mock_dogstatsd):
+    def test_init_without_prefix_dot(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         assert backend.prefix == "test."
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_init_with_tags(self, mock_dogstatsd):
+    def test_init_with_tags(self, mock_dogstatsd: Any) -> None:
         tags = {"env": "production", "service": "streams"}
         DatadogMetricsBackend("localhost", 8125, "test", tags)
 
@@ -80,16 +81,16 @@ class TestDatadogMetricsBackend:
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_normalize_tags(self, mock_dogstatsd):
+    def test_normalize_tags(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         tags = {"key": "value|with|pipes", "env": "test"}
-        normalized = backend._DatadogMetricsBackend__normalize_tags(tags)
+        normalized = backend._DatadogMetricsBackend__normalize_tags(tags)  # type: ignore[attr-defined]
 
         assert normalized == ["key:value_with_pipes", "env:test"]
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
-    def test_increment_without_auto_flush(self, mock_time, mock_dogstatsd):
+    def test_increment_without_auto_flush(self, mock_time: Any, mock_dogstatsd: Any) -> None:
         mock_time.return_value = 0.0
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         mock_client = mock_dogstatsd.return_value
@@ -106,7 +107,7 @@ class TestDatadogMetricsBackend:
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
-    def test_increment_with_throttling(self, mock_time, mock_dogstatsd):
+    def test_increment_with_throttling(self, mock_time: Any, mock_dogstatsd: Any) -> None:
         mock_time.side_effect = [METRICS_FREQUENCY_SEC + 1, METRICS_FREQUENCY_SEC + 2]
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         mock_client = mock_dogstatsd.return_value
@@ -118,7 +119,7 @@ class TestDatadogMetricsBackend:
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_increment_with_tags(self, mock_dogstatsd):
+    def test_increment_with_tags(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         mock_client = mock_dogstatsd.return_value
         tags = {"env": "test"}
@@ -132,7 +133,7 @@ class TestDatadogMetricsBackend:
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
-    def test_increment_accumulation(self, mock_time, mock_dogstatsd):
+    def test_increment_accumulation(self, mock_time: Any, mock_dogstatsd: Any) -> None:
         mock_time.return_value = 0.0
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         mock_client = mock_dogstatsd.return_value
@@ -146,7 +147,7 @@ class TestDatadogMetricsBackend:
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_gauge(self, mock_dogstatsd):
+    def test_gauge(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         mock_client = mock_dogstatsd.return_value
 
@@ -157,7 +158,7 @@ class TestDatadogMetricsBackend:
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
-    def test_gauge_replacement(self, mock_time, mock_dogstatsd):
+    def test_gauge_replacement(self, mock_time: Any, mock_dogstatsd: Any) -> None:
         mock_time.return_value = 0.0
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         mock_client = mock_dogstatsd.return_value
@@ -169,7 +170,7 @@ class TestDatadogMetricsBackend:
         mock_client.gauge.assert_called_once_with("test.streams.pipeline.input.bytes", 200, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_timing(self, mock_dogstatsd):
+    def test_timing(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         mock_client = mock_dogstatsd.return_value
 
@@ -179,7 +180,7 @@ class TestDatadogMetricsBackend:
         mock_client.timing.assert_called_once_with("test.streams.pipeline.duration", 1500, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_add_global_tags_new(self, mock_dogstatsd):
+    def test_add_global_tags_new(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         mock_client = mock_dogstatsd.return_value
         tags = {"env": "production"}
@@ -194,7 +195,7 @@ class TestDatadogMetricsBackend:
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_add_global_tags_existing(self, mock_dogstatsd):
+    def test_add_global_tags_existing(self, mock_dogstatsd: Any) -> None:
         initial_tags = {"service": "streams"}
         backend = DatadogMetricsBackend("localhost", 8125, "test", initial_tags)
         mock_client = mock_dogstatsd.return_value
@@ -211,7 +212,7 @@ class TestDatadogMetricsBackend:
         assert "env:production" in called_args[1]["tags"]
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_remove_global_tags(self, mock_dogstatsd):
+    def test_remove_global_tags(self, mock_dogstatsd: Any) -> None:
         initial_tags = {"service": "streams", "env": "production"}
         backend = DatadogMetricsBackend("localhost", 8125, "test", initial_tags)
         mock_client = mock_dogstatsd.return_value
@@ -226,7 +227,7 @@ class TestDatadogMetricsBackend:
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_remove_global_tags_nonexistent(self, mock_dogstatsd):
+    def test_remove_global_tags_nonexistent(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
 
         backend.remove_global_tags({"nonexistent": "tag"})
@@ -234,7 +235,7 @@ class TestDatadogMetricsBackend:
         assert backend.tags is None
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_flush_all_metric_types(self, mock_dogstatsd):
+    def test_flush_all_metric_types(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
         mock_client = mock_dogstatsd.return_value
 
@@ -253,70 +254,80 @@ class TestDatadogMetricsBackend:
 
 class TestArroyoDatadogMetricsBackend:
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_init(self, mock_dogstatsd):
+    def test_init(self, mock_dogstatsd: Any) -> None:
         mock_client = Mock()
         backend = ArroyoDatadogMetricsBackend(mock_client)
-        assert backend._ArroyoDatadogMetricsBackend__datadog_client == mock_client
+        assert backend._ArroyoDatadogMetricsBackend__datadog_client == mock_client  # type: ignore[attr-defined]
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_normalize_tags(self, mock_dogstatsd):
+    def test_normalize_tags(self, mock_dogstatsd: Any) -> None:
         mock_client = Mock()
         backend = ArroyoDatadogMetricsBackend(mock_client)
         tags = {"key": "value|with|pipes"}
 
-        normalized = backend._ArroyoDatadogMetricsBackend__normalize_tags(tags)
+        normalized = backend._ArroyoDatadogMetricsBackend__normalize_tags(tags)  # type: ignore[attr-defined]
 
         assert normalized == ["key:value_with_pipes"]
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_increment(self, mock_dogstatsd):
+    def test_increment(self, mock_dogstatsd: Any) -> None:
         mock_client = Mock()
         backend = ArroyoDatadogMetricsBackend(mock_client)
 
-        backend.increment("test.metric", 5, {"env": "test"})
+        # Use a valid Arroyo metric name instead of "test.metric"
+        backend.increment("arroyo.consumer.run.count", 5, {"env": "test"})  # type: ignore[arg-type]
 
-        mock_client.increment.assert_called_once_with("test.metric", 5, tags=["env:test"])
+        mock_client.increment.assert_called_once_with(
+            "arroyo.consumer.run.count", 5, tags=["env:test"]
+        )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_gauge(self, mock_dogstatsd):
+    def test_gauge(self, mock_dogstatsd: Any) -> None:
         mock_client = Mock()
         backend = ArroyoDatadogMetricsBackend(mock_client)
 
-        backend.gauge("test.metric", 100, {"env": "test"})
+        # Use a valid Arroyo metric name instead of "test.metric"
+        backend.gauge("arroyo.consumer.run.count", 100, {"env": "test"})  # type: ignore[arg-type]
 
-        mock_client.gauge.assert_called_once_with("test.metric", 100, tags=["env:test"])
+        mock_client.gauge.assert_called_once_with(
+            "arroyo.consumer.run.count", 100, tags=["env:test"]
+        )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_timing(self, mock_dogstatsd):
+    def test_timing(self, mock_dogstatsd: Any) -> None:
         mock_client = Mock()
         backend = ArroyoDatadogMetricsBackend(mock_client)
 
-        backend.timing("test.metric", 1000, {"env": "test"})
+        # Use a valid Arroyo metric name instead of "test.metric"
+        backend.timing("arroyo.consumer.poll.time", 1000, {"env": "test"})  # type: ignore[arg-type]
 
-        mock_client.timing.assert_called_once_with("test.metric", 1000, tags=["env:test"])
+        mock_client.timing.assert_called_once_with(
+            "arroyo.consumer.poll.time", 1000, tags=["env:test"]
+        )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_methods_without_tags(self, mock_dogstatsd):
+    def test_methods_without_tags(self, mock_dogstatsd: Any) -> None:
         mock_client = Mock()
         backend = ArroyoDatadogMetricsBackend(mock_client)
 
-        backend.increment("test.metric")
-        backend.gauge("test.metric", 100)
-        backend.timing("test.metric", 1000)
+        # Use valid Arroyo metric names instead of "test.metric"
+        backend.increment("arroyo.consumer.run.count")  # type: ignore[arg-type]
+        backend.gauge("arroyo.consumer.run.count", 100)  # type: ignore[arg-type]
+        backend.timing("arroyo.consumer.poll.time", 1000)  # type: ignore[arg-type]
 
-        mock_client.increment.assert_called_once_with("test.metric", 1, tags=None)
-        mock_client.gauge.assert_called_once_with("test.metric", 100, tags=None)
-        mock_client.timing.assert_called_once_with("test.metric", 1000, tags=None)
+        mock_client.increment.assert_called_once_with("arroyo.consumer.run.count", 1, tags=None)
+        mock_client.gauge.assert_called_once_with("arroyo.consumer.run.count", 100, tags=None)
+        mock_client.timing.assert_called_once_with("arroyo.consumer.poll.time", 1000, tags=None)
 
 
 class TestConfigureMetrics:
-    def teardown_method(self):
+    def teardown_method(self) -> None:
         import sentry_streams.metrics.metrics
 
         sentry_streams.metrics.metrics._metrics_backend = None
 
     @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
-    def test_configure_metrics_dummy(self, mock_arroyo_configure):
+    def test_configure_metrics_dummy(self, mock_arroyo_configure: Any) -> None:
         backend = DummyMetricsBackend()
 
         configure_metrics(backend)
@@ -328,7 +339,9 @@ class TestConfigureMetrics:
 
     @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
     @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_configure_metrics_datadog(self, mock_dogstatsd, mock_arroyo_configure):
+    def test_configure_metrics_datadog(
+        self, mock_dogstatsd: Any, mock_arroyo_configure: Any
+    ) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
 
         configure_metrics(backend)
@@ -338,7 +351,7 @@ class TestConfigureMetrics:
         assert _metrics_backend == backend
         mock_arroyo_configure.assert_called_once()
 
-    def test_configure_metrics_already_set(self):
+    def test_configure_metrics_already_set(self) -> None:
         backend1 = DummyMetricsBackend()
         backend2 = DummyMetricsBackend()
 
@@ -348,7 +361,7 @@ class TestConfigureMetrics:
             configure_metrics(backend2)
 
     @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
-    def test_configure_metrics_force(self, mock_arroyo_configure):
+    def test_configure_metrics_force(self, mock_arroyo_configure: Any) -> None:
         backend1 = DummyMetricsBackend()
         backend2 = DummyMetricsBackend()
 
@@ -359,25 +372,25 @@ class TestConfigureMetrics:
 
         assert _metrics_backend == backend2
 
-    def test_configure_metrics_invalid_type(self):
+    def test_configure_metrics_invalid_type(self) -> None:
         invalid_backend = "not_a_metrics_backend"
 
         with pytest.raises(AssertionError):
-            configure_metrics(invalid_backend)
+            configure_metrics(invalid_backend)  # type: ignore[arg-type]
 
 
 class TestGetMetrics:
-    def teardown_method(self):
+    def teardown_method(self) -> None:
         import sentry_streams.metrics.metrics
 
         sentry_streams.metrics.metrics._metrics_backend = None
 
-    def test_get_metrics_none_configured(self):
+    def test_get_metrics_none_configured(self) -> None:
         metrics = get_metrics()
         assert isinstance(metrics, DummyMetricsBackend)
 
     @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
-    def test_get_metrics_configured(self, mock_arroyo_configure):
+    def test_get_metrics_configured(self, mock_arroyo_configure: Any) -> None:
         backend = DummyMetricsBackend()
         configure_metrics(backend)
 
@@ -386,15 +399,15 @@ class TestGetMetrics:
 
 
 class TestGetSize:
-    def test_get_size_string(self):
+    def test_get_size_string(self) -> None:
         assert get_size("hello") == 5
         assert get_size("") == 0
 
-    def test_get_size_bytes(self):
+    def test_get_size_bytes(self) -> None:
         assert get_size(b"hello") == 5
         assert get_size(b"") == 0
 
-    def test_get_size_other_types(self):
+    def test_get_size_other_types(self) -> None:
         assert get_size(123) is None
         assert get_size([1, 2, 3]) is None
         assert get_size({"key": "value"}) is None
