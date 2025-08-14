@@ -127,6 +127,7 @@ impl From<PyKafkaProducerConfig> for KafkaConfig {
         KafkaConfig::new_producer_config(py_config.bootstrap_servers, py_config.override_params)
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

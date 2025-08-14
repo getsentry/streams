@@ -14,6 +14,11 @@ from sentry_streams.adapters.stream_adapter import (
     StreamSinkT,
     StreamT,
 )
+from sentry_streams.metrics import (
+    DatadogMetricsBackend,
+    DummyMetricsBackend,
+    configure_metrics,
+)
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
     WithInput,
@@ -86,9 +91,30 @@ def runner(
         except Exception:
             raise
 
+    metric_config = environment_config.get("metrics", {})
+    if metric_config.get("type") == "datadog":
+        default_tags = metric_config.get("tags", {})
+        default_tags["pipeline"] = name
+
+        metrics = DatadogMetricsBackend(
+            metric_config["host"],
+            metric_config["port"],
+            "sentry_streams",
+            default_tags,
+        )
+        configure_metrics(metrics)
+        metric_config = {
+            "host": metric_config["host"],
+            "port": metric_config["port"],
+            "tags": default_tags,
+        }
+    else:
+        configure_metrics(DummyMetricsBackend())
+        metric_config = {}
+
     assigned_segment_id = int(segment_id) if segment_id else None
     pipeline: Pipeline[Any] = pipeline_globals["pipeline"]
-    runtime: Any = load_adapter(adapter, environment_config, assigned_segment_id)
+    runtime: Any = load_adapter(adapter, environment_config, assigned_segment_id, metric_config)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
@@ -158,7 +184,14 @@ def main(
     segment_id: Optional[str],
     application: str,
 ) -> None:
-    runner(name, log_level, adapter, config, segment_id, application)
+    runner(
+        name,
+        log_level,
+        adapter,
+        config,
+        segment_id,
+        application,
+    )
 
 
 if __name__ == "__main__":

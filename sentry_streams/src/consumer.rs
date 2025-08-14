@@ -8,6 +8,8 @@
 use crate::commit_policy::WatermarkCommitOffsets;
 use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
+use crate::metrics::configure_metrics;
+use crate::metrics_config::PyMetricConfig;
 use crate::operators::build;
 use crate::operators::RuntimeOperator;
 use crate::routes::Route;
@@ -57,6 +59,8 @@ pub struct ArroyoConsumer {
     // this variable must live for the lifetime of the entire consumer.
     // This is a requirement of Arroyo Rust.
     concurrency_config: Arc<ConcurrencyConfig>,
+
+    metric_config: Option<PyMetricConfig>,
 }
 
 #[pymethods]
@@ -67,7 +71,9 @@ impl ArroyoConsumer {
         kafka_config: PyKafkaConsumerConfig,
         topic: String,
         schema: Option<String>,
+        metric_config: Option<PyMetricConfig>,
     ) -> Self {
+        // Create a new metrics recorder
         ArroyoConsumer {
             consumer_config: kafka_config,
             topic,
@@ -76,6 +82,7 @@ impl ArroyoConsumer {
             steps: Vec::new(),
             handle: None,
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
+            metric_config,
         }
     }
 
@@ -92,6 +99,8 @@ impl ArroyoConsumer {
     fn run(&mut self) {
         tracing_subscriber::fmt::init();
         println!("Running Arroyo Consumer...");
+
+        configure_metrics(self.metric_config.clone());
 
         let factory = ArroyoStreamingFactory::new(
             self.source.clone(),

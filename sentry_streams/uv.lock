@@ -141,6 +141,18 @@ wheels = [
 ]
 
 [[package]]
+name = "datadog"
+version = "0.52.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cd/5d/922faaf9f80b139aa84f867010d6d2aeafa3e063cd22625274c164393030/datadog-0.52.0.tar.gz", hash = "sha256:8b99a508bed4879dc81643418dc89317009c6f04263c417ebbfd31e6f3019ef1", size = 367811, upload-time = "2025-07-08T14:53:22.828Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cf/12/c04c457d6189f7dc79e99ad51dd4fdfe8991980646587f96054ea3aa33af/datadog-0.52.0-py2.py3-none-any.whl", hash = "sha256:00ea908a2d7bf719218ad40116f4242f8accccfb9d6f2724344a10b2d8e46a9a", size = 129949, upload-time = "2025-07-08T14:53:21.484Z" },
+]
+
+[[package]]
 name = "devservices"
 version = "1.1.5"
 source = { registry = "https://pypi.org/simple" }
@@ -885,6 +897,7 @@ version = "0.0.26"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "datadog" },
     { name = "jsonschema" },
     { name = "polars" },
     { name = "pyyaml" },
@@ -915,6 +928,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.2.1" },
+    { name = "datadog", specifier = ">=0.52.0" },
     { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "polars" },
     { name = "pyyaml", specifier = ">=6.0.2" },
