@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::messages::PyAnyMessage;
 use crate::messages::{into_pyany, into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::routes::Route;
@@ -37,11 +38,11 @@ pub fn make_lambda(py: Python<'_>, py_code: &CStr) -> Py<PyAny> {
 }
 
 #[cfg(test)]
-pub fn make_msg(payload: Option<Vec<u8>>) -> Message<KafkaPayload> {
-    Message::new_any_message(
-        KafkaPayload::new(None, None, payload),
-        std::collections::BTreeMap::new(),
-    )
+pub fn make_msg(
+    payload: Option<Vec<u8>>,
+    committable: BTreeMap<Partition, u64>,
+) -> Message<KafkaPayload> {
+    Message::new_any_message(KafkaPayload::new(None, None, payload), committable)
 }
 
 #[cfg(test)]

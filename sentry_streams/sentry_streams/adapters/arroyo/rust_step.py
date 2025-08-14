@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Generic, Iterable, MutableSequence, Tuple, TypeVar
+from typing import Callable, Generic, Iterable, MutableSequence, Set, Tuple, TypeVar
 
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Message as ArroyoMessage
 
-from sentry_streams.pipeline.message import RustMessage
+from sentry_streams.pipeline.message import PipelineMessage, RustMessage
 from sentry_streams.rust_streams import PyWatermark
 
 TIn = TypeVar("TIn")
@@ -74,7 +74,7 @@ class RustOperatorDelegate(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def poll(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def poll(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
         """
         Triggers asynchronous processing. This method is called periodically
         every time we poll from Kafka.
@@ -86,7 +86,7 @@ class RustOperatorDelegate(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[RustMessage, Committable]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
         """
         Wait for all processing to be completed and returns the results of
         the in flight processing. It also closes and clean up all the resource
@@ -279,17 +279,57 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         self.__inner = inner
         self.__in_transformer = in_transformer
         self.__retriever = retriever
+        self.__watermarks: Set[PyWatermark] = set()
+        # globbed_committable is the combined committable of all messages polled
+        # from the OutputRetriever
+        self.__globbed_committable: Committable = {}
 
-    def submit(self, message: RustMessage, committable: Committable) -> None:
-        # TODO: handle watermark message inside of the OperatorDelegate
-        if not isinstance(message, PyWatermark):
+    def __should_send_watermark(self, watermark: PyWatermark) -> bool:
+        """
+        Returns True if:
+        - all partitions in `watermark`'s payload are present in `self.__globbed_committable`
+        - all offsets for those partitions in `watermark` are less than or equal to the corresponding
+        offsets in `self.__globbed_committable`
+        """
+        try:
+            for partition, offset in watermark.committable.items():
+                if self.__globbed_committable[partition] < offset:
+                    return False
+        except KeyError:
+            return False
+        return True
+
+    def __yield_messages(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
+        """
+        Yields messages polled from the OutputRetriever, as well as any stored watermarks that
+        can be sent after each message.
+        As currently implemented, watermarks can move backwards in message order (as watermarks
+        are always yielded after messages), but can never move earlier (meaning we don't commit messages before
+        they're finished processing).
+
+        Currently, if no new messages are received, watermarks will not be sent further down the pipeline from a delegate.
+        """
+        # TODO: ensure watermarks leave the delegate in the same order they entered it
+        for message, committable in self.__retriever.fetch():
+            yield (message, committable)
+            self.__globbed_committable.update(committable)
+            watermarks = self.__watermarks.copy()
+            for wm in watermarks:
+                if self.__should_send_watermark(wm):
+                    yield (wm, wm.committable)
+                    self.__watermarks.remove(wm)
+
+    def submit(self, message: PipelineMessage, committable: Committable) -> None:
+        if isinstance(message, PyWatermark):
+            self.__watermarks.add(message)
+        else:
             arroyo_msg = self.__in_transformer(message, committable)
             self.__inner.submit(arroyo_msg)
 
-    def poll(self) -> Iterable[Tuple[RustMessage, Committable]]:
+    def poll(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
         self.__inner.poll()
-        return self.__retriever.fetch()
+        return self.__yield_messages()
 
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[RustMessage, Committable]]:
+    def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
         self.__inner.join(timeout)
-        return self.__retriever.fetch()
+        return self.__yield_messages()
