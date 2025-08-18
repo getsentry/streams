@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package flink_worker;
+
+// Message type that can be subclassed
+message Message {
+  bytes payload = 1;
+  map<string, string> headers = 2;
+  int64 timestamp = 3;
+}
+
+// Request for processing a message
+message ProcessMessageRequest {
+  Message message = 1;
+  uint32 segment_id = 2;
+}
+
+// Response containing processed messages
+message ProcessMessageResponse {
+  repeated Message messages = 1;
+}
+
+// Flink Worker Service
+service FlinkWorkerService {
+  // Process a single message and return a list of processed messages
+  rpc ProcessMessage(ProcessMessageRequest) returns (ProcessMessageResponse);
+}
