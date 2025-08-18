@@ -1,0 +1,5 @@
+Hello World
+This is a test message
+Another message for processing
+Flink gRPC integration test
+Processing stream data with external service
