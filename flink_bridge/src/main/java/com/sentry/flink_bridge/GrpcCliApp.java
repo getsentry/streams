@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
+import java.util.List;
 
 /**
  * Simple CLI application that demonstrates the gRPC client functionality.
@@ -49,7 +50,8 @@ public class GrpcCliApp {
             if (!client.isAvailable()) {
                 LOG.error("gRPC service is not available at {}:{}", host, port);
                 LOG.error("Make sure the Python gRPC server is running with:");
-                LOG.error("cd flink_worker && source .venv/bin/activate && python -m flink_worker.server --port {}", port);
+                LOG.error("cd flink_worker && source .venv/bin/activate && python -m flink_worker.server --port {}",
+                        port);
                 System.exit(1);
             }
 
@@ -112,11 +114,11 @@ public class GrpcCliApp {
 
             try {
                 // Send the message to the gRPC service
-                ProcessMessageResponse response = sendMessage(client, input, messageCounter++);
+                List<Message> processedMessages = sendMessage(client, input, messageCounter++);
 
                 // Display the response
                 System.out.println("Response received:");
-                for (Message msg : response.getMessagesList()) {
+                for (Message msg : processedMessages) {
                     String payload = new String(msg.getPayload().toByteArray(), StandardCharsets.UTF_8);
                     System.out.println("  - Payload: " + payload);
                     System.out.println("    Headers: " + msg.getHeadersMap());
@@ -137,23 +139,17 @@ public class GrpcCliApp {
     /**
      * Sends a message to the gRPC service.
      */
-    private static ProcessMessageResponse sendMessage(GrpcClient client, String messageText, int segmentId) {
+    private static List<Message> sendMessage(GrpcClient client, String messageText, int segmentId) {
         // Create the message
         Message message = Message.newBuilder()
-            .setPayload(ByteString.copyFrom(messageText.getBytes(StandardCharsets.UTF_8)))
-            .putHeaders("source", "cli")
-            .putHeaders("timestamp", String.valueOf(System.currentTimeMillis()))
-            .putHeaders("message_id", String.valueOf(segmentId))
-            .setTimestamp(System.currentTimeMillis())
-            .build();
-
-        // Create the request
-        ProcessMessageRequest request = ProcessMessageRequest.newBuilder()
-            .setMessage(message)
-            .setSegmentId(segmentId)
-            .build();
+                .setPayload(ByteString.copyFrom(messageText.getBytes(StandardCharsets.UTF_8)))
+                .putHeaders("source", "cli")
+                .putHeaders("timestamp", String.valueOf(System.currentTimeMillis()))
+                .putHeaders("message_id", String.valueOf(segmentId))
+                .setTimestamp(System.currentTimeMillis())
+                .build();
 
         // Send to gRPC service
-        return client.processMessage(request);
+        return client.processMessage(message);
     }
 }

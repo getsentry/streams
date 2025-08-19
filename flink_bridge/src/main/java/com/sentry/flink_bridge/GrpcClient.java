@@ -9,6 +9,7 @@ import io.grpc.ManagedChannelBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -36,9 +37,9 @@ public class GrpcClient {
             LOG.info("Using target: {}", target);
 
             ManagedChannel channel = ManagedChannelBuilder.forTarget(target)
-                .usePlaintext()
-                .maxInboundMessageSize(1024 * 1024)
-                .build();
+                    .usePlaintext()
+                    .maxInboundMessageSize(1024 * 1024)
+                    .build();
 
             this.channel = channel;
             this.blockingStub = FlinkWorkerServiceGrpc.newBlockingStub(channel);
@@ -49,22 +50,25 @@ public class GrpcClient {
         }
     }
 
-
-
     /**
      * Sends a message processing request to the gRPC service.
      *
-     * @param request the message processing request
-     * @return the response containing processed messages
+     * @param message the message to process
+     * @return a list of processed messages
      * @throws RuntimeException if the gRPC call fails
      */
-    public ProcessMessageResponse processMessage(ProcessMessageRequest request) {
+    public List<Message> processMessage(Message message) {
         try {
+            // Construct the request internally
+            ProcessMessageRequest request = ProcessMessageRequest.newBuilder()
+                    .setMessage(message)
+                    .build();
+
             LOG.debug("Sending request to gRPC service: {}", request);
             ProcessMessageResponse response = blockingStub.processMessage(request);
             LOG.debug("Received response from gRPC service: {} messages",
-                     response.getMessagesCount());
-            return response;
+                    response.getMessagesCount());
+            return response.getMessagesList();
         } catch (Exception e) {
             LOG.error("Error calling gRPC service", e);
             throw new RuntimeException("Failed to process message via gRPC", e);

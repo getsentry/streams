@@ -40,26 +40,26 @@ public class SimpleGrpcTest {
             // Try different connection methods
             System.out.println("Method 1: Using forAddress...");
             channel = ManagedChannelBuilder.forAddress(host, port)
-                .usePlaintext()
-                .build();
+                    .usePlaintext()
+                    .build();
 
             System.out.println("Channel created successfully!");
 
             // Test the connection
-            FlinkWorkerServiceGrpc.FlinkWorkerServiceBlockingStub stub =
-                FlinkWorkerServiceGrpc.newBlockingStub(channel);
+            FlinkWorkerServiceGrpc.FlinkWorkerServiceBlockingStub stub = FlinkWorkerServiceGrpc
+                    .newBlockingStub(channel);
 
             // Create a simple test message
             Message message = Message.newBuilder()
-                .setPayload(ByteString.copyFrom("Hello from Java!".getBytes(StandardCharsets.UTF_8)))
-                .putHeaders("source", "test")
-                .setTimestamp(System.currentTimeMillis())
-                .build();
+                    .setPayload(ByteString.copyFrom("Hello from Java!".getBytes(StandardCharsets.UTF_8)))
+                    .putHeaders("source", "test")
+                    .setTimestamp(System.currentTimeMillis())
+                    .build();
 
             ProcessMessageRequest request = ProcessMessageRequest.newBuilder()
-                .setMessage(message)
-                .setSegmentId(0)
-                .build();
+                    .setMessage(message)
+                    .setSegmentId(0)
+                    .build();
 
             System.out.println("Sending test message...");
             ProcessMessageResponse response = stub.processMessage(request);
