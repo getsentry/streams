@@ -6,10 +6,7 @@ import org.apache.flink.datastream.api.function.OneInputStreamProcessFunction;
 import org.apache.flink.datastream.api.common.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.google.protobuf.ByteString;
 import flink_worker.FlinkWorker;
-
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -17,44 +14,35 @@ import java.util.List;
  * This implements the OneInputStreamProcessFunction pattern for Flink
  * DataStream API.
  */
-public class GrpcMessageProcessor implements OneInputStreamProcessFunction<String, String> {
+public class GrpcMessageProcessor implements OneInputStreamProcessFunction<Message, Message> {
 
     private static final Logger LOG = LoggerFactory.getLogger(GrpcMessageProcessor.class);
     protected GrpcClient grpcClient;
 
     @Override
-    public void open(NonPartitionedContext<String> ctx) throws Exception {
+    public void open(NonPartitionedContext<Message> ctx) throws Exception {
         // Initialize the gRPC client
-        grpcClient = new GrpcClient("localhost", 50053);
+        grpcClient = new GrpcClient("localhost", 50051);
         LOG.info("gRPC client initialized");
     }
 
     @Override
     public void processRecord(
-            String record,
-            Collector<String> out,
-            PartitionedContext<String> ctx) throws Exception {
+            Message record,
+            Collector<Message> out,
+            PartitionedContext<Message> ctx) throws Exception {
         try {
             LOG.info("Processing message: {}", record);
 
-            // Create a message for the gRPC service
-            FlinkWorker.Message message;
-            message = FlinkWorker.Message.newBuilder()
-                    .setPayload(ByteString.copyFrom(record.getBytes(StandardCharsets.UTF_8)))
-                    .putHeaders("source", "flink")
-                    .putHeaders("timestamp", String.valueOf(System.currentTimeMillis()))
-                    .setTimestamp(System.currentTimeMillis())
-                    .build();
-
             // Send to gRPC service and get response
-            List<FlinkWorker.Message> processedMessages = grpcClient.processMessage(message);
+            List<FlinkWorker.Message> processedMessages = grpcClient.processMessage(record.toProto());
 
             // Process the response and output processed messages
             for (FlinkWorker.Message processedMsg : processedMessages) {
-                String processedContent = new String(processedMsg.getPayload().toByteArray(),
-                        StandardCharsets.UTF_8);
-                LOG.info("Received processed message: {}", processedContent);
-                out.collect(processedContent);
+                // String processedContent = new String(processedMsg.getPayload().toByteArray(),
+                // StandardCharsets.UTF_8);
+                LOG.info("Received processed message: {}", processedMsg);
+                out.collect(new Message(processedMsg));
 
             }
 

@@ -1,14 +1,16 @@
 package com.sentry.flink_bridge;
 
 import com.google.protobuf.ByteString;
-import flink_worker.FlinkWorker.Message;
+import com.sentry.flink_bridge.Message;
 import flink_worker.FlinkWorker.ProcessMessageRequest;
 import flink_worker.FlinkWorker.ProcessMessageResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import flink_worker.FlinkWorker;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -47,13 +49,13 @@ class BasicTest {
     @Test
     void testGrpcClientProcessMessage_Success() {
         // Arrange
-        Message inputMessage = createTestMessage("test message");
+        Message inputMessage = TestUtils.createTestMessage("test message");
         mockGrpcClient.setNextResponse(createMockResponse(
-                createTestMessage("processed message 1"),
-                createTestMessage("processed message 2")));
+                TestUtils.createTestMessage("processed message 1"),
+                TestUtils.createTestMessage("processed message 2")));
 
         // Act
-        List<Message> result = mockGrpcClient.processMessage(inputMessage);
+        List<FlinkWorker.Message> result = mockGrpcClient.processMessage(inputMessage.toProto());
 
         // Assert
         assertNotNull(result);
@@ -63,17 +65,18 @@ class BasicTest {
 
         // Verify the request was processed
         assertNotNull(mockGrpcClient.getLastRequest());
-        assertEquals(inputMessage, mockGrpcClient.getLastRequest().getMessage());
+        assertTrue(Arrays.equals(inputMessage.getPayload(),
+                mockGrpcClient.getLastRequest().getMessage().getPayload().toByteArray()));
     }
 
     @Test
     void testGrpcClientProcessMessage_EmptyResponse() {
         // Arrange
-        Message inputMessage = createTestMessage("test message");
+        Message inputMessage = TestUtils.createTestMessage("test message");
         mockGrpcClient.setNextResponse(createMockResponse());
 
         // Act
-        List<Message> result = mockGrpcClient.processMessage(inputMessage);
+        List<flink_worker.FlinkWorker.Message> result = mockGrpcClient.processMessage(inputMessage.toProto());
 
         // Assert
         assertNotNull(result);
@@ -83,13 +86,13 @@ class BasicTest {
     @Test
     void testGrpcClientProcessMessage_Exception() {
         // Arrange
-        Message inputMessage = createTestMessage("test message");
+        Message inputMessage = TestUtils.createTestMessage("test message");
         RuntimeException testException = new RuntimeException("Test error");
         mockGrpcClient.setNextException(testException);
 
         // Act & Assert
         RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> mockGrpcClient.processMessage(inputMessage));
+                () -> mockGrpcClient.processMessage(inputMessage.toProto()));
 
         assertEquals("Failed to process message via gRPC", exception.getMessage());
         assertEquals(testException, exception.getCause());
@@ -98,37 +101,27 @@ class BasicTest {
     @Test
     void testGrpcClientProcessMessage_RequestConstruction() {
         // Arrange
-        Message inputMessage = createTestMessage("test message");
-        mockGrpcClient.setNextResponse(createMockResponse(createTestMessage("response")));
+        Message inputMessage = TestUtils.createTestMessage("test message");
+        mockGrpcClient.setNextResponse(createMockResponse(TestUtils.createTestMessage("response")));
 
         // Act
-        mockGrpcClient.processMessage(inputMessage);
+        mockGrpcClient.processMessage(inputMessage.toProto());
 
         // Verify the request was constructed correctly
         ProcessMessageRequest lastRequest = mockGrpcClient.getLastRequest();
         assertNotNull(lastRequest);
-        assertEquals(inputMessage, lastRequest.getMessage());
-    }
-
-    // Helper methods for creating test data
-    private Message createTestMessage(String payload) {
-        return Message.newBuilder()
-                .setPayload(ByteString.copyFrom(payload.getBytes(StandardCharsets.UTF_8)))
-                .putHeaders("source", "test")
-                .putHeaders("timestamp", String.valueOf(System.currentTimeMillis()))
-                .setTimestamp(System.currentTimeMillis())
-                .build();
+        assertTrue(Arrays.equals(inputMessage.getPayload(), lastRequest.getMessage().getPayload().toByteArray()));
     }
 
     private ProcessMessageResponse createMockResponse(Message... messages) {
         ProcessMessageResponse.Builder builder = ProcessMessageResponse.newBuilder();
         for (Message message : messages) {
-            builder.addMessages(message);
+            builder.addMessages(message.toProto());
         }
         return builder.build();
     }
 
-    private String getMessagePayload(Message message) {
+    private String getMessagePayload(flink_worker.FlinkWorker.Message message) {
         return new String(message.getPayload().toByteArray(), StandardCharsets.UTF_8);
     }
 }

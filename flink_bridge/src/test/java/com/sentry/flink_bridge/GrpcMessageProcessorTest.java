@@ -1,7 +1,7 @@
 package com.sentry.flink_bridge;
 
 import com.google.protobuf.ByteString;
-import flink_worker.FlinkWorker.Message;
+import com.sentry.flink_bridge.Message;
 import flink_worker.FlinkWorker.ProcessMessageRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,20 +19,20 @@ class GrpcMessageProcessorTest {
 
     private TestGrpcMessageProcessor processor;
     private MockGrpcClient mockGrpcClient;
-    private MockCollector mockCollector;
+    private TestUtils.MockMessageCollector mockCollector;
 
     @BeforeEach
     void setUp() {
         processor = new TestGrpcMessageProcessor();
         mockGrpcClient = new MockGrpcClient();
-        mockCollector = new MockCollector();
+        mockCollector = new TestUtils.MockMessageCollector();
     }
 
     @Test
     void testProcessRecord_SuccessfulProcessing() throws Exception {
         // Arrange
-        String inputMessage = "test message";
-        Message grpcMessage = createTestMessage("processed message 1");
+        Message inputMessage = TestUtils.createTestMessage("test message");
+        flink_worker.FlinkWorker.Message grpcMessage = TestUtils.createTestProtoMessage("processed message 1");
         mockGrpcClient.setNextResponse(List.of(grpcMessage));
         processor.setGrpcClient(mockGrpcClient);
 
@@ -41,16 +41,17 @@ class GrpcMessageProcessorTest {
 
         // Assert
         assertEquals(1, mockCollector.getCollectedItems().size());
-        assertEquals("processed message 1", mockCollector.getCollectedItems().get(0));
+        Message result = mockCollector.getCollectedItems().get(0);
+        assertEquals("processed message 1", new String(result.getPayload(), StandardCharsets.UTF_8));
         assertNotNull(mockGrpcClient.getLastRequest());
     }
 
     @Test
     void testProcessRecord_MultipleProcessedMessages() throws Exception {
         // Arrange
-        String inputMessage = "test message";
-        Message grpcMessage1 = createTestMessage("processed message 1");
-        Message grpcMessage2 = createTestMessage("processed message 2");
+        Message inputMessage = TestUtils.createTestMessage("test message");
+        flink_worker.FlinkWorker.Message grpcMessage1 = TestUtils.createTestProtoMessage("processed message 1");
+        flink_worker.FlinkWorker.Message grpcMessage2 = TestUtils.createTestProtoMessage("processed message 2");
         mockGrpcClient.setNextResponse(List.of(grpcMessage1, grpcMessage2));
         processor.setGrpcClient(mockGrpcClient);
 
@@ -59,15 +60,17 @@ class GrpcMessageProcessorTest {
 
         // Assert
         assertEquals(2, mockCollector.getCollectedItems().size());
-        assertEquals("processed message 1", mockCollector.getCollectedItems().get(0));
-        assertEquals("processed message 2", mockCollector.getCollectedItems().get(1));
+        Message result1 = mockCollector.getCollectedItems().get(0);
+        Message result2 = mockCollector.getCollectedItems().get(1);
+        assertEquals("processed message 1", new String(result1.getPayload(), StandardCharsets.UTF_8));
+        assertEquals("processed message 2", new String(result2.getPayload(), StandardCharsets.UTF_8));
         assertNotNull(mockGrpcClient.getLastRequest());
     }
 
     @Test
     void testProcessRecord_EmptyResponse() throws Exception {
         // Arrange
-        String inputMessage = "test message";
+        Message inputMessage = TestUtils.createTestMessage("test message");
         mockGrpcClient.setNextResponse(List.of());
         processor.setGrpcClient(mockGrpcClient);
 
@@ -82,7 +85,7 @@ class GrpcMessageProcessorTest {
     @Test
     void testProcessRecord_GrpcClientException() throws Exception {
         // Arrange
-        String inputMessage = "test message";
+        Message inputMessage = TestUtils.createTestMessage("test message");
         RuntimeException testException = new RuntimeException("gRPC service error");
         mockGrpcClient.setNextException(testException);
         processor.setGrpcClient(mockGrpcClient);
@@ -99,8 +102,8 @@ class GrpcMessageProcessorTest {
     @Test
     void testProcessRecord_MessageConstruction() throws Exception {
         // Arrange
-        String inputMessage = "test message";
-        Message grpcMessage = createTestMessage("response");
+        Message inputMessage = TestUtils.createTestMessage("test message");
+        flink_worker.FlinkWorker.Message grpcMessage = TestUtils.createTestProtoMessage("response");
         mockGrpcClient.setNextResponse(List.of(grpcMessage));
         processor.setGrpcClient(mockGrpcClient);
 
@@ -112,9 +115,9 @@ class GrpcMessageProcessorTest {
         assertNotNull(lastRequest);
 
         // Verify the message was constructed correctly
-        Message message = lastRequest.getMessage();
+        flink_worker.FlinkWorker.Message message = lastRequest.getMessage();
         String payload = new String(message.getPayload().toByteArray(), StandardCharsets.UTF_8);
-        assertEquals(inputMessage, payload);
+        assertEquals("test message", payload);
         assertTrue(message.getHeadersMap().containsKey("source"));
         assertTrue(message.getHeadersMap().containsKey("timestamp"));
         assertTrue(message.getTimestamp() > 0);
@@ -153,36 +156,5 @@ class GrpcMessageProcessorTest {
         public GrpcClient getGrpcClient() {
             return this.grpcClient;
         }
-    }
-
-    /**
-     * Mock implementation of Collector for testing.
-     */
-    private static class MockCollector implements org.apache.flink.datastream.api.common.Collector<String> {
-        private final List<String> collectedItems = new java.util.ArrayList<>();
-
-        @Override
-        public void collect(String record) {
-            collectedItems.add(record);
-        }
-
-        @Override
-        public void collectAndOverwriteTimestamp(String record, long timestamp) {
-            collect(record);
-        }
-
-        public List<String> getCollectedItems() {
-            return collectedItems;
-        }
-    }
-
-    // Helper methods for creating test data
-    private Message createTestMessage(String payload) {
-        return Message.newBuilder()
-                .setPayload(ByteString.copyFrom(payload.getBytes(StandardCharsets.UTF_8)))
-                .putHeaders("source", "test")
-                .putHeaders("timestamp", String.valueOf(System.currentTimeMillis()))
-                .setTimestamp(System.currentTimeMillis())
-                .build();
     }
 }

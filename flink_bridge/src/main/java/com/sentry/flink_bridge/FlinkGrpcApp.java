@@ -37,12 +37,17 @@ public class FlinkGrpcApp {
                         })),
                 "in memory list");
 
+        NonKeyedPartitionStream<Message> messageStream = textStream
+                .process(new StringDeserializer("my_pipeline"));
+
         // Apply the gRPC processing function
-        NonKeyedPartitionStream<String> processedStream = textStream
+        NonKeyedPartitionStream<Message> processedStream = messageStream
                 .process(new GrpcMessageProcessor());
 
+        NonKeyedPartitionStream<String> serializedStream = processedStream.process(new StringSerializer());
+
         // Print the processed messages to standard output
-        processedStream.toSink(new WrappedSink<>(new PrintSink<>())).withName("print-sink");
+        serializedStream.toSink(new WrappedSink<>(new PrintSink<>())).withName("print-sink");
 
         // Execute the Flink job
         LOG.info("Starting Flink gRPC application...");

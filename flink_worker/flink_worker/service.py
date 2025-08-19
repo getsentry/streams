@@ -46,11 +46,12 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
 
             # For now, return the original message as-is
             # In a real implementation, this would contain the actual processing logic
-            processed_messages = [message]
+            processed_messages = []
             # Add a simple header to indicate processing
             processed_message = Message()
             processed_message.CopyFrom(message)
-            processed_message.payload = f"{message.payload} processed".encode()
+            processed = f"{message.payload.decode()} processed".encode("utf-8")
+            processed_message.payload = processed
             processed_message.headers["processed"] = "true"
             processed_message.headers["segment_id"] = str(segment_id)
 
