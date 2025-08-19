@@ -5,7 +5,7 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.sentry</groupId>
+    <groupId>io.sentry</groupId>
     <artifactId>flink-bridge</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
@@ -178,13 +178,13 @@
                             <finalName>flink-bridge-cli</finalName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.sentry.flink_bridge.GrpcCliApp</mainClass>
+                                    <mainClass>io.sentry.flink_bridge.GrpcCliApp</mainClass>
                                 </transformer>
                                 <!-- Merge META-INF/services so gRPC providers are visible -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                                 <!-- Merge other resources if needed -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.sentry.flink_bridge.GrpcCliApp</mainClass>
+                                    <mainClass>io.sentry.flink_bridge.GrpcCliApp</mainClass>
                                 </transformer>
                             </transformers>
 
@@ -201,13 +201,13 @@
                             <finalName>flink-bridge-app</finalName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.sentry.flink_bridge.FlinkGrpcApp</mainClass>
+                                    <mainClass>io.sentry.flink_bridge.FlinkGrpcApp</mainClass>
                                 </transformer>
                                 <!-- Merge META-INF/services so gRPC providers are visible -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                                 <!-- Merge other resources if needed -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.sentry.flink_bridge.FlinkGrpcApp</mainClass>
+                                    <mainClass>io.sentry.flink_bridge.FlinkGrpcApp</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>

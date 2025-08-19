@@ -1,4 +1,4 @@
-package com.sentry.flink_bridge;
+package io.sentry.flink_bridge;
 
 import com.google.protobuf.ByteString;
 import flink_worker.FlinkWorker;

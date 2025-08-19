@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.sentry</groupId>
+  <groupId>io.sentry</groupId>
   <artifactId>flink-bridge</artifactId>
   <name>Flink gRPC Bridge</name>
   <version>1.0.0</version>
@@ -49,11 +49,11 @@
               <finalName>flink-bridge-cli</finalName>
               <transformers>
                 <transformer>
-                  <mainClass>com.sentry.flink_bridge.GrpcCliApp</mainClass>
+                  <mainClass>io.sentry.flink_bridge.GrpcCliApp</mainClass>
                 </transformer>
                 <transformer />
                 <transformer>
-                  <mainClass>com.sentry.flink_bridge.GrpcCliApp</mainClass>
+                  <mainClass>io.sentry.flink_bridge.GrpcCliApp</mainClass>
                 </transformer>
               </transformers>
             </configuration>
@@ -68,11 +68,11 @@
               <finalName>flink-bridge-app</finalName>
               <transformers>
                 <transformer>
-                  <mainClass>com.sentry.flink_bridge.FlinkGrpcApp</mainClass>
+                  <mainClass>io.sentry.flink_bridge.FlinkGrpcApp</mainClass>
                 </transformer>
                 <transformer />
                 <transformer>
-                  <mainClass>com.sentry.flink_bridge.FlinkGrpcApp</mainClass>
+                  <mainClass>io.sentry.flink_bridge.FlinkGrpcApp</mainClass>
                 </transformer>
               </transformers>
             </configuration>

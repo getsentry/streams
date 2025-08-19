@@ -1,4 +1,4 @@
-package com.sentry.flink_bridge;
+package io.sentry.flink_bridge;
 
 import flink_worker.FlinkWorker.Message;
 import flink_worker.FlinkWorker.ProcessMessageRequest;

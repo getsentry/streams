@@ -1,4 +1,4 @@
-package com.sentry.flink_bridge;
+package io.sentry.flink_bridge;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

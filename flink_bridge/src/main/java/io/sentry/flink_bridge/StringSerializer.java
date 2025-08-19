@@ -1,4 +1,4 @@
-package com.sentry.flink_bridge;
+package io.sentry.flink_bridge;
 
 import org.apache.flink.datastream.api.context.NonPartitionedContext;
 import org.apache.flink.datastream.api.context.PartitionedContext;

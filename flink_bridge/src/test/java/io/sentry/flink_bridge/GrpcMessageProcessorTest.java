@@ -1,7 +1,7 @@
-package com.sentry.flink_bridge;
+package io.sentry.flink_bridge;
 
 import com.google.protobuf.ByteString;
-import com.sentry.flink_bridge.Message;
+import io.sentry.flink_bridge.Message;
 import flink_worker.FlinkWorker.ProcessMessageRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

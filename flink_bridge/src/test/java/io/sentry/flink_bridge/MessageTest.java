@@ -1,4 +1,4 @@
-package com.sentry.flink_bridge;
+package io.sentry.flink_bridge;
 
 import flink_worker.FlinkWorker;
 import org.apache.flink.types.PojoTestUtils;
