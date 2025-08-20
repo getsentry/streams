@@ -12,8 +12,8 @@ from typing import Dict
 
 import grpc
 
-from .flink_worker_pb2 import Message, ProcessMessageRequest, ProcessWatermarkRequest
-from .flink_worker_pb2_grpc import FlinkWorkerServiceStub
+from flink_worker.flink_worker_pb2 import Message, ProcessMessageRequest, ProcessWatermarkRequest
+from flink_worker.flink_worker_pb2_grpc import FlinkWorkerServiceStub
 
 # Configure logging
 logging.basicConfig(

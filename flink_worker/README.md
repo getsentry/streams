@@ -22,6 +22,15 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
+## Regenerate GRPC stubs
+```bash
+python -m grpc_tools.protoc \
+  -I ../protos \
+  --python_out=./ \
+  --grpc_python_out=./ \
+  ../protos/flink_worker/flink_worker.proto
+```
+
 ## Usage
 
 ### Starting the Server

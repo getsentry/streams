@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import flink_worker_pb2 as flink__worker__pb2
+from flink_worker import flink_worker_pb2 as flink__worker_dot_flink__worker__pb2
 from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 
 GRPC_GENERATED_VERSION = '1.74.0'
@@ -19,7 +19,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in flink_worker_pb2_grpc.py depends on'
+        + f' but the generated code in flink_worker/flink_worker_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -38,23 +38,23 @@ class FlinkWorkerServiceStub(object):
         """
         self.ProcessMessage = channel.unary_unary(
                 '/flink_worker.FlinkWorkerService/ProcessMessage',
-                request_serializer=flink__worker__pb2.ProcessMessageRequest.SerializeToString,
-                response_deserializer=flink__worker__pb2.ProcessMessageResponse.FromString,
+                request_serializer=flink__worker_dot_flink__worker__pb2.ProcessMessageRequest.SerializeToString,
+                response_deserializer=flink__worker_dot_flink__worker__pb2.ProcessMessageResponse.FromString,
                 _registered_method=True)
         self.ProcessWatermark = channel.unary_unary(
                 '/flink_worker.FlinkWorkerService/ProcessWatermark',
-                request_serializer=flink__worker__pb2.ProcessWatermarkRequest.SerializeToString,
-                response_deserializer=flink__worker__pb2.ProcessMessageResponse.FromString,
+                request_serializer=flink__worker_dot_flink__worker__pb2.ProcessWatermarkRequest.SerializeToString,
+                response_deserializer=flink__worker_dot_flink__worker__pb2.ProcessMessageResponse.FromString,
                 _registered_method=True)
         self.AddToWindow = channel.unary_unary(
                 '/flink_worker.FlinkWorkerService/AddToWindow',
-                request_serializer=flink__worker__pb2.AddToWindowRequest.SerializeToString,
+                request_serializer=flink__worker_dot_flink__worker__pb2.AddToWindowRequest.SerializeToString,
                 response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
                 _registered_method=True)
         self.TriggerWindow = channel.unary_unary(
                 '/flink_worker.FlinkWorkerService/TriggerWindow',
-                request_serializer=flink__worker__pb2.TriggerWindowRequest.SerializeToString,
-                response_deserializer=flink__worker__pb2.ProcessMessageResponse.FromString,
+                request_serializer=flink__worker_dot_flink__worker__pb2.TriggerWindowRequest.SerializeToString,
+                response_deserializer=flink__worker_dot_flink__worker__pb2.ProcessMessageResponse.FromString,
                 _registered_method=True)
 
 
@@ -95,23 +95,23 @@ def add_FlinkWorkerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'ProcessMessage': grpc.unary_unary_rpc_method_handler(
                     servicer.ProcessMessage,
-                    request_deserializer=flink__worker__pb2.ProcessMessageRequest.FromString,
-                    response_serializer=flink__worker__pb2.ProcessMessageResponse.SerializeToString,
+                    request_deserializer=flink__worker_dot_flink__worker__pb2.ProcessMessageRequest.FromString,
+                    response_serializer=flink__worker_dot_flink__worker__pb2.ProcessMessageResponse.SerializeToString,
             ),
             'ProcessWatermark': grpc.unary_unary_rpc_method_handler(
                     servicer.ProcessWatermark,
-                    request_deserializer=flink__worker__pb2.ProcessWatermarkRequest.FromString,
-                    response_serializer=flink__worker__pb2.ProcessMessageResponse.SerializeToString,
+                    request_deserializer=flink__worker_dot_flink__worker__pb2.ProcessWatermarkRequest.FromString,
+                    response_serializer=flink__worker_dot_flink__worker__pb2.ProcessMessageResponse.SerializeToString,
             ),
             'AddToWindow': grpc.unary_unary_rpc_method_handler(
                     servicer.AddToWindow,
-                    request_deserializer=flink__worker__pb2.AddToWindowRequest.FromString,
+                    request_deserializer=flink__worker_dot_flink__worker__pb2.AddToWindowRequest.FromString,
                     response_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
             ),
             'TriggerWindow': grpc.unary_unary_rpc_method_handler(
                     servicer.TriggerWindow,
-                    request_deserializer=flink__worker__pb2.TriggerWindowRequest.FromString,
-                    response_serializer=flink__worker__pb2.ProcessMessageResponse.SerializeToString,
+                    request_deserializer=flink__worker_dot_flink__worker__pb2.TriggerWindowRequest.FromString,
+                    response_serializer=flink__worker_dot_flink__worker__pb2.ProcessMessageResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -140,8 +140,8 @@ class FlinkWorkerService(object):
             request,
             target,
             '/flink_worker.FlinkWorkerService/ProcessMessage',
-            flink__worker__pb2.ProcessMessageRequest.SerializeToString,
-            flink__worker__pb2.ProcessMessageResponse.FromString,
+            flink__worker_dot_flink__worker__pb2.ProcessMessageRequest.SerializeToString,
+            flink__worker_dot_flink__worker__pb2.ProcessMessageResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -167,8 +167,8 @@ class FlinkWorkerService(object):
             request,
             target,
             '/flink_worker.FlinkWorkerService/ProcessWatermark',
-            flink__worker__pb2.ProcessWatermarkRequest.SerializeToString,
-            flink__worker__pb2.ProcessMessageResponse.FromString,
+            flink__worker_dot_flink__worker__pb2.ProcessWatermarkRequest.SerializeToString,
+            flink__worker_dot_flink__worker__pb2.ProcessMessageResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -194,7 +194,7 @@ class FlinkWorkerService(object):
             request,
             target,
             '/flink_worker.FlinkWorkerService/AddToWindow',
-            flink__worker__pb2.AddToWindowRequest.SerializeToString,
+            flink__worker_dot_flink__worker__pb2.AddToWindowRequest.SerializeToString,
             google_dot_protobuf_dot_empty__pb2.Empty.FromString,
             options,
             channel_credentials,
@@ -221,8 +221,8 @@ class FlinkWorkerService(object):
             request,
             target,
             '/flink_worker.FlinkWorkerService/TriggerWindow',
-            flink__worker__pb2.TriggerWindowRequest.SerializeToString,
-            flink__worker__pb2.ProcessMessageResponse.FromString,
+            flink__worker_dot_flink__worker__pb2.TriggerWindowRequest.SerializeToString,
+            flink__worker_dot_flink__worker__pb2.ProcessMessageResponse.FromString,
             options,
             channel_credentials,
             insecure,

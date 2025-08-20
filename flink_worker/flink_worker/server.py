@@ -10,7 +10,7 @@ import signal
 import sys
 from typing import Optional
 
-from .service import create_server
+from flink_worker.service import create_server
 
 # Configure logging
 logging.basicConfig(

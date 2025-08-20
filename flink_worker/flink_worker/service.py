@@ -9,11 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 import time
 import grpc
-from .flink_worker_pb2 import (
+from flink_worker.flink_worker_pb2 import (
     Message, ProcessMessageRequest, ProcessMessageResponse, ProcessWatermarkRequest,
     AddToWindowRequest, TriggerWindowRequest
 )
-from .flink_worker_pb2_grpc import FlinkWorkerServiceServicer, add_FlinkWorkerServiceServicer_to_server
+from flink_worker.flink_worker_pb2_grpc import FlinkWorkerServiceServicer, add_FlinkWorkerServiceServicer_to_server
 from google.protobuf import empty_pb2
 
 logger = logging.getLogger(__name__)

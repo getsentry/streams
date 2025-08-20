@@ -9,9 +9,9 @@ import time
 
 import grpc
 
-from .flink_worker_pb2 import Message, ProcessMessageRequest, ProcessWatermarkRequest
-from .flink_worker_pb2_grpc import FlinkWorkerServiceStub
-from .service import create_server
+from flink_worker.flink_worker_pb2 import Message, ProcessMessageRequest, ProcessWatermarkRequest
+from flink_worker.flink_worker_pb2_grpc import FlinkWorkerServiceStub
+from flink_worker.service import create_server
 
 
 def test_service():
