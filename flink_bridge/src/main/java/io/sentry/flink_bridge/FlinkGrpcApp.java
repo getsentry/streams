@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import io.sentry.flink_bridge.Message;
 import io.sentry.flink_bridge.StringDeserializer;
 import io.sentry.flink_bridge.GrpcMessageProcessor;
+import io.sentry.flink_bridge.CustomPostProcessor;
 import io.sentry.flink_bridge.StringSerializer;
 
 import java.time.Duration;
@@ -41,7 +42,17 @@ public class FlinkGrpcApp {
                                                                 "This is a test message",
                                                                 "Another message for processing",
                                                                 "Flink gRPC integration test",
-                                                                "Processing stream data with external service"
+                                                                "Processing stream data with external service",
+                                                                "Hello World",
+                                                                "This is a test message",
+                                                                "Another message for processing",
+                                                                "Flink gRPC integration test",
+                                                                "Processing stream data with external service",
+                                                                "Hello World",
+                                                                "This is a test message",
+                                                                "Another message for processing",
+                                                                "Flink gRPC integration test",
+                                                                "Processing stream data with external service",
                                                 })),
                                 "in memory list");
 
@@ -68,10 +79,15 @@ public class FlinkGrpcApp {
                                 .process(EventTimeExtension.wrapProcessFunction(new GrpcMessageProcessor()))
                                 .keyBy(Message::getTimestamp);
 
-                NonKeyedPartitionStream<String> serializedStream = processedStream.process(new StringSerializer());
+                // Add custom post-processing function after gRPC processing
+                NonKeyedPartitionStream<Long> postProcessedStream = processedStream
+                                .process(new CustomPostProcessor());
+
+                // NonKeyedPartitionStream<String> serializedStream =
+                // postProcessedStream.process(new StringSerializer());
 
                 // Print the processed messages to standard output
-                serializedStream.toSink(new WrappedSink<>(new PrintSink<>())).withName("print-sink");
+                postProcessedStream.toSink(new WrappedSink<>(new PrintSink<>())).withName("print-sink");
 
                 // Execute the Flink job
                 LOG.info("Starting Flink gRPC application...");
