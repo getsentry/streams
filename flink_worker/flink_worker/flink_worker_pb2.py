@@ -21,9 +21,10 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x66link_worker.proto\x12\x0c\x66link_worker\"\x92\x01\n\x07Message\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\x12\x33\n\x07headers\x18\x02 \x03(\x0b\x32\".flink_worker.Message.HeadersEntry\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"S\n\x15ProcessMessageRequest\x12&\n\x07message\x18\x01 \x01(\x0b\x32\x15.flink_worker.Message\x12\x12\n\nsegment_id\x18\x02 \x01(\r\"A\n\x16ProcessMessageResponse\x12\'\n\x08messages\x18\x01 \x03(\x0b\x32\x15.flink_worker.Message\"\xb5\x01\n\x17ProcessWatermarkRequest\x12\x11\n\ttimestamp\x18\x01 \x01(\x03\x12\x43\n\x07headers\x18\x02 \x03(\x0b\x32\x32.flink_worker.ProcessWatermarkRequest.HeadersEntry\x12\x12\n\nsegment_id\x18\x03 \x01(\r\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x32\xd2\x01\n\x12\x46linkWorkerService\x12[\n\x0eProcessMessage\x12#.flink_worker.ProcessMessageRequest\x1a$.flink_worker.ProcessMessageResponse\x12_\n\x10ProcessWatermark\x12%.flink_worker.ProcessWatermarkRequest\x1a$.flink_worker.ProcessMessageResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x66link_worker.proto\x12\x0c\x66link_worker\x1a\x1bgoogle/protobuf/empty.proto\"\x92\x01\n\x07Message\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\x12\x33\n\x07headers\x18\x02 \x03(\x0b\x32\".flink_worker.Message.HeadersEntry\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"S\n\x15ProcessMessageRequest\x12&\n\x07message\x18\x01 \x01(\x0b\x32\x15.flink_worker.Message\x12\x12\n\nsegment_id\x18\x02 \x01(\r\"A\n\x16ProcessMessageResponse\x12\'\n\x08messages\x18\x01 \x03(\x0b\x32\x15.flink_worker.Message\"\xb5\x01\n\x17ProcessWatermarkRequest\x12\x11\n\ttimestamp\x18\x01 \x01(\x03\x12\x43\n\x07headers\x18\x02 \x03(\x0b\x32\x32.flink_worker.ProcessWatermarkRequest.HeadersEntry\x12\x12\n\nsegment_id\x18\x03 \x01(\r\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"D\n\x10WindowIdentifier\x12\x15\n\rpartition_key\x18\x01 \x01(\t\x12\x19\n\x11window_start_time\x18\x02 \x01(\x03\"\x83\x01\n\x12\x41\x64\x64ToWindowRequest\x12&\n\x07message\x18\x01 \x01(\x0b\x32\x15.flink_worker.Message\x12\x12\n\nsegment_id\x18\x02 \x01(\r\x12\x31\n\twindow_id\x18\x03 \x01(\x0b\x32\x1e.flink_worker.WindowIdentifier\"]\n\x14TriggerWindowRequest\x12\x31\n\twindow_id\x18\x01 \x01(\x0b\x32\x1e.flink_worker.WindowIdentifier\x12\x12\n\nsegment_id\x18\x02 \x01(\r2\xf6\x02\n\x12\x46linkWorkerService\x12[\n\x0eProcessMessage\x12#.flink_worker.ProcessMessageRequest\x1a$.flink_worker.ProcessMessageResponse\x12_\n\x10ProcessWatermark\x12%.flink_worker.ProcessWatermarkRequest\x1a$.flink_worker.ProcessMessageResponse\x12G\n\x0b\x41\x64\x64ToWindow\x12 .flink_worker.AddToWindowRequest\x1a\x16.google.protobuf.Empty\x12Y\n\rTriggerWindow\x12\".flink_worker.TriggerWindowRequest\x1a$.flink_worker.ProcessMessageResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,18 +35,24 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_MESSAGE_HEADERSENTRY']._serialized_options = b'8\001'
   _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._loaded_options = None
   _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._serialized_options = b'8\001'
-  _globals['_MESSAGE']._serialized_start=37
-  _globals['_MESSAGE']._serialized_end=183
-  _globals['_MESSAGE_HEADERSENTRY']._serialized_start=137
-  _globals['_MESSAGE_HEADERSENTRY']._serialized_end=183
-  _globals['_PROCESSMESSAGEREQUEST']._serialized_start=185
-  _globals['_PROCESSMESSAGEREQUEST']._serialized_end=268
-  _globals['_PROCESSMESSAGERESPONSE']._serialized_start=270
-  _globals['_PROCESSMESSAGERESPONSE']._serialized_end=335
-  _globals['_PROCESSWATERMARKREQUEST']._serialized_start=338
-  _globals['_PROCESSWATERMARKREQUEST']._serialized_end=519
-  _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._serialized_start=137
-  _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._serialized_end=183
-  _globals['_FLINKWORKERSERVICE']._serialized_start=522
-  _globals['_FLINKWORKERSERVICE']._serialized_end=732
+  _globals['_MESSAGE']._serialized_start=66
+  _globals['_MESSAGE']._serialized_end=212
+  _globals['_MESSAGE_HEADERSENTRY']._serialized_start=166
+  _globals['_MESSAGE_HEADERSENTRY']._serialized_end=212
+  _globals['_PROCESSMESSAGEREQUEST']._serialized_start=214
+  _globals['_PROCESSMESSAGEREQUEST']._serialized_end=297
+  _globals['_PROCESSMESSAGERESPONSE']._serialized_start=299
+  _globals['_PROCESSMESSAGERESPONSE']._serialized_end=364
+  _globals['_PROCESSWATERMARKREQUEST']._serialized_start=367
+  _globals['_PROCESSWATERMARKREQUEST']._serialized_end=548
+  _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._serialized_start=166
+  _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._serialized_end=212
+  _globals['_WINDOWIDENTIFIER']._serialized_start=550
+  _globals['_WINDOWIDENTIFIER']._serialized_end=618
+  _globals['_ADDTOWINDOWREQUEST']._serialized_start=621
+  _globals['_ADDTOWINDOWREQUEST']._serialized_end=752
+  _globals['_TRIGGERWINDOWREQUEST']._serialized_start=754
+  _globals['_TRIGGERWINDOWREQUEST']._serialized_end=847
+  _globals['_FLINKWORKERSERVICE']._serialized_start=850
+  _globals['_FLINKWORKERSERVICE']._serialized_end=1224
 # @@protoc_insertion_point(module_scope)

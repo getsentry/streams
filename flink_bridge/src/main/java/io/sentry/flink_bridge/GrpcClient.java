@@ -4,6 +4,9 @@ import flink_worker.FlinkWorker.Message;
 import flink_worker.FlinkWorker.ProcessMessageRequest;
 import flink_worker.FlinkWorker.ProcessMessageResponse;
 import flink_worker.FlinkWorker.ProcessWatermarkRequest;
+import flink_worker.FlinkWorker.AddToWindowRequest;
+import flink_worker.FlinkWorker.TriggerWindowRequest;
+import flink_worker.FlinkWorker.WindowIdentifier;
 import flink_worker.FlinkWorkerServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -102,6 +105,73 @@ public class GrpcClient {
         } catch (Exception e) {
             LOG.error("Error calling gRPC service for watermark", e);
             throw new RuntimeException("Failed to process watermark via gRPC", e);
+        }
+    }
+
+    /**
+     * Adds a message to a window.
+     *
+     * @param message         the message to add to the window
+     * @param segmentId       the segment ID
+     * @param partitionKey    the partition key for the window
+     * @param windowStartTime the window start time
+     * @throws RuntimeException if the gRPC call fails
+     */
+    public void addToWindow(Message message, int segmentId, String partitionKey, long windowStartTime) {
+        try {
+            // Construct the window identifier
+            WindowIdentifier windowId = WindowIdentifier.newBuilder()
+                    .setPartitionKey(partitionKey)
+                    .setWindowStartTime(windowStartTime)
+                    .build();
+
+            // Construct the request
+            AddToWindowRequest request = AddToWindowRequest.newBuilder()
+                    .setMessage(message)
+                    .setSegmentId(segmentId)
+                    .setWindowId(windowId)
+                    .build();
+
+            LOG.debug("Sending add to window request: {}", request);
+            blockingStub.addToWindow(request);
+            LOG.debug("Successfully added message to window");
+        } catch (Exception e) {
+            LOG.error("Error adding message to window", e);
+            throw new RuntimeException("Failed to add message to window via gRPC", e);
+        }
+    }
+
+    /**
+     * Triggers a window and returns the accumulated messages.
+     *
+     * @param segmentId       the segment ID
+     * @param partitionKey    the partition key for the window
+     * @param windowStartTime the window start time
+     * @return a list of accumulated messages from the window
+     * @throws RuntimeException if the gRPC call fails
+     */
+    public List<Message> triggerWindow(int segmentId, String partitionKey, long windowStartTime) {
+        try {
+            // Construct the window identifier
+            WindowIdentifier windowId = WindowIdentifier.newBuilder()
+                    .setPartitionKey(partitionKey)
+                    .setWindowStartTime(windowStartTime)
+                    .build();
+
+            // Construct the request
+            TriggerWindowRequest request = TriggerWindowRequest.newBuilder()
+                    .setWindowId(windowId)
+                    .setSegmentId(segmentId)
+                    .build();
+
+            LOG.debug("Sending trigger window request: {}", request);
+            ProcessMessageResponse response = blockingStub.triggerWindow(request);
+            LOG.debug("Received trigger window response: {} messages",
+                    response.getMessagesCount());
+            return response.getMessagesList();
+        } catch (Exception e) {
+            LOG.error("Error triggering window", e);
+            throw new RuntimeException("Failed to trigger window via gRPC", e);
         }
     }
 

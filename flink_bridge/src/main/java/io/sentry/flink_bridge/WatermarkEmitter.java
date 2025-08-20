@@ -21,7 +21,7 @@ public class WatermarkEmitter
             Thread.currentThread().interrupt();
             LOG.warn("Interrupted while waiting before output collection", e);
         }
-
+        record.setTimestamp(System.currentTimeMillis());
         output.collect(record);
     }
 }

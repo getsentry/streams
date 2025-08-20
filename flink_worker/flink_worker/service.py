@@ -9,8 +9,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 import time
 import grpc
-from .flink_worker_pb2 import Message, ProcessMessageRequest, ProcessMessageResponse, ProcessWatermarkRequest
+from .flink_worker_pb2 import (
+    Message, ProcessMessageRequest, ProcessMessageResponse, ProcessWatermarkRequest,
+    AddToWindowRequest, TriggerWindowRequest
+)
 from .flink_worker_pb2_grpc import FlinkWorkerServiceServicer, add_FlinkWorkerServiceServicer_to_server
+from google.protobuf import empty_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +26,11 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
     This service processes messages and returns a list of processed messages.
     The Message class can be subclassed to add custom functionality.
     """
+
+    def __init__(self):
+        """Initialize the service with an in-memory window storage."""
+        self.windows = {}  # Simple in-memory storage for windows
+        logger.info("FlinkWorkerService initialized with window storage")
 
     def ProcessMessage(
         self, request: ProcessMessageRequest, context: grpc.ServicerContext
@@ -113,6 +122,101 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
 
         except Exception as e:
             logger.error(f"Error processing watermark: {e}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"Internal error: {str(e)}")
+            return ProcessMessageResponse(messages=[])
+
+    def AddToWindow(
+        self, request: AddToWindowRequest, context: grpc.ServicerContext
+    ) -> empty_pb2.Empty:
+        """
+        Add a message to a window.
+
+        Args:
+            request: The AddToWindowRequest containing the message, segment_id, and window_id
+            context: The gRPC service context
+
+        Returns:
+            Empty response indicating success
+        """
+        try:
+            message = request.message
+            segment_id = request.segment_id
+            window_id = request.window_id
+
+            # Create a unique key for the window
+            window_key = f"{window_id.partition_key}_{window_id.window_start_time}_{segment_id}"
+
+            logger.info(f"Adding message to window {window_key} for segment {segment_id}")
+            logger.debug(f"Window partition key: {window_id.partition_key}")
+            logger.debug(f"Window start time: {window_id.window_start_time}")
+
+            # Initialize the window if it doesn't exist
+            if window_key not in self.windows:
+                self.windows[window_key] = []
+
+            # Add the message to the window
+            self.windows[window_key].append(message)
+
+            logger.info(f"Successfully added message to window {window_key}")
+            return empty_pb2.Empty()
+
+        except Exception as e:
+            logger.error(f"Error adding message to window: {e}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"Internal error: {str(e)}")
+            return empty_pb2.Empty()
+
+    def TriggerWindow(
+        self, request: TriggerWindowRequest, context: grpc.ServicerContext
+    ) -> ProcessMessageResponse:
+        """
+        Trigger a window and return the accumulated messages.
+
+        Args:
+            request: The TriggerWindowRequest containing the window_id and segment_id
+            context: The gRPC service context
+
+        Returns:
+            ProcessMessageResponse containing the accumulated messages from the window
+        """
+        try:
+            window_id = request.window_id
+            segment_id = request.segment_id
+
+            # Create the same unique key for the window
+            window_key = f"{window_id.partition_key}_{window_id.window_start_time}_{segment_id}"
+
+            logger.info(f"Triggering window {window_key} for segment {segment_id}")
+            logger.debug(f"Window partition key: {window_id.partition_key}")
+            logger.debug(f"Window start time: {window_id.window_start_time}")
+
+            # Get the messages from the window
+            if window_key in self.windows:
+                window_messages = self.windows[window_key]
+                logger.info(f"Found {len(window_messages)} messages in window {window_key}")
+
+                # Process the window messages (simple aggregation for now)
+                processed_messages = []
+
+                output_msg = Message()
+                output_msg.headers["window_triggered"] = "true"
+                output_msg.headers["window_key"] = window_key
+                output_msg.headers["segment_id"] = str(segment_id)
+                output_msg.payload = f"window_{window_key}_triggered".encode("utf-8")
+                processed_messages.append(output_msg)
+
+                # Clear the window after triggering
+                del self.windows[window_key]
+                logger.info(f"Window {window_key} cleared after triggering")
+
+                return ProcessMessageResponse(messages=processed_messages)
+            else:
+                logger.warning(f"Window {window_key} not found")
+                return ProcessMessageResponse(messages=[])
+
+        except Exception as e:
+            logger.error(f"Error triggering window: {e}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"Internal error: {str(e)}")
             return ProcessMessageResponse(messages=[])

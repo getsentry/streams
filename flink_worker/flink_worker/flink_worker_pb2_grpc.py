@@ -4,6 +4,7 @@ import grpc
 import warnings
 
 from . import flink_worker_pb2 as flink__worker__pb2
+from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 
 GRPC_GENERATED_VERSION = '1.74.0'
 GRPC_VERSION = grpc.__version__
@@ -45,6 +46,16 @@ class FlinkWorkerServiceStub(object):
                 request_serializer=flink__worker__pb2.ProcessWatermarkRequest.SerializeToString,
                 response_deserializer=flink__worker__pb2.ProcessMessageResponse.FromString,
                 _registered_method=True)
+        self.AddToWindow = channel.unary_unary(
+                '/flink_worker.FlinkWorkerService/AddToWindow',
+                request_serializer=flink__worker__pb2.AddToWindowRequest.SerializeToString,
+                response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+                _registered_method=True)
+        self.TriggerWindow = channel.unary_unary(
+                '/flink_worker.FlinkWorkerService/TriggerWindow',
+                request_serializer=flink__worker__pb2.TriggerWindowRequest.SerializeToString,
+                response_deserializer=flink__worker__pb2.ProcessMessageResponse.FromString,
+                _registered_method=True)
 
 
 class FlinkWorkerServiceServicer(object):
@@ -65,6 +76,20 @@ class FlinkWorkerServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AddToWindow(self, request, context):
+        """Add a message to a window (no return value)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TriggerWindow(self, request, context):
+        """Trigger a window and return the accumulated messages
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_FlinkWorkerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -76,6 +101,16 @@ def add_FlinkWorkerServiceServicer_to_server(servicer, server):
             'ProcessWatermark': grpc.unary_unary_rpc_method_handler(
                     servicer.ProcessWatermark,
                     request_deserializer=flink__worker__pb2.ProcessWatermarkRequest.FromString,
+                    response_serializer=flink__worker__pb2.ProcessMessageResponse.SerializeToString,
+            ),
+            'AddToWindow': grpc.unary_unary_rpc_method_handler(
+                    servicer.AddToWindow,
+                    request_deserializer=flink__worker__pb2.AddToWindowRequest.FromString,
+                    response_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+            ),
+            'TriggerWindow': grpc.unary_unary_rpc_method_handler(
+                    servicer.TriggerWindow,
+                    request_deserializer=flink__worker__pb2.TriggerWindowRequest.FromString,
                     response_serializer=flink__worker__pb2.ProcessMessageResponse.SerializeToString,
             ),
     }
@@ -133,6 +168,60 @@ class FlinkWorkerService(object):
             target,
             '/flink_worker.FlinkWorkerService/ProcessWatermark',
             flink__worker__pb2.ProcessWatermarkRequest.SerializeToString,
+            flink__worker__pb2.ProcessMessageResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AddToWindow(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/flink_worker.FlinkWorkerService/AddToWindow',
+            flink__worker__pb2.AddToWindowRequest.SerializeToString,
+            google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TriggerWindow(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/flink_worker.FlinkWorkerService/TriggerWindow',
+            flink__worker__pb2.TriggerWindowRequest.SerializeToString,
             flink__worker__pb2.ProcessMessageResponse.FromString,
             options,
             channel_credentials,
