@@ -9,7 +9,7 @@ import time
 
 import grpc
 
-from .flink_worker_pb2 import Message, ProcessMessageRequest
+from .flink_worker_pb2 import Message, ProcessMessageRequest, ProcessWatermarkRequest
 from .flink_worker_pb2_grpc import FlinkWorkerServiceStub
 from .service import create_server
 
@@ -33,6 +33,9 @@ def test_service():
         stub = FlinkWorkerServiceStub(channel)
 
         print("✅ Connected to server")
+
+        # Test 1: Process Message
+        print("\n📝 Testing ProcessMessage...")
 
         # Create a test message
         test_message = Message(
@@ -70,7 +73,39 @@ def test_service():
             print(f"   Headers: {dict(msg.headers)}")
             print(f"   Timestamp: {msg.timestamp}")
 
-        print("\n✅ Test completed successfully!")
+        # Test 2: Process Watermark
+        print("\n💧 Testing ProcessWatermark...")
+
+        # Create a test watermark request
+        watermark_request = ProcessWatermarkRequest(
+            timestamp=int(time.time()),
+            headers={
+                "source": "test_script",
+                "type": "watermark",
+                "priority": "normal"
+            },
+            segment_id=42
+        )
+
+        print("📤 Sending test watermark...")
+        print(f"   Timestamp: {watermark_request.timestamp}")
+        print(f"   Headers: {dict(watermark_request.headers)}")
+        print(f"   Segment ID: {watermark_request.segment_id}")
+
+        # Send the watermark
+        watermark_response = stub.ProcessWatermark(watermark_request)
+
+        print("📥 Received watermark response:")
+        print(f"   Number of messages: {len(watermark_response.messages)}")
+
+        # Display each processed watermark message
+        for i, msg in enumerate(watermark_response.messages):
+            print(f"\n--- Watermark Message {i + 1} ---")
+            print(f"   Payload: {msg.payload}")
+            print(f"   Headers: {dict(msg.headers)}")
+            print(f"   Timestamp: {msg.timestamp}")
+
+        print("\n✅ All tests completed successfully!")
 
     except Exception as e:
         print(f"❌ Test failed: {e}")

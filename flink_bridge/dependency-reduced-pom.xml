@@ -224,12 +224,12 @@
     </dependency>
   </dependencies>
   <properties>
-    <maven.compiler.target>21</maven.compiler.target>
     <maven.compiler.source>21</maven.compiler.source>
-    <protobuf.version>3.25.1</protobuf.version>
     <protoc.version>3.25.1</protoc.version>
+    <flink.version>2.1.0</flink.version>
+    <maven.compiler.target>21</maven.compiler.target>
+    <protobuf.version>3.25.1</protobuf.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <grpc.version>1.60.0</grpc.version>
-    <flink.version>2.1.0</flink.version>
   </properties>
 </project>

@@ -37,7 +37,7 @@ public class StringDeserializer implements OneInputStreamProcessFunction<String,
             Collector<Message> out,
             PartitionedContext<Message> ctx) throws Exception {
         try {
-            LOG.info("Deserializing message: {}", record);
+            LOG.debug("Deserializing message: {}", record);
 
             // long time = ctx.getProcessingTimeManager().currentTime();
             long time = System.currentTimeMillis();

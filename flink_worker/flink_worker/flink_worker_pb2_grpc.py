@@ -40,6 +40,11 @@ class FlinkWorkerServiceStub(object):
                 request_serializer=flink__worker__pb2.ProcessMessageRequest.SerializeToString,
                 response_deserializer=flink__worker__pb2.ProcessMessageResponse.FromString,
                 _registered_method=True)
+        self.ProcessWatermark = channel.unary_unary(
+                '/flink_worker.FlinkWorkerService/ProcessWatermark',
+                request_serializer=flink__worker__pb2.ProcessWatermarkRequest.SerializeToString,
+                response_deserializer=flink__worker__pb2.ProcessMessageResponse.FromString,
+                _registered_method=True)
 
 
 class FlinkWorkerServiceServicer(object):
@@ -53,12 +58,24 @@ class FlinkWorkerServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ProcessWatermark(self, request, context):
+        """Process a watermark and return a list of processed messages
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_FlinkWorkerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'ProcessMessage': grpc.unary_unary_rpc_method_handler(
                     servicer.ProcessMessage,
                     request_deserializer=flink__worker__pb2.ProcessMessageRequest.FromString,
+                    response_serializer=flink__worker__pb2.ProcessMessageResponse.SerializeToString,
+            ),
+            'ProcessWatermark': grpc.unary_unary_rpc_method_handler(
+                    servicer.ProcessWatermark,
+                    request_deserializer=flink__worker__pb2.ProcessWatermarkRequest.FromString,
                     response_serializer=flink__worker__pb2.ProcessMessageResponse.SerializeToString,
             ),
     }
@@ -89,6 +106,33 @@ class FlinkWorkerService(object):
             target,
             '/flink_worker.FlinkWorkerService/ProcessMessage',
             flink__worker__pb2.ProcessMessageRequest.SerializeToString,
+            flink__worker__pb2.ProcessMessageResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ProcessWatermark(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/flink_worker.FlinkWorkerService/ProcessWatermark',
+            flink__worker__pb2.ProcessWatermarkRequest.SerializeToString,
             flink__worker__pb2.ProcessMessageResponse.FromString,
             options,
             channel_credentials,

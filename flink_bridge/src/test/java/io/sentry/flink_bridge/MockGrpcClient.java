@@ -3,6 +3,7 @@ package io.sentry.flink_bridge;
 import flink_worker.FlinkWorker.Message;
 import flink_worker.FlinkWorker.ProcessMessageRequest;
 import flink_worker.FlinkWorker.ProcessMessageResponse;
+import flink_worker.FlinkWorker.ProcessWatermarkRequest;
 import java.util.List;
 
 /**
@@ -73,6 +74,31 @@ public class MockGrpcClient extends GrpcClient {
             return nextResponse != null ? nextResponse.getMessagesList() : List.of();
         } catch (Exception e) {
             throw new RuntimeException("Failed to process message via gRPC", e);
+        }
+    }
+
+    @Override
+    public List<Message> processWatermark(long timestamp, java.util.Map<String, String> headers, int segmentId) {
+        // Simulate the same logic as the real GrpcClient
+        try {
+            // Construct the request internally (same as real implementation)
+            ProcessWatermarkRequest request = ProcessWatermarkRequest.newBuilder()
+                    .setTimestamp(timestamp)
+                    .putAllHeaders(headers != null ? headers : new java.util.HashMap<>())
+                    .setSegmentId(segmentId)
+                    .build();
+
+            // Note: We're reusing the same response mechanism for both message and
+            // watermark processing
+            // In a more sophisticated mock, you might want separate response handling for
+            // watermarks
+            if (nextException != null) {
+                throw nextException;
+            }
+
+            return nextResponse != null ? nextResponse.getMessagesList() : List.of();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process watermark via gRPC", e);
         }
     }
 

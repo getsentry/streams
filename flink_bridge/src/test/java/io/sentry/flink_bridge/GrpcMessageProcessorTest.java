@@ -20,12 +20,14 @@ class GrpcMessageProcessorTest {
     private TestGrpcMessageProcessor processor;
     private MockGrpcClient mockGrpcClient;
     private TestUtils.MockMessageCollector mockCollector;
+    private TestUtils.MockPartitionedContext mockContext;
 
     @BeforeEach
     void setUp() {
         processor = new TestGrpcMessageProcessor();
         mockGrpcClient = new MockGrpcClient();
         mockCollector = new TestUtils.MockMessageCollector();
+        mockContext = TestUtils.createMockPartitionedContext();
     }
 
     @Test
@@ -37,7 +39,7 @@ class GrpcMessageProcessorTest {
         processor.setGrpcClient(mockGrpcClient);
 
         // Act
-        processor.processRecord(inputMessage, mockCollector, null);
+        processor.processRecord(inputMessage, mockCollector, mockContext);
 
         // Assert
         assertEquals(1, mockCollector.getCollectedItems().size());
@@ -56,7 +58,7 @@ class GrpcMessageProcessorTest {
         processor.setGrpcClient(mockGrpcClient);
 
         // Act
-        processor.processRecord(inputMessage, mockCollector, null);
+        processor.processRecord(inputMessage, mockCollector, mockContext);
 
         // Assert
         assertEquals(2, mockCollector.getCollectedItems().size());
@@ -75,7 +77,7 @@ class GrpcMessageProcessorTest {
         processor.setGrpcClient(mockGrpcClient);
 
         // Act
-        processor.processRecord(inputMessage, mockCollector, null);
+        processor.processRecord(inputMessage, mockCollector, mockContext);
 
         // Assert
         assertEquals(0, mockCollector.getCollectedItems().size());
@@ -91,7 +93,7 @@ class GrpcMessageProcessorTest {
         processor.setGrpcClient(mockGrpcClient);
 
         // Act
-        processor.processRecord(inputMessage, mockCollector, null);
+        processor.processRecord(inputMessage, mockCollector, mockContext);
 
         // Assert
         // Should not throw exception, just log error and continue
@@ -108,7 +110,7 @@ class GrpcMessageProcessorTest {
         processor.setGrpcClient(mockGrpcClient);
 
         // Act
-        processor.processRecord(inputMessage, mockCollector, null);
+        processor.processRecord(inputMessage, mockCollector, mockContext);
 
         // Assert
         ProcessMessageRequest lastRequest = mockGrpcClient.getLastRequest();

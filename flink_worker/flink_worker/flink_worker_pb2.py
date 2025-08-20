@@ -23,7 +23,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x66link_worker.proto\x12\x0c\x66link_worker\"\x92\x01\n\x07Message\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\x12\x33\n\x07headers\x18\x02 \x03(\x0b\x32\".flink_worker.Message.HeadersEntry\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"S\n\x15ProcessMessageRequest\x12&\n\x07message\x18\x01 \x01(\x0b\x32\x15.flink_worker.Message\x12\x12\n\nsegment_id\x18\x02 \x01(\r\"A\n\x16ProcessMessageResponse\x12\'\n\x08messages\x18\x01 \x03(\x0b\x32\x15.flink_worker.Message2q\n\x12\x46linkWorkerService\x12[\n\x0eProcessMessage\x12#.flink_worker.ProcessMessageRequest\x1a$.flink_worker.ProcessMessageResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x66link_worker.proto\x12\x0c\x66link_worker\"\x92\x01\n\x07Message\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\x12\x33\n\x07headers\x18\x02 \x03(\x0b\x32\".flink_worker.Message.HeadersEntry\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"S\n\x15ProcessMessageRequest\x12&\n\x07message\x18\x01 \x01(\x0b\x32\x15.flink_worker.Message\x12\x12\n\nsegment_id\x18\x02 \x01(\r\"A\n\x16ProcessMessageResponse\x12\'\n\x08messages\x18\x01 \x03(\x0b\x32\x15.flink_worker.Message\"\xb5\x01\n\x17ProcessWatermarkRequest\x12\x11\n\ttimestamp\x18\x01 \x01(\x03\x12\x43\n\x07headers\x18\x02 \x03(\x0b\x32\x32.flink_worker.ProcessWatermarkRequest.HeadersEntry\x12\x12\n\nsegment_id\x18\x03 \x01(\r\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x32\xd2\x01\n\x12\x46linkWorkerService\x12[\n\x0eProcessMessage\x12#.flink_worker.ProcessMessageRequest\x1a$.flink_worker.ProcessMessageResponse\x12_\n\x10ProcessWatermark\x12%.flink_worker.ProcessWatermarkRequest\x1a$.flink_worker.ProcessMessageResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,6 +32,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_MESSAGE_HEADERSENTRY']._loaded_options = None
   _globals['_MESSAGE_HEADERSENTRY']._serialized_options = b'8\001'
+  _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._loaded_options = None
+  _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._serialized_options = b'8\001'
   _globals['_MESSAGE']._serialized_start=37
   _globals['_MESSAGE']._serialized_end=183
   _globals['_MESSAGE_HEADERSENTRY']._serialized_start=137
@@ -40,6 +42,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_PROCESSMESSAGEREQUEST']._serialized_end=268
   _globals['_PROCESSMESSAGERESPONSE']._serialized_start=270
   _globals['_PROCESSMESSAGERESPONSE']._serialized_end=335
-  _globals['_FLINKWORKERSERVICE']._serialized_start=337
-  _globals['_FLINKWORKERSERVICE']._serialized_end=450
+  _globals['_PROCESSWATERMARKREQUEST']._serialized_start=338
+  _globals['_PROCESSWATERMARKREQUEST']._serialized_end=519
+  _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._serialized_start=137
+  _globals['_PROCESSWATERMARKREQUEST_HEADERSENTRY']._serialized_end=183
+  _globals['_FLINKWORKERSERVICE']._serialized_start=522
+  _globals['_FLINKWORKERSERVICE']._serialized_end=732
 # @@protoc_insertion_point(module_scope)

@@ -12,7 +12,7 @@ from typing import Dict
 
 import grpc
 
-from .flink_worker_pb2 import Message, ProcessMessageRequest
+from .flink_worker_pb2 import Message, ProcessMessageRequest, ProcessWatermarkRequest
 from .flink_worker_pb2_grpc import FlinkWorkerServiceStub
 
 # Configure logging
@@ -116,6 +116,59 @@ class FlinkWorkerClient:
         except Exception as e:
             logger.error(f"Error processing message: {e}")
 
+    def process_watermark(
+        self,
+        timestamp: int,
+        headers: Dict[str, str],
+        segment_id: int
+    ) -> None:
+        """
+        Send a watermark to the service for processing.
+
+        Args:
+            timestamp: Unix timestamp for the watermark
+            headers: A dictionary of string key-value pairs
+            segment_id: The segment ID as an unsigned integer
+        """
+        try:
+            # Create the request
+            request = ProcessWatermarkRequest(
+                timestamp=timestamp,
+                headers=headers,
+                segment_id=segment_id
+            )
+
+            logger.info(f"Sending watermark for segment {segment_id}")
+            logger.debug(f"Timestamp: {timestamp}")
+            logger.debug(f"Headers: {headers}")
+
+            # Make the gRPC call
+            response = self.stub.ProcessWatermark(request)
+
+            logger.info(f"Received {len(response.messages)} processed watermark messages")
+
+            # Display the results
+            for i, msg in enumerate(response.messages):
+                print(f"\n--- Processed Watermark Message {i + 1} ---")
+                print(f"Payload length: {len(msg.payload)}")
+                print(f"Headers: {dict(msg.headers)}")
+                print(f"Timestamp: {msg.timestamp}")
+
+                # Try to decode payload as text if it looks like text
+                try:
+                    payload_text = msg.payload.decode('utf-8')
+                    if payload_text.isprintable():
+                        print(f"Payload (text): {payload_text}")
+                    else:
+                        print(f"Payload (hex): {msg.payload.hex()[:100]}...")
+                except UnicodeDecodeError:
+                    print(f"Payload (hex): {msg.payload.hex()[:100]}...")
+
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error: {e.code()} - {e.details()}")
+        except Exception as e:
+            logger.error(f"Error processing watermark: {e}")
+
 
 def main() -> None:
     """Main entry point for the Flink Worker gRPC client."""
@@ -133,10 +186,17 @@ def main() -> None:
         help="Port of the gRPC server (default: 50051)"
     )
     parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["message", "watermark"],
+        default="message",
+        help="Processing mode: 'message' or 'watermark' (default: 'message')"
+    )
+    parser.add_argument(
         "--payload",
         type=str,
         default="Hello, Flink Worker!",
-        help="Message payload (default: 'Hello, Flink Worker!')"
+        help="Message payload (default: 'Hello, Flink Worker!') - only used in message mode"
     )
     parser.add_argument(
         "--headers",
@@ -175,15 +235,19 @@ def main() -> None:
         import time
         args.timestamp = int(time.time())
 
-    # Convert payload to bytes
-    payload = args.payload.encode('utf-8')
-
     # Create and use the client
     client = FlinkWorkerClient(args.host, args.port)
 
     try:
         client.connect()
-        client.process_message(payload, headers, args.timestamp, args.segment_id)
+
+        if args.mode == "watermark":
+            client.process_watermark(args.timestamp, headers, args.segment_id)
+        else:
+            # Convert payload to bytes for message mode
+            payload = args.payload.encode('utf-8')
+            client.process_message(payload, headers, args.timestamp, args.segment_id)
+
     except Exception as e:
         logger.error(f"Client error: {e}")
         sys.exit(1)

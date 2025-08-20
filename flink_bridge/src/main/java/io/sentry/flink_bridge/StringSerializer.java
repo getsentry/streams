@@ -29,7 +29,7 @@ public class StringSerializer implements OneInputStreamProcessFunction<Message, 
             Collector<String> out,
             PartitionedContext<String> ctx) throws Exception {
         try {
-            LOG.info("Serializing message: {}", record);
+            LOG.debug("Serializing message: {}", record);
 
             // TODO: Implement your serialization logic here
             // For now, converting the message payload to string

@@ -20,8 +20,18 @@ message ProcessMessageResponse {
   repeated Message messages = 1;
 }
 
+// Request for processing a watermark
+message ProcessWatermarkRequest {
+  int64 timestamp = 1;
+  map<string, string> headers = 2;
+  uint32 segment_id = 3;
+}
+
 // Flink Worker Service
 service FlinkWorkerService {
   // Process a single message and return a list of processed messages
   rpc ProcessMessage(ProcessMessageRequest) returns (ProcessMessageResponse);
+
+  // Process a watermark and return a list of processed messages
+  rpc ProcessWatermark(ProcessWatermarkRequest) returns (ProcessMessageResponse);
 }

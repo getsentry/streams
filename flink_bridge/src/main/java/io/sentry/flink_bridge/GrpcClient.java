@@ -3,6 +3,7 @@ package io.sentry.flink_bridge;
 import flink_worker.FlinkWorker.Message;
 import flink_worker.FlinkWorker.ProcessMessageRequest;
 import flink_worker.FlinkWorker.ProcessMessageResponse;
+import flink_worker.FlinkWorker.ProcessWatermarkRequest;
 import flink_worker.FlinkWorkerServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -72,6 +73,35 @@ public class GrpcClient {
         } catch (Exception e) {
             LOG.error("Error calling gRPC service", e);
             throw new RuntimeException("Failed to process message via gRPC", e);
+        }
+    }
+
+    /**
+     * Sends a watermark processing request to the gRPC service.
+     *
+     * @param timestamp the watermark timestamp
+     * @param headers   optional headers for the watermark
+     * @param segmentId the segment ID for the watermark
+     * @return a list of processed messages
+     * @throws RuntimeException if the gRPC call fails
+     */
+    public List<Message> processWatermark(long timestamp, java.util.Map<String, String> headers, int segmentId) {
+        try {
+            // Construct the request internally
+            ProcessWatermarkRequest request = ProcessWatermarkRequest.newBuilder()
+                    .setTimestamp(timestamp)
+                    .putAllHeaders(headers != null ? headers : new java.util.HashMap<>())
+                    .setSegmentId(segmentId)
+                    .build();
+
+            LOG.debug("Sending watermark request to gRPC service: {}", request);
+            ProcessMessageResponse response = blockingStub.processWatermark(request);
+            LOG.debug("Received watermark response from gRPC service: {} messages",
+                    response.getMessagesCount());
+            return response.getMessagesList();
+        } catch (Exception e) {
+            LOG.error("Error calling gRPC service for watermark", e);
+            throw new RuntimeException("Failed to process watermark via gRPC", e);
         }
     }
 
