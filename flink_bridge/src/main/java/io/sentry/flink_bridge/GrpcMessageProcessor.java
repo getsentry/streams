@@ -24,8 +24,12 @@ public class GrpcMessageProcessor implements OneInputEventTimeStreamProcessFunct
 
     private static final Logger LOG = LoggerFactory.getLogger(GrpcMessageProcessor.class);
     protected GrpcClient grpcClient;
-
+    private int segment_id;
     private EventTimeManager eventTimeManager;
+
+    public GrpcMessageProcessor(int segment_id) {
+        this.segment_id = segment_id;
+    }
 
     @Override
     public void open(NonPartitionedContext<Message> ctx) throws Exception {
@@ -46,10 +50,10 @@ public class GrpcMessageProcessor implements OneInputEventTimeStreamProcessFunct
             Collector<Message> out,
             PartitionedContext<Message> ctx) throws Exception {
         try {
-            LOG.info("Processing message: {}", record);
+            LOG.info("Processing message for TS {}", record.getTimestamp());
 
             // Send to gRPC service and get response
-            List<FlinkWorker.Message> processedMessages = grpcClient.processMessage(record.toProto());
+            List<FlinkWorker.Message> processedMessages = grpcClient.processMessage(record.toProto(), this.segment_id);
 
             // Process the response and output processed messages
             for (FlinkWorker.Message processedMsg : processedMessages) {
@@ -85,7 +89,8 @@ public class GrpcMessageProcessor implements OneInputEventTimeStreamProcessFunct
         // sense event time watermark arrival
         Map<String, String> headers = new HashMap<>();
         headers.put("job_name", ctx.getJobInfo().getJobName());
-        List<FlinkWorker.Message> processedMessages = grpcClient.processWatermark(watermarkTimestamp, headers, 0);
+        List<FlinkWorker.Message> processedMessages = grpcClient.processWatermark(watermarkTimestamp, headers,
+                this.segment_id);
 
         for (FlinkWorker.Message processedMsg : processedMessages) {
             output.collect(new Message(processedMsg));

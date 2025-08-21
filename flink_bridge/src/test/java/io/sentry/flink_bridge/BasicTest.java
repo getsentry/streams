@@ -55,7 +55,7 @@ class BasicTest {
                 TestUtils.createTestMessage("processed message 2")));
 
         // Act
-        List<FlinkWorker.Message> result = mockGrpcClient.processMessage(inputMessage.toProto());
+        List<FlinkWorker.Message> result = mockGrpcClient.processMessage(inputMessage.toProto(), 0);
 
         // Assert
         assertNotNull(result);
@@ -76,7 +76,7 @@ class BasicTest {
         mockGrpcClient.setNextResponse(createMockResponse());
 
         // Act
-        List<flink_worker.FlinkWorker.Message> result = mockGrpcClient.processMessage(inputMessage.toProto());
+        List<flink_worker.FlinkWorker.Message> result = mockGrpcClient.processMessage(inputMessage.toProto(), 0);
 
         // Assert
         assertNotNull(result);
@@ -92,7 +92,7 @@ class BasicTest {
 
         // Act & Assert
         RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> mockGrpcClient.processMessage(inputMessage.toProto()));
+                () -> mockGrpcClient.processMessage(inputMessage.toProto(), 0));
 
         assertEquals("Failed to process message via gRPC", exception.getMessage());
         assertEquals(testException, exception.getCause());
@@ -105,7 +105,7 @@ class BasicTest {
         mockGrpcClient.setNextResponse(createMockResponse(TestUtils.createTestMessage("response")));
 
         // Act
-        mockGrpcClient.processMessage(inputMessage.toProto());
+        mockGrpcClient.processMessage(inputMessage.toProto(), 0);
 
         // Verify the request was constructed correctly
         ProcessMessageRequest lastRequest = mockGrpcClient.getLastRequest();

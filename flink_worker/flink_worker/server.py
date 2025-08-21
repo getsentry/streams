@@ -10,7 +10,9 @@ import signal
 import sys
 from typing import Optional
 
-from flink_worker.service import create_server
+from flink_worker.app_segments import AppendEntry, BatchingSegment
+
+from .service import create_server
 
 # Configure logging
 logging.basicConfig(
@@ -50,7 +52,10 @@ def main() -> None:
 
     try:
         # Create and start the server
-        server = create_server(args.port)
+        server = create_server({
+            0: AppendEntry(),
+            1: BatchingSegment(batch_size=5, batch_time_sec=4),
+        }, {}, args.port)
         server.start()
 
         logger.info(f"Flink Worker gRPC server started on {args.host}:{args.port}")

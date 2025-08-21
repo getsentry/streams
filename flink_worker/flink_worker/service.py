@@ -7,10 +7,11 @@ This module provides the implementation of the FlinkWorkerService gRPC service.
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-import time
+from typing import MutableMapping
 import grpc
+from .segment import ProcessingSegment, WindowSegment
 from flink_worker.flink_worker_pb2 import (
-    Message, ProcessMessageRequest, ProcessMessageResponse, ProcessWatermarkRequest,
+    ProcessMessageRequest, ProcessMessageResponse, ProcessWatermarkRequest,
     AddToWindowRequest, TriggerWindowRequest
 )
 from flink_worker.flink_worker_pb2_grpc import FlinkWorkerServiceServicer, add_FlinkWorkerServiceServicer_to_server
@@ -27,10 +28,14 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
     The Message class can be subclassed to add custom functionality.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        segments: MutableMapping[int, ProcessingSegment],
+        window_segments: MutableMapping[int, WindowSegment]
+    ):
         """Initialize the service with an in-memory window storage."""
-        self.windows = {}  # Simple in-memory storage for windows
-        logger.info("FlinkWorkerService initialized with window storage")
+        self.segments = segments
+        self.window_segments = window_segments
 
     def ProcessMessage(
         self, request: ProcessMessageRequest, context: grpc.ServicerContext
@@ -45,30 +50,24 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
         Returns:
             ProcessMessageResponse containing a list of processed messages
         """
+
+        message = request.message
+        segment_id = request.segment_id
+
+        logger.info(f"Processing message for segment {segment_id}")
+        logger.debug(f"Message payload length: {len(message.payload)}")
+        logger.debug(f"Message headers: {message.headers}")
+        logger.debug(f"Message timestamp: {message.timestamp}")
+
+        if segment_id not in self.segments:
+            logger.error(f"Invalid segment when processing message: {segment_id}")
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(f"Invalid segment: {str(segment_id)}")
+            return ProcessMessageResponse(messages=[])
+
         try:
-            message = request.message
-            segment_id = request.segment_id
-
-            logger.info(f"Processing message for segment {segment_id}")
-            logger.debug(f"Message payload length: {len(message.payload)}")
-            logger.debug(f"Message headers: {message.headers}")
-            logger.debug(f"Message timestamp: {message.timestamp}")
-
-            # For now, return the original message as-is
-            # In a real implementation, this would contain the actual processing logic
-            processed_messages = []
-            # Add a simple header to indicate processing
-            processed_message = Message()
-            processed_message.CopyFrom(message)
-            processed = f"{message.payload.decode()} processed".encode("utf-8")
-            processed_message.payload = processed
-            processed_message.headers["processed"] = "true"
-            processed_message.headers["segment_id"] = str(segment_id)
-
-            processed_messages.append(processed_message)
-
-            logger.info(f"Successfully processed message for segment {segment_id}")
-            time.sleep(0.5)
+            processed_messages = self.segments[segment_id].process(message)
+            logger.debug(f"Processed message for segment {segment_id}. {len(processed_messages)} returned")
             return ProcessMessageResponse(messages=processed_messages)
 
         except Exception as e:
@@ -90,38 +89,26 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
         Returns:
             ProcessMessageResponse containing a list of processed messages
         """
+
+        segment_id = request.segment_id
+        watermark_timestamp = request.timestamp
+
+        logger.info(f"Processing watermark for segment {segment_id}")
+        logger.debug(f"Watermark timestamp: {watermark_timestamp}")
+
+        if segment_id not in self.segments:
+            logger.error(f"Invalid segment when processing message: {segment_id}")
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(f"Invalid segment: {str(segment_id)}")
+            return ProcessMessageResponse(messages=[])
+
         try:
-            timestamp = request.timestamp
-            headers = request.headers
-            segment_id = request.segment_id
-
-            logger.info(f"Processing watermark for segment {segment_id}")
-            logger.debug(f"Watermark timestamp: {timestamp}")
-            logger.debug(f"Watermark headers: {headers}")
-
-            # Create a message from the watermark data
-            # In a real implementation, this would contain the actual watermark processing logic
-            processed_messages = []
-
-            # Create a message with the watermark information
-            watermark_message = Message()
-            watermark_message.timestamp = timestamp
-            watermark_message.headers.update(headers)
-            watermark_message.headers["watermark"] = "true"
-            watermark_message.headers["segment_id"] = str(segment_id)
-            watermark_message.headers["processed"] = "true"
-
-            # Set a simple payload indicating this is a watermark
-            watermark_message.payload = f"watermark_{timestamp}".encode("utf-8")
-
-            processed_messages.append(watermark_message)
-
-            logger.info(f"Successfully processed watermark for segment {segment_id}")
-            time.sleep(0.1)  # Shorter delay for watermarks
+            processed_messages = self.segments[segment_id].watermark(watermark_timestamp)
+            logger.debug(f"Processed message for segment {segment_id}. {len(processed_messages)} returned")
             return ProcessMessageResponse(messages=processed_messages)
 
         except Exception as e:
-            logger.error(f"Error processing watermark: {e}")
+            logger.error(f"Error processing message: {e}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"Internal error: {str(e)}")
             return ProcessMessageResponse(messages=[])
@@ -139,26 +126,21 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
         Returns:
             Empty response indicating success
         """
+        message = request.message
+        segment_id = request.segment_id
+        window_id = request.window_id
+        partition_key = window_id.partition_key
+        window_start_time = window_id.window_start_time
+
+        if segment_id not in self.window_segments:
+            logger.error(f"Invalid segment when adding to window: {segment_id}")
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(f"Invalid segment: {str(segment_id)}")
+            return empty_pb2.Empty()
+
         try:
-            message = request.message
-            segment_id = request.segment_id
-            window_id = request.window_id
-
-            # Create a unique key for the window
-            window_key = f"{window_id.partition_key}_{window_id.window_start_time}_{segment_id}"
-
-            logger.info(f"Adding message to window {window_key} for segment {segment_id}")
-            logger.debug(f"Window partition key: {window_id.partition_key}")
-            logger.debug(f"Window start time: {window_id.window_start_time}")
-
-            # Initialize the window if it doesn't exist
-            if window_key not in self.windows:
-                self.windows[window_key] = []
-
-            # Add the message to the window
-            self.windows[window_key].append(message)
-
-            logger.info(f"Successfully added message to window {window_key}")
+            self.window_segments[segment_id].add(message, window_start_time, partition_key)
+            logger.debug(f"Added message to window {window_id} for segment {segment_id}")
             return empty_pb2.Empty()
 
         except Exception as e:
@@ -180,40 +162,22 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
         Returns:
             ProcessMessageResponse containing the accumulated messages from the window
         """
+        segment_id = request.segment_id
+        window_id = request.window_id
+
+        if segment_id not in self.window_segments:
+            logger.error(f"Invalid segment when triggering window: {segment_id}")
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(f"Invalid segment: {str(segment_id)}")
+            return ProcessMessageResponse(messages=[])
+
         try:
-            window_id = request.window_id
-            segment_id = request.segment_id
-
-            # Create the same unique key for the window
-            window_key = f"{window_id.partition_key}_{window_id.window_start_time}_{segment_id}"
-
-            logger.info(f"Triggering window {window_key} for segment {segment_id}")
-            logger.debug(f"Window partition key: {window_id.partition_key}")
-            logger.debug(f"Window start time: {window_id.window_start_time}")
-
-            # Get the messages from the window
-            if window_key in self.windows:
-                window_messages = self.windows[window_key]
-                logger.info(f"Found {len(window_messages)} messages in window {window_key}")
-
-                # Process the window messages (simple aggregation for now)
-                processed_messages = []
-
-                output_msg = Message()
-                output_msg.headers["window_triggered"] = "true"
-                output_msg.headers["window_key"] = window_key
-                output_msg.headers["segment_id"] = str(segment_id)
-                output_msg.payload = f"window_{window_key}_triggered".encode("utf-8")
-                processed_messages.append(output_msg)
-
-                # Clear the window after triggering
-                del self.windows[window_key]
-                logger.info(f"Window {window_key} cleared after triggering")
-
-                return ProcessMessageResponse(messages=processed_messages)
-            else:
-                logger.warning(f"Window {window_key} not found")
-                return ProcessMessageResponse(messages=[])
+            processed_messages = self.window_segments[segment_id].trigger(
+                window_id.window_start_time,
+                window_id.partition_key
+            )
+            logger.debug(f"Triggered window for segment {segment_id}. {len(processed_messages)} messages returned")
+            return ProcessMessageResponse(messages=processed_messages)
 
         except Exception as e:
             logger.error(f"Error triggering window: {e}")
@@ -222,7 +186,7 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
             return ProcessMessageResponse(messages=[])
 
 
-def create_server(port: int = 50051) -> grpc.Server:
+def create_server(segments: MutableMapping[int, ProcessingSegment], window_segments: MutableMapping[int, WindowSegment], port: int = 50051, ) -> grpc.Server:
     """
     Create and configure the gRPC server.
 
@@ -233,7 +197,7 @@ def create_server(port: int = 50051) -> grpc.Server:
         A configured gRPC server
     """
     server = grpc.server(ThreadPoolExecutor(max_workers=10))
-    add_FlinkWorkerServiceServicer_to_server(FlinkWorkerService(), server)
+    add_FlinkWorkerServiceServicer_to_server(FlinkWorkerService(segments, window_segments), server)
 
     # Bind to the specified port
     server.add_insecure_port(f"[::]:{port}")

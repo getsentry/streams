@@ -1,120 +1,303 @@
 """
-Simple test script for the Flink Worker gRPC service.
+Test script for the Flink Worker gRPC service.
 
-This script tests the service by starting it in a separate thread and then
-sending a test message to it.
+This script tests the service methods directly without requiring a real gRPC server.
 """
 
-import time
+import unittest
+from unittest.mock import Mock
+from typing import Sequence, MutableMapping
 
-import grpc
+from flink_worker.flink_worker_pb2 import (
+    Message, ProcessMessageRequest, ProcessMessageResponse, ProcessWatermarkRequest,
+    AddToWindowRequest, TriggerWindowRequest, WindowIdentifier
+)
+from flink_worker.service import FlinkWorkerService
+from flink_worker.segment import ProcessingSegment, WindowSegment
+from google.protobuf import empty_pb2
 
-from flink_worker.flink_worker_pb2 import Message, ProcessMessageRequest, ProcessWatermarkRequest
-from flink_worker.flink_worker_pb2_grpc import FlinkWorkerServiceStub
-from flink_worker.service import create_server
+
+class FakeProcessingSegment(ProcessingSegment):
+    """Fake implementation of ProcessingSegment for testing."""
+
+    def __init__(self, return_messages: Sequence[Message] = None):
+        self.return_messages = return_messages or []
+        self.processed_messages = []
+        self.watermark_timestamps = []
+
+    def process(self, message: Message) -> Sequence[Message]:
+        """Process a message and return predefined messages."""
+        self.processed_messages.append(message)
+        return self.return_messages
+
+    def watermark(self, timestamp: int) -> Sequence[Message]:
+        """Process a watermark and return predefined messages."""
+        self.watermark_timestamps.append(timestamp)
+        return self.return_messages
 
 
-def test_service():
-    """Test the Flink Worker service."""
-    print("🚀 Starting Flink Worker gRPC service test...")
+class FakeWindowSegment(WindowSegment):
+    """Fake implementation of WindowSegment for testing."""
 
-    # Create and start the server
-    server = create_server(port=50052)  # Use different port to avoid conflicts
-    server.start()
+    def __init__(self, return_messages: Sequence[Message] = None):
+        self.return_messages = return_messages or []
+        self.added_messages = []
+        self.triggered_windows = []
 
-    print("✅ Server started on port 50052")
+    def add(self, message: Message, window_time: int, window_key: str) -> None:
+        """Add a message to the window."""
+        self.added_messages.append((message, window_time, window_key))
 
-    # Wait a moment for server to be ready
-    time.sleep(1)
+    def trigger(self, window_time: int, window_key: str) -> Sequence[Message]:
+        """Trigger the window and return predefined messages."""
+        self.triggered_windows.append((window_time, window_key))
+        return self.return_messages
 
-    try:
-        # Create a channel and stub
-        channel = grpc.insecure_channel('localhost:50052')
-        stub = FlinkWorkerServiceStub(channel)
 
-        print("✅ Connected to server")
+class TestFlinkWorkerService(unittest.TestCase):
+    """Test cases for FlinkWorkerService."""
 
-        # Test 1: Process Message
-        print("\n📝 Testing ProcessMessage...")
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create fake segments
+        self.fake_processing_segment = FakeProcessingSegment()
+        self.fake_window_segment = FakeWindowSegment()
 
-        # Create a test message
-        test_message = Message(
+        # Create test messages
+        self.test_message = Message(
             payload=b"Hello, Flink Worker! This is a test message.",
             headers={
                 "source": "test_script",
                 "type": "greeting",
                 "priority": "high"
             },
-            timestamp=int(time.time())
+            timestamp=1234567890
         )
 
-        # Create the request
+        self.test_response_message = Message(
+            payload=b"Processed response message",
+            headers={"status": "processed"},
+            timestamp=1234567891
+        )
+
+        # Create segments mapping
+        self.segments: MutableMapping[int, ProcessingSegment] = {
+            42: self.fake_processing_segment
+        }
+
+        self.window_segments: MutableMapping[int, WindowSegment] = {
+            42: self.fake_window_segment
+        }
+
+        # Create service instance
+        self.service = FlinkWorkerService(self.segments, self.window_segments)
+
+        # Create mock context
+        self.mock_context = Mock()
+
+    def test_process_message_success(self):
+        """Test successful message processing."""
+        # Configure fake segment to return messages
+        self.fake_processing_segment.return_messages = [self.test_response_message]
+
+        # Create request
         request = ProcessMessageRequest(
-            message=test_message,
+            message=self.test_message,
             segment_id=42
         )
 
-        print("📤 Sending test message...")
-        print(f"   Payload: {test_message.payload}")
-        print(f"   Headers: {dict(test_message.headers)}")
-        print(f"   Timestamp: {test_message.timestamp}")
-        print(f"   Segment ID: {request.segment_id}")
+        # Call service method
+        response = self.service.ProcessMessage(request, self.mock_context)
 
-        # Send the message
-        response = stub.ProcessMessage(request)
+        # Verify response
+        self.assertIsInstance(response, ProcessMessageResponse)
+        self.assertEqual(len(response.messages), 1)
+        self.assertEqual(response.messages[0].payload, b"Processed response message")
 
-        print("📥 Received response:")
-        print(f"   Number of messages: {len(response.messages)}")
+        # Verify segment was called
+        self.assertEqual(len(self.fake_processing_segment.processed_messages), 1)
+        self.assertEqual(
+            self.fake_processing_segment.processed_messages[0].payload,
+            b"Hello, Flink Worker! This is a test message."
+        )
 
-        # Display each processed message
-        for i, msg in enumerate(response.messages):
-            print(f"\n--- Message {i + 1} ---")
-            print(f"   Payload: {msg.payload}")
-            print(f"   Headers: {dict(msg.headers)}")
-            print(f"   Timestamp: {msg.timestamp}")
+    def test_process_message_invalid_segment(self):
+        """Test message processing with invalid segment ID."""
+        request = ProcessMessageRequest(
+            message=self.test_message,
+            segment_id=999  # Invalid segment ID
+        )
 
-        # Test 2: Process Watermark
-        print("\n💧 Testing ProcessWatermark...")
+        # Call service method
+        response = self.service.ProcessMessage(request, self.mock_context)
 
-        # Create a test watermark request
-        watermark_request = ProcessWatermarkRequest(
-            timestamp=int(time.time()),
-            headers={
-                "source": "test_script",
-                "type": "watermark",
-                "priority": "normal"
-            },
+        # Verify error was set on context
+        self.mock_context.set_code.assert_called_once()
+        self.mock_context.set_details.assert_called_once()
+
+        # Verify response is empty
+        self.assertEqual(len(response.messages), 0)
+
+    def test_process_watermark_success(self):
+        """Test successful watermark processing."""
+        # Configure fake segment to return messages
+        self.fake_processing_segment.return_messages = [self.test_response_message]
+
+        # Create request
+        request = ProcessWatermarkRequest(
+            timestamp=1234567890,
+            headers={"source": "test_script"},
             segment_id=42
         )
 
-        print("📤 Sending test watermark...")
-        print(f"   Timestamp: {watermark_request.timestamp}")
-        print(f"   Headers: {dict(watermark_request.headers)}")
-        print(f"   Segment ID: {watermark_request.segment_id}")
+        # Call service method
+        response = self.service.ProcessWatermark(request, self.mock_context)
 
-        # Send the watermark
-        watermark_response = stub.ProcessWatermark(watermark_request)
+        # Verify response
+        self.assertIsInstance(response, ProcessMessageResponse)
+        self.assertEqual(len(response.messages), 1)
 
-        print("📥 Received watermark response:")
-        print(f"   Number of messages: {len(watermark_response.messages)}")
+        # Verify segment was called
+        self.assertEqual(len(self.fake_processing_segment.watermark_timestamps), 1)
+        self.assertEqual(self.fake_processing_segment.watermark_timestamps[0], 1234567890)
 
-        # Display each processed watermark message
-        for i, msg in enumerate(watermark_response.messages):
-            print(f"\n--- Watermark Message {i + 1} ---")
-            print(f"   Payload: {msg.payload}")
-            print(f"   Headers: {dict(msg.headers)}")
-            print(f"   Timestamp: {msg.timestamp}")
+    def test_process_watermark_invalid_segment(self):
+        """Test watermark processing with invalid segment ID."""
+        request = ProcessWatermarkRequest(
+            timestamp=1234567890,
+            headers={"source": "test_script"},
+            segment_id=999  # Invalid segment ID
+        )
 
-        print("\n✅ All tests completed successfully!")
+        # Call service method
+        response = self.service.ProcessWatermark(request, self.mock_context)
 
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        raise
-    finally:
-        # Clean up
-        server.stop(0)
-        print("🛑 Server stopped")
+        # Verify error was set on context
+        self.mock_context.set_code.assert_called_once()
+        self.mock_context.set_details.assert_called_once()
+
+        # Verify response is empty
+        self.assertEqual(len(response.messages), 0)
+
+    def test_add_to_window_success(self):
+        """Test successful addition to window."""
+        # Create request
+        window_id = WindowIdentifier(
+            partition_key="test_partition",
+            window_start_time=1234567890
+        )
+        request = AddToWindowRequest(
+            message=self.test_message,
+            segment_id=42,
+            window_id=window_id
+        )
+
+        # Call service method
+        response = self.service.AddToWindow(request, self.mock_context)
+
+        # Verify response
+        self.assertIsInstance(response, empty_pb2.Empty)
+
+        # Verify segment was called
+        self.assertEqual(len(self.fake_window_segment.added_messages), 1)
+        message, window_time, window_key = self.fake_window_segment.added_messages[0]
+        self.assertEqual(message.payload, b"Hello, Flink Worker! This is a test message.")
+        self.assertEqual(window_time, 1234567890)
+        self.assertEqual(window_key, "test_partition")
+
+    def test_add_to_window_invalid_segment(self):
+        """Test adding to window with invalid segment ID."""
+        window_id = WindowIdentifier(
+            partition_key="test_partition",
+            window_start_time=1234567890
+        )
+        request = AddToWindowRequest(
+            message=self.test_message,
+            segment_id=999,  # Invalid segment ID
+            window_id=window_id
+        )
+
+        # Call service method
+        response = self.service.AddToWindow(request, self.mock_context)
+
+        # Verify error was set on context
+        self.mock_context.set_code.assert_called_once()
+        self.mock_context.set_details.assert_called_once()
+
+        # Verify response is still returned
+        self.assertIsInstance(response, empty_pb2.Empty)
+
+    def test_trigger_window_success(self):
+        """Test successful window triggering."""
+        # Configure fake segment to return messages
+        self.fake_window_segment.return_messages = [self.test_response_message]
+
+        # Create request
+        window_id = WindowIdentifier(
+            partition_key="test_partition",
+            window_start_time=1234567890
+        )
+        request = TriggerWindowRequest(
+            segment_id=42,
+            window_id=window_id
+        )
+
+        # Call service method
+        response = self.service.TriggerWindow(request, self.mock_context)
+
+        # Verify response
+        self.assertIsInstance(response, ProcessMessageResponse)
+        self.assertEqual(len(response.messages), 1)
+
+        # Verify segment was called
+        self.assertEqual(len(self.fake_window_segment.triggered_windows), 1)
+        window_time, window_key = self.fake_window_segment.triggered_windows[0]
+        self.assertEqual(window_time, 1234567890)
+        self.assertEqual(window_key, "test_partition")
+
+    def test_trigger_window_invalid_segment(self):
+        """Test window triggering with invalid segment ID."""
+        window_id = WindowIdentifier(
+            partition_key="test_partition",
+            window_start_time=1234567890
+        )
+        request = TriggerWindowRequest(
+            segment_id=999,  # Invalid segment ID
+            window_id=window_id
+        )
+
+        # Call service method
+        response = self.service.TriggerWindow(request, self.mock_context)
+
+        # Verify error was set on context
+        self.mock_context.set_code.assert_called_once()
+        self.mock_context.set_details.assert_called_once()
+
+        # Verify response is empty
+        self.assertEqual(len(response.messages), 0)
+
+
+def run_tests():
+    """Run all tests and display results."""
+    print("🧪 Running Flink Worker Service Tests...")
+    print("=" * 50)
+
+    # Create test suite
+    test_suite = unittest.TestLoader().loadTestsFromTestCase(TestFlinkWorkerService)
+
+    # Run tests
+    test_runner = unittest.TextTestRunner(verbosity=2)
+    result = test_runner.run(test_suite)
+
+    # Display summary
+    print("\n" + "=" * 50)
+    if result.wasSuccessful():
+        print("✅ All tests passed!")
+    else:
+        print(f"❌ {len(result.failures)} tests failed, {len(result.errors)} tests had errors")
+
+    return result.wasSuccessful()
 
 
 if __name__ == "__main__":
-    test_service()
+    run_tests()

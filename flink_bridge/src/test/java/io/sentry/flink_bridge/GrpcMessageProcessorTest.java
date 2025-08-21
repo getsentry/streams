@@ -24,7 +24,7 @@ class GrpcMessageProcessorTest {
 
     @BeforeEach
     void setUp() {
-        processor = new TestGrpcMessageProcessor();
+        processor = new TestGrpcMessageProcessor(0);
         mockGrpcClient = new MockGrpcClient();
         mockCollector = new TestUtils.MockMessageCollector();
         mockContext = TestUtils.createMockPartitionedContext();
@@ -150,12 +150,16 @@ class GrpcMessageProcessorTest {
     private static class TestGrpcMessageProcessor extends GrpcMessageProcessor {
         private GrpcClient testGrpcClient;
 
+        public TestGrpcMessageProcessor(int segment_id) {
+            super(segment_id);
+        }
+
         public void setGrpcClient(GrpcClient client) {
             this.testGrpcClient = client;
             this.grpcClient = client;
         }
 
-        public GrpcClient getGrpcClient() {
+        public GrpcClient getGrpcClient(int segment_id) {
             return this.grpcClient;
         }
     }

@@ -61,11 +61,12 @@ public class GrpcClient {
      * @return a list of processed messages
      * @throws RuntimeException if the gRPC call fails
      */
-    public List<Message> processMessage(Message message) {
+    public List<Message> processMessage(Message message, int segment_id) {
         try {
             // Construct the request internally
             ProcessMessageRequest request = ProcessMessageRequest.newBuilder()
                     .setMessage(message)
+                    .setSegmentId(segment_id)
                     .build();
 
             LOG.debug("Sending request to gRPC service: {}", request);
@@ -88,13 +89,13 @@ public class GrpcClient {
      * @return a list of processed messages
      * @throws RuntimeException if the gRPC call fails
      */
-    public List<Message> processWatermark(long timestamp, java.util.Map<String, String> headers, int segmentId) {
+    public List<Message> processWatermark(long timestamp, java.util.Map<String, String> headers, int segment_id) {
         try {
             // Construct the request internally
             ProcessWatermarkRequest request = ProcessWatermarkRequest.newBuilder()
                     .setTimestamp(timestamp)
                     .putAllHeaders(headers != null ? headers : new java.util.HashMap<>())
-                    .setSegmentId(segmentId)
+                    .setSegmentId(segment_id)
                     .build();
 
             LOG.debug("Sending watermark request to gRPC service: {}", request);

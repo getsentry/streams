@@ -150,6 +150,6 @@ public class GrpcCliApp {
                 .build();
 
         // Send to gRPC service
-        return client.processMessage(message);
+        return client.processMessage(message, 0);
     }
 }

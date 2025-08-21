@@ -57,7 +57,7 @@ public class MockGrpcClient extends GrpcClient {
     }
 
     @Override
-    public List<Message> processMessage(Message message) {
+    public List<Message> processMessage(Message message, int segment_id) {
         // Simulate the same logic as the real GrpcClient
         try {
             // Construct the request internally (same as real implementation)
