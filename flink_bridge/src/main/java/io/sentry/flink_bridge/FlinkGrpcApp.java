@@ -43,7 +43,7 @@ public class FlinkGrpcApp {
 
         public static void main(String[] args) throws Exception {
 
-                List<String> data = TestData.getSampleData();
+                List<String> data = TestData.getMetrics();
 
                 // Set up the streaming execution environment
                 ExecutionEnvironment env = ExecutionEnvironment.getInstance();
@@ -65,33 +65,37 @@ public class FlinkGrpcApp {
 
                 KeyedPartitionStream<String, Message> delayedStream = messageStream
                                 .process(new WatermarkEmitter())
+                                .withName("message-delay-generator")
                                 .keyBy(new KeyGenerator());
 
                 // Apply the gRPC processing function
                 KeyedPartitionStream<String, Message> watermarkedStream = delayedStream
                                 .process(watermarkBuilder.buildAsProcessFunction())
+                                .withName("watermark-generator")
                                 .keyBy(new KeyGenerator());
 
                 //////////////// APPLICATION LOGIC ////////////////
 
                 KeyedPartitionStream<String, Message> processedStream = watermarkedStream
                                 .process(EventTimeExtension.wrapProcessFunction(new GrpcMessageProcessor(0)))
+                                .withName("grpc-processor-0")
+                                .keyBy(new KeyGenerator())
+                                .process(EventTimeExtension.wrapProcessFunction(new GrpcMessageProcessor(1)))
+                                .withName("grpc-processor-1")
                                 .keyBy(new KeyGenerator());
-                // .process(EventTimeExtension.wrapProcessFunction(new GrpcMessageProcessor(1)))
-                // .keyBy(new KeyGenerator());
 
                 // Add custom post-processing function after gRPC processing
-                NonKeyedPartitionStream<Message> postProcessedStream = processedStream
-                                .process(BuiltinFuncs.window(
-                                                WindowStrategy.tumbling(Duration.ofSeconds(2),
-                                                                WindowStrategy.EVENT_TIME),
-                                                new WindowProcessing()));
+                // NonKeyedPartitionStream<Message> postProcessedStream = processedStream
+                // .process(BuiltinFuncs.window(
+                // WindowStrategy.tumbling(Duration.ofSeconds(2),
+                // WindowStrategy.EVENT_TIME),
+                // new WindowProcessing()));
 
                 // NonKeyedPartitionStream<String> serializedStream =
                 // postProcessedStream.process(new StringSerializer());
 
                 // Print the processed messages to standard output
-                postProcessedStream.toSink(new WrappedSink<>(new PrintSink<>())).withName("print-sink");
+                processedStream.toSink(new WrappedSink<>(new PrintSink<>())).withName("print-sink");
 
                 // Execute the Flink job
                 LOG.info("Starting Flink gRPC application...");

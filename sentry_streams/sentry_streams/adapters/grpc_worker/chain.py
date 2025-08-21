@@ -162,6 +162,9 @@ class PickleStep(ChainStep[TIn, bytes]):
             )
         ]
 
+    def watermark(self, timestamp: int) -> Sequence[StreamsMessage[TOut]]:
+        return []
+
 
 class UnpickleStep(ChainStep[bytes, TOut]):
     """A step that unpickles a message."""
@@ -175,6 +178,9 @@ class UnpickleStep(ChainStep[bytes, TOut]):
                 schema=message.schema,
             )
         ]
+    
+    def watermark(self, timestamp: int) -> Sequence[StreamsMessage[TOut]]:
+        return []
 
 
 class BatchChainStep(ChainStep[TIn, TOut]):
