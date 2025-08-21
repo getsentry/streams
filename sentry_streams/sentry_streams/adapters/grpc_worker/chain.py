@@ -195,7 +195,7 @@ class BatchChainStep(ChainStep[TIn, TOut]):
     containing a sequence of payloads.
     """
 
-    def __init__(self, batch_size: int, batch_time_sec: int):
+    def __init__(self, batch_size: Optional[int], batch_time_sec: Optional[int]):
         self.batch_size = batch_size
         self.batch_time_sec = batch_time_sec
         self.batch: list[StreamsMessage[TIn]] = []
@@ -204,9 +204,15 @@ class BatchChainStep(ChainStep[TIn, TOut]):
     def _should_flush(self) -> bool:
         """Check if the batch should be flushed based on size or time."""
         current_time = time.time()
-        return len(self.batch) >= self.batch_size or (
-            self.batch_start_time > 0
-            and current_time - self.batch_start_time >= self.batch_time_sec
+        return (
+            (self.batch_size and len(self.batch) >= self.batch_size)
+            or (
+                self.batch_time_sec
+                and (
+                    self.batch_start_time > 0
+                    and current_time - self.batch_start_time >= self.batch_time_sec
+                )
+            )
         )
 
     def _flush_batch(self) -> Sequence[StreamsMessage[TOut]]:

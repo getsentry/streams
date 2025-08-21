@@ -1,0 +1,16 @@
+env: {
+  port: 50051
+}
+
+pipeline:
+  segments:
+    - steps_config:
+        myinput:
+          starts_segment: True
+          bootstrap_servers: ["127.0.0.1:9092"]
+        mybatch:
+          batch_size: 2
+          batch_timedelta:
+            seconds: 20
+        mysink:
+          bootstrap_servers: ["127.0.0.1:9092"]

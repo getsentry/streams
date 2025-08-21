@@ -213,7 +213,7 @@ def main() -> None:
         "--segment-id",
         type=int,
         default=0,
-        help="Segment ID (default: 1)"
+        help="Segment ID (default: 0)"
     )
 
     args = parser.parse_args()

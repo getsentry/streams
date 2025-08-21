@@ -42,7 +42,9 @@ class ChainBuilder:
         for route_key in list(self.__incomplete_chains.keys()):
             self.finalize_chain_by_key(route_key)
 
-        route_names = sorted(list(self.__chains.keys()))
+        route_names = list(self.__chains.keys())
+        for key, chain in self.__chains.items():
+            print(f"Chain {key}: {chain.steps}")
 
         return {i: self.__chains[route_names[i]] for i in range(len(route_names))}
 

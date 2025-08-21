@@ -7,12 +7,15 @@ This adapter provides integration with the flink_worker gRPC service.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Mapping, MutableMapping, Type
+from typing import Any, Callable, Mapping, MutableMapping, Type, cast
+
+from sentry_streams.pipeline.pipeline import Batch
 
 from flink_worker.service import create_server
 
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.grpc_worker.chain import (
+    BatchChainStep,
     FilterChainStep,
     FlatMapChainStep,
     MapChainStep,
@@ -74,10 +77,14 @@ class GRPCWorkerAdapter(StreamAdapter[Route, Route]):
         Returns:
             Empty dictionary as no complex steps are currently handled
         """
-        return {}
+        return {
 
-    def __init_chain(self, stream: Route, step_name: str, step_config: Mapping[str, Any]) -> None:
-        if step_config.get("starts_segment") or not self.__chains.exists(stream):
+        }
+
+
+
+    def __init_chain(self, stream: Route, step_name: str, step_config: Mapping[str, Any], force: bool = False) -> None:
+        if step_config.get("starts_segment") or not self.__chains.exists(stream) or force:
             if self.__chains.exists(stream):
                 logger.info(f"Finalizing chain for {stream}")
                 self.__chains.add_step(stream, PickleStep())
@@ -113,17 +120,16 @@ class GRPCWorkerAdapter(StreamAdapter[Route, Route]):
         step: Reduce[MeasurementUnit, InputType, OutputType],
         stream: Route,
     ) -> Route:
-        """
-        Builds a reduce operator for the gRPC worker platform.
-
-        Args:
-            step: Reduce step configuration
-            stream: Input stream
-
-        Returns:
-            Reduced stream (placeholder implementation)
-        """
-        raise NotImplementedError("Reduce not yet implemented in GRPCWorkerAdapter")
+        if isinstance(step, Batch):
+            batch = cast(Batch, step)
+            self.__init_chain(stream, step.name, self.steps_config.get(step.name, {}), force=True)
+            self.__chains.add_step(stream, BatchChainStep(
+                batch_size=batch.batch_size,
+                batch_time_sec=batch.batch_timedelta.total_seconds()
+            ))
+            return stream
+        else:
+            raise NotImplementedError("Reduce not yet implemented in GRPCWorkerAdapter")
 
     def router(
         self,
