@@ -24,7 +24,7 @@ classifiers = [
 dependencies = [
     "grpcio>=1.54.0",
     "grpcio-tools>=1.54.0",
-    "protobuf>=4.21.0",
+    "protobuf>=5.27.3,<6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +43,9 @@ flink-worker-client = "flink_worker.client:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["flink_worker*"]
+
+[tool.setuptools.package-data]
+flink_worker = ["py.typed"]
 
 [tool.black]
 line-length = 88

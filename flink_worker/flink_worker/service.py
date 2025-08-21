@@ -71,7 +71,7 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
             return ProcessMessageResponse(messages=processed_messages)
 
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
+            logger.exception(f"Error processing message: {e}", exc_info=True)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"Internal error: {str(e)}")
             return ProcessMessageResponse(messages=[])
@@ -108,7 +108,7 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
             return ProcessMessageResponse(messages=processed_messages)
 
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
+            logger.exception(f"Error processing message: {e}", exc_info=True)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"Internal error: {str(e)}")
             return ProcessMessageResponse(messages=[])

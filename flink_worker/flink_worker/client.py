@@ -212,7 +212,7 @@ def main() -> None:
     parser.add_argument(
         "--segment-id",
         type=int,
-        default=1,
+        default=0,
         help="Segment ID (default: 1)"
     )
 
