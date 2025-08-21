@@ -10,7 +10,8 @@ import signal
 import sys
 from typing import Optional
 
-from flink_worker.app_segments import AppendEntry, BatchingSegment
+from flink_worker.app_segments import AppendEntry, BatchingSegment, EventCounter
+from flink_worker.segment import AccumulatorWindowSegment
 
 from .service import create_server
 
@@ -55,7 +56,9 @@ def main() -> None:
         server = create_server({
             0: AppendEntry(),
             1: BatchingSegment(batch_size=5, batch_time_sec=4),
-        }, {}, args.port)
+        }, {
+            0: AccumulatorWindowSegment(lambda : EventCounter()),
+        }, args.port)
         server.start()
 
         logger.info(f"Flink Worker gRPC server started on {args.host}:{args.port}")

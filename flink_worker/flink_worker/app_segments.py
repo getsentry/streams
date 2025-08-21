@@ -10,7 +10,7 @@ import time
 from typing import Any, Mapping, Sequence
 
 from flink_worker.flink_worker_pb2 import Message
-from flink_worker.segment import ProcessingSegment
+from flink_worker.segment import Accumulator, ProcessingSegment
 import logging
 logger = logging.getLogger(__name__)
 
@@ -104,3 +104,14 @@ class AppendEntry(ProcessingSegment):
     def watermark(self, timestamp: int) -> Sequence[Message]:
         """Process a watermark event - no processing needed for this segment."""
         return []
+
+
+class EventCounter(Accumulator):
+    def __init__(self):
+        self.count = 0
+
+    def add(self, message: Message) -> None:
+        self.count += 1
+
+    def get_value(self) -> Message:
+        return Message(payload=str(self.count).encode("utf-8"))

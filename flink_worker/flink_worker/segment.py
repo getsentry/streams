@@ -68,6 +68,8 @@ class AccumulatorWindowSegment(WindowSegment):
         if key not in self.__accumulators:
             logger.warning(f"Window {key} not found")
             return []
+
         val = self.__accumulators[key].get_value()
+        logger.info(f"Triggering window {key} with value {val}")
         del self.__accumulators[key]
         return [val]
