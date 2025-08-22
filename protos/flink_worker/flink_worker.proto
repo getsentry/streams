@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package flink_worker;
+
+// Message type that can be subclassed
+message Message {
+  bytes payload = 1;
+  map<string, string> headers = 2;
+  int64 timestamp = 3;
+}
+
+// Request for processing a message
+message ProcessMessageRequest {
+  Message message = 1;
+  uint32 segment_id = 2;
+}
+
+// Response containing processed messages
+message ProcessMessageResponse {
+  repeated Message messages = 1;
+}
+
+// Request for processing a watermark
+message ProcessWatermarkRequest {
+  int64 timestamp = 1;
+  map<string, string> headers = 2;
+  uint32 segment_id = 3;
+}
+
+// Window identifier containing partition key and window start time
+message WindowIdentifier {
+  string partition_key = 1;
+  int64 window_start_time = 2;
+}
+
+// Request for adding a message to a window
+message AddToWindowRequest {
+  Message message = 1;
+  uint32 segment_id = 2;
+  WindowIdentifier window_id = 3;
+}
+
+// Request for triggering a window
+message TriggerWindowRequest {
+  WindowIdentifier window_id = 1;
+  uint32 segment_id = 2;
+}
+
+// Flink Worker Service
+service FlinkWorkerService {
+  // Process a single message and return a list of processed messages
+  rpc ProcessMessage(ProcessMessageRequest) returns (ProcessMessageResponse);
+
+  // Process a watermark and return a list of processed messages
+  rpc ProcessWatermark(ProcessWatermarkRequest) returns (ProcessMessageResponse);
+
+  // Add a message to a window (no return value)
+  rpc AddToWindow(AddToWindowRequest) returns (google.protobuf.Empty);
+
+  // Trigger a window and return the accumulated messages
+  rpc TriggerWindow(TriggerWindowRequest) returns (ProcessMessageResponse);
+}

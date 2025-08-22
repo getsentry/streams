@@ -31,6 +31,11 @@ repos:
     hooks:
       - id: flake8
         language_version: python3.11
+        exclude: |
+          (?x)^(
+              flink_worker/.*/flink_worker_pb2\.py$|
+              flink_worker/.*/flink_worker_pb2_grpc\.py$
+          )$
   - repo: https://github.com/pycqa/isort
     rev: 6.0.0
     hooks:

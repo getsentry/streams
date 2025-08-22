@@ -18,6 +18,7 @@ dependencies = [
     "sentry-kafka-schemas>=1.2.0",
     "polars",
     "click>=8.2.1",
+    "flink_worker>=0.1.0",
 ]
 
 [dependency-groups]
@@ -56,3 +57,6 @@ line-length = 100
 
 [tool.isort]
 profile = "black"
+
+[tool.uv.sources]
+flink-worker = { path = "../flink_worker", editable = true }

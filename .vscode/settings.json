@@ -8,5 +8,5 @@
   "mypy-type-checker.args": [
     "--strict"
   ],
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
 }

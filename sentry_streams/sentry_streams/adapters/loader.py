@@ -54,6 +54,14 @@ def load_adapter(
 
         # TODO: Fix this type as above.
         return cast(StreamAdapter[Stream, Sink], RustArroyoAdapter.build(config))
+    elif adapter_type == "grpc_worker":
+        from sentry_streams.adapters.grpc_worker import GRPCWorkerAdapter
+
+        return cast(StreamAdapter[Stream, Sink], GRPCWorkerAdapter.build(config))
+    elif adapter_type == "flink_pipeline":
+        from sentry_streams.adapters.flink_pipeline import FlinkPipelineAdapter
+
+        return cast(StreamAdapter[Stream, Sink], FlinkPipelineAdapter.build(config))
     else:
         mod, cls = adapter_type.rsplit(".", 1)
 

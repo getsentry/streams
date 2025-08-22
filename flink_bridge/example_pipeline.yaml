@@ -1,0 +1,12 @@
+- config: {}
+  step_name: parser
+- config:
+    batch_size: 2
+    batch_timedelta: "18c0a70726f6a6"
+    seconds: 20
+  step_name: mybatchk
+- config:
+    window_size: 300
+    slide_interval: 60
+    aggregation_type: "sum"
+  step_name: window_aggregator
