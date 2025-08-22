@@ -124,7 +124,7 @@ def runner(
     "-a",
     # remove choices list in the future when custom local adapters are widely used
     # for now just arroyo and rust_arroyo will be commonly used
-    type=click.Choice(["arroyo", "rust_arroyo", "grpc_worker"]),
+    type=click.Choice(["arroyo", "rust_arroyo", "grpc_worker", "flink_pipeline"]),
     # TODO: Remove the support for dynamically load the class.
     # Add a runner CLI in the flink package instead that instantiates
     # the Flink adapter.

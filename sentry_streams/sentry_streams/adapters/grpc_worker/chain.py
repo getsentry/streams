@@ -1,10 +1,19 @@
 import pickle
 import time
 from abc import ABC
-from typing import Any, Callable, Generic, MutableSequence, Optional, Sequence, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Iterable,
+    MutableSequence,
+    Optional,
+    Sequence,
+    TypeVar,
+)
 
-from flink_worker.flink_worker_pb2 import Message
-from flink_worker.segment import ProcessingSegment
+from flink_worker.flink_worker_pb2 import Message  # type: ignore
+from flink_worker.segment import ProcessingSegment  # type: ignore
 
 from sentry_streams.pipeline.message import Message as StreamsMessage
 from sentry_streams.pipeline.message import PyMessage
@@ -31,18 +40,20 @@ class ChainStep(ABC, Generic[TIn, TOut]):
 def to_streams_message(message: Message, schema: Optional[str]) -> Sequence[StreamsMessage[bytes]]:
     headers = [(key, value.encode()) for key, value in message.headers.items()]
 
-    # CHeck if object is pickled
+    # Check if object is pickled
     try:
         payload = pickle.loads(message.payload)
     except Exception:
         payload = message.payload
 
-    return PyMessage(
-        payload,
-        headers,
-        float(message.timestamp) / 1000,
-        schema,
-    )
+    return [
+        PyMessage(
+            payload,
+            headers,
+            float(message.timestamp) / 1000,
+            schema,
+        )
+    ]
 
 
 def to_message(message: StreamsMessage[bytes]) -> Message:
@@ -70,9 +81,9 @@ class ChainSegment(ProcessingSegment):
 
     def process(self, message: Message) -> Sequence[Message]:
         """Process the input data by returning the message as-is."""
-        buffer = [to_streams_message(message, self.input_schema)]
+        buffer: list[StreamsMessage[bytes]] = [to_streams_message(message, self.input_schema)[0]]
         for step in self.steps:
-            new_buffer = []
+            new_buffer: list[StreamsMessage[Any]] = []
             for msg in buffer:
                 new_buffer.extend(step.process(msg))
             buffer = new_buffer
@@ -82,10 +93,10 @@ class ChainSegment(ProcessingSegment):
 
     def watermark(self, timestamp: int) -> Sequence[Message]:
         """Process a watermark event by calling each step's watermark method."""
-        buffer = []
+        buffer: list[StreamsMessage[Any]] = []
         for step in self.steps:
             # Add any messages from the step's watermark
-            new_buffer = []
+            new_buffer: list[StreamsMessage[Any]] = []
             for message in buffer:
                 new_buffer.extend(step.process(message))
             new_buffer.extend(step.watermark(timestamp))
@@ -98,13 +109,14 @@ class ChainSegment(ProcessingSegment):
 class MapChainStep(ChainStep[TIn, TOut]):
     """A step that maps a message to a new message."""
 
-    def __init__(self, func: Callable[[StreamsMessage[TIn]], TOut]) -> None:
-        self.func = func
+    def __init__(self, function: Callable[[StreamsMessage[TIn]], TOut]):
+        self.function = function
 
     def process(self, message: StreamsMessage[TIn]) -> Sequence[StreamsMessage[TOut]]:
+        result = self.function(message)
         return [
             PyMessage(
-                payload=self.func(message),
+                payload=result,
                 headers=message.headers,
                 timestamp=message.timestamp,
                 schema=message.schema,
@@ -115,44 +127,54 @@ class MapChainStep(ChainStep[TIn, TOut]):
         return []
 
 
-class FilterChainStep(ChainStep[TIn, TOut]):
-    """A step that filters a message."""
+class FilterChainStep(ChainStep[TIn, TIn]):
+    """A step that filters messages based on a predicate."""
 
-    def __init__(self, func: Callable[[StreamsMessage[TIn]], bool]) -> None:
-        self.func = func
+    def __init__(self, predicate: Callable[[StreamsMessage[TIn]], bool]):
+        self.predicate = predicate
 
-    def process(self, message: StreamsMessage[TIn]) -> Sequence[StreamsMessage[TOut]]:
-        return [message] if self.func(message) else []
+    def process(self, message: StreamsMessage[TIn]) -> Sequence[StreamsMessage[TIn]]:
+        if self.predicate(message):
+            return [
+                PyMessage(
+                    payload=message.payload,
+                    headers=message.headers,
+                    timestamp=message.timestamp,
+                    schema=message.schema,
+                )
+            ]
+        return []
 
-    def watermark(self, timestamp: int) -> Sequence[StreamsMessage[TOut]]:
+    def watermark(self, timestamp: int) -> Sequence[StreamsMessage[TIn]]:
         return []
 
 
 class FlatMapChainStep(ChainStep[TIn, TOut]):
-    """A step that flat maps a message to a new message."""
+    """A step that maps a message to multiple messages."""
 
-    def __init__(self, func: Callable[[StreamsMessage[TIn]], Sequence[TOut]]) -> None:
-        self.func = func
+    def __init__(self, function: Callable[[StreamsMessage[TIn]], Iterable[TOut]]):
+        self.function = function
 
     def process(self, message: StreamsMessage[TIn]) -> Sequence[StreamsMessage[TOut]]:
+        results = self.function(message)
         return [
             PyMessage(
-                payload=payload,
+                payload=result,
                 headers=message.headers,
                 timestamp=message.timestamp,
                 schema=message.schema,
             )
-            for payload in self.func(message)
+            for result in results
         ]
 
     def watermark(self, timestamp: int) -> Sequence[StreamsMessage[TOut]]:
         return []
 
 
-class PickleStep(ChainStep[TIn, bytes]):
+class PickleStep(ChainStep[Any, bytes]):
     """A step that pickles a message."""
 
-    def process(self, message: StreamsMessage[TIn]) -> Sequence[StreamsMessage[bytes]]:
+    def process(self, message: StreamsMessage[Any]) -> Sequence[StreamsMessage[bytes]]:
         return [
             PyMessage(
                 payload=pickle.dumps(message.payload),
@@ -162,7 +184,7 @@ class PickleStep(ChainStep[TIn, bytes]):
             )
         ]
 
-    def watermark(self, timestamp: int) -> Sequence[StreamsMessage[TOut]]:
+    def watermark(self, timestamp: int) -> Sequence[StreamsMessage[bytes]]:
         return []
 
 
@@ -178,7 +200,7 @@ class UnpickleStep(ChainStep[bytes, TOut]):
                 schema=message.schema,
             )
         ]
-    
+
     def watermark(self, timestamp: int) -> Sequence[StreamsMessage[TOut]]:
         return []
 
@@ -204,7 +226,7 @@ class BatchChainStep(ChainStep[TIn, TOut]):
     def _should_flush(self) -> bool:
         """Check if the batch should be flushed based on size or time."""
         current_time = time.time()
-        return (
+        return bool(
             (self.batch_size and len(self.batch) >= self.batch_size)
             or (
                 self.batch_time_sec
@@ -230,9 +252,9 @@ class BatchChainStep(ChainStep[TIn, TOut]):
         # Create headers indicating this is a batch
         batch_headers = [("batch_size", str(len(self.batch)).encode()), ("type", b"Batch")]
 
-        # Create the batch message
-        batch_message = PyMessage[Sequence[TIn]](
-            payload=batch_payloads,
+        # Create the batch message - cast to TOut to satisfy type checker
+        batch_message = PyMessage[TOut](
+            payload=batch_payloads,  # type: ignore
             headers=batch_headers,
             timestamp=batch_timestamp,
             schema=self.batch[0].schema,
@@ -246,9 +268,9 @@ class BatchChainStep(ChainStep[TIn, TOut]):
 
     def process(self, message: StreamsMessage[TIn]) -> Sequence[StreamsMessage[TOut]]:
         # Check if current batch should be flushed before adding new message
-        flushed_messages = []
+        flushed_messages: list[StreamsMessage[TOut]] = []
         if self._should_flush():
-            flushed_messages = self._flush_batch()
+            flushed_messages = list(self._flush_batch())
 
         # If this is the first message or batch was just flushed, set the batch start time
         if not self.batch:

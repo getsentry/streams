@@ -36,6 +36,7 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
         """Initialize the service with an in-memory window storage."""
         self.segments = segments
         self.window_segments = window_segments
+        self.counters: MutableMapping[int, int] = {}
 
     def ProcessMessage(
         self, request: ProcessMessageRequest, context: grpc.ServicerContext
@@ -54,7 +55,8 @@ class FlinkWorkerService(FlinkWorkerServiceServicer):
         message = request.message
         segment_id = request.segment_id
 
-        logger.info(f"Processing message for segment {segment_id}")
+        logger.info(f"Processing message for segment {segment_id} {self.counters.get(segment_id, 0)}")
+        self.counters[segment_id] = self.counters.get(segment_id, 0) + 1
         logger.debug(f"Message payload length: {len(message.payload)}")
         logger.debug(f"Message headers: {message.headers}")
         logger.debug(f"Message timestamp: {message.timestamp}")
@@ -196,7 +198,7 @@ def create_server(segments: MutableMapping[int, ProcessingSegment], window_segme
     Returns:
         A configured gRPC server
     """
-    server = grpc.server(ThreadPoolExecutor(max_workers=10))
+    server = grpc.server(ThreadPoolExecutor(max_workers=1))
     add_FlinkWorkerServiceServicer_to_server(FlinkWorkerService(segments, window_segments), server)
 
     # Bind to the specified port

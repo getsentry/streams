@@ -12,6 +12,7 @@ import org.apache.flink.datastream.api.extension.window.strategy.WindowStrategy;
 import org.apache.flink.datastream.api.stream.KeyedPartitionStream;
 import org.apache.flink.datastream.api.stream.NonKeyedPartitionStream;
 import org.apache.flink.streaming.api.functions.sink.PrintSink;
+import org.apache.flink.util.ParameterTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import io.sentry.flink_bridge.Message;
@@ -42,6 +43,10 @@ public class FlinkGrpcApp {
         private static final Logger LOG = LoggerFactory.getLogger(FlinkGrpcApp.class);
 
         public static void main(String[] args) throws Exception {
+                ParameterTool parameters = ParameterTool.fromArgs(args);
+                String pipelineConfigFile = parameters.getRequired("pipeline-name");
+                PipelineParser parser = new PipelineParser();
+                List<PipelineStep> steps = parser.parseFile(pipelineConfigFile);
 
                 List<String> data = TestData.getMetrics();
 
@@ -76,13 +81,14 @@ public class FlinkGrpcApp {
 
                 //////////////// APPLICATION LOGIC ////////////////
 
-                KeyedPartitionStream<String, Message> processedStream = watermarkedStream
-                                .process(EventTimeExtension.wrapProcessFunction(new GrpcMessageProcessor(0)))
-                                .withName("grpc-processor-0")
-                                .keyBy(new KeyGenerator())
-                                .process(EventTimeExtension.wrapProcessFunction(new GrpcMessageProcessor(1)))
-                                .withName("grpc-processor-1")
-                                .keyBy(new KeyGenerator());
+                KeyedPartitionStream<String, Message> processedStream = watermarkedStream;
+                for (int i = 0; i < steps.size(); i++) {
+                        LOG.info("Applying step {} of {}", steps.get(i).getStepName(), i);
+                        processedStream = processedStream
+                                        .process(EventTimeExtension.wrapProcessFunction(new GrpcMessageProcessor(i)))
+                                        .withName(String.format("processor-%s-%d", steps.get(i).getStepName(), i))
+                                        .keyBy(new KeyGenerator());
+                }
 
                 // Add custom post-processing function after gRPC processing
                 // NonKeyedPartitionStream<Message> postProcessedStream = processedStream

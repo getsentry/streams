@@ -58,6 +58,10 @@ def load_adapter(
         from sentry_streams.adapters.grpc_worker import GRPCWorkerAdapter
 
         return cast(StreamAdapter[Stream, Sink], GRPCWorkerAdapter.build(config))
+    elif adapter_type == "flink_pipeline":
+        from sentry_streams.adapters.flink_pipeline import FlinkPipelineAdapter
+
+        return cast(StreamAdapter[Stream, Sink], FlinkPipelineAdapter.build(config))
     else:
         mod, cls = adapter_type.rsplit(".", 1)
 

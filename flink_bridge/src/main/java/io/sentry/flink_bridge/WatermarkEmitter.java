@@ -15,12 +15,12 @@ public class WatermarkEmitter
     public void processRecord(Message record, Collector<Message> output, PartitionedContext<Message> ctx)
             throws Exception {
         // Wait 500 milliseconds before adding the message to output
-        try {
-            Thread.sleep(200);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOG.warn("Interrupted while waiting before output collection", e);
-        }
+        // try {
+        // Thread.sleep(200);
+        // } catch (InterruptedException e) {
+        // Thread.currentThread().interrupt();
+        // LOG.warn("Interrupted while waiting before output collection", e);
+        // }
         record.setTimestamp(System.currentTimeMillis());
         output.collect(record);
     }
