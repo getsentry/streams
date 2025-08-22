@@ -57,7 +57,7 @@ class GRPCWorkerAdapter(StreamAdapter[Route, Route]):
         super().__init__()
         self.steps_config = steps_config
         self.chains = ChainBuilder()
-        self.__schemas: MutableMapping[str, str] = {}
+        self.schemas: MutableMapping[str, str] = {}
         self.__port = port
 
     @classmethod
@@ -88,13 +88,13 @@ class GRPCWorkerAdapter(StreamAdapter[Route, Route]):
                 self.chains.finalize_chain(stream)
 
             logger.info(f"Initializing chain for {stream} with step {step_name}")
-            self.chains.init_chain(stream, step_name, step_config, self.__schemas[stream.source])
+            self.chains.init_chain(stream, step_name, step_config, self.schemas[stream.source])
 
     def source(self, step: Source[Any]) -> Route:
         # Handle different types of Source classes
 
         assert isinstance(step, StreamSource)
-        self.__schemas[step.name] = step.stream_name
+        self.schemas[step.name] = step.stream_name
         return Route(step.name, [])
 
     def sink(self, step: Sink[Any], stream: Route) -> Route:
