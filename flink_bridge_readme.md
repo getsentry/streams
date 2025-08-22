@@ -63,22 +63,80 @@ Currently there are two components:
 - flink_worker. This is a Python GRPC service that serves as a stub for the real service
 - flink_bridge. This is a Java Flink application that uses Datastream API V2 from FLink 2.21 Which serves as client.
 
+
+
+HOW TO RUN IT
+=============
+
+1. Downlaod Flink 2.1 and start a local cluster
+
+```
+./bin/start-cluster.sh
+```
+
+2. Install Java 21 and Maven. Then compile the application
+
+```
+cd flink_bridge
+mvn package
+```
+
+3. generate the YAML config for Flink
+
+```
+cd sentry_streams
+uv sync
+python -m sentry_streams.runner \
+    -n SimpleMap \
+    --adapter flink_pipeline \
+    --config ~/code/streams/sentry_streams/sentry_streams/deployment_config/simple_batching_grpc.yaml \
+    ~/code/streams/sentry_streams/sentry_streams/examples/simple_batching.py > /tmp/pipeline_desc.yaml
+```
+
+This creates a YAML file that Flink consumes to compose the pipeline
+
+4. start the GRPC worker
+
+```
+cd flink_worker
+uv sync
+python -m sentry_streams.runner \
+    -n SimpleMap \
+    --adapter grpc_worker \
+    --config ~/code/streams/sentry_streams/sentry_streams/deployment_config/simple_batching_grpc.yaml \
+    ~/code/streams/sentry_streams/sentry_streams/examples/simple_batching.py
+```
+
+5. Start the Flink application
+
+```
+./bin/flink run \
+  ~/code/streams/flink_bridge/target/flink-bridge-app.jar \
+  --pipeline-name /tmp/pipeline_desc.yaml
+```
+
+6. Look at the stdout of the taskmanager. You find logs and stdout here
+
+```
+filippopacifici@MacBookPro log % pwd
+/Users/filippopacifici/code/flink-2.1.0/log
+filippopacifici@MacBookPro log % ls
+flink-filippopacifici-client-.local.log
+flink-filippopacifici-standalonesession-0-.local.log
+flink-filippopacifici-standalonesession-0-.local.log.1
+flink-filippopacifici-standalonesession-0-.local.out
+flink-filippopacifici-standalonesession-1-.local.log
+flink-filippopacifici-standalonesession-1-.local.log.1
+flink-filippopacifici-standalonesession-1-.local.out
+flink-filippopacifici-taskexecutor-0-.local.log
+flink-filippopacifici-taskexecutor-0-.local.log.1
+flink-filippopacifici-taskexecutor-0-.local.log.2
+flink-filippopacifici-taskexecutor-0-.local.out
+```
+
 TODO
 ====
 
-[Filippo] Full GRPC interface
------------------------
-
-We need a GRPC interface that would support both stateful and stateless applications
-with the proper delivery guarantees.
-For stateless applications this is trivial. We just need to get message in and return
-messages.
-For stateful applications things are more complex as we need to intercept the signals
-from Flink about windowing and checkpoints.
-
-- Enrich the Message structure with the segment and the pipeline
-- Handle time, window and checkpoint. Prove it can work to do batching in memory
-- handle persistent state
 
 Port the GRPC service to Rust
 --------------
@@ -90,24 +148,6 @@ to call iunto python as we do with the arroyo adapter.
 - Create the Rust GRPC server and use that abstraction to call into applicaiton code
   so we can reuse all the work we did for the existing pipeline
 
-Create a StreamingAdapter that starts the GRPC worker instead of an arroyo consumer
-----
-
-Let's wire this up to the platform.
-
-- Sink, source, router and broadcast come from Flink. Do not port it. Everything
-  else is chained together into processing segments that are served by the GRPC server
-- Start the GRPC server to serve a pipeline.
-
-Create an adapter that produces a yaml file with the pipeline topology
------------
-
-We do not want sentry_streams to import flink so we are going to dump a yaml
-description of hte applicaiton and the Java code will load that
-
-- Create an adapter that dumps the yaml
-- Update the Flink JAva application to load the YAML and compose the pipeline
-  delegating the processing steps to the GRPC service
 
 Test redeployment
 --------
