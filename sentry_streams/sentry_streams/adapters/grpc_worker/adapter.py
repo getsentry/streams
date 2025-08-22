@@ -35,7 +35,7 @@ from sentry_streams.adapters.stream_adapter import (
 )
 from sentry_streams.config_types import StepConfig
 from sentry_streams.pipeline.function_template import InputType, OutputType
-from sentry_streams.pipeline.pipeline import Batch
+from sentry_streams.pipeline.pipeline import Batch, StreamSource
 from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_streams.rust_streams import Route
 
@@ -92,11 +92,9 @@ class GRPCWorkerAdapter(StreamAdapter[Route, Route]):
 
     def source(self, step: Source[Any]) -> Route:
         # Handle different types of Source classes
-        if hasattr(step, "stream_name"):
-            self.__schemas[step.name] = step.stream_name
-        else:
-            # For generic Source, use the name as both key and value
-            self.__schemas[step.name] = step.name
+
+        assert isinstance(step, StreamSource)
+        self.__schemas[step.name] = step.stream_name
         return Route(step.name, [])
 
     def sink(self, step: Sink[Any], stream: Route) -> Route:

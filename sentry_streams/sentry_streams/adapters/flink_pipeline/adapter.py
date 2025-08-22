@@ -27,12 +27,11 @@ class FlinkPipelineAdapter(GRPCWorkerAdapter):
     def __init__(
         self,
         steps_config: Mapping[str, StepConfig],
-        pipeline_config: dict,
+        port: int,
     ) -> None:
         # GRPCWorkerAdapter expects (steps_config, port), so we'll use a default port
-        super().__init__(steps_config, 8080)
+        super().__init__(steps_config, port)
         self.steps_config = steps_config
-        self.pipeline_config = pipeline_config
         self.segments_descriptor: list = []
 
     def run(self) -> None:
@@ -53,7 +52,6 @@ class FlinkPipelineAdapter(GRPCWorkerAdapter):
             print(yaml_output)
         except Exception as e:
             logger.error(f"Failed to format YAML: {e}")
-            logger.info(f"Raw config: {self.pipeline_config}")
 
         logger.info("=== END PIPELINE DESCRIPTION ===")
         logger.info("Pipeline description printed. No execution performed.")
