@@ -1,3 +1,14 @@
+## 0.0.27
+
+### Various fixes & improvements
+
+- fix(gcssink): add working example + logging file name (#198) by @victoria-yining-huang
+- ref(metrics): Add metrics for tracking pipeline status (#184) by @evanh
+- feat(watermarks): add watermark support to the ArroyoStrategyDelegate (#190) by @bmckerry
+- feat: add integration test for WatermarkEmitter (#195) by @bmckerry
+- ref(comments): format comments (#197) by @victoria-yining-huang
+- ref(typechecking): remove msg_type from instantiation arg (#196) by @victoria-yining-huang
+
 ## 0.0.26
 
 ### Various fixes & improvements
