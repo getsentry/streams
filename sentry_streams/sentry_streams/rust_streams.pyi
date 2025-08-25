@@ -41,6 +41,20 @@ class PyKafkaProducerConfig:
         override_params: Mapping[str, str],
     ) -> None: ...
 
+class PyMetricConfig:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        tags: dict[str, str] | None,
+    ) -> None: ...
+    @property
+    def host(self) -> str: ...
+    @property
+    def port(self) -> int: ...
+    @property
+    def tags(self) -> dict[str, str] | None: ...
+
 class RuntimeOperator:
     @classmethod
     def Map(cls, route: Route, function: Callable[[Message[Any]], Any]) -> Self: ...
@@ -65,7 +79,12 @@ class RuntimeOperator:
 
 class ArroyoConsumer:
     def __init__(
-        self, source: str, kafka_config: PyKafkaConsumerConfig, topic: str, schema: str | None
+        self,
+        source: str,
+        kafka_config: PyKafkaConsumerConfig,
+        topic: str,
+        schema: str | None,
+        metric_config: PyMetricConfig | None = None,
     ) -> None: ...
     def add_step(self, step: RuntimeOperator) -> None: ...
     def run(self) -> None: ...

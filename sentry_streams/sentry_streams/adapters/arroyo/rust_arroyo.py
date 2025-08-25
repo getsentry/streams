@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from dataclasses import replace
 from typing import (
     Any,
     Callable,
@@ -19,6 +21,7 @@ from arroyo.processing.strategies.run_task_with_multiprocessing import (
 from sentry_streams.adapters.arroyo.multi_process_delegate import (
     MultiprocessDelegateFactory,
 )
+from sentry_streams.adapters.arroyo.reduce import MetricsReportingReduce
 from sentry_streams.adapters.arroyo.reduce_delegate import ReduceDelegateFactory
 from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
@@ -30,6 +33,7 @@ from sentry_streams.config_types import (
     MultiProcessConfig,
     StepConfig,
 )
+from sentry_streams.metrics import Metric, get_metrics, get_size
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
@@ -56,6 +60,7 @@ from sentry_streams.rust_streams import (
     InitialOffset,
     PyKafkaConsumerConfig,
     PyKafkaProducerConfig,
+    PyMetricConfig,
 )
 from sentry_streams.rust_streams import Route as RustRoute
 from sentry_streams.rust_streams import (
@@ -63,6 +68,30 @@ from sentry_streams.rust_streams import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def input_metrics(name: str, message_size: int | None) -> float:
+    metrics = get_metrics()
+    tags = {"step": name}
+    metrics.increment(Metric.INPUT_MESSAGES, tags=tags)
+    if message_size is not None:
+        metrics.increment(Metric.INPUT_BYTES, tags=tags, value=message_size)
+    return time.time()
+
+
+def output_metrics(
+    name: str, error: str | None, start_time: float, message_size: int | None
+) -> None:
+    metrics = get_metrics()
+    tags = {"step": name}
+    if error:
+        tags["error"] = error
+        metrics.increment(Metric.ERRORS, tags=tags)
+
+    metrics.increment(Metric.OUTPUT_MESSAGES, tags=tags)
+    if message_size is not None:
+        metrics.increment(Metric.OUTPUT_BYTES, tags=tags, value=message_size)
+    metrics.timing(Metric.DURATION, time.time() - start_time, tags=tags)
 
 
 def build_initial_offset(offset_reset: str) -> InitialOffset:
@@ -140,9 +169,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     def __init__(
         self,
         steps_config: Mapping[str, StepConfig],
+        metric_config: PyMetricConfig | None = None,
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
+        self.__metric_config = metric_config
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
 
@@ -150,15 +181,19 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     def build(
         cls,
         config: PipelineConfig,
+        metric_config: PyMetricConfig | None = None,
     ) -> Self:
         steps_config = config["steps_config"]
 
-        return cls(steps_config)
+        return cls(steps_config, metric_config)
 
     def __close_chain(self, stream: Route) -> None:
         if self.__chains.exists(stream):
             logger.info(f"Closing transformation chain: {stream} and adding to pipeline")
             self.__consumers[stream.source].add_step(finalize_chain(self.__chains, stream))
+
+    def get_consumer(self, source: str) -> ArroyoConsumer:
+        return self.__consumers[source]
 
     def complex_step_override(
         self,
@@ -183,6 +218,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             kafka_config=build_kafka_consumer_config(source_name, source_config),
             topic=step.stream_name,
             schema=step.stream_name,
+            metric_config=self.__metric_config,
         )
         return Route(source_name, [])
 
@@ -211,11 +247,19 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 bucket = step.bucket
                 thread_count = 1
 
-            object_generator = step.object_generator
+            # TODO: This object_generator is just used to get the name of the object that is being written.
+            # Fix this to wrap the actual step instead of just the object_generator.
+            # This will at least capture the number of calls to the step, if nothing else.
+            def wrapped_generator() -> str:
+                start_time = input_metrics(step.name, None)
+                try:
+                    return step.object_generator()
+                finally:
+                    output_metrics(step.name, None, start_time, None)
 
             logger.info(f"Adding GCS sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, bucket, object_generator, thread_count)
+                RuntimeOperator.GCSSink(route, bucket, wrapped_generator, thread_count)
             )
 
         # Our fallback for now since there's no other Sink type
@@ -242,6 +286,23 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
         parallelism_config = step_config.get("parallelism")
+        application_function = step.resolved_function
+
+        def wrapped_function(msg: Message[Any]) -> Any:
+            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+            start_time = input_metrics(step.name, msg_size)
+            has_error = output_size = None
+            try:
+                result = application_function(msg)
+                output_size = get_size(result)
+                return result
+            except Exception as e:
+                has_error = str(e.__class__.__name__)
+                raise e
+            finally:
+                output_metrics(step.name, has_error, start_time, output_size)
+
+        step = replace(step, function=wrapped_function)
 
         if step_config.get("starts_segment") or not self.__chains.exists(stream):
             logger.info(f"Starting new segment at step {step.name}")
@@ -279,12 +340,24 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
 
+        def filter_msg(msg: Message[Any]) -> bool:
+            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+            start_time = input_metrics(step.name, msg_size)
+            has_error = output_size = None
+            try:
+                result = step.resolved_function(msg)
+                output_size = get_size(result)
+                return result
+            except Exception as e:
+                has_error = str(e.__class__.__name__)
+                raise e
+            finally:
+                output_metrics(step.name, has_error, start_time, output_size)
+
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
 
-        self.__consumers[stream.source].add_step(
-            RuntimeOperator.Filter(route, step.resolved_function)
-        )
+        self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
 
         return stream
 
@@ -301,7 +374,10 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         name = step.name
         loaded_config: Mapping[str, Any] = self.steps_config.get(name, {})
         step.override_config(loaded_config)
+        step = MetricsReportingReduce(step, name)
+
         logger.info(f"Adding reduce: {step.name} to pipeline")
+
         self.__consumers[stream.source].add_step(
             RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
         )
@@ -337,9 +413,18 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
 
         def routing_function(msg: Message[Any]) -> str:
-            waypoint = step.routing_function(msg)
-            branch = step.routing_table[waypoint]
-            return branch.root.name
+            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+            start_time = input_metrics(step.name, msg_size)
+            has_error = None
+            try:
+                waypoint = step.routing_function(msg)
+                branch = step.routing_table[waypoint]
+                return branch.root.name
+            except Exception as e:
+                has_error = str(e.__class__.__name__)
+                raise e
+            finally:
+                output_metrics(step.name, has_error, start_time, None)
 
         logger.info(f"Adding router: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(
