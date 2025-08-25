@@ -10,7 +10,6 @@ from sentry_streams.adapters.arroyo.reduce import (
     TimeWindowedReduce,
     build_arroyo_windowed_reduce,
 )
-from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
@@ -26,6 +25,7 @@ from sentry_streams.pipeline.pipeline import (
     streaming_source,
 )
 from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow
+from sentry_streams.rust_streams import Route, RuntimeOperator
 
 
 @pytest.fixture
@@ -332,3 +332,13 @@ def test_batch_step_only_window_size() -> None:
         args, _ = MockReduce.call_args
         assert args[0] == window_size
         assert args[1] == float("inf")
+
+
+def test_gcssink_instantiation() -> None:
+    def generate_file_name() -> str:
+        return "test-file.txt"
+
+    route = Route(source="test-source", waypoints=["step1", "step2"])
+    RuntimeOperator.GCSSink(
+        route=route, bucket="my-bucket", object_generator=generate_file_name, thread_count=1
+    )
