@@ -545,4 +545,42 @@ class RustOperatorDelegateFactory:
             } // Unlock the MutexGuard around `actual_messages`
         })
     }
+
+    #[test]
+    fn test_arroyo_python_delegate() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let delegate = c_str!(
+                r#"
+from sentry_streams.adapters.arroyo.rust_step import ArroyoStrategyDelegate, OutputRetriever
+from arroyo.processing.strategies.run_task import RunTask
+
+class TestDelegateFactory:
+    def build(self):
+        in_noop = lambda msg, committable: msg
+        out_noop = lambda msg: (msg, {})
+        retriever = OutputRetriever(out_transformer=out_noop)
+        inner = RunTask(lambda x: x, retriever)
+        return ArroyoStrategyDelegate(inner,in_noop,retriever)
+                "#
+            );
+            let scope = PyModule::new(py, "test_scope").unwrap();
+            py.run(delegate, Some(&scope.dict()), None).unwrap();
+            let operator = scope.getattr("TestDelegateFactory").unwrap();
+            let instance = operator.call0().unwrap();
+
+            let mut operator = PythonAdapter::new(
+                Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                instance.unbind(),
+                Box::new(Noop {}),
+            );
+
+            let message = make_msg(py, "ok");
+            let res = operator.submit(message);
+            assert!(res.is_ok());
+
+            let commit_request = operator.poll();
+            assert!(commit_request.is_ok());
+        })
+    }
 }
