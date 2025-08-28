@@ -58,10 +58,138 @@ graph LR
 
 ```
 
+Adapter and server
+-----------------
+
+There are mainly two components in this architecture: the Flink Application and the GRPC server.
+
+The Flink application is a Java Flink application that is provided the configuration of the
+pipeline and sets up the sequence of Flink operator that do either local processing or
+delegates to the Grpc server.
+
+The Grpc server contains the application logic and execute the processing both in
+a stateful or stateless way.
+
+The Flink application does not contain any application specific code. A dedicated
+Streaming adapter inspects the pipeline definition and produces a yaml descriptor
+that is passed to the Flink application when it starts. From the yaml file, the
+Flink Application knows when to send data to the Grpc Server
+
+The Grpc server is started by the runner using a different adapter. This adapter
+reads the same pipeline definition.
+
+The pipeline is divided into segments. A segment contains a sequence of steps
+to be processed in a single request to the Grpc server. A segment is closed
+and a new one is opened in these scenarios:
+
+- parallelism changes
+- reshuffling is needed
+- routing is needed
+- we reached a sink.
+
+Every request from the Flink application to the Grpc server contains the segment id
+as a parameter so the Grpc server knows which segment to send data to.
+
+Each segment is implemented as a `ChainSegment` object which contains a sequence of
+steps, each step contains the application logic.
+
+The Flink Application is also expected to forward watermark messages to the Grpc
+Server so that the Server can decide when to close batches or manage state.
+
+```mermaid
+graph
+    pipeline[Pipeline Definition]
+    config[Pipeline Config]
+    flink_adapt[Flink Adapter]
+    flink_config[Flink Config Adapter]
+    yaml[Pipeline Descriptor]
+    subgraph flink[Flink TaskManager]
+        flink_app[Flink Bridge Application]
+        bridge_step[Bridge Operator]
+    end
+    subgraph server[Grpc Server]
+        server_proc[Server Process]
+        chain[Steps Chain]
+        chain_step[Chain Step]
+        accumulators[Aggregation Accumulators]
+    end
+
+    pipeline --> flink_adapt
+    config --> flink_adapt
+    pipeline --> flink_config
+    config --> flink_config
+
+    flink_config -- Produces --> yaml
+    flink_app -- Reads --> yaml
+    flink_app -- builds --> bridge_step
+
+    flink_adapt -- Starts --> server
+
+    bridge_step -- Send --> server_proc
+    server_proc -- Send --> chain
+    server_proc -- Send --> accumulators
+    chain -- Delegate --> chain_step
+
+    server_proc -- Reply --> bridge_step
+
+```
+
+Data processing
+--------------
+
+Each message is dceserialized from bytes into a Message structure in the bridge
+then it is send to the server where it is sent through a sequence of steps.
+
+Multiple pipeline steps are chained in the same GRPC call to reduce the back and
+forth. As long as we are not reshuffling data we run steps in the same chain.
+
+THe server can return multiple messages for each message sent. The batch is sent
+back as a sequence of messages which are then serialized and sent to the sink.
+
+```mermaid
+sequenceDiagram
+    participant Kafka as Kafka
+    box  "Flink Bridge"
+        participant FlinkApp as FlinkGrpcApp
+        participant Deserializer as Deserializer
+        participant Processor as GrpcMessageProcessor
+        participant Serializer as Serializer
+    end
+    box  Grpc Server
+        participant Server as GrpcServer
+        participant Chain as ChainSegment
+        participant Step as ChainStep
+    end
+
+    Kafka->>FlinkApp: Message bytes
+    FlinkApp->>Deserializer: Message bytes
+    Deserializer->>FlinkApp: Message object
+    FlinkApp->>Processor: Message object
+    Processor->>Server: GRPC message
+    Server->>Chain: Message object
+
+    loop Process Steps in Chain
+        Chain->>Step: Message object
+        Step->>Chain: Message object
+    end
+
+    Chain->>Server: Message batch
+    Server->>Processor: Message batch
+    Processor->>FlinkApp: Message batch
+
+    loop Serialize and Sink
+        FlinkApp->>Serializer: Message object
+        Serializer->>FlinkApp: Message bytes
+        FlinkApp->>Sink: Message bytes
+    end
+```
+
 Currently there are two components:
 
 - flink_worker. This is a Python GRPC service that serves as a stub for the real service
 - flink_bridge. This is a Java Flink application that uses Datastream API V2 from FLink 2.21 Which serves as client.
+
+
 
 
 
@@ -133,28 +261,3 @@ flink-filippopacifici-taskexecutor-0-.local.log.1
 flink-filippopacifici-taskexecutor-0-.local.log.2
 flink-filippopacifici-taskexecutor-0-.local.out
 ```
-
-TODO
-====
-
-
-Port the GRPC service to Rust
---------------
-
-We started with a Python one to make it easy. Our worker will be rust and able
-to call iunto python as we do with the arroyo adapter.
-
-- Add a worker abstraction in rust that stays in between arroyo and the python code
-- Create the Rust GRPC server and use that abstraction to call into applicaiton code
-  so we can reuse all the work we did for the existing pipeline
-
-
-Test redeployment
---------
-
-Can we even make the system survive a redeployment ?
-
-Load test
--------
-
-Package everything in Docker images and run it in sandbox
