@@ -1,5 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Generic, Iterable, MutableSequence, Set, Tuple, TypeVar
+from typing import (
+    Callable,
+    Generic,
+    Iterable,
+    MutableSequence,
+    Set,
+    Tuple,
+    TypeVar,
+)
 
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
@@ -299,7 +307,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
             return False
         return True
 
-    def __yield_messages(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
+    def __yield_messages(self) -> MutableSequence[Tuple[PipelineMessage, Committable]]:
         """
         Yields messages polled from the OutputRetriever, as well as any stored watermarks that
         can be sent after each message.
@@ -310,14 +318,17 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         Currently, if no new messages are received, watermarks will not be sent further down the pipeline from a delegate.
         """
         # TODO: ensure watermarks leave the delegate in the same order they entered it
+        ret: MutableSequence[Tuple[PipelineMessage, Committable]] = []
+
         for message, committable in self.__retriever.fetch():
-            yield (message, committable)
+            ret.append((message, committable))
             self.__globbed_committable.update(committable)
             watermarks = self.__watermarks.copy()
             for wm in watermarks:
                 if self.__should_send_watermark(wm):
-                    yield (wm, wm.committable)
+                    ret.append((wm, wm.committable))
                     self.__watermarks.remove(wm)
+        return ret
 
     def submit(self, message: PipelineMessage, committable: Committable) -> None:
         if isinstance(message, PyWatermark):
