@@ -3,7 +3,7 @@
 //! python operator.
 
 use crate::committable::{clone_committable, convert_committable_to_py, convert_py_committable};
-use crate::messages::{RoutedValuePayload, WatermarkMessage};
+use crate::messages::{PyWatermark, RoutedValuePayload, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::types::{PyDict, PyTuple};
@@ -73,15 +73,26 @@ impl PythonAdapter {
                 .unwrap()
                 .as_unbound()
                 .clone_ref(py);
-            let message = Message::new_any_message(
-                RoutedValue {
-                    route: self.route.clone(),
-                    payload: RoutedValuePayload::PyStreamingMessage(payload.into()),
-                },
-                convert_py_committable(py, committable_dict).unwrap(),
-            );
-
-            self.transformed_messages.push_back(message);
+            let bound = payload.clone_ref(py).into_bound(py);
+            if bound.is_instance_of::<PyWatermark>() {
+                let message = Message::new_any_message(
+                    RoutedValue {
+                        route: self.route.clone(),
+                        payload: RoutedValuePayload::WatermarkMessage(payload.into()),
+                    },
+                    convert_py_committable(py, committable_dict).unwrap(),
+                );
+                self.transformed_messages.push_back(message);
+            } else {
+                let message = Message::new_any_message(
+                    RoutedValue {
+                        route: self.route.clone(),
+                        payload: RoutedValuePayload::PyStreamingMessage(payload.into()),
+                    },
+                    convert_py_committable(py, committable_dict).unwrap(),
+                );
+                self.transformed_messages.push_back(message);
+            }
         }
     }
 }
