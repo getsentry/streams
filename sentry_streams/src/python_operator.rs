@@ -553,7 +553,6 @@ class RustOperatorDelegateFactory:
         traced_with_gil!(|py| {
             let delegate = c_str!(
                 r#"
-from sentry_streams.rust_streams import PyAnyMessage
 from sentry_streams.adapters.arroyo.test_delegate import TestDelegateFactory
                 "#
             );
