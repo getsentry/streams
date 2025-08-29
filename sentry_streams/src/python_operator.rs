@@ -272,6 +272,7 @@ mod tests {
     use crate::testutils::build_routed_value;
     use crate::testutils::make_committable;
     use pyo3::ffi::c_str;
+    use pyo3::BoundObject;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::noop::Noop;
     use std::collections::{BTreeMap, HashMap};
@@ -552,41 +553,8 @@ class RustOperatorDelegateFactory:
         traced_with_gil!(|py| {
             let delegate = c_str!(
                 r#"
-from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import Message as ArroyoMessage
-from arroyo.types import Partition, Topic, Value
-from sentry_streams.adapters.arroyo.rust_step import ArroyoStrategyDelegate, OutputRetriever
-from sentry_streams.adapters.arroyo.multi_process_delegate import mapped_msg_to_rust
-from sentry_streams.pipeline.message import PyMessage
-
-class TestDelegateFactory:
-    def rust_to_arroyo_msg(self, message, committable):
-        arroyo_committable = {
-            Partition(Topic(partition[0]), partition[1]): offset
-            for partition, offset in committable.items()
-        }
-        arroyo_msg = PyMessage(
-            message.payload, message.headers, message.timestamp, message.schema
-        )
-        return ArroyoMessage(
-        Value(
-            arroyo_msg,
-            arroyo_committable,
-            datetime.fromtimestamp(message.timestamp) if message.timestamp else None,
-        )
-    )
-
-    def arroyo_msg_to_rust(self, message):
-        committable = {
-            (partition.topic.name, partition.index): offset
-            for partition, offset in message.committable.items()
-        }
-        return (message.payload.to_inner(), committable)
-
-    def build(self):
-        retriever = OutputRetriever(out_transformer=self.arroyo_msg_to_rust)
-        inner = RunTask(lambda x: x, retriever)
-        return ArroyoStrategyDelegate(inner,self.rust_to_arroyo_msg,retriever)
+from sentry_streams.rust_streams import PyAnyMessage
+from sentry_streams.adapters.arroyo.test_delegate import TestDelegateFactory
                 "#
             );
             let scope = PyModule::new(py, "test_scope").unwrap();
