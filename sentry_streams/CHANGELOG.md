@@ -1,3 +1,9 @@
+## 0.0.29
+
+### Various fixes & improvements
+
+- fix(watermark): add specific func signature (#204) by @victoria-yining-huang
+
 ## 0.0.28
 
 ### Various fixes & improvements
