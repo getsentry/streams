@@ -1,3 +1,11 @@
+## 0.0.28
+
+### Various fixes & improvements
+
+- fix(watermark): Return a list instead of a generator (#203) by @evanh
+- feat(gcssink): add logging of bytes lengths (#201) by @victoria-yining-huang
+- feat(rust): Provide a rust runner to start consumer in CLI in rust (#194) by @john-z-yang
+
 ## 0.0.27
 
 ### Various fixes & improvements
