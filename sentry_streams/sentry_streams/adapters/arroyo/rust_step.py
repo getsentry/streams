@@ -332,6 +332,8 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         self.__inner.poll()
         return self.__yield_messages()
 
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
+    def flush(
+        self, timeout: float | None = None
+    ) -> MutableSequence[Tuple[PipelineMessage, Committable]]:
         self.__inner.join(timeout)
         return self.__yield_messages()
