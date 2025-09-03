@@ -18,7 +18,7 @@ dependencies = [
     "sentry-kafka-schemas>=1.2.0",
     "polars",
     "click>=8.2.1",
-    "datadog>=0.52.0",
+    "datadog>=0.21.0",
 ]
 
 [dependency-groups]
@@ -47,7 +47,7 @@ module-name = "sentry_streams.rust_streams"
 sentry_streams = ["py.typed", "config.json", "deployment_config/test_flink.yaml"]
 
 [tool.pytest.ini_options]
-minversion = "0.0.28"
+minversion = "0.0.27"
 addopts = "-ra -q"
 testpaths = ["tests"]
 
