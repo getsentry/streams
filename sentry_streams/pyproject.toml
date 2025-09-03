@@ -51,7 +51,7 @@
     ]
 
 [tool.pytest.ini_options]
-    minversion = "0.0.29"
+    minversion = "0.0.30"
     addopts    = "-ra -q"
     testpaths  = ["tests"]
 

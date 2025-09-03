@@ -1,3 +1,10 @@
+## 0.0.30
+
+### Various fixes & improvements
+
+- downgrade click (#206) by @victoria-yining-huang
+- fix(sbc) Downgrade datadog package (#205) by @evanh
+
 ## 0.0.29
 
 ### Various fixes & improvements
