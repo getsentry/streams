@@ -4,7 +4,7 @@
 
 [project]
     name        = "sentry-streams"
-    version     = "0.0.27"
+    version     = "0.0.29"
     description = "The python Sentry Streaming API"
     readme      = "README.md"
 
@@ -18,8 +18,8 @@
         "sentry-kafka-schemas>=1.2.0",
         "polars",
         "click>=8.2.1",
-        "datadog==0.21.0",
-]
+        "datadog>=0.21.0",
+    ]
 
 [dependency-groups]
     docs = [
@@ -51,7 +51,7 @@
     ]
 
 [tool.pytest.ini_options]
-    minversion = "0.0.27"
+    minversion = "0.0.29"
     addopts    = "-ra -q"
     testpaths  = ["tests"]
 
