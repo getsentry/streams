@@ -935,7 +935,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "click", specifier = ">=8.2.1" },
+    { name = "click", specifier = ">=8.1.7" },
     { name = "datadog", specifier = ">=0.21.0" },
     { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "polars" },
