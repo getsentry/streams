@@ -51,15 +51,9 @@ readme = "README.md"
     ]
 
 [tool.pytest.ini_options]
-<<<<<<< HEAD
 minversion = "0.0.29"
 addopts = "-ra -q"
 testpaths = ["tests"]
-=======
-    minversion = "0.0.27"
-    addopts    = "-ra -q"
-    testpaths  = ["tests"]
->>>>>>> aa4cec3 (fix(sbc) Downgrade datadog package)
 
 [tool.black]
     # File filtering is taken care of in pre-commit.
