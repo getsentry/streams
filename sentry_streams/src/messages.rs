@@ -474,8 +474,10 @@ impl From<Py<PyAny>> for PyStreamingMessage {
     }
 }
 
-impl From<Py<PyAny>> for WatermarkMessage {
-    fn from(value: Py<PyAny>) -> Self {
+impl TryFrom<Py<PyAny>> for WatermarkMessage {
+    type Error = PyErr;
+
+    fn try_from(value: Py<PyAny>) -> Result<Self, Self::Error> {
         traced_with_gil!(|py| {
             let bound = value.clone_ref(py).into_bound(py);
             if bound.is_instance_of::<PyWatermark>() {
@@ -502,7 +504,6 @@ impl From<Py<PyAny>> for WatermarkMessage {
                 )))
             }
         })
-        .unwrap()
     }
 }
 

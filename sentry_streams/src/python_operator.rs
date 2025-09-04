@@ -78,7 +78,7 @@ impl PythonAdapter {
                 let message = Message::new_any_message(
                     RoutedValue {
                         route: self.route.clone(),
-                        payload: RoutedValuePayload::WatermarkMessage(payload.into()),
+                        payload: RoutedValuePayload::WatermarkMessage(payload.try_into().unwrap()),
                     },
                     convert_py_committable(py, committable_dict).unwrap(),
                 );
