@@ -150,6 +150,7 @@ impl Watermark {
 pub struct PyWatermark {
     #[pyo3(get)]
     pub committable: Py<PyDict>,
+    #[pyo3(get)]
     pub timestamp: Py<PyInt>,
 }
 
@@ -469,6 +470,39 @@ impl From<Py<PyAny>> for PyStreamingMessage {
             }
         })
         .unwrap()
+    }
+}
+
+impl TryFrom<Py<PyAny>> for WatermarkMessage {
+    type Error = PyErr;
+
+    fn try_from(value: Py<PyAny>) -> Result<Self, Self::Error> {
+        traced_with_gil!(|py| {
+            let bound = value.clone_ref(py).into_bound(py);
+            if bound.is_instance_of::<PyWatermark>() {
+                let py_watermark = bound.downcast::<PyWatermark>()?;
+                let committable = py_watermark
+                    .getattr("committable")?
+                    .downcast::<PyDict>()?
+                    .clone()
+                    .unbind();
+                let timestamp = py_watermark
+                    .getattr("timestamp")?
+                    .downcast::<PyInt>()?
+                    .clone()
+                    .unbind();
+
+                Ok(WatermarkMessage::PyWatermark(PyWatermark::new(
+                    committable,
+                    timestamp,
+                )?))
+            } else {
+                Err(pyo3::exceptions::PyTypeError::new_err(format!(
+                    "Message type is invalid: expected PyWatermark, got {}",
+                    bound.get_type().name().unwrap()
+                )))
+            }
+        })
     }
 }
 

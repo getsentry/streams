@@ -3,7 +3,7 @@
 //! python operator.
 
 use crate::committable::{clone_committable, convert_committable_to_py, convert_py_committable};
-use crate::messages::{RoutedValuePayload, WatermarkMessage};
+use crate::messages::{PyWatermark, RoutedValuePayload, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::types::{PyDict, PyTuple};
@@ -73,15 +73,26 @@ impl PythonAdapter {
                 .unwrap()
                 .as_unbound()
                 .clone_ref(py);
-            let message = Message::new_any_message(
-                RoutedValue {
-                    route: self.route.clone(),
-                    payload: RoutedValuePayload::PyStreamingMessage(payload.into()),
-                },
-                convert_py_committable(py, committable_dict).unwrap(),
-            );
-
-            self.transformed_messages.push_back(message);
+            let bound = payload.clone_ref(py).into_bound(py);
+            if bound.is_instance_of::<PyWatermark>() {
+                let message = Message::new_any_message(
+                    RoutedValue {
+                        route: self.route.clone(),
+                        payload: RoutedValuePayload::WatermarkMessage(payload.try_into().unwrap()),
+                    },
+                    convert_py_committable(py, committable_dict).unwrap(),
+                );
+                self.transformed_messages.push_back(message);
+            } else {
+                let message = Message::new_any_message(
+                    RoutedValue {
+                        route: self.route.clone(),
+                        payload: RoutedValuePayload::PyStreamingMessage(payload.into()),
+                    },
+                    convert_py_committable(py, committable_dict).unwrap(),
+                );
+                self.transformed_messages.push_back(message);
+            }
         }
     }
 }
@@ -267,8 +278,8 @@ mod tests {
     use super::*;
     use crate::fake_strategy::assert_messages_match;
     use crate::fake_strategy::FakeStrategy;
-    use crate::messages::make_py_int;
-    use crate::messages::{PyWatermark, WatermarkMessage};
+    use crate::messages::Watermark;
+    use crate::messages::WatermarkMessage;
     use crate::testutils::build_routed_value;
     use crate::testutils::make_committable;
     use pyo3::ffi::c_str;
@@ -290,6 +301,10 @@ class RustOperatorDelegate:
 
     def submit(self, payload, committable):
         self.committable = committable
+        # Handle watermark messages (PyWatermark objects)
+        if hasattr(payload, "committable"):
+            self.payload = payload
+            return
         if payload.payload == "ok":
             self.payload = payload
             return
@@ -341,20 +356,17 @@ class RustOperatorDelegateFactory:
         Message::new_any_message(routed_value, committable)
     }
 
-    fn make_test_watermark(py: Python<'_>) -> Message<RoutedValue> {
+    fn make_test_watermark() -> Message<RoutedValue> {
         let committable = make_committable(2, 0);
-        let py_committable = convert_committable_to_py(py, committable.clone()).unwrap();
-        let py_watermark = PyWatermark::new(py_committable, make_py_int(py, 0)).unwrap();
-        let routed_py_watermark = RoutedValue {
+        let watermark = Watermark::new(committable.clone(), 0);
+        let routed_watermark = RoutedValue {
             route: Route {
-                source: "source".to_string(),
-                waypoints: vec![],
+                source: "source1".to_string(),
+                waypoints: vec!["waypoint1".to_string()],
             },
-            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::PyWatermark(
-                py_watermark,
-            )),
+            payload: RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(watermark)),
         };
-        Message::new_any_message(routed_py_watermark, committable)
+        Message::new_any_message(routed_watermark, committable)
     }
 
     #[test]
@@ -394,46 +406,10 @@ class RustOperatorDelegateFactory:
                     }
                 ))
             ));
-        })
-    }
 
-    #[test]
-    fn test_submit_watermark() {
-        crate::testutils::initialize_python();
-        traced_with_gil!(|py| {
-            let instance = build_operator(py);
-            let mut operator = PythonAdapter::new(
-                Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
-                instance.unbind(),
-                Box::new(Noop {}),
-            );
-
-            let watermark = make_test_watermark(py);
+            let watermark = make_test_watermark();
             let res = operator.submit(watermark);
             assert!(res.is_ok());
-
-            let message = make_msg(py, "reject");
-            let res = operator.submit(message);
-            assert!(res.is_err());
-            assert!(matches!(
-                res,
-                Err(SubmitError::MessageRejected(
-                    sentry_arroyo::processing::strategies::MessageRejected { .. }
-                ))
-            ));
-
-            let message = make_msg(py, "invalid");
-            let res = operator.submit(message);
-            assert!(res.is_err());
-            assert!(matches!(
-                res,
-                Err(SubmitError::InvalidMessage(
-                    sentry_arroyo::processing::strategies::InvalidMessage {
-                        partition: Partition { .. },
-                        offset: 42
-                    }
-                ))
-            ));
         })
     }
 
