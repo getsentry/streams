@@ -118,7 +118,7 @@ pub fn build(
             route,
             bucket,
             object_generator,
-            thread_count,
+            thread_count: _,
         } => {
             let func_ref = traced_with_gil!(|py| { object_generator.clone_ref(py) });
 

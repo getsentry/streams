@@ -100,6 +100,8 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
             }
         };
 
+        let bytes_len = bytes.len();
+
         Box::pin(async move {
             // TODO: This route-based forwarding does not need to be
             // run with multiple threads. Look into removing this from the async task.
@@ -125,10 +127,11 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 }
             } else {
                 tracing::info!(
-                    "Writing file to GCS bucket: {}, file name: {}",
+                    "Finished writing file to GCS bucket: {}, file name: {}",
                     bucket_str,
                     object_name
                 );
+                tracing::info!("Length of bytes successfully written: {}", bytes_len);
                 Ok(message)
             }
         })

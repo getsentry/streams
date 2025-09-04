@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "sentry-streams"
-version = "0.0.27"
+version = "0.0.31"
 description = "The python Sentry Streaming API"
 readme = "README.md"
 
@@ -17,8 +17,8 @@ dependencies = [
     "jsonschema>=4.23.0",
     "sentry-kafka-schemas>=1.2.0",
     "polars",
-    "click>=8.2.1",
-    "datadog>=0.52.0",
+    "click>=8.1.7",
+    "datadog>=0.21.0",
 ]
 
 [dependency-groups]
@@ -44,12 +44,16 @@ dev = [
 module-name = "sentry_streams.rust_streams"
 
 [tool.setuptools.package-data]
-sentry_streams = ["py.typed", "config.json", "deployment_config/test_flink.yaml"]
+sentry_streams = [
+    "py.typed",
+    "config.json",
+    "deployment_config/test_flink.yaml",
+]
 
 [tool.pytest.ini_options]
-minversion = "0.0.27"
+minversion = "0.0.29"
 addopts = "-ra -q"
-testpaths = ["tests"]
+testpaths  = ["tests"]
 
 [tool.black]
 # File filtering is taken care of in pre-commit.

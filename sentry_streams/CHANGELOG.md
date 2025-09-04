@@ -1,3 +1,25 @@
+## 0.0.31
+
+### Various fixes & improvements
+
+- fix(release): bump version script recognizing white spaces (#207) by @victoria-yining-huang
+- downgrade click (#206) by @victoria-yining-huang
+- fix(sbc) Downgrade datadog package (#205) by @evanh
+
+## 0.0.29
+
+### Various fixes & improvements
+
+- fix(watermark): add specific func signature (#204) by @victoria-yining-huang
+
+## 0.0.28
+
+### Various fixes & improvements
+
+- fix(watermark): Return a list instead of a generator (#203) by @evanh
+- feat(gcssink): add logging of bytes lengths (#201) by @victoria-yining-huang
+- feat(rust): Provide a rust runner to start consumer in CLI in rust (#194) by @john-z-yang
+
 ## 0.0.27
 
 ### Various fixes & improvements
