@@ -319,7 +319,6 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         """
         # TODO: ensure watermarks leave the delegate in the same order they entered it
         ret: MutableSequence[Tuple[PipelineMessage, Committable]] = []
-
         for message, committable in self.__retriever.fetch():
             ret.append((message, committable))
             self.__globbed_committable.update(committable)
@@ -341,6 +340,8 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         self.__inner.poll()
         return self.__yield_messages()
 
-    def flush(self, timeout: float | None = None) -> Iterable[Tuple[PipelineMessage, Committable]]:
+    def flush(
+        self, timeout: float | None = None
+    ) -> MutableSequence[Tuple[PipelineMessage, Committable]]:
         self.__inner.join(timeout)
         return self.__yield_messages()
