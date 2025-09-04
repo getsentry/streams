@@ -1,5 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Generic, Iterable, MutableSequence, Set, Tuple, TypeVar
+from typing import (
+    Callable,
+    Generic,
+    Iterable,
+    MutableSequence,
+    Set,
+    Tuple,
+    TypeVar,
+)
 
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
@@ -299,7 +307,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
             return False
         return True
 
-    def __yield_messages(self) -> MutableSequence[tuple[PipelineMessage, Committable]]:
+    def __yield_messages(self) -> MutableSequence[Tuple[PipelineMessage, Committable]]:
         """
         Yields messages polled from the OutputRetriever, as well as any stored watermarks that
         can be sent after each message.
