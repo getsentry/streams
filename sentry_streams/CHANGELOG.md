@@ -1,3 +1,11 @@
+## 0.0.31
+
+### Various fixes & improvements
+
+- fix(release): bump version script recognizing white spaces (#207) by @victoria-yining-huang
+- downgrade click (#206) by @victoria-yining-huang
+- fix(sbc) Downgrade datadog package (#205) by @evanh
+
 ## 0.0.29
 
 ### Various fixes & improvements
