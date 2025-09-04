@@ -453,12 +453,13 @@ impl From<Py<PyAny>> for PyStreamingMessage {
     fn from(value: Py<PyAny>) -> Self {
         traced_with_gil!(|py| {
             let bound = value.clone_ref(py).into_bound(py);
-
-            if let Ok(content) = bound.downcast::<PyAnyMessage>() {
+            if bound.is_instance_of::<PyAnyMessage>() {
+                let content = bound.downcast::<PyAnyMessage>()?;
                 Ok(PyStreamingMessage::PyAnyMessage {
                     content: content.clone().unbind(),
                 })
-            } else if let Ok(content) = bound.downcast::<RawMessage>() {
+            } else if bound.is_instance_of::<RawMessage>() {
+                let content = bound.downcast::<RawMessage>()?;
                 Ok(PyStreamingMessage::RawMessage {
                     content: content.clone().unbind(),
                 })
