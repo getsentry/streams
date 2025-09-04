@@ -1,3 +1,9 @@
+## 0.0.32
+
+### Various fixes & improvements
+
+- fix(python_adapter): more __yield_messages fixes (#202) by @bmckerry
+
 ## 0.0.31
 
 ### Various fixes & improvements
