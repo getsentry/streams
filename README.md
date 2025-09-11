@@ -42,6 +42,8 @@ The main features are:
 
 You can use `make reset` to remove almost all installed artifacts.
 
+Run `gcloud auth application-default login` if interacting with GCP.
+
 ## Troubleshooting
 
 ### CMake Error
