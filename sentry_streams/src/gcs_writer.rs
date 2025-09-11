@@ -45,10 +45,8 @@ impl GCSWriter {
         // Create a tokio runtime for blocking on async
         let rt = Runtime::new().expect("Failed to create Tokio runtime");
 
-        // Use provider() to get the token provider and fetch token
         let token = rt.block_on(async {
             let provider = provider().await.expect("Failed to get gcp_auth provider");
-            // Use the storage scope
             let scopes = &["https://www.googleapis.com/auth/devstorage.read_write"];
             provider
                 .token(scopes)
@@ -65,7 +63,8 @@ impl GCSWriter {
             CONTENT_TYPE,
             HeaderValue::from_static("application/octet-stream"),
         );
-
+        // TODO: refresh the token if it expires during long writes. Current code is enough for load testing
+        // but not ready for production
         let client = ClientBuilder::new()
             .default_headers(headers)
             .build()
