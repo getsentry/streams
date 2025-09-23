@@ -84,7 +84,10 @@ def serialize_to_parquet(
     polars_schema: PolarsSchema,
     compression: ParquetCompression,
 ) -> bytes:
-    df = pl.DataFrame([i for i in msg.payload if i is not None], schema=polars_schema)
+    try:
+        df = pl.DataFrame([i for i in msg.payload if i is not None], schema=polars_schema)
+    except Exception as e:
+        print(f"Error creating DataFrame: {e}")
     buffer = io.BytesIO()
     df.write_parquet(buffer, compression=compression, statistics=False, use_pyarrow=False)
     return bytes(buffer.getvalue())
