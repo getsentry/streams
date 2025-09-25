@@ -79,6 +79,11 @@ def resolve_polars_schema(schema_fields: Mapping[str, DataType]) -> PolarsSchema
     return polars_schema
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def serialize_to_parquet(
     msg: Message[Iterable[Any]],
     polars_schema: PolarsSchema,
@@ -87,6 +92,8 @@ def serialize_to_parquet(
     try:
         df = pl.DataFrame([i for i in msg.payload if i is not None], schema=polars_schema)
     except Exception as e:
+        logger.info(f"Error creating DataFrame: {e}")
+        logger.info(f"Payload: {msg.payload}")
         print(f"Error creating DataFrame: {e}")
     buffer = io.BytesIO()
     df.write_parquet(buffer, compression=compression, statistics=False, use_pyarrow=False)
