@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use log::info;
+
 use sentry_arroyo::processing::strategies::{
     merge_commit_request, CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
 };
@@ -45,7 +47,10 @@ impl WatermarkCommitOffsets {
         // check if there is anything to commit first, since this is much cheaper than getting the
         // current time
         if self.watermarks.is_empty() {
+            info!("Watermarks HashMap is empty");
             return None;
+        } else {
+            info!("Watermarks HashMap size: {}", self.watermarks.len());
         }
 
         let empty_commit_request = CommitRequest {
@@ -72,6 +77,7 @@ impl WatermarkCommitOffsets {
         }
 
         if commit_request != empty_commit_request {
+            info!("Commit request: {:?}", commit_request);
             Some(commit_request)
         } else {
             None
