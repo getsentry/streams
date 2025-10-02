@@ -322,6 +322,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         # TODO: ensure watermarks leave the delegate in the same order they entered it
         ret: MutableSequence[Tuple[PipelineMessage, Committable]] = []
         for message, committable in self.__retriever.fetch():
+            print(f"Fetched message: {message}, {committable}")
             ret.append((message, committable))
             self.__globbed_committable.update(committable)
             logger.info("__yield_messages: globbed_committable is", self.__globbed_committable)
