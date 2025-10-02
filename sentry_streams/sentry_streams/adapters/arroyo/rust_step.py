@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import (
     Callable,
@@ -8,7 +9,7 @@ from typing import (
     Tuple,
     TypeVar,
 )
-import logging
+
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Message as ArroyoMessage
@@ -335,7 +336,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
 
     def submit(self, message: PipelineMessage, committable: Committable) -> None:
         if isinstance(message, PyWatermark):
-            logger.info('Received watermark:', message)
+            logger.info(f"Received watermark: {message}")
             self.__watermarks.add(message)
         else:
             arroyo_msg = self.__in_transformer(message, committable)
