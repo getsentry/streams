@@ -519,6 +519,7 @@ class Batch(
     step_type: StepType = StepType.REDUCE
 
     def __post_init__(self) -> None:
+        print("here!!!")
         if self.batch_size is None and self.batch_timedelta is None:
             raise ValueError("At least one of batch_size or batch_timedelta must be set.")
 

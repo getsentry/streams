@@ -47,7 +47,6 @@ impl WatermarkCommitOffsets {
         // check if there is anything to commit first, since this is much cheaper than getting the
         // current time
         if self.watermarks.is_empty() {
-            info!("Watermarks HashMap is empty");
             return None;
         } else {
             info!("Watermarks HashMap size: {}", self.watermarks.len());

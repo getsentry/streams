@@ -8,7 +8,7 @@ from typing import (
     Tuple,
     TypeVar,
 )
-
+import logging
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Message as ArroyoMessage
@@ -19,7 +19,7 @@ from sentry_streams.rust_streams import PyWatermark
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 
-
+logger = logging.getLogger(__name__)
 # This represents a set of committable offsets. These have to be
 # moved between Rust and Python so we do cannot use the native
 # Arroyo objects as they are not exposed to Python.
@@ -301,6 +301,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         """
         try:
             for partition, offset in watermark.committable.items():
+
                 if self.__globbed_committable[partition] < offset:
                     return False
         except KeyError:
@@ -322,8 +323,11 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         for message, committable in self.__retriever.fetch():
             ret.append((message, committable))
             self.__globbed_committable.update(committable)
+            logger.info("__yield_messages: globbed_committable is", self.__globbed_committable)
             watermarks = self.__watermarks.copy()
+            logger.info(f"_yield_messages: watermarks is {watermarks}")
             for wm in watermarks:
+                logger.info("__should_send_watermark?", wm, self.__should_send_watermark(wm))
                 if self.__should_send_watermark(wm):
                     ret.append((wm, wm.committable))
                     self.__watermarks.remove(wm)
@@ -331,6 +335,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
 
     def submit(self, message: PipelineMessage, committable: Committable) -> None:
         if isinstance(message, PyWatermark):
+            logger.info('Received watermark:', message)
             self.__watermarks.add(message)
         else:
             arroyo_msg = self.__in_transformer(message, committable)
