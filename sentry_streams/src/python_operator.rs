@@ -65,6 +65,7 @@ impl PythonAdapter {
     /// The committable of the forwarded Message are those provided by
     /// the Python delegate.
     fn handle_py_return_value(&mut self, py: Python<'_>, payloads: Vec<Py<PyAny>>) {
+        info!("handle_py_return_value payloads: {:?}", payloads);
         for py_payload in payloads {
             let entry = py_payload.downcast_bound::<PyTuple>(py).unwrap();
             let payload: Py<PyAny> = entry.get_item(0).unwrap().unbind();
@@ -185,9 +186,14 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
 
         match out_messages {
             Ok(out_messages) => {
+                info!("out_messages: {:?}", out_messages);
                 traced_with_gil!(|py| {
                     self.handle_py_return_value(py, out_messages);
                 });
+                info!(
+                    "self.transformed_messages after conversion: {:?}",
+                    self.transformed_messages
+                );
                 while let Some(msg) = self.transformed_messages.pop_front() {
                     let commit_request = self.next_strategy.poll()?;
                     self.commit_request_carried_over = merge_commit_request(
