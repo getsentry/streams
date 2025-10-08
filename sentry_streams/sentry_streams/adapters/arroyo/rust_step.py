@@ -322,23 +322,25 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         # TODO: ensure watermarks leave the delegate in the same order they entered it
         ret: MutableSequence[Tuple[PipelineMessage, Committable]] = []
         for message, committable in self.__retriever.fetch():
-            print(f"Fetched message: {message}, {committable}")
+            print(f"committable is: {committable}")
             ret.append((message, committable))
             self.__globbed_committable.update(committable)
-            logger.info("__yield_messages: globbed_committable is", self.__globbed_committable)
+            print(f"globbed_committable is, {self.__globbed_committable}")
             watermarks = self.__watermarks.copy()
             logger.info(f"_yield_messages: watermarks is {watermarks}")
             for wm in watermarks:
-                logger.info("__should_send_watermark?", wm, self.__should_send_watermark(wm))
+                logger.info(f"__should_send_watermark? {wm}, {self.__should_send_watermark(wm)}")
                 if self.__should_send_watermark(wm):
                     ret.append((wm, wm.committable))
                     self.__watermarks.remove(wm)
+        print(f"ret is {ret}")
         return ret
 
     def submit(self, message: PipelineMessage, committable: Committable) -> None:
         if isinstance(message, PyWatermark):
             logger.info(f"Received watermark: {message}")
             self.__watermarks.add(message)
+            # self.__inner.submit(message)
         else:
             arroyo_msg = self.__in_transformer(message, committable)
             self.__inner.submit(arroyo_msg)
