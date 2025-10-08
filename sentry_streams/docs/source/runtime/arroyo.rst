@@ -107,10 +107,14 @@ Current progress:
 
 ☑ A ``Broadcast`` step has been created which broadcasts messages and watermarks to all downstream branches
 
+☐ The ``Broadcast`` step needs to properly broadcast messages (currently it just copies references to one Python message,
+which doesn't work).
+
 ☐ The ``Router`` step needs to be rewritten to be a custom step that routes regular messages downstream (to a single downstream branch),
 but broadcasts watermarks downstream (to all branches)
 
-☐ ``Reduce`` and ``Multiprocess`` steps need to handle watermark messages
+☑ ``Reduce`` and ``Multiprocess`` steps handle watermark messages by spooling watermarks in the ``ArroyoStrategyDelegate`` until they
+can be submitted back to Rust
 
-☐ The custom commit step that commits only after receiving a watermark copy from each branch in the pipeline
-needs to be implemented (for now, the arroyo runtime uses the standard once-per-second commit step)
+☑ The custom commit step that commits only after receiving a watermark copy from each branch in the pipeline
+has been implemented
