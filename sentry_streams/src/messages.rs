@@ -488,11 +488,14 @@ impl TryFrom<Py<PyAny>> for WatermarkMessage {
                     .clone()
                     .unbind();
                 let committable = convert_py_committable(py, py_committable).unwrap();
-                let timestamp = py_watermark
+                let timestamp = match py_watermark
                     .getattr("timestamp")?
                     .downcast::<PyInt>()?
-                    .extract()
-                    .unwrap();
+                    .extract::<u64>()
+                {
+                    Ok(time) => time,
+                    Err(e) => return Err(pyo3::exceptions::PyTypeError::new_err(e.to_string())),
+                };
 
                 Ok(WatermarkMessage::Watermark(Watermark::new(
                     committable,
