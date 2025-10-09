@@ -41,7 +41,7 @@ use pyo3::{prelude::*, types::PySequence, IntoPyObjectExt};
 
 use sentry_arroyo::types::Partition;
 
-use crate::committable::convert_committable_to_py;
+use crate::committable::{convert_committable_to_py, convert_py_committable};
 use crate::utils::traced_with_gil;
 
 pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(String, Vec<u8>)>> {
@@ -482,21 +482,25 @@ impl TryFrom<Py<PyAny>> for WatermarkMessage {
             let bound = value.clone_ref(py).into_bound(py);
             if bound.is_instance_of::<PyWatermark>() {
                 let py_watermark = bound.downcast::<PyWatermark>()?;
-                let committable = py_watermark
+                let py_committable = py_watermark
                     .getattr("committable")?
                     .downcast::<PyDict>()?
                     .clone()
                     .unbind();
-                let timestamp = py_watermark
+                let committable = convert_py_committable(py, py_committable).unwrap();
+                let timestamp = match py_watermark
                     .getattr("timestamp")?
                     .downcast::<PyInt>()?
-                    .clone()
-                    .unbind();
+                    .extract::<u64>()
+                {
+                    Ok(time) => time,
+                    Err(e) => return Err(pyo3::exceptions::PyTypeError::new_err(e.to_string())),
+                };
 
-                Ok(WatermarkMessage::PyWatermark(PyWatermark::new(
+                Ok(WatermarkMessage::Watermark(Watermark::new(
                     committable,
                     timestamp,
-                )?))
+                )))
             } else {
                 Err(pyo3::exceptions::PyTypeError::new_err(format!(
                     "Message type is invalid: expected PyWatermark, got {}",
