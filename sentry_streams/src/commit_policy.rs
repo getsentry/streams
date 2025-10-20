@@ -86,20 +86,16 @@ impl WatermarkCommitOffsets {
 
 impl ProcessingStrategy<RoutedValue> for WatermarkCommitOffsets {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        info!("self.watermarks: {:?}", self.watermarks);
         Ok(self.commit())
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        info!("message is: {:?}", message.payload().payload);
         if let RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(watermark)) =
             &message.payload().payload
         {
             info!("Received test????? watermark: {:?}", watermark);
             match self.watermarks.get(&watermark.timestamp) {
                 Some(tracker) => {
-                    info!("timestamp has tracker: {:?}", watermark);
-                    info!("watermark tracker: {:?}", tracker.committable.clone());
                     self.watermarks.insert(
                         watermark.timestamp,
                         WatermarkTracker {
@@ -110,12 +106,10 @@ impl ProcessingStrategy<RoutedValue> for WatermarkCommitOffsets {
                     );
                 }
                 None => {
-                    info!("timestamp NO tracker: {:?}", watermark);
                     let mut committable: HashMap<Partition, u64> = Default::default();
                     for (partition, offset) in message.committable() {
                         committable.insert(partition, offset);
                     }
-                    info!("Inserting watermark tracker: {:?}", committable.clone());
                     self.watermarks.insert(
                         watermark.timestamp,
                         WatermarkTracker {
@@ -126,9 +120,7 @@ impl ProcessingStrategy<RoutedValue> for WatermarkCommitOffsets {
                     );
                 }
             };
-            
         }
-        info!("Not even receiving watermark");
         Ok(())
     }
 
