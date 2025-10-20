@@ -333,9 +333,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
 
     def submit(self, message: PipelineMessage, committable: Committable) -> None:
         if isinstance(message, PyWatermark):
-            logger.info(f"Received watermark: {message}")
             self.__watermarks.add(message)
-            self.__inner.submit(message)
         else:
             arroyo_msg = self.__in_transformer(message, committable)
             self.__inner.submit(arroyo_msg)
