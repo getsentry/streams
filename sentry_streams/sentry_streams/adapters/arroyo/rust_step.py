@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import (
     Callable,
@@ -19,7 +20,7 @@ from sentry_streams.rust_streams import PyWatermark
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
 
-
+logger = logging.getLogger(__name__)
 # This represents a set of committable offsets. These have to be
 # moved between Rust and Python so we do cannot use the native
 # Arroyo objects as they are not exposed to Python.
@@ -301,6 +302,7 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
         """
         try:
             for partition, offset in watermark.committable.items():
+
                 if self.__globbed_committable[partition] < offset:
                     return False
         except KeyError:
