@@ -94,7 +94,6 @@ def serialize_to_parquet(
     except Exception as e:
         logger.info(f"Error creating DataFrame: {e}")
         logger.info(f"Payload: {msg.payload}")
-        print(f"Error creating DataFrame: {e}")
     buffer = io.BytesIO()
     df.write_parquet(buffer, compression=compression, statistics=False, use_pyarrow=False)
     return bytes(buffer.getvalue())

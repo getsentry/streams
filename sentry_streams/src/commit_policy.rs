@@ -48,10 +48,7 @@ impl WatermarkCommitOffsets {
         // current time
         if self.watermarks.is_empty() {
             return None;
-        } else {
-            info!("Watermarks HashMap size: {}", self.watermarks.len());
         }
-
         let empty_commit_request = CommitRequest {
             positions: Default::default(),
         };
@@ -76,7 +73,6 @@ impl WatermarkCommitOffsets {
         }
 
         if commit_request != empty_commit_request {
-            info!("Commit request: {:?}", commit_request);
             Some(commit_request)
         } else {
             None
@@ -93,7 +89,6 @@ impl ProcessingStrategy<RoutedValue> for WatermarkCommitOffsets {
         if let RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(watermark)) =
             &message.payload().payload
         {
-            info!("Received test????? watermark: {:?}", watermark);
             match self.watermarks.get(&watermark.timestamp) {
                 Some(tracker) => {
                     self.watermarks.insert(
