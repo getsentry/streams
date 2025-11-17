@@ -190,10 +190,6 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                 traced_with_gil!(|py| {
                     self.handle_py_return_value(py, out_messages);
                 });
-                info!(
-                    "self.transformed_messages after conversion: {:?}",
-                    self.transformed_messages
-                );
                 while let Some(msg) = self.transformed_messages.pop_front() {
                     let commit_request = self.next_strategy.poll()?;
                     self.commit_request_carried_over = merge_commit_request(
