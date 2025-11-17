@@ -901,7 +901,7 @@ wheels = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.29"
+version = "0.0.32"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

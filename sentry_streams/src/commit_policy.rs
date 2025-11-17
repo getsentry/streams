@@ -47,7 +47,6 @@ impl WatermarkCommitOffsets {
         if self.watermarks.is_empty() {
             return None;
         }
-
         let empty_commit_request = CommitRequest {
             positions: Default::default(),
         };

@@ -16,6 +16,10 @@ use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskError;
 use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskFunc;
 use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
 use sentry_arroyo::types::Message;
+
+use gcp_auth::provider;
+use tokio::runtime::Runtime;
+
 pub struct GCSWriter {
     client: Client,
     bucket: String,
@@ -38,29 +42,37 @@ fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Ve
 
 impl GCSWriter {
     pub fn new(bucket: &str, object_generator: Py<PyAny>, route: Route) -> Self {
-        let client = ClientBuilder::new();
+        // Create a tokio runtime for blocking on async
+        let rt = Runtime::new().expect("Failed to create Tokio runtime");
 
-        // TODO: Avoid having this step in the pipeline pick up environment variables.
-        // Have a centralized place where all config and env vars are set
-        let access_token = std::env::var("GCP_ACCESS_TOKEN")
-            .expect("Set GCP_ACCESS_TOKEN env variable with GCP authorization token");
+        let token = rt.block_on(async {
+            let provider = provider().await.expect("Failed to get gcp_auth provider");
+            let scopes = &["https://www.googleapis.com/auth/devstorage.read_write"];
+            provider
+                .token(scopes)
+                .await
+                .expect("Failed to obtain token")
+        });
 
         let mut headers = HeaderMap::with_capacity(2);
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", access_token)).unwrap(),
+            HeaderValue::from_str(&format!("Bearer {}", token.as_str())).unwrap(),
         );
         headers.insert(
             CONTENT_TYPE,
-            HeaderValue::from_str("application/octet-stream").unwrap(),
+            HeaderValue::from_static("application/octet-stream"),
         );
-
-        let client = client.default_headers(headers).build().unwrap();
-        let bucket = bucket.to_string();
+        // TODO: refresh the token if it expires during long writes. Current code is enough for load testing
+        // but not ready for production
+        let client = ClientBuilder::new()
+            .default_headers(headers)
+            .build()
+            .unwrap();
 
         GCSWriter {
             client,
-            bucket,
+            bucket: bucket.to_string(),
             route,
             object_generator,
         }
