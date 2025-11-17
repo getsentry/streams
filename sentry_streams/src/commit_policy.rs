@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use log::info;
-
 use sentry_arroyo::processing::strategies::{
     merge_commit_request, CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
 };

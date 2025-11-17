@@ -6,7 +6,6 @@ use crate::committable::{clone_committable, convert_committable_to_py, convert_p
 use crate::messages::{PyWatermark, RoutedValuePayload, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
-use log::info;
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::Python;
 use pyo3::{import_exception, prelude::*};
