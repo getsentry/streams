@@ -1,3 +1,10 @@
+## 0.0.33
+
+### Various fixes & improvements
+
+- ref(gcs_writer): use gcp_auth but not prod ready (#208) by @victoria-yining-huang
+- fix: TryFrom Watermark instead of PyWatermark (#209) by @bmckerry
+
 ## 0.0.32
 
 ### Various fixes & improvements
