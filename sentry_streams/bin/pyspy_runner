@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# pyspy_runner - Run sentry_streams.runner with py-spy profiler
+# Usage: ./pyspy_runner <profile_filename> [runner_args...]
+# Example: ./pyspy_runner profile.svg -n SimpleMap --adapter rust_arroyo --config config.yaml app.py
+
+set -e
+
+# Check if at least one argument is provided (profile filename)
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <profile_filename> [runner_args...]"
+    echo "Example: $0 profile.svg -n SimpleMap --adapter rust_arroyo --config config.yaml app.py"
+    exit 1
+fi
+
+# Extract the profile filename (first argument)
+PROFILE_FILE="$1"
+shift  # Remove the first argument, leaving the rest for the runner
+
+# Check if py-spy is available
+if ! command -v py-spy &> /dev/null; then
+    echo "Error: py-spy is not installed or not in PATH"
+    echo "Install it with: pip install py-spy"
+    exit 1
+fi
+
+# Run py-spy with the runner
+echo "Starting profiler with output file: $PROFILE_FILE"
+echo "Runner arguments: $@"
+
+py-spy record -o "$PROFILE_FILE" --native -- python -m sentry_streams.runner "$@"
