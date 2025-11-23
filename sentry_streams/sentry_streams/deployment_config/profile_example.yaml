@@ -4,12 +4,12 @@
 # do not require overrides of this file
 env: {}
 
-metrics:
-  type: datadog
-  host: datadog-agent
-  port: 8125
-  tags:
-    pipeline: profile_example
+#metrics:
+#  type: datadog
+#  host: datadog-agent
+#  port: 8125
+#  tags:
+#    pipeline: profile_example
 
 pipeline:
   segments:
