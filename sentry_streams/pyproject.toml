@@ -19,6 +19,7 @@ dependencies = [
     "polars",
     "click>=8.1.7",
     "datadog>=0.21.0",
+    "py-spy",
 ]
 
 [dependency-groups]
