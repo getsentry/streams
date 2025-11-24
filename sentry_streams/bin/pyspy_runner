@@ -28,4 +28,4 @@ fi
 echo "Starting profiler with output file: $PROFILE_FILE"
 echo "Runner arguments: $@"
 
-py-spy record -o "$PROFILE_FILE" --native -- python -m sentry_streams.runner "$@"
+py-spy record -o "$PROFILE_FILE" --native --subprocesses --threads -- python -m sentry_streams.runner "$@"
