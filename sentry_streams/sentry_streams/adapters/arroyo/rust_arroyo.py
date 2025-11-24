@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import replace
+from functools import partial
 from typing import (
     Any,
     Callable,
@@ -26,6 +27,7 @@ from sentry_streams.adapters.arroyo.reduce_delegate import ReduceDelegateFactory
 from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps_chain import TransformChains
+from sentry_streams.adapters.arroyo.wrappers import wrapped_function as actually_wrapped
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.config_types import (
     KafkaConsumerConfig,
@@ -289,20 +291,21 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         application_function = step.resolved_function
 
         def wrapped_function(msg: Message[Any]) -> Any:
-            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
-            start_time = input_metrics(step.name, msg_size)
+            # msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+            # start_time = input_metrics(step.name, msg_size)
             has_error = output_size = None
             try:
                 result = application_function(msg)
-                output_size = get_size(result)
+                # output_size = get_size(result)
                 return result
             except Exception as e:
                 has_error = str(e.__class__.__name__)
                 raise e
             finally:
-                output_metrics(step.name, has_error, start_time, output_size)
+                # output_metrics(step.name, has_error, start_time, output_size)
+                pass
 
-        step = replace(step, function=wrapped_function)
+        step = replace(step, function=partial(actually_wrapped, step, application_function))
 
         if step_config.get("starts_segment") or not self.__chains.exists(stream):
             logger.info(f"Starting new segment at step {step.name}")

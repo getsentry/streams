@@ -232,7 +232,7 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
                 Err(SubmitError::MessageRejected(MessageRejected {
                     message: transformed_message,
                 })) => {
-                    println!("Message rejected: {:?}", transformed_message);
+                    // println!("Message rejected: {:?}", transformed_message);
                     self.message_carried_over = Some(transformed_message);
                 }
                 Err(SubmitError::InvalidMessage(invalid_message)) => {

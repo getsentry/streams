@@ -337,8 +337,15 @@ class ArroyoStrategyDelegate(RustOperatorDelegate, Generic[TStrategyIn, TStrateg
             self.__inner.submit(arroyo_msg)
 
     def poll(self) -> Iterable[Tuple[PipelineMessage, Committable]]:
-        self.__inner.poll()
-        return self.__yield_messages()
+        try:
+            self.__inner.poll()
+            return self.__yield_messages()
+        except Exception as e:
+            import traceback
+
+            print("Error in poll")
+            traceback.print_exc()
+            raise e
 
     def flush(
         self, timeout: float | None = None

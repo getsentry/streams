@@ -16,16 +16,17 @@ pipeline:
     - steps_config:
         myinput:
           starts_segment: True
-          bootstrap_servers: ["kafka-test-2-001:9092", "kafka-test-3-001:9092", "kafka-test-4-001:9092"]
+          bootstrap_servers: ["kafka-test-2-001:9092"]
         mybatch:
           batch_size: 1000
           batch_timedelta:
             seconds: 4
         batch_parser:
+          starts_segment: True
           parallelism:
             multi_process:
               processes: 4
               batch_size: 1000
               batch_time: 0.2
         mysink:
-          bootstrap_servers: ["kafka-test-2-001:9092", "kafka-test-3-001:9092", "kafka-test-4-001:9092"]
+          bootstrap_servers: ["kafka-test-2-001:9092"]

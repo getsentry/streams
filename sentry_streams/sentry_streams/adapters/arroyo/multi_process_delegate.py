@@ -39,7 +39,6 @@ def process_message(
 
     Its only job is to unpack the arroyo message.
     """
-
     return function(msg.payload)
 
 
