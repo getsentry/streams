@@ -8,12 +8,17 @@ from typing import Any, Mapping, Optional, Protocol, Union, runtime_checkable
 from arroyo.utils.metric_defs import MetricName as ArroyoMetricName
 from arroyo.utils.metrics import DummyMetricsBackend as ArroyoDummyMetricsBackend
 from arroyo.utils.metrics import configure_metrics as arroyo_configure_metrics
-from datadog import DogStatsd  # type: ignore[import-untyped]
+from datadog.dogstatsd.base import DogStatsd
 
 Tags = dict[str, str]
 
 
 METRICS_FREQUENCY_SEC = 10
+
+# max number of (UDP) packets in the dogstatsd queue. 0 means unlimited.
+SENDER_QUEUE_SIZE = 100000
+# do not block process shutdown on metrics.
+SENDER_QUEUE_TIMEOUT = 0
 
 
 class Metric(Enum):
@@ -129,6 +134,10 @@ class DatadogMetricsBackend(Metrics):
             port=port,
             namespace=self.prefix,
             constant_tags=self.__normalized_tags,
+        )
+        # ignore mypy because that method just is untyped, yet part of public API
+        self.datadog_client.enable_background_sender(  # type: ignore[no-untyped-call]
+            sender_queue_size=SENDER_QUEUE_SIZE, sender_queue_timeout=SENDER_QUEUE_TIMEOUT
         )
         self.__timers: dict[int, BufferedMetric] = {}
         self.__counters: dict[int, BufferedMetric] = {}
