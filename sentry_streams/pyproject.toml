@@ -18,7 +18,7 @@ dependencies = [
     "sentry-kafka-schemas>=1.2.0",
     "polars",
     "click>=8.1.7",
-    "datadog>=0.21.0",
+    "datadog>=0.49.1",
 ]
 
 [dependency-groups]

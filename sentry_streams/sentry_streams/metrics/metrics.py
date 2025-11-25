@@ -15,6 +15,11 @@ Tags = dict[str, str]
 
 METRICS_FREQUENCY_SEC = 10
 
+# max number of (UDP) packets in the dogstatsd queue. 0 means unlimited.
+SENDER_QUEUE_SIZE = 100000
+# do not block process shutdown on metrics.
+SENDER_QUEUE_TIMEOUT = 0
+
 
 class Metric(Enum):
     # This counts how many messages were input into the step in the pipeline.
@@ -129,6 +134,9 @@ class DatadogMetricsBackend(Metrics):
             port=port,
             namespace=self.prefix,
             constant_tags=self.__normalized_tags,
+        )
+        self.datadog_client.enable_background_sender(
+            sender_queue_size=SENDER_QUEUE_SIZE, sender_queue_timeout=SENDER_QUEUE_TIMEOUT
         )
         self.__timers: dict[int, BufferedMetric] = {}
         self.__counters: dict[int, BufferedMetric] = {}
