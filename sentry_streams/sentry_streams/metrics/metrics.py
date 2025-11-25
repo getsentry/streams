@@ -8,7 +8,7 @@ from typing import Any, Mapping, Optional, Protocol, Union, runtime_checkable
 from arroyo.utils.metric_defs import MetricName as ArroyoMetricName
 from arroyo.utils.metrics import DummyMetricsBackend as ArroyoDummyMetricsBackend
 from arroyo.utils.metrics import configure_metrics as arroyo_configure_metrics
-from datadog import DogStatsd  # type: ignore[import-untyped]
+from datadog.dogstatsd.base import DogStatsd
 
 Tags = dict[str, str]
 
@@ -135,7 +135,8 @@ class DatadogMetricsBackend(Metrics):
             namespace=self.prefix,
             constant_tags=self.__normalized_tags,
         )
-        self.datadog_client.enable_background_sender(
+        # ignore mypy because that method just is untyped, yet part of public API
+        self.datadog_client.enable_background_sender(  # type: ignore[no-untyped-call]
             sender_queue_size=SENDER_QUEUE_SIZE, sender_queue_timeout=SENDER_QUEUE_TIMEOUT
         )
         self.__timers: dict[int, BufferedMetric] = {}
