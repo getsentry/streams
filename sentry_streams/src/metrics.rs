@@ -69,16 +69,25 @@ pub fn configure_metrics(metric_config: Option<PyMetricConfig>) {
             }
         };
 
-        let builder = StatsdBuilder::from(statsd_addr.ip().to_string(), statsd_addr.port());
+        let mut builder = StatsdBuilder::from(statsd_addr.ip().to_string(), statsd_addr.port());
 
-        let builder = if let Some(tags) = metric_config.tags() {
-            tags.into_iter().fold(
-                builder.with_queue_size(5000).with_buffer_size(1024),
-                |builder, (key, value)| builder.with_default_tag(key, value),
-            )
+        if let Some(queue_size) = metric_config.queue_size() {
+            builder = builder.with_queue_size(queue_size);
         } else {
-            builder.with_queue_size(5000).with_buffer_size(1024)
-        };
+            builder = builder.with_queue_size(5000);
+        }
+
+        if let Some(buffer_size) = metric_config.buffer_size() {
+            builder = builder.with_buffer_size(buffer_size);
+        } else {
+            builder = builder.with_buffer_size(1024);
+        }
+
+        if let Some(tags) = metric_config.tags() {
+            for (key, value) in tags {
+                builder = builder.with_default_tag(key, value);
+            }
+        }
 
         match builder.build(Some("streams")) {
             Ok(recorder) => {

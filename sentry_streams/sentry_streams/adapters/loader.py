@@ -62,7 +62,9 @@ def load_adapter(
             py_metric_config = PyMetricConfig(
                 host=metric_config["host"],
                 port=metric_config["port"],
-                tags=metric_config["tags"],
+                tags=metric_config.get("tags"),
+                queue_size=metric_config.get("queue_size"),
+                buffer_size=metric_config.get("buffer_size"),
             )
 
         # TODO: Fix this type as above.
