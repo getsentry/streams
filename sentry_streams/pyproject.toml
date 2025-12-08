@@ -12,7 +12,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "requests>=2.32.3",
-    "sentry-arroyo>=2.18.2",
+    "sentry-arroyo>=2.35.0",
     "pyyaml>=6.0.2",
     "jsonschema>=4.23.0",
     "sentry-kafka-schemas>=1.2.0",
