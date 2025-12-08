@@ -10,7 +10,6 @@ jobs:
   typing:
     name: "mypy typing"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v3
 

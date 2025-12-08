@@ -46,7 +46,9 @@ class PyMetricConfig:
         self,
         host: str,
         port: int,
-        tags: dict[str, str] | None,
+        tags: dict[str, str] | None = None,
+        queue_size: int | None = None,
+        buffer_size: int | None = None,
     ) -> None: ...
     @property
     def host(self) -> str: ...
@@ -54,6 +56,10 @@ class PyMetricConfig:
     def port(self) -> int: ...
     @property
     def tags(self) -> dict[str, str] | None: ...
+    @property
+    def queue_size(self) -> int | None: ...
+    @property
+    def buffer_size(self) -> int | None: ...
 
 class RuntimeOperator:
     @classmethod

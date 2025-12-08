@@ -1,60 +1,84 @@
 use crate::metrics_config::PyMetricConfig;
-use sentry_arroyo::metrics::{init, MetricSink, StatsdRecorder};
-use std::net::UdpSocket;
+use metrics_exporter_statsd::StatsdBuilder;
+use sentry_arroyo::metrics::{init as arroyo_init, Metric, MetricType, Recorder};
 use tracing::{error, info, warn};
 
-/// A simple UDP sink for sending StatsD metrics
-struct UdpMetricSink {
-    socket: UdpSocket,
-    addr: String,
-}
+struct MetricsFacadeRecorder;
 
-impl UdpMetricSink {
-    fn new(host: &str, port: u16) -> Result<Self, std::io::Error> {
-        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-        socket.set_nonblocking(true).unwrap();
-        let addr = format!("{}:{}", host, port);
-        Ok(Self { socket, addr })
-    }
-}
+impl Recorder for MetricsFacadeRecorder {
+    fn record_metric(&self, metric: Metric<'_>) {
+        let key = format!("{}", metric.key);
+        let value_f64 = match metric.value {
+            sentry_arroyo::metrics::MetricValue::I64(v) => v as f64,
+            sentry_arroyo::metrics::MetricValue::U64(v) => v as f64,
+            sentry_arroyo::metrics::MetricValue::F64(v) => v,
+            sentry_arroyo::metrics::MetricValue::Duration(d) => d.as_millis() as f64,
+            _ => return,
+        };
 
-impl MetricSink for UdpMetricSink {
-    fn emit(&self, metric: &str) {
-        if let Err(e) = self.socket.send_to(metric.as_bytes(), &self.addr) {
-            error!("Failed to send metric: {}", e);
+        let labels: Vec<(String, String)> = metric
+            .tags
+            .iter()
+            .map(|(k, v)| {
+                let key = k.map(|k| format!("{}", k)).unwrap_or_default();
+                let value = format!("{}", v);
+                (key, value)
+            })
+            .collect();
+
+        match metric.ty {
+            MetricType::Counter => {
+                let counter = metrics::counter!(key, &labels);
+                counter.increment(value_f64 as u64);
+            }
+            MetricType::Gauge => {
+                let gauge = metrics::gauge!(key, &labels);
+                gauge.set(value_f64);
+            }
+            MetricType::Timer => {
+                let histogram = metrics::histogram!(key, &labels);
+                histogram.record(value_f64);
+            }
+            _ => {}
         }
     }
 }
 
-// Initialize metrics if config is provided
 pub fn configure_metrics(metric_config: Option<PyMetricConfig>) {
     if let Some(ref metric_config) = metric_config {
-        info!(
-            "Initializing metrics with host: {}:{}",
-            metric_config.host(),
-            metric_config.port()
-        );
+        let host = metric_config.host();
+        let port = metric_config.port();
 
-        match UdpMetricSink::new(metric_config.host(), metric_config.port()) {
-            Ok(sink) => {
-                let mut recorder = StatsdRecorder::new("arroyo", sink);
+        info!("Initializing metrics with host: {}:{}", host, port);
 
-                // Add any global tags from the config
-                if let Some(tags) = metric_config.tags() {
-                    for (key, value) in tags {
-                        recorder = recorder.with_tag(key, value);
-                    }
-                }
+        let mut builder = StatsdBuilder::from(host, port)
+            .with_queue_size(metric_config.queue_size().unwrap_or(5000))
+            .with_buffer_size(metric_config.buffer_size().unwrap_or(1024));
 
-                if init(recorder).is_err() {
-                    warn!("Warning: Metrics recorder already initialized, skipping");
-                } else {
-                    info!("Successfully initialized arroyo metrics");
-                }
-            }
-            Err(e) => {
-                error!("Failed to initialize metrics sink: {}", e);
+        if let Some(tags) = metric_config.tags() {
+            for (key, value) in tags {
+                builder = builder.with_default_tag(key, value);
             }
         }
+
+        let recorder = match builder.build(Some("streams")) {
+            Ok(recorder) => recorder,
+            Err(e) => {
+                error!("Failed to create StatsdRecorder: {}", e);
+                return;
+            }
+        };
+
+        if let Err(e) = metrics::set_global_recorder(recorder) {
+            warn!("Failed to set metrics global recorder: {}", e);
+            return;
+        }
+
+        if arroyo_init(MetricsFacadeRecorder).is_err() {
+            warn!("Arroyo metrics recorder already initialized, skipping");
+            return;
+        }
+
+        info!("Successfully initialized arroyo metrics");
     }
 }
