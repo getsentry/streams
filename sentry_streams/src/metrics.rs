@@ -1,7 +1,6 @@
 use crate::metrics_config::PyMetricConfig;
 use metrics_exporter_statsd::StatsdBuilder;
 use sentry_arroyo::metrics::{init as arroyo_init, Metric, MetricType, Recorder};
-use std::net::{SocketAddr, ToSocketAddrs};
 use tracing::{error, info, warn};
 
 struct MetricsFacadeRecorder;
@@ -52,24 +51,7 @@ pub fn configure_metrics(metric_config: Option<PyMetricConfig>) {
 
         info!("Initializing metrics with host: {}:{}", host, port);
 
-        let addr_str = format!("{}:{}", host, port);
-        let socket_addrs: Vec<SocketAddr> = match addr_str.to_socket_addrs() {
-            Ok(addrs) => addrs.collect(),
-            Err(e) => {
-                error!("Failed to resolve metrics address {}: {}", addr_str, e);
-                return;
-            }
-        };
-
-        let statsd_addr = match socket_addrs.first() {
-            Some(addr) => *addr,
-            None => {
-                error!("Could not resolve metrics address into a socket address");
-                return;
-            }
-        };
-
-        let mut builder = StatsdBuilder::from(statsd_addr.ip().to_string(), statsd_addr.port());
+        let mut builder = StatsdBuilder::from(host, port);
 
         if let Some(queue_size) = metric_config.queue_size() {
             builder = builder.with_queue_size(queue_size);
