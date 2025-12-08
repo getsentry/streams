@@ -53,17 +53,9 @@ pub fn configure_metrics(metric_config: Option<PyMetricConfig>) {
 
         let mut builder = StatsdBuilder::from(host, port);
 
-        if let Some(queue_size) = metric_config.queue_size() {
-            builder = builder.with_queue_size(queue_size);
-        } else {
-            builder = builder.with_queue_size(5000);
-        }
+        builder = builder.with_queue_size(metric_config.queue_size().unwrap_or(5000));
 
-        if let Some(buffer_size) = metric_config.buffer_size() {
-            builder = builder.with_buffer_size(buffer_size);
-        } else {
-            builder = builder.with_buffer_size(1024);
-        }
+        builder = builder.with_buffer_size(metric_config.buffer_size().unwrap_or(1024));
 
         if let Some(tags) = metric_config.tags() {
             for (key, value) in tags {
@@ -74,9 +66,9 @@ pub fn configure_metrics(metric_config: Option<PyMetricConfig>) {
         match builder.build(Some("streams")) {
             Ok(recorder) => {
                 if let Err(e) = metrics::set_global_recorder(recorder) {
-                    warn!("Warning: Metrics recorder already initialized: {}", e);
+                    warn!("Metrics recorder already initialized: {}", e);
                 } else {
-                    info!("Successfully initialized metrics crate with cadence backend");
+                    info!("Successfully initialized metrics");
                 }
             }
             Err(e) => {
@@ -86,9 +78,9 @@ pub fn configure_metrics(metric_config: Option<PyMetricConfig>) {
         }
 
         if arroyo_init(MetricsFacadeRecorder).is_err() {
-            warn!("Warning: Arroyo metrics recorder already initialized, skipping");
+            warn!("Arroyo metrics recorder already initialized, skipping");
         } else {
-            info!("Successfully configured sentry_arroyo to use metrics crate");
+            info!("Successfully initialized arroyo metrics");
         }
     }
 }
