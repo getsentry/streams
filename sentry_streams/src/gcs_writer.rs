@@ -135,10 +135,13 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 )
                 .body(bytes)
                 .send()
-                .await;
-            let response = res.unwrap();
-            let status = response.status();
+                .await
+                .map_err(|e| {
+                    tracing::warn!("Failed to send request: {:?}", e);
+                    RunTaskFunc::RetryableError
+                })?;
 
+            let status = response.status();
             if !status.is_success() {
                 if status.is_client_error() {
                     let body = response.text().await;
