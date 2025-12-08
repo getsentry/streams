@@ -143,15 +143,14 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 if status.is_client_error() {
                     let body = response.text().await;
                     panic!(
-                        "Client-side error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
+                        "Fatal error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
                         status,
                         body
                     )
                 } else {
                     tracing::warn!(
-                        "Client-side error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
+                        "Transient error encountered while attempting write to GCS. Status code: {}",
                         status,
-                        body
                     );
                     Err(RunTaskError::RetryableError)
                 }
