@@ -19,11 +19,7 @@ impl Recorder for MetricsFacadeRecorder {
         let labels: Vec<(String, String)> = metric
             .tags
             .iter()
-            .map(|(k, v)| {
-                let key = k.map(|k| format!("{}", k)).unwrap_or_default();
-                let value = format!("{}", v);
-                (key, value)
-            })
+            .map(|(key, value_dyn)| (key.to_string(), format!("{}", value_dyn)))
             .collect();
 
         match metric.ty {
