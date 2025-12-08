@@ -111,7 +111,8 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
             }
 
             // Lazily initialize the auth provider on first use. Since it is async, it may call
-            // external services, so we don't want it to block initialization.
+            // external services, so we don't want it to block initialization. If we fail to get an
+            // auth provider the error is fatal and should stop the pipeline.
             let auth_provider = auth_provider_cell
                 .get_or_init(|| async {
                     provider().await.expect("Failed to get gcp_auth provider")
@@ -119,11 +120,12 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 .await;
 
             // Get a fresh token (gcp_auth caches and only refreshes when expired)
+            // If getting a token fails we should be able to retry.
             let scopes = &["https://www.googleapis.com/auth/devstorage.read_write"];
-            let token = auth_provider
-                .token(scopes)
-                .await
-                .expect("Failed to obtain token");
+            let token = auth_provider.token(scopes).await.map_err(|e| {
+                tracing::warn!("Failed to obtain token: {:?}", e);
+                RunTaskError::RetryableError
+            })?;
 
             let res: Result<reqwest::Response, reqwest::Error> = client
                 .post(&url)
@@ -146,6 +148,11 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                         body
                     )
                 } else {
+                    tracing::warn!(
+                        "Client-side error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
+                        status,
+                        body
+                    );
                     Err(RunTaskError::RetryableError)
                 }
             } else {
