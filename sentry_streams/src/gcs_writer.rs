@@ -127,7 +127,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 RunTaskError::RetryableError
             })?;
 
-            let res: Result<reqwest::Response, reqwest::Error> = client
+            let response = client
                 .post(&url)
                 .header(
                     AUTHORIZATION,
@@ -138,7 +138,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 .await
                 .map_err(|e| {
                     tracing::warn!("Failed to send request: {:?}", e);
-                    RunTaskFunc::RetryableError
+                    RunTaskError::RetryableError
                 })?;
 
             let status = response.status();
