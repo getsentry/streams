@@ -17,14 +17,16 @@ use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskFunc;
 use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
 use sentry_arroyo::types::Message;
 
-use gcp_auth::provider;
-use tokio::runtime::Runtime;
+use gcp_auth::{provider, TokenProvider};
+use std::sync::Arc;
+use tokio::sync::OnceCell;
 
 pub struct GCSWriter {
     client: Client,
     bucket: String,
     route: Route,
     object_generator: Py<PyAny>,
+    auth_provider: Arc<OnceCell<Arc<dyn TokenProvider>>>,
 }
 
 fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Vec<u8>> {
@@ -42,29 +44,13 @@ fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Ve
 
 impl GCSWriter {
     pub fn new(bucket: &str, object_generator: Py<PyAny>, route: Route) -> Self {
-        // Create a tokio runtime for blocking on async
-        let rt = Runtime::new().expect("Failed to create Tokio runtime");
-
-        let token = rt.block_on(async {
-            let provider = provider().await.expect("Failed to get gcp_auth provider");
-            let scopes = &["https://www.googleapis.com/auth/devstorage.read_write"];
-            provider
-                .token(scopes)
-                .await
-                .expect("Failed to obtain token")
-        });
-
-        let mut headers = HeaderMap::with_capacity(2);
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", token.as_str())).unwrap(),
-        );
+        // Build a simple client with just Content-Type header
+        // Authorization header will be added per-request with fresh token
+        let mut headers = HeaderMap::with_capacity(1);
         headers.insert(
             CONTENT_TYPE,
             HeaderValue::from_static("application/octet-stream"),
         );
-        // TODO: refresh the token if it expires during long writes. Current code is enough for load testing
-        // but not ready for production
         let client = ClientBuilder::new()
             .default_headers(headers)
             .build()
@@ -75,6 +61,7 @@ impl GCSWriter {
             bucket: bucket.to_string(),
             route,
             object_generator,
+            auth_provider: Arc::new(OnceCell::new()),
         }
     }
 }
@@ -114,6 +101,8 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 
         let bytes_len = bytes.len();
 
+        let auth_provider_cell = self.auth_provider.clone();
+
         Box::pin(async move {
             // TODO: This route-based forwarding does not need to be
             // run with multiple threads. Look into removing this from the async task.
@@ -121,20 +110,51 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 return Ok(message);
             }
 
-            let res: Result<reqwest::Response, reqwest::Error> =
-                client.post(&url).body(bytes).send().await;
-            let response = res.unwrap();
-            let status = response.status();
+            // Lazily initialize the auth provider on first use. Since it is async, it may call
+            // external services, so we don't want it to block initialization. If we fail to get an
+            // auth provider the error is fatal and should stop the pipeline.
+            let auth_provider = auth_provider_cell
+                .get_or_init(|| async {
+                    provider().await.expect("Failed to get gcp_auth provider")
+                })
+                .await;
 
+            // Get a fresh token (gcp_auth caches and only refreshes when expired)
+            // If getting a token fails we should be able to retry.
+            let scopes = &["https://www.googleapis.com/auth/devstorage.read_write"];
+            let token = auth_provider.token(scopes).await.map_err(|e| {
+                tracing::warn!("Failed to obtain token: {:?}", e);
+                RunTaskError::RetryableError
+            })?;
+
+            let response = client
+                .post(&url)
+                .header(
+                    AUTHORIZATION,
+                    HeaderValue::from_str(&format!("Bearer {}", token.as_str())).unwrap(),
+                )
+                .body(bytes)
+                .send()
+                .await
+                .map_err(|e| {
+                    tracing::warn!("Failed to send request: {:?}", e);
+                    RunTaskError::RetryableError
+                })?;
+
+            let status = response.status();
             if !status.is_success() {
                 if status.is_client_error() {
                     let body = response.text().await;
                     panic!(
-                        "Client-side error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
+                        "Fatal error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
                         status,
                         body
                     )
                 } else {
+                    tracing::warn!(
+                        "Transient error encountered while attempting write to GCS. Status code: {}",
+                        status,
+                    );
                     Err(RunTaskError::RetryableError)
                 }
             } else {
