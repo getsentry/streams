@@ -1,12 +1,12 @@
-use reqwest::blocking::ClientBuilder;
+//! Just a way to test out writes to GCS
+
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
-// Just a way to test out writes to GCS
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bucket = "arroyo-artifacts";
     let object = "uploaded-file.txt";
 
-    let client = ClientBuilder::new();
     let url = format!(
         "https://storage.googleapis.com/upload/storage/v1/b/{}/o?uploadType=media&name={}",
         bucket, object
@@ -25,8 +25,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         HeaderValue::from_str("application/octet-stream").unwrap(),
     );
 
-    // got client
-    let client = client.default_headers(headers).build().unwrap();
+    let client = reqwest::ClientBuilder::new()
+        .default_headers(headers)
+        .build()
+        .unwrap();
 
     let bytes = String::from("Hello world").into_bytes();
 
@@ -35,10 +37,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .header(AUTHORIZATION, format!("Bearer {}", access_token))
         .header(CONTENT_TYPE, "application/octet-stream")
         .body(bytes)
-        .send()?;
+        .send()
+        .await?;
 
     println!("Status: {}", res.status());
-    println!("Response: {}", res.text()?);
+    println!("Response: {}", res.text().await?);
 
     Ok(())
 }
