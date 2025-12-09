@@ -1,3 +1,18 @@
+## 0.0.34
+
+### Build / dependencies / internal 🔧
+
+- ref: Bump arroyo, fix up dependencies by @untitaker in [#214](https://github.com/getsentry/streams/pull/214)
+- chore: Move to metrics-exporter-statsd by @untitaker in [#212](https://github.com/getsentry/streams/pull/212)
+
+### Bug Fixes 🐛
+
+- fix(gcs_writer): Refresh GCP auth token on expiry by @untitaker in [#213](https://github.com/getsentry/streams/pull/213)
+
+### Other
+
+- Upgrade datadog and enable background sender by @untitaker in [#211](https://github.com/getsentry/streams/pull/211)
+
 ## 0.0.33
 
 ### Various fixes & improvements
