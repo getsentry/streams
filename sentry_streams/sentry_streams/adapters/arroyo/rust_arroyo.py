@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import logging
 import time
 from dataclasses import replace
@@ -68,6 +69,27 @@ from sentry_streams.rust_streams import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _metrics_wrapped_function(
+    step_name: str, application_function: Callable[[Message[Any]], Any], msg: Message[Any]
+) -> Any:
+    """
+    Module-level wrapper function for adding metrics to step functions.
+    This is defined at module level to be picklable for multiprocessing.
+    """
+    msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+    start_time = input_metrics(step_name, msg_size)
+    has_error = output_size = None
+    try:
+        result = application_function(msg)
+        output_size = get_size(result)
+        return result
+    except Exception as e:
+        has_error = str(e.__class__.__name__)
+        raise e
+    finally:
+        output_metrics(step_name, has_error, start_time, output_size)
 
 
 def input_metrics(name: str, message_size: int | None) -> float:
@@ -146,6 +168,12 @@ def finalize_chain(chains: TransformChains, route: Route) -> RuntimeOperator:
     rust_route = RustRoute(route.source, route.waypoints)
     config, func = chains.finalize(route)
     if config:
+        logger.info(
+            f"Finalizing chain for route {route} with multiprocessing: "
+            f"processes={config['processes']}, "
+            f"batch_size={config['batch_size']}, "
+            f"batch_time={config['batch_time']}"
+        )
         return RuntimeOperator.PythonAdapter(
             rust_route,
             MultiprocessDelegateFactory(
@@ -162,6 +190,7 @@ def finalize_chain(chains: TransformChains, route: Route) -> RuntimeOperator:
             ),
         )
     else:
+        logger.info(f"Finalizing chain for route {route} without multiprocessing")
         return RuntimeOperator.Map(rust_route, lambda msg: func(msg).to_inner())
 
 
@@ -233,6 +262,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
         self.__close_chain(stream)
 
+        # Apply config overrides and validate
+        step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
+        step.override_config(step_config)
+        step.validate()
+
         if isinstance(step, GCSSink):
             if sink_config := self.steps_config.get(step.name):
                 bucket = (
@@ -286,21 +320,16 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
         parallelism_config = step_config.get("parallelism")
+
+        # Apply config overrides and validate
+        step.override_config(step_config)
+        step.validate()
+
         application_function = step.resolved_function
 
-        def wrapped_function(msg: Message[Any]) -> Any:
-            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
-            start_time = input_metrics(step.name, msg_size)
-            has_error = output_size = None
-            try:
-                result = application_function(msg)
-                output_size = get_size(result)
-                return result
-            except Exception as e:
-                has_error = str(e.__class__.__name__)
-                raise e
-            finally:
-                output_metrics(step.name, has_error, start_time, output_size)
+        wrapped_function = functools.partial(
+            _metrics_wrapped_function, step.name, application_function
+        )
 
         step = replace(step, function=wrapped_function)
 
@@ -308,8 +337,15 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             logger.info(f"Starting new segment at step {step.name}")
             if parallelism_config:
                 multi_process_config = cast(MultiProcessConfig, parallelism_config["multi_process"])
+                logger.info(
+                    f"Step {step.name}: multiprocessing enabled with "
+                    f"processes={multi_process_config.get('processes')}, "
+                    f"batch_size={multi_process_config.get('batch_size')}, "
+                    f"batch_time={multi_process_config.get('batch_time')}"
+                )
             else:
                 multi_process_config = None
+                logger.info(f"Step {step.name}: no multiprocessing config found")
 
             if self.__chains.exists(stream):
                 self.__close_chain(stream)
@@ -339,6 +375,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         assert (
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
+
+        # Apply config overrides and validate
+        step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
+        step.override_config(step_config)
+        step.validate()
 
         def filter_msg(msg: Message[Any]) -> bool:
             msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
@@ -374,6 +415,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         name = step.name
         loaded_config: Mapping[str, Any] = self.steps_config.get(name, {})
         step.override_config(loaded_config)
+        step.validate()
         step = MetricsReportingReduce(step, name)
 
         logger.info(f"Adding reduce: {step.name} to pipeline")
@@ -392,6 +434,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         Build a broadcast operator for the platform the adapter supports.
         """
         self.__close_chain(stream)
+
+        # Apply config overrides and validate
+        step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
+        step.override_config(step_config)
+        step.validate()
+
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding broadcast: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(
@@ -410,6 +458,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         Build a router operator for the platform the adapter supports.
         """
         self.__close_chain(stream)
+
+        # Apply config overrides and validate
+        step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
+        step.override_config(step_config)
+        step.validate()
+
         route = RustRoute(stream.source, stream.waypoints)
 
         def routing_function(msg: Message[Any]) -> str:
