@@ -40,3 +40,7 @@ pyo3 = { version = "*", features = ["auto-initialize"] }
 
 [build-dependencies]
 pyo3-build-config = "*"
+
+[profile.release]
+debug = true
+strip = false
