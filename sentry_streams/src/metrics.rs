@@ -1,6 +1,8 @@
 use crate::metrics_config::PyMetricConfig;
+use metrics::Label;
 use metrics_exporter_dogstatsd::DogStatsDBuilder;
 use sentry_arroyo::metrics::{init as arroyo_init, Metric, MetricType, Recorder};
+use std::time::Duration;
 use tracing::{error, info, warn};
 
 struct MetricsFacadeRecorder;
@@ -47,14 +49,32 @@ pub fn configure_metrics(metric_config: Option<PyMetricConfig>) {
 
         info!("Initializing metrics with host: {}:{}", host, port);
 
-        let builder = DogStatsDBuilder::default()
+        let mut builder = DogStatsDBuilder::default()
             .with_remote_address(&format!("{}:{}", host, port))
             .expect("Failed to parse address");
 
-        // Note: DogStatsDBuilder doesn't have with_default_tag like StatsdBuilder
-        // Tags would need to be handled differently if required
-        if let Some(_tags) = metric_config.tags() {
-            info!("Note: DogStatsD tags configuration is not directly supported by the builder");
+        // Apply global tags if configured
+        let default_tags = metric_config.tags().unwrap_or_default();
+        if !default_tags.is_empty() {
+            info!(
+                "Configuring metrics with {} global labels",
+                default_tags.len()
+            );
+            let labels: Vec<Label> = default_tags
+                .iter()
+                .map(|(key, value)| Label::new(key.clone(), value.clone()))
+                .collect();
+            for label in &labels {
+                info!("  - {}: {}", label.key(), label.value());
+            }
+            builder = builder.with_global_labels(labels);
+        }
+
+        // Apply flush interval if configured
+        if let Some(flush_interval_ms) = metric_config.flush_interval_ms() {
+            let duration = Duration::from_millis(flush_interval_ms);
+            info!("Configuring metrics flush interval to {:?}", duration);
+            builder = builder.with_flush_interval(duration);
         }
 
         match builder.install() {
