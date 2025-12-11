@@ -29,6 +29,15 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.rust_streams import PyAnyMessage
 
 
+# Module-level functions for testing (required for picklability)
+def _map1_function(msg: Message[str]) -> str:
+    return msg.payload + "_t1"
+
+
+def _map2_function(msg: Message[str]) -> str:
+    return msg.payload + "_t2"
+
+
 def make_message(payload: str) -> PyMessage[str]:
     return PyMessage(
         payload=payload, headers=[("h", "v".encode())], timestamp=1234567890, schema="myschema"
@@ -43,8 +52,8 @@ def test_empty_chain() -> None:
 
 def test_transform_chain_with_two_steps() -> None:
     chain = [
-        Map[str, str](name="map1", function=lambda msg: msg.payload + "_t1"),
-        Map[str, str](name="map2", function=lambda msg: msg.payload + "_t2"),
+        Map[str, str](name="map1", function=_map1_function),
+        Map[str, str](name="map2", function=_map2_function),
     ]
     msg = make_message("bar")
     result = transform(chain, msg)
@@ -78,7 +87,7 @@ CONFIG = MultiProcessConfig(
 def test_initialization() -> None:
     route = Route("route1", [])
     sc = TransformChains()
-    m1 = Map[str, str](name="map1", function=lambda msg: msg.payload + "_t1")
+    m1 = Map[str, str](name="map1", function=_map1_function)
 
     assert not sc.exists(route)
     with pytest.raises(ValueError):
@@ -99,8 +108,8 @@ def test_map_with_multiple_chains() -> None:
     route = Route("route1", [])
     route2 = Route("route2", [])
     sc = TransformChains()
-    m1 = Map[str, str](name="map1", function=lambda msg: msg.payload + "_t1")
-    m2 = Map[str, str](name="map2", function=lambda msg: msg.payload + "_t2")
+    m1 = Map[str, str](name="map1", function=_map1_function)
+    m2 = Map[str, str](name="map2", function=_map2_function)
     sc.init_chain(route, CONFIG)
     sc.init_chain(route2, CONFIG)
     sc.add_map(route, m1)
@@ -118,8 +127,8 @@ def test_integration() -> None:
     # in a stable way in a unit test.
     route = Route("route1", [])
     sc = TransformChains()
-    m1 = Map[str, str](name="map1", function=lambda msg: msg.payload + "_t1")
-    m2 = Map[str, str](name="map2", function=lambda msg: msg.payload + "_t2")
+    m1 = Map[str, str](name="map1", function=_map1_function)
+    m2 = Map[str, str](name="map2", function=_map2_function)
 
     sc.init_chain(route, None)
     sc.add_map(route, m1)
