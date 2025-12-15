@@ -41,6 +41,12 @@ pyo3 = { version = "*", features = ["auto-initialize"] }
 [build-dependencies]
 pyo3-build-config = "*"
 
+# For now (while we are still rolling out streams to SBC), let's enable maximal
+# debug information. There should only be overhead in space and when many
+# stacktraces are generated (thousands/sec)
+#
+# Later we can decide if we need to save storage. Snuba runs with less detailed
+# debuginfo.
 [profile.release]
 debug = true
 strip = false
