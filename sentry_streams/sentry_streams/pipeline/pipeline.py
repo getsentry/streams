@@ -197,15 +197,6 @@ class Step:
 
     name: str
 
-    def __post_init__(self) -> None:
-        """
-        Called automatically after dataclass initialization.
-        Runs validation on the step configuration.
-
-        Subclasses should NOT override this method. Instead, override validate().
-        """
-        self.validate()
-
     def register(self, ctx: Pipeline[Any], previous: Step) -> None:
         ctx.register(self)
 
