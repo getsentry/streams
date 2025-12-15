@@ -277,7 +277,8 @@ def test_batch_size_override_config(
 
 def test_batch_step_both_window_args_are_not_none() -> None:
     with pytest.raises(ValueError) as e:
-        BatchStep(name="test-batch", batch_size=None, batch_timedelta=None)
+        step = BatchStep(name="test-batch", batch_size=None, batch_timedelta=None)
+        step.validate()
 
     assert "At least one of batch_size or batch_timedelta must be set." in str(e.value)
 
