@@ -1,4 +1,5 @@
 import logging
+import pickle
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, Callable, MutableMapping, MutableSequence, Sequence, Tuple
@@ -97,7 +98,24 @@ class TransformChains:
             raise ValueError(f"Chain {route} not initialized")
         chain = self.__chains[hashable_route]
         del self.__chains[hashable_route]
-        return (chain.parallelism, partial(transform, chain.steps))
+
+        func = partial(transform, chain.steps)
+
+        # Always verify the function is picklable, even if multiprocessing is not currently enabled.
+        # This ensures that users can safely enable multiprocessing in production without
+        # encountering pickling errors.
+        try:
+            pickle.dumps(func)
+        except (pickle.PicklingError, AttributeError, TypeError) as e:
+            step_names = ", ".join(step.name for step in chain.steps)
+            raise TypeError(
+                f"Transform chain for route {route} is not picklable (steps: {step_names}). "
+                f"This is required for multiprocessing support. "
+                f"Ensure all step functions are defined at module level and not as local functions. "
+                f"Error: {e}"
+            ) from e
+
+        return (chain.parallelism, func)
 
     def exists(self, route: Route) -> bool:
         return _hashable_route(route) in self.__chains

@@ -47,8 +47,7 @@ class PyMetricConfig:
         host: str,
         port: int,
         tags: dict[str, str] | None = None,
-        queue_size: int | None = None,
-        buffer_size: int | None = None,
+        flush_interval_ms: int | None = None,
     ) -> None: ...
     @property
     def host(self) -> str: ...
@@ -57,9 +56,7 @@ class PyMetricConfig:
     @property
     def tags(self) -> dict[str, str] | None: ...
     @property
-    def queue_size(self) -> int | None: ...
-    @property
-    def buffer_size(self) -> int | None: ...
+    def flush_interval_ms(self) -> int | None: ...
 
 class RuntimeOperator:
     @classmethod
@@ -72,11 +69,18 @@ class RuntimeOperator:
     ) -> Self: ...
     @classmethod
     def GCSSink(
-        cls, route: Route, bucket: str, object_generator: Callable[[], str], thread_count: int
+        cls,
+        route: Route,
+        bucket: str,
+        object_generator: Callable[[], str],
+        thread_count: int,
     ) -> Self: ...
     @classmethod
     def Router(
-        cls, route: Route, function: Callable[[Message[Any]], str], downstream_routes: Sequence[str]
+        cls,
+        route: Route,
+        function: Callable[[Message[Any]], str],
+        downstream_routes: Sequence[str],
     ) -> Self: ...
     @classmethod
     def Broadcast(cls, route: Route, downstream_routes: Sequence[str]) -> Self: ...

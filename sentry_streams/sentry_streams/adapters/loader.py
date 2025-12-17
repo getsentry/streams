@@ -63,12 +63,14 @@ def load_adapter(
                 host=metric_config["host"],
                 port=metric_config["port"],
                 tags=metric_config.get("tags"),
-                queue_size=metric_config.get("queue_size"),
-                buffer_size=metric_config.get("buffer_size"),
+                flush_interval_ms=metric_config.get("flush_interval_ms"),
             )
 
         # TODO: Fix this type as above.
-        return cast(StreamAdapter[Stream, Sink], RustArroyoAdapter.build(config, py_metric_config))
+        return cast(
+            StreamAdapter[Stream, Sink],
+            RustArroyoAdapter.build(config, py_metric_config),
+        )
     else:
         mod, cls = adapter_type.rsplit(".", 1)
 

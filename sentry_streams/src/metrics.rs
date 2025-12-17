@@ -1,6 +1,8 @@
 use crate::metrics_config::PyMetricConfig;
-use metrics_exporter_statsd::StatsdBuilder;
+use metrics::Label;
+use metrics_exporter_dogstatsd::DogStatsDBuilder;
 use sentry_arroyo::metrics::{init as arroyo_init, Metric, MetricType, Recorder};
+use std::time::Duration;
 use tracing::{error, info, warn};
 
 struct MetricsFacadeRecorder;
@@ -47,27 +49,42 @@ pub fn configure_metrics(metric_config: Option<PyMetricConfig>) {
 
         info!("Initializing metrics with host: {}:{}", host, port);
 
-        let mut builder = StatsdBuilder::from(host, port)
-            .with_queue_size(metric_config.queue_size().unwrap_or(5000))
-            .with_buffer_size(metric_config.buffer_size().unwrap_or(1024));
+        let mut builder = DogStatsDBuilder::default()
+            .with_remote_address(&format!("{}:{}", host, port))
+            .expect("Failed to parse address");
 
-        if let Some(tags) = metric_config.tags() {
-            for (key, value) in tags {
-                builder = builder.with_default_tag(key, value);
+        // Apply global tags if configured
+        let default_tags = metric_config.tags().unwrap_or_default();
+        if !default_tags.is_empty() {
+            info!(
+                "Configuring metrics with {} global labels",
+                default_tags.len()
+            );
+            let labels: Vec<Label> = default_tags
+                .iter()
+                .map(|(key, value)| Label::new(key.clone(), value.clone()))
+                .collect();
+            for label in &labels {
+                info!("  - {}: {}", label.key(), label.value());
             }
+            builder = builder.with_global_labels(labels);
         }
 
-        let recorder = match builder.build(Some("streams")) {
-            Ok(recorder) => recorder,
+        // Apply flush interval if configured
+        if let Some(flush_interval_ms) = metric_config.flush_interval_ms() {
+            let duration = Duration::from_millis(flush_interval_ms);
+            info!("Configuring metrics flush interval to {:?}", duration);
+            builder = builder.with_flush_interval(duration);
+        }
+
+        match builder.install() {
+            Ok(_) => {
+                info!("Successfully initialized DogStatsD metrics exporter");
+            }
             Err(e) => {
-                error!("Failed to create StatsdRecorder: {}", e);
+                error!("Failed to install DogStatsD recorder: {}", e);
                 return;
             }
-        };
-
-        if let Err(e) = metrics::set_global_recorder(recorder) {
-            warn!("Failed to set metrics global recorder: {}", e);
-            return;
         }
 
         if arroyo_init(MetricsFacadeRecorder).is_err() {

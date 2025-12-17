@@ -119,7 +119,9 @@ impl ArroyoConsumer {
         })
         .expect("Error setting Ctrl+C handler");
 
-        let _ = processor.run();
+        if let Err(e) = processor.run() {
+            tracing::error!("StreamProcessor error: {:?}", e);
+        }
     }
 
     fn shutdown(&mut self) {

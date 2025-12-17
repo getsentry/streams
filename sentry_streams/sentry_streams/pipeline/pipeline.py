@@ -202,7 +202,17 @@ class Step:
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
         """
-        Steps can implement custom overriding logic
+        Steps can implement custom overriding logic.
+        Note: This does NOT automatically validate - call validate() explicitly after.
+        """
+        pass
+
+    def validate(self) -> None:
+        """
+        Validate the step configuration. Should be called after construction
+        and after applying config overrides.
+
+        Subclasses should override this to add validation logic.
         """
         pass
 
@@ -339,7 +349,8 @@ class FunctionTransform(Transform[TIn, TOut], Generic[TIn, TOut]):
         # Overridden in Filter step
         pass
 
-    def __post_init__(self) -> None:
+    def validate(self) -> None:
+        """Validate rust function version if this is a rust function."""
         self._validate_rust_function()
 
 
@@ -507,18 +518,23 @@ class Batch(
     """
     A step to Batch up the results of the prior step.
 
-    Batch can be configured via batch size, which can be
-    an event time duration or a count of events.
+    Batch can be configured via batch size (count of events) and/or
+    batch_timedelta (time duration). If neither is specified, defaults
+    to a 10-second time window.
+
+    Both batch_size and batch_timedelta can be overridden via the
+    deployment config's steps_config section.
     """
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
 
     batch_size: int | None = None
-    batch_timedelta: timedelta | None = None
+    batch_timedelta: timedelta | None = timedelta(seconds=10)
     step_type: StepType = StepType.REDUCE
 
-    def __post_init__(self) -> None:
+    def validate(self) -> None:
+        """Validate that at least one of batch_size or batch_timedelta is set."""
         if self.batch_size is None and self.batch_timedelta is None:
             raise ValueError("At least one of batch_size or batch_timedelta must be set.")
 
