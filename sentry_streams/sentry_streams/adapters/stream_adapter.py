@@ -145,7 +145,7 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
-    def finalize(self) -> None:
+    def terminate(self, stream: Union[StreamT, StreamSinkT]) -> None:
         """
         Performs all the operations to complete the construciton of the graph
         before using the adapter.
@@ -227,9 +227,11 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
         else:
             assert_never(step_type)
 
-    def finalize(self) -> None:
+    def terminate(self, stream: Union[StreamT, StreamSinkT]) -> None:
         """
-        Performs all the operations to complete the construciton of the graph
-        before using the adapter.
+        Closes a stream. This signals the adapter that a specific stream
+        reached its end whether or not there is a sink at the end.
+        The adapter can do any operation needed to complete the costruction
+        of a branch of the graph.
         """
-        self.adapter.finalize()
+        self.adapter.terminate(stream)

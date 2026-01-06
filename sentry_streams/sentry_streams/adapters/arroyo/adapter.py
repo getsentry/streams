@@ -279,7 +279,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
         return build_branches(stream, step.routing_table.values())
 
-    def finalize(self) -> None:
+    def terminate(self, stream: Route) -> None:
         pass
 
     def get_processor(self, source: str) -> StreamProcessor[KafkaPayload]:

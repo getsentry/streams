@@ -488,14 +488,13 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         )
         return build_branches(stream, step.routing_table.values())
 
-    def finalize(self) -> None:
+    def terminate(self, stream: Route) -> None:
         """
         Performs all the operations to complete the construciton of the graph
         before using the adapter.
         """
-        chains = self.__chains.get_chains()
-        for chain in chains:
-            self.__close_chain(chain)
+        if self.__chains.exists(stream):
+            self.__close_chain(stream)
 
     def run(self) -> None:
         """

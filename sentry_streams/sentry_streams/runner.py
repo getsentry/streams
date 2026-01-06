@@ -49,6 +49,7 @@ def iterate_edges(
             input_stream = step_streams.pop(input_name)
 
             if not output_steps:
+                translator.terminate(input_stream)
                 continue
 
             for output in output_steps:
@@ -57,8 +58,6 @@ def iterate_edges(
                 next_step_stream = translator.translate_step(next_step, input_stream)  # type: ignore
                 for branch_name in next_step_stream:
                     step_streams[branch_name] = next_step_stream[branch_name]
-
-    translator.finalize()
 
 
 def load_runtime(
