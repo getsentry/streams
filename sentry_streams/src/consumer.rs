@@ -93,6 +93,13 @@ impl ArroyoConsumer {
         self.steps.push(step);
     }
 
+    /// Exposes the steps attribute to Python.
+    /// Returns a list of RuntimeOperator steps that have been added to this consumer.
+    /// This is generally used for debugging purposes.
+    #[getter]
+    fn steps(&self, py: Python) -> PyResult<Vec<Py<RuntimeOperator>>> {
+        Ok(self.steps.iter().map(|step| step.clone_ref(py)).collect())
+    }
     /// Runs the consumer.
     /// This method is blocking and will run until the consumer
     /// is stopped via SIGTERM or SIGINT.

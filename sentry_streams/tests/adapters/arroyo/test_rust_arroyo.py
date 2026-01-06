@@ -4,6 +4,15 @@ from sentry_streams.pipeline.pipeline import (
     Pipeline,
 )
 from sentry_streams.runner import iterate_edges
+from sentry_streams.rust_streams import (
+    ArroyoConsumer,
+    InitialOffset,
+    PyKafkaConsumerConfig,
+)
+from sentry_streams.rust_streams import Route as RustRoute
+from sentry_streams.rust_streams import (
+    RuntimeOperator,
+)
 
 
 def test_rust_arroyo_adapter(
@@ -30,3 +39,63 @@ def test_rust_arroyo_adapter(
     # The consumer that this adapter uses is a pyo3 wrapper around the Rust consumer,
     # so it also can't be replaced with the in-memory broker or triggered manually.
     assert adapter.get_consumer("myinput") is not None
+
+
+def test_build_pipeline() -> None:
+    # Create a consumer
+    kafka_config = PyKafkaConsumerConfig(
+        bootstrap_servers=["localhost:9092"],
+        group_id="test-group",
+        auto_offset_reset=InitialOffset.earliest,
+        strict_offset_reset=False,
+        max_poll_interval_ms=60000,
+        override_params={},
+    )
+
+    consumer = ArroyoConsumer(
+        source="test_source",
+        kafka_config=kafka_config,
+        topic="test_topic",
+        schema="test_schema",
+        metric_config=None,
+    )
+
+    route = RustRoute("test_source", [])
+    consumer.add_step(RuntimeOperator.Map(route, lambda x: x.payload))
+    consumer.add_step(RuntimeOperator.Filter(route, lambda x: x.payload))
+
+    assert len(consumer.steps) == 2
+
+
+def test_get_steps(
+    pipeline: Pipeline[bytes],
+) -> None:
+    """Test that get_steps returns the correct structure of steps per source."""
+    bootstrap_servers = ["localhost:9092"]
+
+    adapter = RustArroyoAdapter.build(
+        {
+            "steps_config": {
+                "myinput": {
+                    "bootstrap_servers": bootstrap_servers,
+                    "auto_offset_reset": "earliest",
+                    "consumer_group": "test_group",
+                    "additional_settings": {},
+                },
+                "kafkasink": {"bootstrap_servers": bootstrap_servers, "additional_settings": {}},
+            },
+        },
+    )
+    iterate_edges(pipeline, RuntimeTranslator(adapter))
+
+    # Get the steps
+    steps = adapter.get_steps()
+
+    # Verify the structure
+    assert isinstance(steps, dict), "get_steps should return a dictionary"
+    assert "myinput" in steps, "The source 'myinput' should be in the steps dict"
+    assert isinstance(steps["myinput"], list), "Each source should map to a list of steps"
+    assert len(steps["myinput"]) > 0, "There should be at least one step in the pipeline"
+    assert all(
+        isinstance(step, RuntimeOperator) for step in steps["myinput"]
+    ), "All steps should be RuntimeOperator instances"

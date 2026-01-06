@@ -503,3 +503,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         work.
         """
         raise NotImplementedError
+
+    def get_steps(self) -> dict[str, list[RuntimeOperator]]:
+        """
+        Returns the list of steps in the pipeline.
+        """
+        return {source: consumer.steps for source, consumer in self.__consumers.items()}
