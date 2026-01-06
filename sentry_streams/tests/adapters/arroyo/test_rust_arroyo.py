@@ -136,11 +136,10 @@ def test_map_steps_without_sink() -> None:
     # Get the steps
     steps = adapter.get_steps()
 
-    # Verify that the source exists but has no steps
-    # Map steps are only finalized when the chain is closed (e.g., by a sink or other terminal operation)
     assert isinstance(steps, dict), "get_steps should return a dictionary"
     assert "test_source" in steps, "The source 'test_source' should be in the steps dict"
     assert isinstance(steps["test_source"], list), "Each source should map to a list of steps"
+    # One map is added as the two maps are chained together.
     assert (
-        len(steps["test_source"]) == 0
-    ), "Map steps should not be present in get_steps when no terminal operation closes the chain"
+        len(steps["test_source"]) == 1
+    ), "Map steps are added even if there is no Sink in the pipeline"

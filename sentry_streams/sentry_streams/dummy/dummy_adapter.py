@@ -94,6 +94,9 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
             ret[branch.root.name] = branch
         return ret
 
+    def finalize(self) -> None:
+        pass
+
     def run(self) -> None:
         pass
 

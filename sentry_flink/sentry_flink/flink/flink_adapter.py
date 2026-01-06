@@ -337,3 +337,6 @@ class FlinkAdapter(StreamAdapter[DataStream, DataStreamSink]):
 
     def run(self) -> None:
         self.env.execute()
+
+    def finalize(self) -> None:
+        pass

@@ -58,6 +58,8 @@ def iterate_edges(
                 for branch_name in next_step_stream:
                     step_streams[branch_name] = next_step_stream[branch_name]
 
+    translator.finalize()
+
 
 def load_runtime(
     name: str,

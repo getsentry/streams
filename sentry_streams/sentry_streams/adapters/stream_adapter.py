@@ -145,6 +145,14 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
+    def finalize(self) -> None:
+        """
+        Performs all the operations to complete the construciton of the graph
+        before using the adapter.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def run(self) -> None:
         """
         Starts the pipeline
@@ -218,3 +226,10 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
 
         else:
             assert_never(step_type)
+
+    def finalize(self) -> None:
+        """
+        Performs all the operations to complete the construciton of the graph
+        before using the adapter.
+        """
+        self.adapter.finalize()

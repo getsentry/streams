@@ -119,3 +119,6 @@ class TransformChains:
 
     def exists(self, route: Route) -> bool:
         return _hashable_route(route) in self.__chains
+
+    def get_chains(self) -> list[Route]:
+        return [Route(route[0], list(route[1])) for route in self.__chains.keys()]

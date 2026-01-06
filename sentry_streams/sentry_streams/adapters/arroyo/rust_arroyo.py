@@ -488,6 +488,15 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         )
         return build_branches(stream, step.routing_table.values())
 
+    def finalize(self) -> None:
+        """
+        Performs all the operations to complete the construciton of the graph
+        before using the adapter.
+        """
+        chains = self.__chains.get_chains()
+        for chain in chains:
+            self.__close_chain(chain)
+
     def run(self) -> None:
         """
         Starts the pipeline
