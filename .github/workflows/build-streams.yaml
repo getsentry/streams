@@ -34,7 +34,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter --features=extension-module
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          manylinux: "2_24"
+          manylinux: "2014"
           working-directory: ./sentry_streams
           before-script-linux: |
             cmake --version
