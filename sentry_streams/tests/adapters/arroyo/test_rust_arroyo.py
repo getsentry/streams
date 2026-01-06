@@ -1,7 +1,10 @@
 from sentry_streams.adapters.arroyo.rust_arroyo import RustArroyoAdapter
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
+from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
+    Map,
     Pipeline,
+    streaming_source,
 )
 from sentry_streams.runner import iterate_edges
 from sentry_streams.rust_streams import (
@@ -99,3 +102,45 @@ def test_get_steps(
     assert all(
         isinstance(step, RuntimeOperator) for step in steps["myinput"]
     ), "All steps should be RuntimeOperator instances"
+
+
+def process_function(msg: Message[bytes]) -> bytes:
+    return msg.payload
+
+
+def test_map_steps_without_sink() -> None:
+    """Test that Map steps without a terminal operation are not finalized in get_steps."""
+    bootstrap_servers = ["localhost:9092"]
+
+    # Create a pipeline with source -> map -> map (no sink)
+    pipeline = (
+        streaming_source("test_source", stream_name="test_topic")
+        .apply(Map("map1", function=process_function))
+        .apply(Map("map2", function=process_function))
+    )
+
+    adapter = RustArroyoAdapter.build(
+        {
+            "steps_config": {
+                "test_source": {
+                    "bootstrap_servers": bootstrap_servers,
+                    "auto_offset_reset": "earliest",
+                    "consumer_group": "test_group",
+                    "additional_settings": {},
+                },
+            },
+        },
+    )
+    iterate_edges(pipeline, RuntimeTranslator(adapter))
+
+    # Get the steps
+    steps = adapter.get_steps()
+
+    # Verify that the source exists but has no steps
+    # Map steps are only finalized when the chain is closed (e.g., by a sink or other terminal operation)
+    assert isinstance(steps, dict), "get_steps should return a dictionary"
+    assert "test_source" in steps, "The source 'test_source' should be in the steps dict"
+    assert isinstance(steps["test_source"], list), "Each source should map to a list of steps"
+    assert (
+        len(steps["test_source"]) == 0
+    ), "Map steps should not be present in get_steps when no terminal operation closes the chain"
