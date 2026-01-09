@@ -26,6 +26,9 @@ repos:
       - id: black
         files: ^sentry_flink/.+
         args: [--config=./sentry_flink/pyproject.toml]
+      - id: black
+        files: ^sentry_streams_k8s/.+
+        args: [--config=./sentry_streams_k8s/pyproject.toml]
   - repo: https://github.com/pycqa/flake8
     rev: 7.1.1
     hooks:
@@ -42,6 +45,10 @@ repos:
         name: isort (python)
         files: ^sentry_flink/.+
         args: [--settings-path=./sentry_flink/pyproject.toml]
+      - id: isort
+        name: isort (python)
+        files: ^sentry_streams_k8s/.+
+        args: [--settings-path=./sentry_streams_k8s/pyproject.toml]
   - repo: local
     hooks:
       - id: cargo-fmt

@@ -31,6 +31,9 @@ jobs:
         env:
           FLINK_LIBS: ./flink_libs
 
+      - name: Run k8s test
+        run: make tests-k8s
+
   integration-tests:
     name: "Run integration tests"
     runs-on: ubuntu-latest
