@@ -1,4 +1,6 @@
 name: Release sentry_streams
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:

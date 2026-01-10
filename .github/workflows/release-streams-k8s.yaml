@@ -1,4 +1,6 @@
 name: Release sentry_streams_k8s
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:

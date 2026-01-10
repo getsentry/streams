@@ -31,4 +31,5 @@ class Consumer(ExternalMacro):
         assert "pipeline_config_file" in context
 
     def run(self, context: dict[str, Any]) -> dict[str, Any]:
+        # TODO: Fill me with content
         return {}
