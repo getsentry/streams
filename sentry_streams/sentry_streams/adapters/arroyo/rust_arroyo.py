@@ -43,6 +43,7 @@ from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
     ComplexStep,
+    DevNullSink,
     Filter,
     FlatMap,
     GCSSink,
@@ -295,6 +296,10 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.GCSSink(route, bucket, wrapped_generator, thread_count)
             )
+
+        elif isinstance(step, DevNullSink):
+            logger.info(f"Adding DevNull sink: {step.name} to pipeline")
+            self.__consumers[stream.source].add_step(RuntimeOperator.DevNullSink(route))
 
         # Our fallback for now since there's no other Sink type
         else:

@@ -301,6 +301,16 @@ class StreamSink(Sink[TIn]):
 
 
 @dataclass
+class DevNullSink(Sink[TIn]):
+    """
+    A Sink which discards all messages (similar to /dev/null).
+    Useful for testing and benchmarking pipelines.
+    """
+
+    step_type: StepType = StepType.SINK
+
+
+@dataclass
 class FunctionTransform(Transform[TIn, TOut], Generic[TIn, TOut]):
     """
     A transform step that applies a function to transform TIn to TOut.

@@ -55,6 +55,10 @@ pub enum RuntimeOperator {
         object_generator: Py<PyAny>,
         thread_count: usize,
     },
+    /// Represents a DevNullSink that discards all messages.
+    /// Useful for testing and benchmarking pipelines.
+    #[pyo3(name = "DevNullSink")]
+    DevNullSink { route: Route },
     /// Represents a Broadcast step in the pipeline that takes a single
     /// message and submits a copy of that message to each downstream route.
     #[pyo3(name = "Broadcast")]
@@ -129,6 +133,10 @@ pub fn build(
                 bucket,
                 func_ref,
             ))
+        }
+        RuntimeOperator::DevNullSink { route } => {
+            use crate::dev_null_sink::DevNullSink;
+            Box::new(DevNullSink::new(route.clone(), next))
         }
         RuntimeOperator::Router {
             route,

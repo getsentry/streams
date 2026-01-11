@@ -76,6 +76,8 @@ class RuntimeOperator:
         thread_count: int,
     ) -> Self: ...
     @classmethod
+    def DevNullSink(cls, route: Route) -> Self: ...
+    @classmethod
     def Router(
         cls,
         route: Route,

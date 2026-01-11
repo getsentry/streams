@@ -343,3 +343,24 @@ def test_gcssink_instantiation() -> None:
     RuntimeOperator.GCSSink(
         route=route, bucket="my-bucket", object_generator=generate_file_name, thread_count=1
     )
+
+
+def test_devnullsink_instantiation() -> None:
+    route = Route(source="test-source", waypoints=["step1", "step2"])
+    RuntimeOperator.DevNullSink(route=route)
+
+
+def test_devnullsink_in_pipeline() -> None:
+    """Test that DevNullSink can be used in a pipeline."""
+    from sentry_streams.pipeline.pipeline import DevNullSink
+
+    pipeline: Pipeline[str] = (
+        streaming_source(name="source", stream_name="events")
+        .apply(Map[bytes, str](name="map", function=simple_map))
+        .sink(DevNullSink[str](name="devnull"))
+    )
+
+    # Verify the sink is registered
+    assert "devnull" in pipeline.steps
+    assert isinstance(pipeline.steps["devnull"], DevNullSink)
+    assert pipeline.incoming_edges["devnull"] == ["map"]
