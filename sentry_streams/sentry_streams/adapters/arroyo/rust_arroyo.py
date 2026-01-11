@@ -299,7 +299,15 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         elif isinstance(step, DevNullSink):
             logger.info(f"Adding DevNull sink: {step.name} to pipeline")
-            self.__consumers[stream.source].add_step(RuntimeOperator.DevNullSink(route))
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.DevNullSink(
+                    route,
+                    batch_size=step.batch_size,
+                    batch_time_ms=step.batch_time_ms,
+                    average_sleep_time_ms=step.average_sleep_time_ms,
+                    max_sleep_time_ms=step.max_sleep_time_ms,
+                )
+            )
 
         # Our fallback for now since there's no other Sink type
         else:

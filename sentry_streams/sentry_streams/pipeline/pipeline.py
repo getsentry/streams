@@ -305,9 +305,26 @@ class DevNullSink(Sink[TIn]):
     """
     A Sink which discards all messages (similar to /dev/null).
     Useful for testing and benchmarking pipelines.
+
+    Simulates batching behavior with configurable delays:
+    - batch_size: Number of messages before batch is flushed
+    - batch_time_ms: Time duration (milliseconds) before batch is flushed
+    - average_sleep_time_ms: Average time (milliseconds) to sleep when flushing
+    - max_sleep_time_ms: Maximum time (milliseconds) to sleep when flushing
+
+    Note: If average_sleep_time_ms is set, max_sleep_time_ms must also be set.
     """
 
+    batch_size: Optional[int] = None
+    batch_time_ms: Optional[float] = None
+    average_sleep_time_ms: Optional[float] = None
+    max_sleep_time_ms: Optional[float] = None
     step_type: StepType = StepType.SINK
+
+    def __post_init__(self) -> None:
+        """Validate that if average_sleep_time_ms is set, max_sleep_time_ms must also be set."""
+        if self.average_sleep_time_ms is not None and self.max_sleep_time_ms is None:
+            raise ValueError("max_sleep_time_ms must be set when average_sleep_time_ms is provided")
 
 
 @dataclass

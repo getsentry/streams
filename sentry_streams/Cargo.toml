@@ -21,6 +21,7 @@ clap = { version = "4.5.45", features = ["derive"], optional = true }
 gcp_auth = "0.12.2"
 metrics = "0.24.0"
 metrics-exporter-dogstatsd = "0.9.0"
+rand = "0.8"
 
 [lib]
 name = "rust_streams"

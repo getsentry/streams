@@ -57,8 +57,15 @@ pub enum RuntimeOperator {
     },
     /// Represents a DevNullSink that discards all messages.
     /// Useful for testing and benchmarking pipelines.
+    /// Simulates batching with configurable delays.
     #[pyo3(name = "DevNullSink")]
-    DevNullSink { route: Route },
+    DevNullSink {
+        route: Route,
+        batch_size: Option<usize>,
+        batch_time_ms: Option<f64>,
+        average_sleep_time_ms: Option<f64>,
+        max_sleep_time_ms: Option<f64>,
+    },
     /// Represents a Broadcast step in the pipeline that takes a single
     /// message and submits a copy of that message to each downstream route.
     #[pyo3(name = "Broadcast")]
@@ -134,9 +141,22 @@ pub fn build(
                 func_ref,
             ))
         }
-        RuntimeOperator::DevNullSink { route } => {
+        RuntimeOperator::DevNullSink {
+            route,
+            batch_size,
+            batch_time_ms,
+            average_sleep_time_ms,
+            max_sleep_time_ms,
+        } => {
             use crate::dev_null_sink::DevNullSink;
-            Box::new(DevNullSink::new(route.clone(), next))
+            Box::new(DevNullSink::new(
+                route.clone(),
+                next,
+                *batch_size,
+                *batch_time_ms,
+                *average_sleep_time_ms,
+                *max_sleep_time_ms,
+            ))
         }
         RuntimeOperator::Router {
             route,
