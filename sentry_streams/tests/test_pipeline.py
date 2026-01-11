@@ -454,3 +454,32 @@ def test_devnullsink_validation_allows_both_sleep_times() -> None:
 
     assert sink.average_sleep_time_ms == 500.0
     assert sink.max_sleep_time_ms == 1000.0
+
+
+def test_devnullsink_override_config() -> None:
+    """Test that DevNullSink config can be overridden from deployment config."""
+    from sentry_streams.pipeline.pipeline import DevNullSink
+
+    # Create a sink with default values
+    sink = DevNullSink[str](
+        name="configurable",
+        batch_size=100,
+        batch_time_ms=1000.0,
+        average_sleep_time_ms=10.0,
+        max_sleep_time_ms=50.0,
+    )
+
+    # Override with config
+    config = {
+        "batch_size": 500,
+        "batch_time_ms": 5000.0,
+        "average_sleep_time_ms": 100.0,
+        "max_sleep_time_ms": 200.0,
+    }
+    sink.override_config(config)
+
+    # Verify all parameters were overridden
+    assert sink.batch_size == 500
+    assert sink.batch_time_ms == 5000.0
+    assert sink.average_sleep_time_ms == 100.0
+    assert sink.max_sleep_time_ms == 200.0

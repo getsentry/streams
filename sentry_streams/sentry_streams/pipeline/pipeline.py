@@ -326,6 +326,20 @@ class DevNullSink(Sink[TIn]):
         if self.average_sleep_time_ms is not None and self.max_sleep_time_ms is None:
             raise ValueError("max_sleep_time_ms must be set when average_sleep_time_ms is provided")
 
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
+        """Override batch parameters from deployment configuration."""
+        if loaded_config.get("batch_size") is not None:
+            self.batch_size = loaded_config.get("batch_size")
+
+        if loaded_config.get("batch_time_ms") is not None:
+            self.batch_time_ms = float(loaded_config.get("batch_time_ms"))  # type: ignore
+
+        if loaded_config.get("average_sleep_time_ms") is not None:
+            self.average_sleep_time_ms = float(loaded_config.get("average_sleep_time_ms"))  # type: ignore
+
+        if loaded_config.get("max_sleep_time_ms") is not None:
+            self.max_sleep_time_ms = float(loaded_config.get("max_sleep_time_ms"))  # type: ignore
+
 
 @dataclass
 class FunctionTransform(Transform[TIn, TOut], Generic[TIn, TOut]):
