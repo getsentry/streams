@@ -31,7 +31,8 @@ pub struct DevNullSink<N> {
 
     // Batch state
     current_batch_size: usize,
-    batch_start_time: Instant,
+    /// Tracks when the current batch started. None means no batch is active yet.
+    batch_start_time: Option<Instant>,
 }
 
 impl<N> DevNullSink<N>
@@ -54,7 +55,7 @@ where
             average_sleep_time: average_sleep_time_ms.map(|ms| Duration::from_millis(ms as u64)),
             max_sleep_time: max_sleep_time_ms.map(|ms| Duration::from_millis(ms as u64)),
             current_batch_size: 0,
-            batch_start_time: Instant::now(),
+            batch_start_time: None, // Timer starts when first message arrives
         }
     }
 
@@ -67,9 +68,9 @@ where
             }
         }
 
-        // Check batch time
-        if let Some(time) = self.batch_time {
-            if self.batch_start_time.elapsed() >= time {
+        // Check batch time (only if a batch has actually started)
+        if let (Some(time), Some(start)) = (self.batch_time, self.batch_start_time) {
+            if start.elapsed() >= time {
                 return true;
             }
         }
@@ -102,7 +103,7 @@ where
     /// Reset the batch state.
     fn reset_batch(&mut self) {
         self.current_batch_size = 0;
-        self.batch_start_time = Instant::now();
+        self.batch_start_time = None; // Timer will restart when next message arrives
     }
 }
 
@@ -135,6 +136,10 @@ where
 
         // If the route matches, discard the message and increment batch counter
         if self.route == message.payload().route {
+            // Start the batch timer on the first message of a new batch
+            if self.current_batch_size == 0 {
+                self.batch_start_time = Some(Instant::now());
+            }
             self.current_batch_size += 1;
             Ok(())
         } else {
