@@ -13,7 +13,7 @@ repos:
         # Exclude CHANGELOG.md from this hook as Craft generates updates
         # that make pre-commit fail on the release branch.
         # An extra new line is added at the end.
-        exclude: "^sentry_streams/CHANGELOG.md"
+        exclude: "^sentry_streams/CHANGELOG.md|^sentry_streams_k8s/CHANGELOG.md"
       - id: trailing-whitespace
       - id: fix-encoding-pragma
         args: ["--remove"]
