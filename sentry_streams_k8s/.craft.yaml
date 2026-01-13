@@ -1,0 +1,13 @@
+---
+minVersion: 0.34.1
+github:
+  owner: getsentry
+  repo: streams
+changelogPolicy: auto
+preReleaseCommand: bash ../scripts/bump-version.sh
+releaseBranchPrefix: release-sentry-streams-k8s
+targets:
+  - name: github
+  - name: pypi
+  - name: sentry-pypi
+    internalPypiRepo: getsentry/pypi

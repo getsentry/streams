@@ -1,4 +1,4 @@
-name: Release sentry_streams
+name: Release sentry_streams_k8s
 permissions:
   contents: read
 
@@ -36,4 +36,4 @@ jobs:
         with:
           version: ${{ github.event.inputs.version }}
           force: ${{ github.event.inputs.force }}
-          path: sentry_streams
+          path: sentry_streams_k8s
