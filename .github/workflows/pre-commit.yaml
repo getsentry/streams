@@ -6,15 +6,11 @@ on:
         - release-sentry-streams/**
     pull_request:
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3
+    - uses: actions/checkout@v3
     - uses: actions/setup-python@v5
       with:
         python-version-file: sentry_streams/.python-version
