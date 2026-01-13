@@ -148,6 +148,11 @@ class DlqStepWrapper:
         try:
             return self._func(msg)
         except Exception as e:
+            # Log the original error with full traceback before sending to DLQ
+            logger.exception(
+                f"Error in step {self._step_name}, sending to DLQ: "
+                f"partition={msg.partition}, offset={msg.offset}"
+            )
             self._produce_to_dlq(msg, e)
             raise DlqHandledError() from e
 
@@ -183,12 +188,6 @@ class DlqStepWrapper:
         topic_override = None
         if self._dlq_config is not None:
             topic_override = self._dlq_config.get("topic")
-
-        logger.info(
-            f"Sending message to DLQ: step={self._step_name}, "
-            f"partition={msg.partition}, offset={msg.offset}, "
-            f"error={type(error).__name__}"
-        )
 
         self._dlq_producer.produce(metadata, topic_override)
 
