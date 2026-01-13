@@ -62,6 +62,18 @@ class Message(ABC, Generic[TPayload]):
     def schema(self) -> str | None:
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def partition(self) -> int | None:
+        """The original Kafka partition this message came from (if available)."""
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def offset(self) -> int | None:
+        """The original Kafka offset this message came from (if available)."""
+        raise NotImplementedError
+
     @abstractmethod
     def deepcopy(self) -> Message[TPayload]:
         raise NotImplementedError
@@ -82,6 +94,8 @@ class Message(ABC, Generic[TPayload]):
             and self.headers == other.headers
             and self.timestamp == other.timestamp
             and self.schema == other.schema
+            and self.partition == other.partition
+            and self.offset == other.offset
         )
 
 
@@ -122,6 +136,16 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
     @property
     def schema(self) -> str | None:
         return self.inner.schema
+
+    @property
+    def partition(self) -> int | None:
+        """PyAnyMessage does not have partition info."""
+        return None
+
+    @property
+    def offset(self) -> int | None:
+        """PyAnyMessage does not have offset info."""
+        return None
 
     def size(self) -> int | None:
         if isinstance(self.inner.payload, (str, bytes)):
@@ -173,8 +197,10 @@ class PyRawMessage(Message[bytes]):
         headers: Sequence[Tuple[str, bytes]],
         timestamp: float,
         schema: Optional[str] = None,
+        partition: Optional[int] = None,
+        offset: Optional[int] = None,
     ) -> None:
-        self.inner = RawMessage(payload, headers, timestamp, schema)
+        self.inner = RawMessage(payload, headers, timestamp, schema, partition, offset)
 
     @property
     def payload(self) -> bytes:
@@ -191,6 +217,16 @@ class PyRawMessage(Message[bytes]):
     @property
     def schema(self) -> str | None:
         return self.inner.schema
+
+    @property
+    def partition(self) -> int | None:
+        """The original Kafka partition this message came from (if available)."""
+        return self.inner.partition
+
+    @property
+    def offset(self) -> int | None:
+        """The original Kafka offset this message came from (if available)."""
+        return self.inner.offset
 
     def size(self) -> int | None:
         return len(self.inner.payload)
@@ -210,6 +246,8 @@ class PyRawMessage(Message[bytes]):
             deepcopy(self.inner.headers),
             self.inner.timestamp,
             self.inner.schema,
+            self.inner.partition,
+            self.inner.offset,
         )
 
     def __getstate__(self) -> Mapping[str, Any]:
@@ -218,6 +256,8 @@ class PyRawMessage(Message[bytes]):
             "headers": self.headers,
             "timestamp": self.timestamp,
             "schema": self.schema,
+            "partition": self.partition,
+            "offset": self.offset,
         }
 
     def __setstate__(self, state: Mapping[str, Any]) -> None:
@@ -226,6 +266,8 @@ class PyRawMessage(Message[bytes]):
             state["headers"],
             state["timestamp"],
             state.get("schema"),
+            state.get("partition"),
+            state.get("offset"),
         )
 
 

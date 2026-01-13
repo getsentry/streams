@@ -64,7 +64,9 @@ impl ProcessingStrategy<RoutedValue> for Filter {
         match (res, &message.inner_message) {
             (Ok(true), _) => self.next_step.submit(message),
             (Ok(false), _) => Ok(()),
-            (Err(ApplyError::ApplyFailed), _) => panic!("Python filter function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
+            // DLQ handled - skip the message and continue processing
+            (Err(ApplyError::Skipped), _) => Ok(()),
+            (Err(ApplyError::ApplyFailed), _) => panic!("Python filter function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError or DlqHandledError"),
             (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
             (Err(ApplyError::InvalidMessage), InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into())),
         }

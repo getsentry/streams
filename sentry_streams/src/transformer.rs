@@ -4,50 +4,101 @@ use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
-use sentry_arroyo::processing::strategies::run_task::RunTask;
-use sentry_arroyo::processing::strategies::{ProcessingStrategy, SubmitError};
+use sentry_arroyo::processing::strategies::{
+    CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
+};
 use sentry_arroyo::types::{InnerMessage, Message};
+use std::time::Duration;
 
-/// Creates an Arroyo transformer strategy that uses a Python callable to
-/// transform messages. The callable is expected to take a Message<RoutedValue>
-/// as input and return a transformed message. The strategy is built on top of
-/// the `RunTask` Arroyo strategy.
-///
-/// This function takes a `next`  step to wire the Arroyo strategy to.
-pub fn build_map(
-    route: &Route,
-    callable: Py<PyAny>,
-    next: Box<dyn ProcessingStrategy<RoutedValue>>,
-) -> Box<dyn ProcessingStrategy<RoutedValue>> {
-    let copied_route = route.clone();
-    let mapper = move |message: Message<RoutedValue>| {
-        if message.payload().route != copied_route {
-            return Ok(message);
+pub struct MapStep {
+    pub callable: Py<PyAny>,
+    pub next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
+    pub route: Route,
+}
+
+impl MapStep {
+    /// A strategy that takes a callable and applies it to messages to transform them.
+    /// The callable is expected to take a Message<RoutedValue> as input and return
+    /// a transformed message.
+    /// The strategy also handles messages arriving on different routes;
+    /// it simply forwards them as-is to the next step.
+    pub fn new(
+        callable: Py<PyAny>,
+        next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
+        route: Route,
+    ) -> Self {
+        Self {
+            callable,
+            next_step,
+            route,
+        }
+    }
+}
+
+impl ProcessingStrategy<RoutedValue> for MapStep {
+    fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
+        self.next_step.poll()
+    }
+
+    fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
+        // Messages on different routes or watermark messages are forwarded as-is
+        if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
+            return self.next_step.submit(message);
         }
 
         let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) =
             message.payload().payload
         else {
-            return Ok(message);
+            return self.next_step.submit(message);
         };
 
         let route = message.payload().route.clone();
 
         let res = traced_with_gil!(|py| {
-            try_apply_py(py, &callable, (Into::<Py<PyAny>>::into(py_streaming_msg),))
+            try_apply_py(
+                py,
+                &self.callable,
+                (Into::<Py<PyAny>>::into(py_streaming_msg),),
+            )
         });
 
         match (res, &message.inner_message) {
-            (Ok(transformed), _) => Ok(message.replace(RoutedValue {
-                route,
-                payload: RoutedValuePayload::PyStreamingMessage(transformed.into()),
-            })),
-            (Err(ApplyError::ApplyFailed), _) => panic!("Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
+            (Ok(transformed), _) => {
+                let new_message = message.replace(RoutedValue {
+                    route,
+                    payload: RoutedValuePayload::PyStreamingMessage(transformed.into()),
+                });
+                self.next_step.submit(new_message)
+            }
+            // DLQ handled - skip the message and continue processing
+            (Err(ApplyError::Skipped), _) => Ok(()),
+            (Err(ApplyError::ApplyFailed), _) => panic!("Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError or DlqHandledError"),
             (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
-            (Err(ApplyError::InvalidMessage),  InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into()))
+            (Err(ApplyError::InvalidMessage), InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into())),
         }
-    };
-    Box::new(RunTask::new(mapper, next))
+    }
+
+    fn terminate(&mut self) {
+        self.next_step.terminate()
+    }
+
+    fn join(&mut self, timeout: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
+        self.next_step.join(timeout)?;
+        Ok(None)
+    }
+}
+
+/// Creates an Arroyo transformer strategy that uses a Python callable to
+/// transform messages. The callable is expected to take a Message<RoutedValue>
+/// as input and return a transformed message.
+///
+/// This function takes a `next` step to wire the Arroyo strategy to.
+pub fn build_map(
+    route: &Route,
+    callable: Py<PyAny>,
+    next: Box<dyn ProcessingStrategy<RoutedValue>>,
+) -> Box<dyn ProcessingStrategy<RoutedValue>> {
+    Box::new(MapStep::new(callable, next, route.clone()))
 }
 
 /// Creates an Arroyo-based filter step strategy that uses a Python callable to

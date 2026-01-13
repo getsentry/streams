@@ -21,6 +21,9 @@
             "title": "pipeline",
             "additionalProperties": true,
             "properties": {
+                "dlq": {
+                    "$ref": "#/definitions/DlqPipelineConfig"
+                },
                 "segments": {
                     "type": "array",
                     "items": {
@@ -37,6 +40,40 @@
             "required": [
                 "segments"
             ]
+        },
+        "DlqPipelineConfig": {
+            "type": "object",
+            "title": "DLQ Pipeline Configuration",
+            "description": "Pipeline-level DLQ configuration. Provides defaults for all steps.",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "description": "Default DLQ topic for all opted-in steps"
+                },
+                "bootstrap_servers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Kafka bootstrap servers for DLQ producer"
+                }
+            },
+            "required": ["topic"]
+        },
+        "DlqStepConfig": {
+            "type": "object",
+            "title": "DLQ Step Configuration",
+            "description": "Per-step DLQ configuration. Steps must explicitly opt-in.",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Enable DLQ for this step"
+                },
+                "topic": {
+                    "type": "string",
+                    "description": "Override the pipeline default DLQ topic"
+                }
+            }
         },
         "Env": {
             "type": "object",

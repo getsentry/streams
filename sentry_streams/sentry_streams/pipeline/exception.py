@@ -8,3 +8,16 @@ class InvalidMessageError(Exception):
     """
 
     pass
+
+
+class DlqHandledError(Exception):
+    """
+    Exception raised after a message has been successfully sent to the DLQ.
+
+    This exception signals to the Rust runtime that the message has been
+    handled (sent to DLQ) and should be skipped rather than retried or
+    causing a crash. The Rust layer will treat this like a filter returning
+    False - the message is dropped but processing continues normally.
+    """
+
+    pass

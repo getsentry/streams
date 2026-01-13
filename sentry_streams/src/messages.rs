@@ -258,16 +258,29 @@ pub struct RawMessage {
 
     #[pyo3(get, set)]
     pub schema: Option<String>,
+
+    /// The original Kafka partition this message came from (if available).
+    /// Used for DLQ metadata.
+    #[pyo3(get)]
+    pub partition: Option<i32>,
+
+    /// The original Kafka offset this message came from (if available).
+    /// Used for DLQ metadata.
+    #[pyo3(get)]
+    pub offset: Option<u64>,
 }
 
 #[pymethods]
 impl RawMessage {
     #[new]
+    #[pyo3(signature = (payload, headers, timestamp, schema, partition=None, offset=None))]
     pub fn new(
         payload: Py<PyBytes>,
         headers: Py<PySequence>,
         timestamp: f64,
         schema: Option<String>,
+        partition: Option<i32>,
+        offset: Option<u64>,
         py: Python,
     ) -> PyResult<Self> {
         Ok(Self {
@@ -275,6 +288,8 @@ impl RawMessage {
             headers: headers_to_vec(py, headers)?,
             timestamp,
             schema,
+            partition,
+            offset,
         })
     }
 
@@ -294,13 +309,15 @@ impl RawMessage {
             headers: self.headers.clone(),
             timestamp: self.timestamp,
             schema: self.schema.clone(),
+            partition: self.partition,
+            offset: self.offset,
         }
     }
 
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "RawMessage(payload={:?}, headers={:?}, timestamp={}, schema={:?})",
-            self.payload, self.headers, self.timestamp, self.schema
+            "RawMessage(payload={:?}, headers={:?}, timestamp={}, schema={:?}, partition={:?}, offset={:?})",
+            self.payload, self.headers, self.timestamp, self.schema, self.partition, self.offset
         ))
     }
 
@@ -318,6 +335,8 @@ pub fn replace_raw_payload(message: RawMessage, new_payload: Vec<u8>) -> RawMess
         headers: message.headers,
         timestamp: message.timestamp,
         schema: message.schema,
+        partition: message.partition,
+        offset: message.offset,
     }
 }
 
@@ -639,6 +658,8 @@ mod tests {
                 py_headers.clone_ref(py),
                 timestamp,
                 schema.clone(),
+                Some(5),   // partition
+                Some(100), // offset
                 py,
             )
             .unwrap();
@@ -677,8 +698,8 @@ mod tests {
 
             let repr = pymsg.call_method0(py, "__repr__").unwrap();
             let expected_repr = format!(
-                "RawMessage(payload={:?}, headers={:?}, timestamp={}, schema={:?})",
-                payload_bytes, headers, timestamp, schema
+                "RawMessage(payload={:?}, headers={:?}, timestamp={}, schema={:?}, partition={:?}, offset={:?})",
+                payload_bytes, headers, timestamp, schema, Some(5), Some(100u64)
             );
             assert_eq!(repr.extract::<String>(py).unwrap(), expected_repr);
         });
@@ -730,9 +751,16 @@ mod tests {
             let py_headers = headers_to_sequence(py, &headers).unwrap();
             let payload_bytes = vec![100, 101, 102, 103];
             let py_payload = PyBytes::new(py, &payload_bytes);
-            let raw_msg =
-                RawMessage::new(py_payload.unbind(), py_headers.clone_ref(py), 0., None, py)
-                    .unwrap();
+            let raw_msg = RawMessage::new(
+                py_payload.unbind(),
+                py_headers.clone_ref(py),
+                0.,
+                None,
+                None,
+                None,
+                py,
+            )
+            .unwrap();
             let py_raw_msg = raw_msg.into_pyobject(py).unwrap().unbind();
             let msg = PyStreamingMessage::RawMessage {
                 content: py_raw_msg,

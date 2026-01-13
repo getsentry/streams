@@ -3,43 +3,92 @@ use crate::messages::RoutedValuePayload;
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
-use sentry_arroyo::processing::strategies::run_task::RunTask;
-use sentry_arroyo::processing::strategies::{ProcessingStrategy, SubmitError};
+use sentry_arroyo::processing::strategies::{
+    CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
+};
 use sentry_arroyo::types::{InnerMessage, Message};
+use std::time::Duration;
 
-#[allow(clippy::result_large_err)]
-fn route_message(
-    route: &Route,
-    callable: &Py<PyAny>,
-    message: Message<RoutedValue>,
-) -> Result<Message<RoutedValue>, SubmitError<RoutedValue>> {
-    if message.payload().route != *route {
-        return Ok(message);
+pub struct RouterStep {
+    pub callable: Py<PyAny>,
+    pub next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
+    pub route: Route,
+}
+
+impl RouterStep {
+    /// A strategy that routes a message to a single route downstream.
+    /// The route is picked by a Python function passed as PyAny. The python function
+    /// is expected to return a string that represents the waypoint to add to the
+    /// route.
+    /// The strategy also handles messages arriving on different routes;
+    /// it simply forwards them as-is to the next step.
+    pub fn new(
+        callable: Py<PyAny>,
+        next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
+        route: Route,
+    ) -> Self {
+        Self {
+            callable,
+            next_step,
+            route,
+        }
+    }
+}
+
+impl ProcessingStrategy<RoutedValue> for RouterStep {
+    fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
+        self.next_step.poll()
     }
 
-    let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) = message.payload().payload
-    else {
-        // TODO: a future PR will remove this gate on WatermarkMessage and duplicate it for each downstream route.
-        return Ok(message);
-    };
+    fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
+        if message.payload().route != self.route {
+            return self.next_step.submit(message);
+        }
 
-    let res = traced_with_gil!(|py| {
-        try_apply_py(py, callable, (Into::<Py<PyAny>>::into(py_streaming_msg),)).and_then(
-            |py_res| {
+        let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) =
+            message.payload().payload
+        else {
+            // TODO: a future PR will remove this gate on WatermarkMessage and duplicate it for each downstream route.
+            return self.next_step.submit(message);
+        };
+
+        let res = traced_with_gil!(|py| {
+            try_apply_py(
+                py,
+                &self.callable,
+                (Into::<Py<PyAny>>::into(py_streaming_msg),),
+            )
+            .and_then(|py_res| {
                 py_res
                     .extract::<String>(py)
                     .map_err(|_| ApplyError::ApplyFailed)
-            },
-        )
-    });
+            })
+        });
 
-    match (res, &message.inner_message) {
-        (Ok(new_waypoint), _) => {
-            message.try_map(|payload| Ok(payload.add_waypoint(new_waypoint.clone())))
-        },
-        (Err(ApplyError::ApplyFailed), _) => panic!("Python route function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
-        (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
-        (Err(ApplyError::InvalidMessage),  InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into()))
+        match (res, &message.inner_message) {
+            (Ok(new_waypoint), _) => {
+                let new_message = message.try_map(|payload| {
+                    Ok::<RoutedValue, SubmitError<RoutedValue>>(
+                        payload.add_waypoint(new_waypoint.clone()),
+                    )
+                })?;
+                self.next_step.submit(new_message)
+            }
+            // DLQ handled - skip the message and continue processing
+            (Err(ApplyError::Skipped), _) => Ok(()),
+            (Err(ApplyError::ApplyFailed), _) => panic!("Python route function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError or DlqHandledError"),
+            (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
+            (Err(ApplyError::InvalidMessage), InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into())),
+        }
+    }
+
+    fn terminate(&mut self) {
+        self.next_step.terminate()
+    }
+
+    fn join(&mut self, timeout: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
+        self.next_step.join(timeout)?;
+        Ok(None)
     }
 }
 
@@ -52,11 +101,7 @@ pub fn build_router(
     callable: Py<PyAny>,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
-    let copied_route = route.clone();
-    let mapper =
-        move |message: Message<RoutedValue>| route_message(&copied_route, &callable, message);
-
-    Box::new(RunTask::new(mapper, next))
+    Box::new(RouterStep::new(callable, next, route.clone()))
 }
 
 #[cfg(test)]
@@ -147,13 +192,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Python route function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"
-    )]
     fn test_router_handles_invalid_msg_exception() {
         crate::testutils::initialize_python();
 
-        let mut router = create_simple_router(c_str!("lambda x: {}[0]"), Noop {});
+        import_py_dep("sentry_streams.pipeline.exception", "InvalidMessageError");
+
+        let mut router = create_simple_router(
+            c_str!("lambda x: (_ for _ in ()).throw(InvalidMessageError())"),
+            Noop {},
+        );
 
         traced_with_gil!(|py| {
             let message = Message::new_broker_message(
@@ -180,10 +227,25 @@ mod tests {
 
     #[test]
     fn test_route_msg() {
+        use crate::fake_strategy::assert_messages_match;
+        use crate::fake_strategy::FakeStrategy;
+        use std::sync::{Arc, Mutex};
+
         crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let callable = make_lambda(py, c_str!("lambda x: 'waypoint2'"));
+            let submitted_messages = Arc::new(Mutex::new(Vec::new()));
+            let submitted_messages_clone = submitted_messages.clone();
+            let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
+            let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
+            let mut router = build_router(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                callable,
+                Box::new(next_step),
+            );
+
+            // Message on matching route - should be routed with waypoint added
             let message = Message::new_any_message(
                 build_routed_value(
                     py,
@@ -193,36 +255,32 @@ mod tests {
                 ),
                 BTreeMap::new(),
             );
+            let result = router.submit(message);
+            assert!(result.is_ok());
 
-            let routed = route_message(
-                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
-                &callable,
-                message,
+            // Message on different route - should pass through unchanged
+            let message2 = Message::new_any_message(
+                build_routed_value(
+                    py,
+                    "test_message2".into_py_any(py).unwrap(),
+                    "source3",
+                    vec!["waypoint1".to_string()],
+                ),
+                BTreeMap::new(),
             );
+            let result2 = router.submit(message2);
+            assert!(result2.is_ok());
 
-            let routed = routed.unwrap();
+            // Check that both messages were submitted
+            let messages = submitted_messages_clone.lock().unwrap();
+            assert_eq!(messages.len(), 2);
 
-            assert_eq!(
-                routed.payload().route,
-                Route::new(
-                    "source1".to_string(),
-                    vec!["waypoint1".to_string(), "waypoint2".to_string()]
-                )
-            );
-
-            let through = route_message(
-                &Route::new("source3".to_string(), vec!["waypoint1".to_string()]),
-                &callable,
-                routed,
-            );
-            let through = through.unwrap();
-            assert_eq!(
-                through.payload().route,
-                Route::new(
-                    "source1".to_string(),
-                    vec!["waypoint1".to_string(), "waypoint2".to_string()]
-                )
-            );
+            // Verify the payloads are correct (FakeStrategy stores payloads, not routes)
+            let expected_messages = vec![
+                "test_message".into_py_any(py).unwrap(),
+                "test_message2".into_py_any(py).unwrap(),
+            ];
+            assert_messages_match(py, expected_messages, &messages);
         });
     }
 }

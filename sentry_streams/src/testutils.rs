@@ -89,6 +89,8 @@ pub fn build_raw_routed_value(
                 headers: vec![],
                 timestamp: 0.0,
                 schema: None,
+                partition: None,
+                offset: None,
             },
         )
         .unwrap(),
