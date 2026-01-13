@@ -1,0 +1,20 @@
+# Configuration for DevNullSink benchmark example
+# This configuration demonstrates how to set up a pipeline for benchmarking
+# using DevNullSink to discard messages without I/O overhead
+
+env: {}
+
+pipeline:
+  segments:
+    - steps_config:
+        benchmark_source:
+          starts_segment: True
+          bootstrap_servers: ["127.0.0.1:9092"]
+          auto_offset_reset: "latest"  # Start from latest messages
+          # Override default batch parameters if needed
+        devnull:
+          # Optional: Override the sink's batch parameters from config
+          # batch_size: 2000
+          # batch_time_ms: 10000.0
+          average_sleep_time_ms: 5000.0
+          max_sleep_time_ms: 6000.0

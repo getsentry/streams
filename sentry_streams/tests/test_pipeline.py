@@ -343,3 +343,143 @@ def test_gcssink_instantiation() -> None:
     RuntimeOperator.GCSSink(
         route=route, bucket="my-bucket", object_generator=generate_file_name, thread_count=1
     )
+
+
+def test_devnullsink_instantiation() -> None:
+    route = Route(source="test-source", waypoints=["step1", "step2"])
+    RuntimeOperator.DevNullSink(
+        route=route,
+        batch_size=None,
+        batch_time_ms=None,
+        average_sleep_time_ms=None,
+        max_sleep_time_ms=None,
+    )
+
+    # Test with batch configuration
+    RuntimeOperator.DevNullSink(
+        route=route,
+        batch_size=100,
+        batch_time_ms=10000.0,  # 10 seconds in ms
+        average_sleep_time_ms=500.0,  # 500ms
+        max_sleep_time_ms=1000.0,  # 1 second in ms
+    )
+
+
+def test_devnullsink_in_pipeline() -> None:
+    """Test that DevNullSink can be used in a pipeline."""
+    from sentry_streams.pipeline.pipeline import DevNullSink
+
+    pipeline: Pipeline[str] = (
+        streaming_source(name="source", stream_name="events")
+        .apply(Map[bytes, str](name="map", function=simple_map))
+        .sink(DevNullSink[str](name="devnull"))
+    )
+
+    # Verify the sink is registered
+    assert "devnull" in pipeline.steps
+    assert isinstance(pipeline.steps["devnull"], DevNullSink)
+    assert pipeline.incoming_edges["devnull"] == ["map"]
+
+
+def test_devnullsink_with_batching() -> None:
+    """Test that DevNullSink can be configured with batching parameters."""
+    from sentry_streams.pipeline.pipeline import DevNullSink
+
+    pipeline: Pipeline[str] = (
+        streaming_source(name="source", stream_name="events")
+        .apply(Map[bytes, str](name="map", function=simple_map))
+        .sink(
+            DevNullSink[str](
+                name="devnull",
+                batch_size=100,
+                batch_time_ms=10000.0,  # 10 seconds in ms
+                average_sleep_time_ms=500.0,  # 500ms
+                max_sleep_time_ms=1000.0,  # 1 second in ms
+            )
+        )
+    )
+
+    # Verify the sink is registered with the correct parameters
+    assert "devnull" in pipeline.steps
+    sink = pipeline.steps["devnull"]
+    assert isinstance(sink, DevNullSink)
+    assert sink.batch_size == 100
+    assert sink.batch_time_ms == 10000.0
+    assert sink.average_sleep_time_ms == 500.0
+    assert sink.max_sleep_time_ms == 1000.0
+
+
+def test_devnullsink_validation_requires_max_sleep_time() -> None:
+    """Test that DevNullSink requires max_sleep_time_ms when average_sleep_time_ms is set."""
+    from sentry_streams.pipeline.pipeline import DevNullSink
+
+    # Should raise ValueError when average_sleep_time_ms is set without max_sleep_time_ms
+    with pytest.raises(ValueError) as exc_info:
+        DevNullSink[str](
+            name="invalid",
+            average_sleep_time_ms=500.0,
+            max_sleep_time_ms=None,
+        )
+
+    assert "max_sleep_time_ms must be set when average_sleep_time_ms is provided" in str(
+        exc_info.value
+    )
+
+
+def test_devnullsink_validation_allows_neither_sleep_time() -> None:
+    """Test that DevNullSink allows neither sleep time parameter to be set."""
+    from sentry_streams.pipeline.pipeline import DevNullSink
+
+    # Should work fine with neither parameter set
+    sink = DevNullSink[str](
+        name="valid",
+        average_sleep_time_ms=None,
+        max_sleep_time_ms=None,
+    )
+
+    assert sink.average_sleep_time_ms is None
+    assert sink.max_sleep_time_ms is None
+
+
+def test_devnullsink_validation_allows_both_sleep_times() -> None:
+    """Test that DevNullSink allows both sleep time parameters to be set."""
+    from sentry_streams.pipeline.pipeline import DevNullSink
+
+    # Should work fine with both parameters set
+    sink = DevNullSink[str](
+        name="valid",
+        average_sleep_time_ms=500.0,
+        max_sleep_time_ms=1000.0,
+    )
+
+    assert sink.average_sleep_time_ms == 500.0
+    assert sink.max_sleep_time_ms == 1000.0
+
+
+def test_devnullsink_override_config() -> None:
+    """Test that DevNullSink config can be overridden from deployment config."""
+    from sentry_streams.pipeline.pipeline import DevNullSink
+
+    # Create a sink with default values
+    sink = DevNullSink[str](
+        name="configurable",
+        batch_size=100,
+        batch_time_ms=1000.0,
+        average_sleep_time_ms=10.0,
+        max_sleep_time_ms=50.0,
+    )
+
+    # Override with config
+    config = {
+        "batch_size": 500,
+        "batch_time_ms": 5000.0,
+        "average_sleep_time_ms": 100.0,
+        "max_sleep_time_ms": 200.0,
+    }
+    sink.override_config(config)
+
+    # Verify all parameters were overridden
+    assert sink.batch_size == 500
+    assert sink.batch_time_ms == 5000.0
+    assert sink.average_sleep_time_ms == 100.0
+    assert sink.max_sleep_time_ms == 200.0
