@@ -2,6 +2,7 @@ import copy
 import re
 from typing import Any, TypedDict
 
+import yaml
 from libsentrykube.ext import ExternalMacro
 from sentry_streams.validation import validate_pipeline_config
 
@@ -201,5 +202,88 @@ class PipelineStep(ExternalMacro):
         Returns:
             Dictionary with 'deployment' and 'configmap' keys
         """
-        # TODO: Fill me with content
-        return {}
+        # Extract context
+        deployment_template = context["deployment_template"]
+        container_template = context["container_template"]
+        pipeline_config = context["pipeline_config"]
+        pipeline_module = context["pipeline_module"]
+        cpu_per_process = context["cpu_per_process"]
+        memory_per_process = context["memory_per_process"]
+
+        # Generate name and labels
+        name = build_name(pipeline_module, pipeline_config)
+        labels = build_labels(pipeline_module, pipeline_config)
+
+        # Build container
+        container = build_container(
+            container_template,
+            pipeline_module,
+            pipeline_config,
+            cpu_per_process,
+            memory_per_process,
+        )
+
+        # Deep copy deployment template to avoid mutations
+        deployment = copy.deepcopy(deployment_template)
+
+        # Update deployment metadata
+        if "metadata" not in deployment:
+            deployment["metadata"] = {}
+        deployment["metadata"]["name"] = name
+        if "labels" not in deployment["metadata"]:
+            deployment["metadata"]["labels"] = {}
+        deployment["metadata"]["labels"].update(labels)
+
+        # Ensure spec.template.spec.containers exists
+        if "spec" not in deployment:
+            deployment["spec"] = {}
+        if "template" not in deployment["spec"]:
+            deployment["spec"]["template"] = {}
+        if "metadata" not in deployment["spec"]["template"]:
+            deployment["spec"]["template"]["metadata"] = {}
+        if "labels" not in deployment["spec"]["template"]["metadata"]:
+            deployment["spec"]["template"]["metadata"]["labels"] = {}
+        deployment["spec"]["template"]["metadata"]["labels"].update(labels)
+
+        if "spec" not in deployment["spec"]["template"]:
+            deployment["spec"]["template"]["spec"] = {}
+        if "containers" not in deployment["spec"]["template"]["spec"]:
+            deployment["spec"]["template"]["spec"]["containers"] = []
+
+        # Add container to deployment
+        deployment["spec"]["template"]["spec"]["containers"].append(container)
+
+        # Add configmap volume to deployment
+        if "volumes" not in deployment["spec"]["template"]["spec"]:
+            deployment["spec"]["template"]["spec"]["volumes"] = []
+
+        deployment["spec"]["template"]["spec"]["volumes"].append(
+            {
+                "name": "pipeline-config",
+                "configMap": {
+                    "name": f"{name}-config",
+                },
+            }
+        )
+
+        # Create configmap
+        configmap = {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+                "name": f"{name}-config",
+                "labels": labels,
+            },
+            "data": {
+                "pipeline_config.yaml": yaml.safe_dump(pipeline_config),
+            },
+        }
+
+        # Add namespace if present in deployment template
+        if "namespace" in deployment.get("metadata", {}):
+            configmap["metadata"]["namespace"] = deployment["metadata"]["namespace"]
+
+        return {
+            "deployment": deployment,
+            "configmap": configmap,
+        }
