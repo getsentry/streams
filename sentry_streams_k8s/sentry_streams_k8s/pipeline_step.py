@@ -1,7 +1,118 @@
+import copy
+import re
 from typing import Any, TypedDict
 
 from libsentrykube.ext import ExternalMacro
 from sentry_streams.validation import validate_pipeline_config
+
+
+def build_name(pipeline_module: str, pipeline_config: dict[str, Any]) -> str:
+    """
+    Generate a valid Kubernetes name from the pipeline module.
+
+    Converts the pipeline module name to a valid RFC 1123 compliant name
+    by replacing dots and underscores with dashes and converting to lowercase.
+
+    Args:
+        pipeline_module: The fully qualified Python module name
+        pipeline_config: The pipeline configuration (unused but kept for consistency)
+
+    Returns:
+        A valid Kubernetes name derived from the pipeline module
+
+    Examples:
+        >>> build_name("sbc.profiles", {})
+        'sbc-profiles'
+        >>> build_name("my_module.sub_module", {})
+        'my-module-sub-module'
+    """
+    # Replace dots and underscores with dashes, convert to lowercase
+    name = pipeline_module.replace(".", "-").replace("_", "-").lower()
+    # Ensure it's RFC 1123 compliant (lowercase alphanumeric + hyphens)
+    name = re.sub(r"[^a-z0-9-]", "", name)
+    # Remove leading/trailing hyphens
+    name = name.strip("-")
+    return name
+
+
+def build_labels(pipeline_module: str, pipeline_config: dict[str, Any]) -> dict[str, str]:
+    """
+    Generate standard Kubernetes labels for the pipeline step.
+
+    Args:
+        pipeline_module: The fully qualified Python module name
+        pipeline_config: The pipeline configuration (unused but kept for consistency)
+
+    Returns:
+        Dictionary of Kubernetes labels
+    """
+    app_name = build_name(pipeline_module, pipeline_config)
+    return {
+        "app": app_name,
+        "component": "streaming-platform",
+        "pipeline-module": pipeline_module,
+    }
+
+
+def build_container(
+    container_template: dict[str, Any],
+    pipeline_module: str,
+    pipeline_config: dict[str, Any],
+    cpu_per_process: int,
+    memory_per_process: int,
+) -> dict[str, Any]:
+    """
+    Build a complete container specification for the pipeline step.
+
+    Args:
+        container_template: Base container structure to build upon
+        pipeline_module: The fully qualified Python module name
+        pipeline_config: The pipeline configuration (unused but kept for consistency)
+        cpu_per_process: CPU millicores to request
+        memory_per_process: Memory in MiB to request
+
+    Returns:
+        Complete container specification with command, resources, and volume mounts
+    """
+    container = copy.deepcopy(container_template)
+
+    # Add command/args to run the pipeline module
+    # The streaming platform runner expects a Python file path
+    # For now, we'll use a generic command that can be overridden
+    if "command" not in container:
+        container["command"] = ["python", "-m", "sentry_streams.runner"]
+
+    if "args" not in container:
+        container["args"] = [
+            "--adapter",
+            "rust_arroyo",
+            "--config",
+            "/etc/pipeline-config/pipeline_config.yaml",
+            pipeline_module,
+        ]
+
+    # Add resource requests
+    if "resources" not in container:
+        container["resources"] = {}
+    if "requests" not in container["resources"]:
+        container["resources"]["requests"] = {}
+
+    container["resources"]["requests"]["cpu"] = f"{cpu_per_process}m"
+    container["resources"]["requests"]["memory"] = f"{memory_per_process}Mi"
+
+    # Add volume mount for configmap
+    if "volumeMounts" not in container:
+        container["volumeMounts"] = []
+
+    container["volumeMounts"].append(
+        {
+            "name": "pipeline-config",
+            "mountPath": "/etc/pipeline-config",
+            "readOnly": True,
+        }
+    )
+
+    return container
 
 
 class PipelineStepContext(TypedDict):
