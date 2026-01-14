@@ -13,8 +13,12 @@ The repository is organized into two main Python packages:
 - **`sentry_streams/`** - The core streaming platform implementation (hybrid Rust/Python package)
   - See [sentry_streams/AGENTS.md](./sentry_streams/AGENTS.md) for package-specific development instructions
 
+- **`sentry_streams-k8s/`** - The core streaming platform implementation (hybrid Rust/Python package)
+  - See [sentry_streams_k8s/AGENTS.md](./sentry_streams_k8s/AGENTS.md) for package-specific development instructions
+
 - **`sentry_flink/`** - Apache Flink adapter for the streaming platform (pure Python package)
   - See [sentry_flink/AGENTS.md](./sentry_flink/AGENTS.md) for package-specific development instructions
+
 
 ### Other Directories
 
@@ -67,6 +71,11 @@ make tests-flink
 ```
 Runs tests for the `sentry_flink` package.
 
+```bash
+make tests-k8s
+```
+Runs tests for the `sentry_streams_k8s` package.
+
 ### Type Checking
 
 ```bash
@@ -83,6 +92,11 @@ Runs `mypy` type checking on both packages. This will:
 make build-streams
 ```
 Builds the `sentry_streams` wheel package.
+
+```bash
+make build-streams-k8s
+```
+Builds the `sentry_streams_k8s` wheel package.
 
 ```bash
 make docs
