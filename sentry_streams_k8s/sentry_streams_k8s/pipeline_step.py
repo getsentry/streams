@@ -4,7 +4,8 @@ from typing import Any, TypedDict
 
 import yaml
 from libsentrykube.ext import ExternalMacro
-from sentry_streams.validation import validate_pipeline_config
+
+from sentry_streams_k8s.validation import validate_pipeline_config
 
 
 def build_name(pipeline_module: str, pipeline_config: dict[str, Any]) -> str:
