@@ -21,7 +21,7 @@ a Kubernetes operator.
 
 **Recommended:** Use the repository root Makefile commands documented in [../AGENTS.md](../AGENTS.md):
 - `make install-dev` - Set up development environment
-- `make tests-streams` - Run Python tests
+- `make tests-k8s` - Run Python tests
 - `make typecheck` - Run type checking
 
 ## Virtual Environment - REQUIRED
@@ -46,34 +46,28 @@ This creates `.venv/` and installs all dependencies including development tools.
 When not using the root Makefile:
 
 ```bash
-# Python tests
+# All tests
 .venv/bin/pytest -vv tests/
 
-# Integration tests
-.venv/bin/pytest -vv integration_tests/
-
 # Specific test
-.venv/bin/pytest -vv tests/test_pipeline.py::test_specific_function
-
-# Rust tests
-source .venv/bin/activate
-cargo test
+.venv/bin/pytest -vv tests/test_consumer.py::test_specific_function
 ```
 
 ### Type Checking from Package Directory
 
-Manual type checking requires building Rust modules first:
+Manual type checking:
 
 ```bash
 # Run mypy
 .venv/bin/mypy --config-file mypy.ini --strict sentry_streams_k8s/
 ```
 
-**Note:** Using `make typecheck` from the repository root is recommended as it handles all build steps automatically.
+**Note:** Using `make typecheck` from the repository root is recommended.
 
 ### Type Checking Configuration
 
 Type checking is configured in `mypy.ini`:
+- Python version: 3.11
 - Strict mode enabled
 - Missing imports are flagged as errors
 
