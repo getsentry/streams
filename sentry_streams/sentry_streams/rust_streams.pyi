@@ -76,6 +76,15 @@ class RuntimeOperator:
         thread_count: int,
     ) -> Self: ...
     @classmethod
+    def DevNullSink(
+        cls,
+        route: Route,
+        batch_size: int | None = None,
+        batch_time_ms: float | None = None,
+        average_sleep_time_ms: float | None = None,
+        max_sleep_time_ms: float | None = None,
+    ) -> Self: ...
+    @classmethod
     def Router(
         cls,
         route: Route,

@@ -13,7 +13,7 @@ repos:
         # Exclude CHANGELOG.md from this hook as Craft generates updates
         # that make pre-commit fail on the release branch.
         # An extra new line is added at the end.
-        exclude: "^sentry_streams/CHANGELOG.md"
+        exclude: "^sentry_streams/CHANGELOG.md|^sentry_streams_k8s/CHANGELOG.md"
       - id: trailing-whitespace
       - id: fix-encoding-pragma
         args: ["--remove"]
@@ -26,6 +26,9 @@ repos:
       - id: black
         files: ^sentry_flink/.+
         args: [--config=./sentry_flink/pyproject.toml]
+      - id: black
+        files: ^sentry_streams_k8s/.+
+        args: [--config=./sentry_streams_k8s/pyproject.toml]
   - repo: https://github.com/pycqa/flake8
     rev: 7.1.1
     hooks:
@@ -42,6 +45,10 @@ repos:
         name: isort (python)
         files: ^sentry_flink/.+
         args: [--settings-path=./sentry_flink/pyproject.toml]
+      - id: isort
+        name: isort (python)
+        files: ^sentry_streams_k8s/.+
+        args: [--settings-path=./sentry_streams_k8s/pyproject.toml]
   - repo: local
     hooks:
       - id: cargo-fmt

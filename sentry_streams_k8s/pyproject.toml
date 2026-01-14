@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentry-streams-k8s"
+version = "0.0.1"
+description = "Kubernetes integration for Sentry Streams"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "jsonschema>=4.23.0",
+    "requests>=2.32.3",
+    "sentry-infra-tools>=1.24.0",
+    "pyyaml>=6.0.2",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14.1",
+    "pre-commit>=4.1.0",
+    "pytest>=8.3.4",
+    "responses>=0.25.6",
+    "types-requests>=2.32.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+sentry_streams_k8s = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+
+[tool.black]
+# File filtering is taken care of in pre-commit.
+line-length = 100
+
+[tool.isort]
+profile = "black"
