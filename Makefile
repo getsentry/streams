@@ -52,6 +52,12 @@ build-streams:
 	cd sentry_streams && .venv/bin/python -m build --wheel
 .PHONY: build-streams
 
+build-streams-k8s:
+	cd sentry_streams_k8s && uv pip install wheel
+	cd sentry_streams_k8s && uv pip install build
+	cd sentry_streams_k8s && .venv/bin/python -m build --wheel
+.PHONY: build-streams-k8s
+
 docs:
 	uv sync --project ./sentry_streams --group docs
 	./sentry_streams/.venv/bin/sphinx-build -b html sentry_streams/docs/source/ sentry_streams/docs/build/
