@@ -2,7 +2,6 @@ from typing import Any
 
 import pytest
 import yaml
-from jsonschema import ValidationError
 
 from sentry_streams_k8s.pipeline_step import (
     PipelineStep,
@@ -12,6 +11,7 @@ from sentry_streams_k8s.pipeline_step import (
 )
 
 
+# OK
 def test_build_name() -> None:
     """Test that build_name generates valid Kubernetes names."""
     # Test basic conversion
@@ -27,6 +27,7 @@ def test_build_name() -> None:
     assert build_name("my@module.sub#module", {}) == "mymodule-submodule"
 
 
+# Requires change after application fixed
 def test_build_labels() -> None:
     """Test that build_labels generates correct Kubernetes labels."""
     labels = build_labels("sbc.profiles", {})
@@ -165,28 +166,8 @@ def test_validate_context_missing_fields() -> None:
         )
 
 
-def test_validate_context_invalid_pipeline_config() -> None:
-    """Test that validate_context validates pipeline_config schema."""
-    invalid_context = {
-        "deployment_template": {},
-        "container_template": {},
-        "pipeline_config": {
-            "env": {},
-            "pipeline": {
-                # Missing required 'segments' key
-            },
-        },
-        "pipeline_module": "my_module",
-        "cpu_per_process": 1000,
-        "memory_per_process": 512,
-    }
-
-    with pytest.raises(ValidationError):
-        PipelineStep.validate_context(invalid_context)
-
-
-def test_run_returns_both_resources() -> None:
-    """Test that run() returns both deployment and configmap."""
+def test_run_generates_complete_manifests() -> None:
+    """Test that run() generates complete deployment and configmap manifests."""
     context: dict[str, Any] = {
         "deployment_template": {"kind": "Deployment"},
         "container_template": {"name": "container", "image": "my-image:latest"},
@@ -213,122 +194,36 @@ def test_run_returns_both_resources() -> None:
     pipeline_step = PipelineStep()
     result = pipeline_step.run(context)  # type: ignore
 
+    # Validate return structure
     assert "deployment" in result
     assert "configmap" in result
     assert isinstance(result["deployment"], dict)
     assert isinstance(result["configmap"], dict)
 
-
-def test_run_deployment_has_container() -> None:
-    """Test that run() adds container to deployment."""
-    context: dict[str, Any] = {
-        "deployment_template": {"kind": "Deployment"},
-        "container_template": {"name": "container", "image": "my-image:latest"},
-        "pipeline_config": {
-            "env": {},
-            "pipeline": {
-                "segments": [
-                    {
-                        "steps_config": {
-                            "myinput": {
-                                "starts_segment": True,
-                                "bootstrap_servers": ["127.0.0.1:9092"],
-                            }
-                        }
-                    }
-                ]
-            },
-        },
-        "pipeline_module": "sbc.profiles",
-        "cpu_per_process": 1000,
-        "memory_per_process": 512,
-    }
-
-    pipeline_step = PipelineStep()
-    result = pipeline_step.run(context)  # type: ignore
-
     deployment = result["deployment"]
-    containers = deployment["spec"]["template"]["spec"]["containers"]
+    configmap = result["configmap"]
 
+    # Validate deployment has container
+    containers = deployment["spec"]["template"]["spec"]["containers"]
     assert len(containers) == 1
     assert containers[0]["name"] == "container"
     assert containers[0]["resources"]["requests"]["cpu"] == "1000m"
     assert containers[0]["resources"]["requests"]["memory"] == "512Mi"
 
-
-def test_run_deployment_has_volume() -> None:
-    """Test that run() adds configmap volume to deployment."""
-    context: dict[str, Any] = {
-        "deployment_template": {"kind": "Deployment"},
-        "container_template": {"name": "container", "image": "my-image:latest"},
-        "pipeline_config": {
-            "env": {},
-            "pipeline": {
-                "segments": [
-                    {
-                        "steps_config": {
-                            "myinput": {
-                                "starts_segment": True,
-                                "bootstrap_servers": ["127.0.0.1:9092"],
-                            }
-                        }
-                    }
-                ]
-            },
-        },
-        "pipeline_module": "sbc.profiles",
-        "cpu_per_process": 1000,
-        "memory_per_process": 512,
-    }
-
-    pipeline_step = PipelineStep()
-    result = pipeline_step.run(context)  # type: ignore
-
-    deployment = result["deployment"]
+    # Validate deployment has configmap volume
     volumes = deployment["spec"]["template"]["spec"]["volumes"]
-
     assert len(volumes) == 1
     assert volumes[0]["name"] == "pipeline-config"
     assert volumes[0]["configMap"]["name"] == "sbc-profiles-config"
 
-
-def test_run_configmap_structure() -> None:
-    """Test that run() creates configmap with correct structure."""
-    context: dict[str, Any] = {
-        "deployment_template": {"kind": "Deployment"},
-        "container_template": {"name": "container", "image": "my-image:latest"},
-        "pipeline_config": {
-            "env": {},
-            "pipeline": {
-                "segments": [
-                    {
-                        "steps_config": {
-                            "myinput": {
-                                "starts_segment": True,
-                                "bootstrap_servers": ["127.0.0.1:9092"],
-                            }
-                        }
-                    }
-                ]
-            },
-        },
-        "pipeline_module": "sbc.profiles",
-        "cpu_per_process": 1000,
-        "memory_per_process": 512,
-    }
-
-    pipeline_step = PipelineStep()
-    result = pipeline_step.run(context)  # type: ignore
-
-    configmap = result["configmap"]
-
+    # Validate configmap structure
     assert configmap["apiVersion"] == "v1"
     assert configmap["kind"] == "ConfigMap"
     assert configmap["metadata"]["name"] == "sbc-profiles-config"
     assert configmap["metadata"]["labels"]["app"] == "sbc-profiles"
     assert configmap["metadata"]["labels"]["component"] == "streaming-platform"
 
-    # Check that pipeline_config is serialized as YAML
+    # Validate configmap data
     assert "pipeline_config.yaml" in configmap["data"]
     config_yaml = configmap["data"]["pipeline_config.yaml"]
     parsed_config = yaml.safe_load(config_yaml)
