@@ -1,6 +1,6 @@
 import copy
 import re
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 import yaml
 from libsentrykube.ext import ExternalMacro
@@ -8,99 +8,99 @@ from libsentrykube.ext import ExternalMacro
 from sentry_streams_k8s.validation import validate_pipeline_config
 
 
-def build_name(pipeline_module: str, pipeline_config: dict[str, Any]) -> str:
+def make_k8s_name(name: str) -> str:
     """
-    Generate a valid Kubernetes name from the pipeline module.
+    Generate a valid Kubernetes name from a string.
 
-    Converts the pipeline module name to a valid RFC 1123 compliant name
+    CConverts the string to a valid RFC 1123 compliant name
     by replacing dots and underscores with dashes and converting to lowercase.
 
-    Args:
-        pipeline_module: The fully qualified Python module name
-        pipeline_config: The pipeline configuration (unused but kept for consistency)
-
-    Returns:
-        A valid Kubernetes name derived from the pipeline module
-
     Examples:
-        >>> build_name("sbc.profiles", {})
+        >>> build_name("sbc.profiles")
         'sbc-profiles'
-        >>> build_name("my_module.sub_module", {})
+        >>> build_name("my_module.sub_module")
         'my-module-sub-module'
     """
-    # Replace dots and underscores with dashes, convert to lowercase
-    name = pipeline_module.replace(".", "-").replace("_", "-").lower()
+    name = name.replace(".", "-").replace("_", "-").lower()
     # Ensure it's RFC 1123 compliant (lowercase alphanumeric + hyphens)
     name = re.sub(r"[^a-z0-9-]", "", name)
-    # Remove leading/trailing hyphens
     name = name.strip("-")
     return name
 
 
-def build_labels(pipeline_module: str, pipeline_config: dict[str, Any]) -> dict[str, str]:
+def build_labels(
+    template_labels: dict[str, str],
+    pipeline_name: str,
+    pipeline_module: str,
+) -> dict[str, str]:
     """
     Generate standard Kubernetes labels for the pipeline step.
+    The goal is to allow us to have standard labeling for streaming
+    resources.
 
-    Args:
-        pipeline_module: The fully qualified Python module name
-        pipeline_config: The pipeline configuration (unused but kept for consistency)
-
-    Returns:
-        Dictionary of Kubernetes labels
     """
-    app_name = build_name(pipeline_module, pipeline_config)
     return {
-        "app": app_name,
-        "component": "streaming-platform",
-        "pipeline-module": pipeline_module,
+        **template_labels,
+        "pipeline-app": make_k8s_name(pipeline_module),
+        "pipeline": make_k8s_name(pipeline_name),
     }
 
 
 def build_container(
     container_template: dict[str, Any],
+    pipeline_name: str,
     pipeline_module: str,
     pipeline_config: dict[str, Any],
+    image_name: str,
     cpu_per_process: int,
     memory_per_process: int,
+    segment_id: int,
 ) -> dict[str, Any]:
     """
     Build a complete container specification for the pipeline step.
 
     Args:
         container_template: Base container structure to build upon
+        pipeline_name: Name of the pipeline
         pipeline_module: The fully qualified Python module name
         pipeline_config: The pipeline configuration (unused but kept for consistency)
+        image_name: Docker image name to use for the container
         cpu_per_process: CPU millicores to request
         memory_per_process: Memory in MiB to request
+        segment_id: Segment ID for the pipeline
 
     Returns:
         Complete container specification with command, resources, and volume mounts
     """
     container = copy.deepcopy(container_template)
 
-    # Add command/args to run the pipeline module
-    # The streaming platform runner expects a Python file path
-    # For now, we'll use a generic command that can be overridden
-    if "command" not in container:
-        container["command"] = ["python", "-m", "sentry_streams.runner"]
+    container["image"] = image_name
 
-    if "args" not in container:
-        container["args"] = [
-            "--adapter",
-            "rust_arroyo",
-            "--config",
-            "/etc/pipeline-config/pipeline_config.yaml",
-            pipeline_module,
-        ]
+    container["command"] = ["python", "-m", "sentry_streams.runner"]
+
+    container["args"] = [
+        "-n",
+        pipeline_name,
+        "--adapter",
+        "rust_arroyo",
+        "--segment-id",
+        str(segment_id),
+        "--config",
+        "/etc/pipeline-config/pipeline_config.yaml",
+        pipeline_module,
+    ]
 
     # Add resource requests
     if "resources" not in container:
         container["resources"] = {}
     if "requests" not in container["resources"]:
         container["resources"]["requests"] = {}
+    if "limits" not in container["resources"]:
+        container["resources"]["limits"] = {}
 
     container["resources"]["requests"]["cpu"] = f"{cpu_per_process}m"
     container["resources"]["requests"]["memory"] = f"{memory_per_process}Mi"
+    container["resources"]["limits"]["memory"] = f"{memory_per_process}Mi"
 
     # Add volume mount for configmap
     if "volumeMounts" not in container:
@@ -120,12 +120,16 @@ def build_container(
 class PipelineStepContext(TypedDict):
     """Context dictionary for PipelineStep macro."""
 
+    service_name: str
+    pipeline_name: str
     deployment_template: dict[str, Any]
     container_template: dict[str, Any]
     pipeline_config: dict[str, Any]
     pipeline_module: str
+    image_name: str
     cpu_per_process: int
     memory_per_process: int
+    segment_id: int
 
 
 class PipelineStep(ExternalMacro):
@@ -158,10 +162,14 @@ class PipelineStep(ExternalMacro):
     {{ render_external(
             "sentry_streams_k8s.pipeline_step.PipelineStep",
             {
+                "service_name": "my-service",
+                "pipeline_name": "profiles",
                 "deployment_template": deployment,
                 "container_template": container,
                 "pipeline_config": pipeline_config_dict,
                 "pipeline_module": "sbc.profiles",
+                "image_name": "us-central1-docker.pkg.dev/my-project/my-image:latest",
+                "segment_id": 0,
                 "cpu_per_process": 1000,
                 "memory_per_process": 512,
             }
@@ -187,8 +195,12 @@ class PipelineStep(ExternalMacro):
         assert "container_template" in context, "Missing container_template"
         assert "pipeline_config" in context, "Missing pipeline_config"
         assert "pipeline_module" in context, "Missing pipeline_module"
+        assert "image_name" in context, "Missing image_name"
         assert "cpu_per_process" in context, "Missing cpu_per_process"
         assert "memory_per_process" in context, "Missing memory_per_process"
+        assert "segment_id" in context, "Missing segment_id"
+        assert "pipeline_name" in context, "Missing pipeline_name"
+        assert "service_name" in context, "Missing service_name"
 
         # Validate pipeline_config structure using the same schema as runner.py
         validate_pipeline_config(context["pipeline_config"])
@@ -208,20 +220,26 @@ class PipelineStep(ExternalMacro):
         container_template = context["container_template"]
         pipeline_config = context["pipeline_config"]
         pipeline_module = context["pipeline_module"]
+        image_name = context["image_name"]
         cpu_per_process = context["cpu_per_process"]
         memory_per_process = context["memory_per_process"]
+        pipeline_name = context["pipeline_name"]
+        segment_id = context["segment_id"]
+        service_name = context["service_name"]
 
         # Generate name and labels
-        name = build_name(pipeline_module, pipeline_config)
-        labels = build_labels(pipeline_module, pipeline_config)
+        deployment_name = make_k8s_name(f"{service_name}-pipeline-{pipeline_name}-{segment_id}")
 
         # Build container
         container = build_container(
             container_template,
+            pipeline_name,
             pipeline_module,
             pipeline_config,
+            image_name,
             cpu_per_process,
             memory_per_process,
+            segment_id,
         )
 
         # Deep copy deployment template to avoid mutations
@@ -230,9 +248,10 @@ class PipelineStep(ExternalMacro):
         # Update deployment metadata
         if "metadata" not in deployment:
             deployment["metadata"] = {}
-        deployment["metadata"]["name"] = name
+        deployment["metadata"]["name"] = deployment_name
         if "labels" not in deployment["metadata"]:
             deployment["metadata"]["labels"] = {}
+        labels = build_labels(deployment["metadata"]["labels"], pipeline_name, pipeline_module)
         deployment["metadata"]["labels"].update(labels)
 
         # Ensure spec.template.spec.containers exists
@@ -258,11 +277,12 @@ class PipelineStep(ExternalMacro):
         if "volumes" not in deployment["spec"]["template"]["spec"]:
             deployment["spec"]["template"]["spec"]["volumes"] = []
 
+        configmap_name = make_k8s_name(f"{service_name}-pipeline-{pipeline_name}")
         deployment["spec"]["template"]["spec"]["volumes"].append(
             {
                 "name": "pipeline-config",
                 "configMap": {
-                    "name": f"{name}-config",
+                    "name": configmap_name,
                 },
             }
         )
@@ -272,7 +292,7 @@ class PipelineStep(ExternalMacro):
             "apiVersion": "v1",
             "kind": "ConfigMap",
             "metadata": {
-                "name": f"{name}-config",
+                "name": configmap_name,
                 "labels": labels,
             },
             "data": {
@@ -282,7 +302,8 @@ class PipelineStep(ExternalMacro):
 
         # Add namespace if present in deployment template
         if "namespace" in deployment.get("metadata", {}):
-            configmap["metadata"]["namespace"] = deployment["metadata"]["namespace"]
+            metadata = cast(dict[str, Any], configmap["metadata"])
+            metadata["namespace"] = deployment["metadata"]["namespace"]
 
         return {
             "deployment": deployment,

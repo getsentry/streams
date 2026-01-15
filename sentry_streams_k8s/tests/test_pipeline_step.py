@@ -2,39 +2,39 @@ from typing import Any
 
 import pytest
 import yaml
+from jsonschema import ValidationError
 
 from sentry_streams_k8s.pipeline_step import (
     PipelineStep,
     build_container,
     build_labels,
-    build_name,
+    make_k8s_name,
 )
 
 
-# OK
-def test_build_name() -> None:
-    """Test that build_name generates valid Kubernetes names."""
-    # Test basic conversion
-    assert build_name("sbc.profiles", {}) == "sbc-profiles"
+def test_make_k8s_name() -> None:
+    """Test that make_k8s_name generates valid Kubernetes names."""
+    assert make_k8s_name("sbc.profiles") == "sbc-profiles"
 
-    # Test with underscores
-    assert build_name("my_module.sub_module", {}) == "my-module-sub-module"
+    assert make_k8s_name("my_module.sub_module") == "my-module-sub-module"
 
     # Test with mixed case (should be lowercase)
-    assert build_name("MyModule.SubModule", {}) == "mymodule-submodule"
+    assert make_k8s_name("MyModule.SubModule") == "mymodule-submodule"
 
     # Test with special characters (should be removed)
-    assert build_name("my@module.sub#module", {}) == "mymodule-submodule"
+    assert make_k8s_name("my@module.sub#module") == "mymodule-submodule"
 
 
-# Requires change after application fixed
 def test_build_labels() -> None:
     """Test that build_labels generates correct Kubernetes labels."""
-    labels = build_labels("sbc.profiles", {})
+    template_labels = {"existing-label": "value"}
+    labels = build_labels(template_labels, "profiles", "sbc.profiles")
 
-    assert labels["app"] == "sbc-profiles"
-    assert labels["component"] == "streaming-platform"
-    assert labels["pipeline-module"] == "sbc.profiles"
+    assert labels == {
+        "existing-label": "value",
+        "pipeline-app": "sbc-profiles",
+        "pipeline": "profiles",
+    }
 
 
 def test_build_container() -> None:
@@ -46,33 +46,47 @@ def test_build_container() -> None:
 
     container = build_container(
         container_template=container_template,
+        pipeline_name="profiles",
         pipeline_module="sbc.profiles",
         pipeline_config={},
+        image_name="my-image:latest",
         cpu_per_process=1000,
         memory_per_process=512,
+        segment_id=0,
     )
 
-    # Check that template fields are preserved
-    assert container["name"] == "streaming-consumer"
-    assert container["image"] == "my-image:latest"
-
-    # Check command and args
-    assert container["command"] == ["python", "-m", "sentry_streams.runner"]
-    assert "--adapter" in container["args"]
-    assert "rust_arroyo" in container["args"]
-    assert "--config" in container["args"]
-    assert "/etc/pipeline-config/pipeline_config.yaml" in container["args"]
-    assert "sbc.profiles" in container["args"]
-
-    # Check resources
-    assert container["resources"]["requests"]["cpu"] == "1000m"
-    assert container["resources"]["requests"]["memory"] == "512Mi"
-
-    # Check volume mount
-    assert len(container["volumeMounts"]) == 1
-    assert container["volumeMounts"][0]["name"] == "pipeline-config"
-    assert container["volumeMounts"][0]["mountPath"] == "/etc/pipeline-config"
-    assert container["volumeMounts"][0]["readOnly"] is True
+    assert container == {
+        "name": "streaming-consumer",
+        "image": "my-image:latest",
+        "command": ["python", "-m", "sentry_streams.runner"],
+        "args": [
+            "-n",
+            "profiles",
+            "--adapter",
+            "rust_arroyo",
+            "--segment-id",
+            "0",
+            "--config",
+            "/etc/pipeline-config/pipeline_config.yaml",
+            "sbc.profiles",
+        ],
+        "resources": {
+            "requests": {
+                "cpu": "1000m",
+                "memory": "512Mi",
+            },
+            "limits": {
+                "memory": "512Mi",
+            },
+        },
+        "volumeMounts": [
+            {
+                "name": "pipeline-config",
+                "mountPath": "/etc/pipeline-config",
+                "readOnly": True,
+            }
+        ],
+    }
 
 
 def test_build_container_preserves_existing_fields() -> None:
@@ -86,14 +100,18 @@ def test_build_container_preserves_existing_fields() -> None:
 
     container = build_container(
         container_template=container_template,
+        pipeline_name="profiles",
         pipeline_module="sbc.profiles",
         pipeline_config={},
+        image_name="my-image:latest",
         cpu_per_process=1000,
         memory_per_process=512,
+        segment_id=0,
     )
 
     # Check that existing fields are preserved
     assert container["env"] == [{"name": "MY_VAR", "value": "my_value"}]
+    assert container["image"] == "my-image:latest"
     assert len(container["volumeMounts"]) == 2
     assert container["volumeMounts"][0] == {"name": "existing-volume", "mountPath": "/existing"}
 
@@ -101,6 +119,8 @@ def test_build_container_preserves_existing_fields() -> None:
 def test_validate_context_valid() -> None:
     """Test that validate_context accepts valid context."""
     valid_context = {
+        "service_name": "my-service",
+        "pipeline_name": "my-pipeline",
         "deployment_template": {"kind": "Deployment"},
         "container_template": {"name": "container"},
         "pipeline_config": {
@@ -119,8 +139,10 @@ def test_validate_context_valid() -> None:
             },
         },
         "pipeline_module": "my_module",
+        "image_name": "my-image:latest",
         "cpu_per_process": 1000,
         "memory_per_process": 512,
+        "segment_id": 0,
     }
 
     # Should not raise any exception
@@ -129,15 +151,23 @@ def test_validate_context_valid() -> None:
 
 def test_validate_context_missing_fields() -> None:
     """Test that validate_context raises for missing fields."""
+    base_context = {
+        "service_name": "my-service",
+        "pipeline_name": "my-pipeline",
+        "segment_id": 0,
+        "pipeline_module": "my_module",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+    }
+
     # Missing deployment_template
     with pytest.raises(AssertionError, match="deployment_template"):
         PipelineStep.validate_context(
             {
+                **base_context,
                 "container_template": {},
                 "pipeline_config": {"env": {}, "pipeline": {"segments": []}},
-                "pipeline_module": "my_module",
-                "cpu_per_process": 1000,
-                "memory_per_process": 512,
             }
         )
 
@@ -145,11 +175,9 @@ def test_validate_context_missing_fields() -> None:
     with pytest.raises(AssertionError, match="container_template"):
         PipelineStep.validate_context(
             {
+                **base_context,
                 "deployment_template": {},
                 "pipeline_config": {"env": {}, "pipeline": {"segments": []}},
-                "pipeline_module": "my_module",
-                "cpu_per_process": 1000,
-                "memory_per_process": 512,
             }
         )
 
@@ -157,20 +185,44 @@ def test_validate_context_missing_fields() -> None:
     with pytest.raises(AssertionError, match="pipeline_config"):
         PipelineStep.validate_context(
             {
+                **base_context,
                 "deployment_template": {},
                 "container_template": {},
-                "pipeline_module": "my_module",
-                "cpu_per_process": 1000,
-                "memory_per_process": 512,
             }
         )
+
+
+def test_validate_context_invalid_pipeline_config() -> None:
+    """Test that validate_context validates pipeline_config schema."""
+    invalid_context = {
+        "service_name": "my-service",
+        "pipeline_name": "my-pipeline",
+        "deployment_template": {},
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                # Missing required 'segments' key
+            },
+        },
+        "pipeline_module": "my_module",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+    }
+
+    with pytest.raises(ValidationError):
+        PipelineStep.validate_context(invalid_context)
 
 
 def test_run_generates_complete_manifests() -> None:
     """Test that run() generates complete deployment and configmap manifests."""
     context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
         "deployment_template": {"kind": "Deployment"},
-        "container_template": {"name": "container", "image": "my-image:latest"},
+        "container_template": {"name": "container"},
         "pipeline_config": {
             "env": {},
             "pipeline": {
@@ -187,8 +239,10 @@ def test_run_generates_complete_manifests() -> None:
             },
         },
         "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
         "cpu_per_process": 1000,
         "memory_per_process": 512,
+        "segment_id": 0,
     }
 
     pipeline_step = PipelineStep()
@@ -203,6 +257,9 @@ def test_run_generates_complete_manifests() -> None:
     deployment = result["deployment"]
     configmap = result["configmap"]
 
+    # Validate deployment name
+    assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
+
     # Validate deployment has container
     containers = deployment["spec"]["template"]["spec"]["containers"]
     assert len(containers) == 1
@@ -214,14 +271,14 @@ def test_run_generates_complete_manifests() -> None:
     volumes = deployment["spec"]["template"]["spec"]["volumes"]
     assert len(volumes) == 1
     assert volumes[0]["name"] == "pipeline-config"
-    assert volumes[0]["configMap"]["name"] == "sbc-profiles-config"
+    assert volumes[0]["configMap"]["name"] == "my-service-pipeline-profiles"
 
     # Validate configmap structure
     assert configmap["apiVersion"] == "v1"
     assert configmap["kind"] == "ConfigMap"
-    assert configmap["metadata"]["name"] == "sbc-profiles-config"
-    assert configmap["metadata"]["labels"]["app"] == "sbc-profiles"
-    assert configmap["metadata"]["labels"]["component"] == "streaming-platform"
+    assert configmap["metadata"]["name"] == "my-service-pipeline-profiles"
+    assert configmap["metadata"]["labels"]["pipeline-app"] == "sbc-profiles"
+    assert configmap["metadata"]["labels"]["pipeline"] == "profiles"
 
     # Validate configmap data
     assert "pipeline_config.yaml" in configmap["data"]
@@ -233,6 +290,8 @@ def test_run_generates_complete_manifests() -> None:
 def test_run_preserves_deployment_template() -> None:
     """Test that run() preserves existing deployment_template fields."""
     context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
         "deployment_template": {
             "kind": "Deployment",
             "apiVersion": "apps/v1",
@@ -245,7 +304,7 @@ def test_run_preserves_deployment_template() -> None:
                 "selector": {"matchLabels": {"app": "my-app"}},
             },
         },
-        "container_template": {"name": "container", "image": "my-image:latest"},
+        "container_template": {"name": "container"},
         "pipeline_config": {
             "env": {},
             "pipeline": {
@@ -262,8 +321,10 @@ def test_run_preserves_deployment_template() -> None:
             },
         },
         "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
         "cpu_per_process": 1000,
         "memory_per_process": 512,
+        "segment_id": 0,
     }
 
     pipeline_step = PipelineStep()
