@@ -22,6 +22,8 @@ dev = [
     "pre-commit>=4.1.0",
     "pytest>=8.3.4",
     "responses>=0.25.6",
+    "types-jsonschema>=4.23.0",
+    "types-pyyaml>=6.0.2",
     "types-requests>=2.32.0",
 ]
 
@@ -29,7 +31,7 @@ dev = [
 where = ["."]
 
 [tool.setuptools.package-data]
-sentry_streams_k8s = ["py.typed"]
+sentry_streams_k8s = ["py.typed", "templates.yaml"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"

@@ -1,0 +1,9 @@
+# Base Kubernetes template for streaming platform containers
+# These templates provide sensible defaults that user templates can override
+
+name: streaming-consumer
+imagePullPolicy: IfNotPresent
+resources:
+  requests: {}
+  limits: {}
+volumeMounts: []

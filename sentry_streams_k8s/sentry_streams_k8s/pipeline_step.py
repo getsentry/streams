@@ -1,11 +1,21 @@
-import copy
 import re
+from importlib.resources import files
 from typing import Any, TypedDict, cast
 
 import yaml
 from libsentrykube.ext import ExternalMacro
 
+from sentry_streams_k8s.merge import deepmerge
 from sentry_streams_k8s.validation import validate_pipeline_config
+
+
+def load_base_template(file_name: str) -> dict[str, Any]:
+    """
+    Load base Kubernetes Deployment and Container templates from the
+    packaged templates directory.
+    """
+    template_content = files("sentry_streams_k8s").joinpath(f"templates/{file_name}.yaml")
+    return cast(dict[str, Any], yaml.safe_load(template_content.read_text()))
 
 
 def make_k8s_name(name: str) -> str:
@@ -28,29 +38,10 @@ def make_k8s_name(name: str) -> str:
     return name
 
 
-def build_labels(
-    template_labels: dict[str, str],
-    pipeline_name: str,
-    pipeline_module: str,
-) -> dict[str, str]:
-    """
-    Generate standard Kubernetes labels for the pipeline step.
-    The goal is to allow us to have standard labeling for streaming
-    resources.
-
-    """
-    return {
-        **template_labels,
-        "pipeline-app": make_k8s_name(pipeline_module),
-        "pipeline": make_k8s_name(pipeline_name),
-    }
-
-
 def build_container(
     container_template: dict[str, Any],
     pipeline_name: str,
     pipeline_module: str,
-    pipeline_config: dict[str, Any],
     image_name: str,
     cpu_per_process: int,
     memory_per_process: int,
@@ -59,62 +50,50 @@ def build_container(
     """
     Build a complete container specification for the pipeline step.
 
-    Args:
-        container_template: Base container structure to build upon
-        pipeline_name: Name of the pipeline
-        pipeline_module: The fully qualified Python module name
-        pipeline_config: The pipeline configuration (unused but kept for consistency)
-        image_name: Docker image name to use for the container
-        cpu_per_process: CPU millicores to request
-        memory_per_process: Memory in MiB to request
-        segment_id: Segment ID for the pipeline
-
-    Returns:
-        Complete container specification with command, resources, and volume mounts
+    The result is produced by:
+    1. taking the base container template from container.yaml
+    2. merging the user provided template. This is generally used to define
+       some standard parameters like securityContext
+    3. building the streaming pipeline specific parameters and merging them
+       onto the result of step 2.
     """
-    container = copy.deepcopy(container_template)
+    base_container = load_base_template("container")
+    container = deepmerge(base_container, container_template)
 
-    container["image"] = image_name
+    pipeline_additions = {
+        "name": "pipeline-consumer",
+        "image": image_name,
+        "command": ["python", "-m", "sentry_streams.runner"],
+        "args": [
+            "-n",
+            pipeline_name,
+            "--adapter",
+            "rust_arroyo",
+            "--segment-id",
+            str(segment_id),
+            "--config",
+            "/etc/pipeline-config/pipeline_config.yaml",
+            pipeline_module,
+        ],
+        "resources": {
+            "requests": {
+                "cpu": f"{cpu_per_process}m",
+                "memory": f"{memory_per_process}Mi",
+            },
+            "limits": {
+                "memory": f"{memory_per_process}Mi",
+            },
+        },
+        "volumeMounts": [
+            {
+                "name": "pipeline-config",
+                "mountPath": "/etc/pipeline-config",
+                "readOnly": True,
+            }
+        ],
+    }
 
-    container["command"] = ["python", "-m", "sentry_streams.runner"]
-
-    container["args"] = [
-        "-n",
-        pipeline_name,
-        "--adapter",
-        "rust_arroyo",
-        "--segment-id",
-        str(segment_id),
-        "--config",
-        "/etc/pipeline-config/pipeline_config.yaml",
-        pipeline_module,
-    ]
-
-    # Add resource requests
-    if "resources" not in container:
-        container["resources"] = {}
-    if "requests" not in container["resources"]:
-        container["resources"]["requests"] = {}
-    if "limits" not in container["resources"]:
-        container["resources"]["limits"] = {}
-
-    container["resources"]["requests"]["cpu"] = f"{cpu_per_process}m"
-    container["resources"]["requests"]["memory"] = f"{memory_per_process}Mi"
-    container["resources"]["limits"]["memory"] = f"{memory_per_process}Mi"
-
-    # Add volume mount for configmap
-    if "volumeMounts" not in container:
-        container["volumeMounts"] = []
-
-    container["volumeMounts"].append(
-        {
-            "name": "pipeline-config",
-            "mountPath": "/etc/pipeline-config",
-            "readOnly": True,
-        }
-    )
-
-    return container
+    return deepmerge(container, pipeline_additions)
 
 
 class PipelineStepContext(TypedDict):
@@ -184,9 +163,6 @@ class PipelineStep(ExternalMacro):
         Validates that the context contains all required fields and that
         the pipeline_config conforms to the expected schema.
 
-        Args:
-            context: The context dictionary to validate
-
         Raises:
             AssertionError: If required fields are missing
             jsonschema.ValidationError: If pipeline_config is invalid
@@ -205,87 +181,77 @@ class PipelineStep(ExternalMacro):
         # Validate pipeline_config structure using the same schema as runner.py
         validate_pipeline_config(context["pipeline_config"])
 
-    def run(self, context: PipelineStepContext) -> dict[str, Any]:
+    def run(self, context: dict[str, Any]) -> dict[str, Any]:
         """
         Generates Kubernetes deployment and configmap manifests.
 
-        Args:
-            context: The validated context containing all required configuration
+        Uses a two-stage merge approach:
+        1. Merge user deployment_template onto base deployment template
+        2. Merge pipeline-specific configuration onto the result
 
         Returns:
             Dictionary with 'deployment' and 'configmap' keys
         """
-        # Extract context
-        deployment_template = context["deployment_template"]
-        container_template = context["container_template"]
-        pipeline_config = context["pipeline_config"]
-        pipeline_module = context["pipeline_module"]
-        image_name = context["image_name"]
-        cpu_per_process = context["cpu_per_process"]
-        memory_per_process = context["memory_per_process"]
-        pipeline_name = context["pipeline_name"]
-        segment_id = context["segment_id"]
-        service_name = context["service_name"]
 
-        # Generate name and labels
-        deployment_name = make_k8s_name(f"{service_name}-pipeline-{pipeline_name}-{segment_id}")
+        ctx = cast(PipelineStepContext, context)
+        deployment_template = ctx["deployment_template"]
+        container_template = ctx["container_template"]
+        pipeline_config = ctx["pipeline_config"]
+        pipeline_module = ctx["pipeline_module"]
+        image_name = ctx["image_name"]
+        cpu_per_process = ctx["cpu_per_process"]
+        memory_per_process = ctx["memory_per_process"]
+        pipeline_name = ctx["pipeline_name"]
+        segment_id = ctx["segment_id"]
+        service_name = ctx["service_name"]
 
-        # Build container
+        # Create deployment
+
         container = build_container(
             container_template,
             pipeline_name,
             pipeline_module,
-            pipeline_config,
             image_name,
             cpu_per_process,
             memory_per_process,
             segment_id,
         )
 
-        # Deep copy deployment template to avoid mutations
-        deployment = copy.deepcopy(deployment_template)
+        base_deployment = load_base_template("deployment")
+        deployment = deepmerge(base_deployment, deployment_template)
 
-        # Update deployment metadata
-        if "metadata" not in deployment:
-            deployment["metadata"] = {}
-        deployment["metadata"]["name"] = deployment_name
-        if "labels" not in deployment["metadata"]:
-            deployment["metadata"]["labels"] = {}
-        labels = build_labels(deployment["metadata"]["labels"], pipeline_name, pipeline_module)
-        deployment["metadata"]["labels"].update(labels)
-
-        # Ensure spec.template.spec.containers exists
-        if "spec" not in deployment:
-            deployment["spec"] = {}
-        if "template" not in deployment["spec"]:
-            deployment["spec"]["template"] = {}
-        if "metadata" not in deployment["spec"]["template"]:
-            deployment["spec"]["template"]["metadata"] = {}
-        if "labels" not in deployment["spec"]["template"]["metadata"]:
-            deployment["spec"]["template"]["metadata"]["labels"] = {}
-        deployment["spec"]["template"]["metadata"]["labels"].update(labels)
-
-        if "spec" not in deployment["spec"]["template"]:
-            deployment["spec"]["template"]["spec"] = {}
-        if "containers" not in deployment["spec"]["template"]["spec"]:
-            deployment["spec"]["template"]["spec"]["containers"] = []
-
-        # Add container to deployment
-        deployment["spec"]["template"]["spec"]["containers"].append(container)
-
-        # Add configmap volume to deployment
-        if "volumes" not in deployment["spec"]["template"]["spec"]:
-            deployment["spec"]["template"]["spec"]["volumes"] = []
-
+        labels = {
+            "pipeline-app": make_k8s_name(pipeline_module),
+            "pipeline": make_k8s_name(pipeline_name),
+        }
         configmap_name = make_k8s_name(f"{service_name}-pipeline-{pipeline_name}")
-        deployment["spec"]["template"]["spec"]["volumes"].append(
-            {
-                "name": "pipeline-config",
-                "configMap": {
-                    "name": configmap_name,
+
+        pipeline_additions = {
+            "metadata": {
+                "name": make_k8s_name(f"{service_name}-pipeline-{pipeline_name}-{segment_id}"),
+                "labels": labels,
+            },
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "labels": labels,
+                    },
+                    "spec": {
+                        "containers": [container],
+                        "volumes": [
+                            {
+                                "name": "pipeline-config",
+                                "configMap": {
+                                    "name": configmap_name,
+                                },
+                            }
+                        ],
+                    },
                 },
-            }
-        )
+            },
+        }
+
+        deployment = deepmerge(deployment, pipeline_additions)
 
         # Create configmap
         configmap = {

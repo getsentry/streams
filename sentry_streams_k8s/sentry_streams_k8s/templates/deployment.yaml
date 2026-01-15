@@ -1,0 +1,19 @@
+# Base Kubernetes templates for streaming platform deployments
+# These templates provide sensible defaults that user templates can override
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels: {}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {}
+  template:
+    metadata:
+      labels: {}
+    spec:
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      containers: []
+      volumes: []

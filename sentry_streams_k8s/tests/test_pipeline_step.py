@@ -7,7 +7,7 @@ from jsonschema import ValidationError
 from sentry_streams_k8s.pipeline_step import (
     PipelineStep,
     build_container,
-    build_labels,
+    load_base_template,
     make_k8s_name,
 )
 
@@ -25,30 +25,22 @@ def test_make_k8s_name() -> None:
     assert make_k8s_name("my@module.sub#module") == "mymodule-submodule"
 
 
-def test_build_labels() -> None:
-    """Test that build_labels generates correct Kubernetes labels."""
-    template_labels = {"existing-label": "value"}
-    labels = build_labels(template_labels, "profiles", "sbc.profiles")
-
-    assert labels == {
-        "existing-label": "value",
-        "pipeline-app": "sbc-profiles",
-        "pipeline": "profiles",
-    }
-
-
 def test_build_container() -> None:
     """Test that build_container creates a complete container spec."""
     container_template = {
-        "name": "streaming-consumer",
-        "image": "my-image:latest",
+        "securityContext": {
+            "allowPrivilegeEscalation": False,
+            "readOnlyRootFilesystem": True,
+            "runAsGroup": 1000,
+            "runAsNonRoot": True,
+            "runAsUser": 1000,
+        },
     }
 
     container = build_container(
         container_template=container_template,
         pipeline_name="profiles",
         pipeline_module="sbc.profiles",
-        pipeline_config={},
         image_name="my-image:latest",
         cpu_per_process=1000,
         memory_per_process=512,
@@ -56,8 +48,9 @@ def test_build_container() -> None:
     )
 
     assert container == {
-        "name": "streaming-consumer",
+        "name": "pipeline-consumer",
         "image": "my-image:latest",
+        "imagePullPolicy": "IfNotPresent",  # From base template
         "command": ["python", "-m", "sentry_streams.runner"],
         "args": [
             "-n",
@@ -86,34 +79,14 @@ def test_build_container() -> None:
                 "readOnly": True,
             }
         ],
+        "securityContext": {
+            "allowPrivilegeEscalation": False,
+            "readOnlyRootFilesystem": True,
+            "runAsGroup": 1000,
+            "runAsNonRoot": True,
+            "runAsUser": 1000,
+        },
     }
-
-
-def test_build_container_preserves_existing_fields() -> None:
-    """Test that build_container preserves existing container fields."""
-    container_template = {
-        "name": "streaming-consumer",
-        "image": "my-image:latest",
-        "env": [{"name": "MY_VAR", "value": "my_value"}],
-        "volumeMounts": [{"name": "existing-volume", "mountPath": "/existing"}],
-    }
-
-    container = build_container(
-        container_template=container_template,
-        pipeline_name="profiles",
-        pipeline_module="sbc.profiles",
-        pipeline_config={},
-        image_name="my-image:latest",
-        cpu_per_process=1000,
-        memory_per_process=512,
-        segment_id=0,
-    )
-
-    # Check that existing fields are preserved
-    assert container["env"] == [{"name": "MY_VAR", "value": "my_value"}]
-    assert container["image"] == "my-image:latest"
-    assert len(container["volumeMounts"]) == 2
-    assert container["volumeMounts"][0] == {"name": "existing-volume", "mountPath": "/existing"}
 
 
 def test_validate_context_valid() -> None:
@@ -221,8 +194,19 @@ def test_run_generates_complete_manifests() -> None:
     context: dict[str, Any] = {
         "service_name": "my-service",
         "pipeline_name": "profiles",
-        "deployment_template": {"kind": "Deployment"},
-        "container_template": {"name": "container"},
+        "deployment_template": {
+            "template": {
+                "metadata": {
+                    "annotations": {
+                        "cluster-autoscaler.kubernetes.io/safe-to-evict": "true",
+                        "sidecar.istio.io/inject": "false",
+                    },
+                },
+            },
+        },
+        "container_template": {
+            "env": [{"name": "MY_VAR", "value": "my_value"}],
+        },
         "pipeline_config": {
             "env": {},
             "pipeline": {
@@ -246,7 +230,7 @@ def test_run_generates_complete_manifests() -> None:
     }
 
     pipeline_step = PipelineStep()
-    result = pipeline_step.run(context)  # type: ignore
+    result = pipeline_step.run(context)
 
     # Validate return structure
     assert "deployment" in result
@@ -259,13 +243,16 @@ def test_run_generates_complete_manifests() -> None:
 
     # Validate deployment name
     assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
+    assert deployment["metadata"]["labels"]["pipeline-app"] == "sbc-profiles"
+    assert deployment["template"]["metadata"]["annotations"]["sidecar.istio.io/inject"] == "false"
 
     # Validate deployment has container
     containers = deployment["spec"]["template"]["spec"]["containers"]
     assert len(containers) == 1
-    assert containers[0]["name"] == "container"
+    assert containers[0]["name"] == "pipeline-consumer"
     assert containers[0]["resources"]["requests"]["cpu"] == "1000m"
     assert containers[0]["resources"]["requests"]["memory"] == "512Mi"
+    assert containers[0]["env"] == [{"name": "MY_VAR", "value": "my_value"}]
 
     # Validate deployment has configmap volume
     volumes = deployment["spec"]["template"]["spec"]["volumes"]
@@ -287,24 +274,40 @@ def test_run_generates_complete_manifests() -> None:
     assert parsed_config == context["pipeline_config"]
 
 
-def test_run_preserves_deployment_template() -> None:
-    """Test that run() preserves existing deployment_template fields."""
+def test_load_base_templates() -> None:
+    """Test that load_base_template loads the template files correctly."""
+    # Test deployment template
+    deployment = load_base_template("deployment")
+    assert deployment["apiVersion"] == "apps/v1"
+    assert deployment["kind"] == "Deployment"
+    assert "metadata" in deployment
+    assert "spec" in deployment
+    assert deployment["spec"]["replicas"] == 1
+    assert deployment["spec"]["template"]["spec"]["restartPolicy"] == "Always"
+    assert deployment["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == 30
+    assert "containers" in deployment["spec"]["template"]["spec"]
+    assert "volumes" in deployment["spec"]["template"]["spec"]
+
+    # Test container template
+    container = load_base_template("container")
+    assert container["name"] == "streaming-consumer"
+    assert container["imagePullPolicy"] == "IfNotPresent"
+    assert "resources" in container
+    assert "volumeMounts" in container
+
+
+def test_run_with_base_templates() -> None:
+    """Test that run() merges user deployment template with base template."""
+    # User provides minimal deployment template
     context: dict[str, Any] = {
         "service_name": "my-service",
         "pipeline_name": "profiles",
         "deployment_template": {
-            "kind": "Deployment",
-            "apiVersion": "apps/v1",
             "metadata": {
                 "namespace": "my-namespace",
-                "annotations": {"my-annotation": "my-value"},
-            },
-            "spec": {
-                "replicas": 3,
-                "selector": {"matchLabels": {"app": "my-app"}},
             },
         },
-        "container_template": {"name": "container"},
+        "container_template": {},
         "pipeline_config": {
             "env": {},
             "pipeline": {
@@ -328,18 +331,153 @@ def test_run_preserves_deployment_template() -> None:
     }
 
     pipeline_step = PipelineStep()
-    result = pipeline_step.run(context)  # type: ignore
+    result = pipeline_step.run(context)
 
     deployment = result["deployment"]
 
-    # Check that existing fields are preserved
-    assert deployment["kind"] == "Deployment"
+    # Check that base template fields are present
     assert deployment["apiVersion"] == "apps/v1"
-    assert deployment["metadata"]["namespace"] == "my-namespace"
-    assert deployment["metadata"]["annotations"]["my-annotation"] == "my-value"
-    assert deployment["spec"]["replicas"] == 3
-    assert deployment["spec"]["selector"]["matchLabels"]["app"] == "my-app"
+    assert deployment["kind"] == "Deployment"
+    assert deployment["spec"]["replicas"] == 1
+    assert deployment["spec"]["template"]["spec"]["restartPolicy"] == "Always"
+    assert deployment["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == 30
 
-    # Check that configmap also has namespace
-    configmap = result["configmap"]
-    assert configmap["metadata"]["namespace"] == "my-namespace"
+    # Check that user template fields are preserved
+    assert deployment["metadata"]["namespace"] == "my-namespace"
+
+    # Check that pipeline additions are present
+    assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
+    assert "pipeline" in deployment["metadata"]["labels"]
+    assert len(deployment["spec"]["template"]["spec"]["containers"]) == 1
+    assert len(deployment["spec"]["template"]["spec"]["volumes"]) == 1
+
+
+def test_user_template_overrides_base() -> None:
+    """Test that user template values take precedence over base template values."""
+    context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {
+            # Override base replicas
+            "spec": {
+                "replicas": 5,
+                "template": {
+                    "spec": {
+                        # Override base terminationGracePeriodSeconds
+                        "terminationGracePeriodSeconds": 60,
+                    }
+                },
+            },
+        },
+        "container_template": {
+            # Override base imagePullPolicy
+            "imagePullPolicy": "Always",
+        },
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+    }
+
+    pipeline_step = PipelineStep()
+    result = pipeline_step.run(context)
+
+    deployment = result["deployment"]
+
+    # Check that user overrides took effect
+    assert deployment["spec"]["replicas"] == 5  # User override, not base 1
+    assert (
+        deployment["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == 60
+    )  # User override, not base 30
+
+    # Check container overrides
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    assert container["imagePullPolicy"] == "Always"  # User override, not base "IfNotPresent"
+
+
+def test_user_volumes_and_containers_preserved() -> None:
+    """Test that user-provided volumes and containers are preserved via list concatenation."""
+    context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {
+            "spec": {
+                "template": {
+                    "spec": {
+                        "containers": [
+                            {"name": "sidecar", "image": "sidecar:latest"},
+                        ],
+                        "volumes": [
+                            {"name": "user-volume", "emptyDir": {}},
+                        ],
+                    }
+                },
+            },
+        },
+        "container_template": {
+            "volumeMounts": [
+                {"name": "user-volume", "mountPath": "/user"},
+            ],
+        },
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+    }
+
+    pipeline_step = PipelineStep()
+    result = pipeline_step.run(context)
+
+    deployment = result["deployment"]
+
+    # Check that both user sidecar and pipeline container are present
+    containers = deployment["spec"]["template"]["spec"]["containers"]
+    assert len(containers) == 2
+    container_names = [c["name"] for c in containers]
+    assert "sidecar" in container_names
+    assert "pipeline-consumer" in container_names
+
+    # Check that both user volume and pipeline volume are present
+    volumes = deployment["spec"]["template"]["spec"]["volumes"]
+    assert len(volumes) == 2
+    volume_names = [v["name"] for v in volumes]
+    assert "user-volume" in volume_names
+    assert "pipeline-config" in volume_names
+
+    # Check that pipeline container has both user and pipeline volume mounts
+    pipeline_container = next(c for c in containers if c["name"] == "pipeline-consumer")
+    volume_mount_names = [vm["name"] for vm in pipeline_container["volumeMounts"]]
+    assert "user-volume" in volume_mount_names
+    assert "pipeline-config" in volume_mount_names
