@@ -13,8 +13,12 @@ The repository is organized into two main Python packages:
 - **`sentry_streams/`** - The core streaming platform implementation (hybrid Rust/Python package)
   - See [sentry_streams/AGENTS.md](./sentry_streams/AGENTS.md) for package-specific development instructions
 
+- **`sentry_streams_k8s/`** - Kubernetes integration and deployment automation for Sentry Streams (pure Python package)
+  - See [sentry_streams_k8s/AGENTS.md](./sentry_streams_k8s/AGENTS.md) for package-specific development instructions
+
 - **`sentry_flink/`** - Apache Flink adapter for the streaming platform (pure Python package)
   - See [sentry_flink/AGENTS.md](./sentry_flink/AGENTS.md) for package-specific development instructions
+
 
 ### Other Directories
 
@@ -30,10 +34,10 @@ The root Makefile provides commands for common development tasks across both pac
 ```bash
 make install-dev
 ```
-Installs development dependencies for both packages using `uv`. This will:
+Installs development dependencies for all packages using `uv`. This will:
 - Download required Flink JARs
 - Install `uv` package manager if not present
-- Set up virtual environments for both `sentry_streams` and `sentry_flink`
+- Set up virtual environments for `sentry_streams`, `sentry_flink`, and `sentry_streams_k8s`
 
 ```bash
 make install-pre-commit-hook
@@ -67,6 +71,11 @@ make tests-flink
 ```
 Runs tests for the `sentry_flink` package.
 
+```bash
+make tests-k8s
+```
+Runs tests for the `sentry_streams_k8s` package.
+
 ### Type Checking
 
 ```bash
@@ -83,6 +92,11 @@ Runs `mypy` type checking on both packages. This will:
 make build-streams
 ```
 Builds the `sentry_streams` wheel package.
+
+```bash
+make build-streams-k8s
+```
+Builds the `sentry_streams_k8s` wheel package.
 
 ```bash
 make docs

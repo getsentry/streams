@@ -66,7 +66,15 @@ When not using the root Makefile:
 .venv/bin/mypy --config-file mypy.ini --strict sentry_flink/
 ```
 
-**Note:** Using `make typecheck` from the repository root is recommended as it checks both packages.
+**Note:** Using `make typecheck` from the repository root is recommended as it checks all packages.
+
+### Type Checking Configuration
+
+Type checking is configured in `mypy.ini`:
+- Python version: 3.11
+- Strict mode enabled
+- Missing imports are flagged as errors
+- Untyped imports are allowed for PyFlink modules (`pyflink.*`)
 
 ## Running Flink Applications Locally
 
