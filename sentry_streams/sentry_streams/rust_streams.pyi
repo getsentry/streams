@@ -133,6 +133,8 @@ class RawMessage:
         headers: Sequence[Tuple[str, bytes]],
         timestamp: float,
         schema: str | None,
+        partition: int | None = None,
+        offset: int | None = None,
     ) -> None: ...
     @property
     def payload(self) -> bytes: ...
@@ -142,6 +144,10 @@ class RawMessage:
     def timestamp(self) -> float: ...
     @property
     def schema(self) -> str | None: ...
+    @property
+    def partition(self) -> int | None: ...
+    @property
+    def offset(self) -> int | None: ...
 
 class PyWatermark:
     def __init__(

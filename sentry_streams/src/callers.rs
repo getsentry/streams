@@ -1,6 +1,7 @@
 use pyo3::{import_exception, prelude::*, types::PyTuple};
 
 import_exception!(sentry_streams.pipeline.exception, InvalidMessageError);
+import_exception!(sentry_streams.pipeline.exception, DlqHandledError);
 
 pub type ApplyResult<T> = Result<T, ApplyError>;
 
@@ -8,6 +9,10 @@ pub type ApplyResult<T> = Result<T, ApplyError>;
 pub enum ApplyError {
     InvalidMessage,
     ApplyFailed,
+    /// The message was handled (e.g., sent to DLQ) and should be skipped.
+    /// This is similar to a filter returning false - the message is dropped
+    /// but processing continues normally.
+    Skipped,
 }
 
 pub fn try_apply_py<'py, N>(
@@ -22,6 +27,8 @@ where
         py_err.print(py);
         if py_err.is_instance(py, &py.get_type::<InvalidMessageError>()) {
             ApplyError::InvalidMessage
+        } else if py_err.is_instance(py, &py.get_type::<DlqHandledError>()) {
+            ApplyError::Skipped
         } else {
             ApplyError::ApplyFailed
         }
@@ -57,6 +64,25 @@ mod tests {
             assert!(matches!(
                 try_apply_py(py, &callable, ()),
                 Err(ApplyError::InvalidMessage)
+            ));
+        });
+    }
+
+    #[test]
+    fn test_apply_py_dlq_handled_err() {
+        crate::testutils::initialize_python();
+
+        import_py_dep("sentry_streams.pipeline.exception", "DlqHandledError");
+
+        traced_with_gil!(|py| {
+            let callable = make_lambda(
+                py,
+                c_str!("lambda: (_ for _ in ()).throw(DlqHandledError())"),
+            );
+
+            assert!(matches!(
+                try_apply_py(py, &callable, ()),
+                Err(ApplyError::Skipped)
             ));
         });
     }

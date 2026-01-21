@@ -26,7 +26,7 @@ use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::processing::strategies::ProcessingStrategyFactory;
 use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
-use sentry_arroyo::types::{Message, Topic};
+use sentry_arroyo::types::{InnerMessage, Message, Topic};
 use std::sync::Arc;
 
 /// The class that represent the consumer.
@@ -175,11 +175,23 @@ fn to_routed_value(
         Some(ts) => ts.timestamp_millis() as f64 / 1_000_000_000.0,
         None => 0.0, // Default to 0 if no timestamp is available
     };
+
+    // Extract partition and offset from the message for DLQ metadata
+    let (partition, offset) = match &message.inner_message {
+        InnerMessage::BrokerMessage(broker_msg) => (
+            Some(broker_msg.partition.index as i32),
+            Some(broker_msg.offset),
+        ),
+        InnerMessage::AnyMessage(_) => (None, None),
+    };
+
     let raw_message = RawMessage {
         payload: raw_payload.to_vec(),
         headers: transformed_headers,
         timestamp,
         schema: schema.clone(),
+        partition,
+        offset,
     };
     let py_msg = traced_with_gil!(|py| PyStreamingMessage::RawMessage {
         content: into_pyraw(py, raw_message).unwrap(),

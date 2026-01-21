@@ -19,6 +19,11 @@ from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MultiprocessingPool,
 )
 
+from sentry_streams.adapters.arroyo.dlq import (
+    DlqProducer,
+    create_dlq_producer,
+    wrap_step_with_dlq,
+)
 from sentry_streams.adapters.arroyo.multi_process_delegate import (
     MultiprocessDelegateFactory,
 )
@@ -29,6 +34,7 @@ from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps_chain import TransformChains
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.config_types import (
+    DlqPipelineConfig,
     KafkaConsumerConfig,
     KafkaProducerConfig,
     MultiProcessConfig,
@@ -200,12 +206,16 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self,
         steps_config: Mapping[str, StepConfig],
         metric_config: PyMetricConfig | None = None,
+        dlq_producer: DlqProducer | None = None,
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
         self.__metric_config = metric_config
+        self.__dlq_producer = dlq_producer
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
+        # Maps source name to (topic, consumer_group)
+        self.__source_info: MutableMapping[str, tuple[str, str]] = {}
 
     @classmethod
     def build(
@@ -215,12 +225,45 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     ) -> Self:
         steps_config = config["steps_config"]
 
-        return cls(steps_config, metric_config)
+        # Extract DLQ config and create producer
+        dlq_config: DlqPipelineConfig | None = config.get("dlq")
+        dlq_producer: DlqProducer | None = None
+
+        if dlq_config:
+            # Try to find fallback bootstrap servers from any source config
+            fallback_servers: Sequence[str] | None = None
+            for step_cfg in steps_config.values():
+                if "bootstrap_servers" in step_cfg:
+                    fallback_servers = step_cfg["bootstrap_servers"]  # type: ignore[assignment]
+                    break
+
+            dlq_producer = create_dlq_producer(dlq_config, fallback_servers)
+
+        return cls(steps_config, metric_config, dlq_producer)
 
     def __close_chain(self, stream: Route) -> None:
         if self.__chains.exists(stream):
             logger.info(f"Closing transformation chain: {stream} and adding to pipeline")
             self.__consumers[stream.source].add_step(finalize_chain(self.__chains, stream))
+
+    def __wrap_with_dlq(
+        self,
+        step_name: str,
+        func: Callable[[Message[Any]], Any],
+        stream: Route,
+    ) -> Callable[[Message[Any]], Any]:
+        """Wrap a step function with DLQ error handling if configured."""
+        step_config: Mapping[str, Any] = self.steps_config.get(step_name, {})
+        source_topic, consumer_group = self.__source_info.get(stream.source, ("", ""))
+
+        return wrap_step_with_dlq(
+            step_name=step_name,
+            func=func,
+            step_config=step_config,
+            dlq_producer=self.__dlq_producer,
+            consumer_group=consumer_group,
+            source_topic=source_topic,
+        )
 
     def get_consumer(self, source: str) -> ArroyoConsumer:
         return self.__consumers[source]
@@ -242,6 +285,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         source_name = step.name
         source_config = self.steps_config.get(source_name)
         assert source_config is not None, f"Config not provided for source {source_name}"
+
+        consumer_group = f"pipeline-{source_name}"
+        self.__source_info[source_name] = (step.stream_name, consumer_group)
 
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
@@ -340,9 +386,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         application_function = step.resolved_function
 
-        wrapped_function = functools.partial(
-            _metrics_wrapped_function, step.name, application_function
-        )
+        # Wrap with DLQ handling first, then metrics
+        dlq_wrapped = self.__wrap_with_dlq(step.name, application_function, stream)
+        wrapped_function = functools.partial(_metrics_wrapped_function, step.name, dlq_wrapped)
 
         step = replace(step, function=wrapped_function)
 
@@ -394,12 +440,15 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step.override_config(step_config)
         step.validate()
 
+        # Wrap with DLQ handling
+        dlq_wrapped = self.__wrap_with_dlq(step.name, step.resolved_function, stream)
+
         def filter_msg(msg: Message[Any]) -> bool:
             msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
             start_time = input_metrics(step.name, msg_size)
             has_error = output_size = None
             try:
-                result = step.resolved_function(msg)
+                result = dlq_wrapped(msg)
                 output_size = get_size(result)
                 return result
             except Exception as e:
@@ -479,12 +528,15 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         route = RustRoute(stream.source, stream.waypoints)
 
+        # Wrap the routing function with DLQ handling
+        dlq_wrapped_routing = self.__wrap_with_dlq(step.name, step.routing_function, stream)
+
         def routing_function(msg: Message[Any]) -> str:
             msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
             start_time = input_metrics(step.name, msg_size)
             has_error = None
             try:
-                waypoint = step.routing_function(msg)
+                waypoint = dlq_wrapped_routing(msg)
                 branch = step.routing_table[waypoint]
                 return branch.root.name
             except Exception as e:
