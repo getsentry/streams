@@ -1,11 +1,14 @@
 import importlib
 import json
 import logging
+import os
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Optional, cast
 
 import click
 import jsonschema
 import yaml
+from sentry_sdk import Client, Hub, push_scope
 
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
@@ -24,6 +27,14 @@ from sentry_streams.pipeline.pipeline import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _make_lib_hub() -> Optional[Hub]:
+    dsn = os.getenv("MY_LIB_SENTRY_DSN")
+    if not dsn:
+        return None
+    client = Client(dsn=dsn, traces_sample_rate=1.0)
+    return Hub(client)
 
 
 def iterate_edges(
@@ -177,6 +188,32 @@ def main(
     segment_id: Optional[str],
     application: str,
 ) -> None:
+    lib_hub = _make_lib_hub()
+    try:
+        lib_version = version("sentry_streams")
+    except PackageNotFoundError:
+        lib_version = "unknown"
+
+    if lib_hub:
+        # Run load_runtime and the runtime under our library hub
+        # so any captures inside library code go to our DSN only.
+        with lib_hub:
+            try:
+                runtime = load_runtime(name, log_level, adapter, config, segment_id, application)
+            except Exception:
+                # optional: capture startup exception to our lib hub explicitly
+                # (Hub is active so normal capture will use lib DSN)
+                raise
+
+            # You can push a scope with library-specific tags per run
+            with push_scope() as scope:
+                scope.set_tag("library_version", lib_version)
+                scope.set_tag("library", "sentry_streams")
+                runtime.run()
+    else:
+        # no lib DSN configured; just run normally (no global init)
+        runtime = load_runtime(name, log_level, adapter, config, segment_id, application)
+        runtime.run()
     runtime = load_runtime(name, log_level, adapter, config, segment_id, application)
     runtime.run()
 
