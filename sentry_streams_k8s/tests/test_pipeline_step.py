@@ -9,6 +9,7 @@ from sentry_streams_k8s.pipeline_step import (
     build_container,
     load_base_template,
     make_k8s_name,
+    parse_context,
 )
 
 
@@ -23,6 +24,86 @@ def test_make_k8s_name() -> None:
 
     # Test with special characters (should be removed)
     assert make_k8s_name("my@module.sub#module") == "mymodule-submodule"
+
+
+def test_parse_context() -> None:
+
+    context = {
+        "service_name": "my-service",
+        "pipeline_name": "my-pipeline",
+        "deployment_template": {"kind": "Deployment"},
+        "container_template": {"name": "container"},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "my_module",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+    }
+
+    parsed_context = parse_context(context)
+    assert parsed_context["service_name"] == "my-service"
+    assert parsed_context["pipeline_name"] == "my-pipeline"
+    assert parsed_context["deployment_template"] == {"kind": "Deployment"}
+    assert parsed_context["container_template"] == {"name": "container"}
+    assert parsed_context["pipeline_config"] == {
+        "env": {},
+        "pipeline": {
+            "segments": [
+                {
+                    "steps_config": {
+                        "myinput": {
+                            "starts_segment": True,
+                            "bootstrap_servers": ["127.0.0.1:9092"],
+                        }
+                    }
+                }
+            ]
+        },
+    }
+
+    assert parsed_context["pipeline_module"] == "my_module"
+    assert parsed_context["image_name"] == "my-image:latest"
+    assert parsed_context["cpu_per_process"] == 1000
+    assert parsed_context["memory_per_process"] == 512
+    assert parsed_context["segment_id"] == 0
+
+    context["deployment_template"] = yaml.dump(context["deployment_template"])
+    context["container_template"] = yaml.dump(context["container_template"])
+    context["pipeline_config"] = yaml.dump(context["pipeline_config"])
+
+    parsed_context = parse_context(context)
+    assert parsed_context["deployment_template"] == {"kind": "Deployment"}
+    assert parsed_context["container_template"] == {"name": "container"}
+    assert parsed_context["pipeline_config"] == {
+        "env": {},
+        "pipeline": {
+            "segments": [
+                {
+                    "steps_config": {
+                        "myinput": {
+                            "starts_segment": True,
+                            "bootstrap_servers": ["127.0.0.1:9092"],
+                        }
+                    }
+                }
+            ]
+        },
+    }
 
 
 def test_build_container() -> None:
@@ -195,14 +276,16 @@ def test_run_generates_complete_manifests() -> None:
         "service_name": "my-service",
         "pipeline_name": "profiles",
         "deployment_template": {
-            "template": {
-                "metadata": {
-                    "annotations": {
-                        "cluster-autoscaler.kubernetes.io/safe-to-evict": "true",
-                        "sidecar.istio.io/inject": "false",
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "cluster-autoscaler.kubernetes.io/safe-to-evict": "true",
+                            "sidecar.istio.io/inject": "false",
+                        },
                     },
                 },
-            },
+            }
         },
         "container_template": {
             "env": [{"name": "MY_VAR", "value": "my_value"}],
@@ -244,7 +327,14 @@ def test_run_generates_complete_manifests() -> None:
     # Validate deployment name
     assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
     assert deployment["metadata"]["labels"]["pipeline-app"] == "sbc-profiles"
-    assert deployment["template"]["metadata"]["annotations"]["sidecar.istio.io/inject"] == "false"
+    assert (
+        deployment["spec"]["template"]["metadata"]["annotations"]["sidecar.istio.io/inject"]
+        == "false"
+    )
+
+    selector = deployment["spec"]["selector"]
+    assert selector["matchLabels"]["pipeline-app"] == "sbc-profiles"
+    assert selector["matchLabels"]["pipeline"] == "profiles"
 
     # Validate deployment has container
     containers = deployment["spec"]["template"]["spec"]["containers"]
@@ -341,6 +431,8 @@ def test_run_with_base_templates() -> None:
     assert deployment["spec"]["replicas"] == 1
     assert deployment["spec"]["template"]["spec"]["restartPolicy"] == "Always"
     assert deployment["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == 30
+    assert deployment["spec"]["selector"]["matchLabels"]["pipeline-app"] == "sbc-profiles"
+    assert deployment["spec"]["selector"]["matchLabels"]["pipeline"] == "profiles"
 
     # Check that user template fields are preserved
     assert deployment["metadata"]["namespace"] == "my-namespace"

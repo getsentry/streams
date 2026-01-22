@@ -21,7 +21,4 @@ def validate_pipeline_config(config: dict[str, Any]) -> None:
     with config_template.open("r") as file:
         schema = json.load(file)
 
-        try:
-            jsonschema.validate(config, schema)
-        except Exception:
-            raise
+        jsonschema.validate(config, schema)

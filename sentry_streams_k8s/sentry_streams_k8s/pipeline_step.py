@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import json
 import re
 from importlib.resources import files
 from typing import Any, TypedDict, cast
@@ -22,7 +25,7 @@ def make_k8s_name(name: str) -> str:
     """
     Generate a valid Kubernetes name from a string.
 
-    CConverts the string to a valid RFC 1123 compliant name
+    Converts the string to a valid RFC 1123 compliant name
     by replacing dots and underscores with dashes and converting to lowercase.
 
     Examples:
@@ -94,6 +97,44 @@ def build_container(
     }
 
     return deepmerge(container, pipeline_additions)
+
+
+def parse_context(context: dict[str, Any]) -> PipelineStepContext:
+    """
+    Parse the context dictionary into a PipelineStepContext.
+    """
+
+    if isinstance(context["deployment_template"], str):
+        deployment_template_parsed: dict[str, Any] | None = yaml.safe_load(
+            context["deployment_template"]
+        )
+    else:
+        deployment_template_parsed = context["deployment_template"]
+
+    if isinstance(context["container_template"], str):
+        container_template_parsed: dict[str, Any] | None = yaml.safe_load(
+            context["container_template"]
+        )
+    else:
+        container_template_parsed = context["container_template"]
+
+    if isinstance(context["pipeline_config"], str):
+        pipeline_config_parsed: dict[str, Any] | None = yaml.safe_load(context["pipeline_config"])
+    else:
+        pipeline_config_parsed = context["pipeline_config"]
+
+    return {
+        "service_name": context["service_name"],
+        "pipeline_name": context["pipeline_name"],
+        "deployment_template": deployment_template_parsed or {},
+        "container_template": container_template_parsed or {},
+        "pipeline_config": pipeline_config_parsed or {},
+        "pipeline_module": context["pipeline_module"],
+        "image_name": context["image_name"],
+        "cpu_per_process": context["cpu_per_process"],
+        "memory_per_process": context["memory_per_process"],
+        "segment_id": context["segment_id"],
+    }
 
 
 class PipelineStepContext(TypedDict):
@@ -178,8 +219,7 @@ class PipelineStep(ExternalMacro):
         assert "pipeline_name" in context, "Missing pipeline_name"
         assert "service_name" in context, "Missing service_name"
 
-        # Validate pipeline_config structure using the same schema as runner.py
-        validate_pipeline_config(context["pipeline_config"])
+        validate_pipeline_config(parse_context(context)["pipeline_config"])
 
     def run(self, context: dict[str, Any]) -> dict[str, Any]:
         """
@@ -193,7 +233,7 @@ class PipelineStep(ExternalMacro):
             Dictionary with 'deployment' and 'configmap' keys
         """
 
-        ctx = cast(PipelineStepContext, context)
+        ctx = parse_context(context)
         deployment_template = ctx["deployment_template"]
         container_template = ctx["container_template"]
         pipeline_config = ctx["pipeline_config"]
@@ -232,6 +272,9 @@ class PipelineStep(ExternalMacro):
                 "labels": labels,
             },
             "spec": {
+                "selector": {
+                    "matchLabels": labels,
+                },
                 "template": {
                     "metadata": {
                         "labels": labels,
@@ -262,7 +305,7 @@ class PipelineStep(ExternalMacro):
                 "labels": labels,
             },
             "data": {
-                "pipeline_config.yaml": yaml.safe_dump(pipeline_config),
+                "pipeline_config.yaml": json.dumps(pipeline_config),
             },
         }
 
