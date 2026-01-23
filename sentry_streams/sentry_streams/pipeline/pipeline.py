@@ -292,11 +292,11 @@ class GCSSink(Sink[TIn]):
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
         """Override bucket and thread_count from deployment configuration."""
-        if loaded_config.get("bucket") is not None:
+        if loaded_config.get("bucket"):
             self.bucket = str(loaded_config.get("bucket"))
 
         parallelism_config = cast(Mapping[str, Any], loaded_config.get("parallelism", {}))
-        if parallelism_config.get("threads") is not None:
+        if "threads" in parallelism_config:
             self.thread_count = int(parallelism_config["threads"])
 
 
