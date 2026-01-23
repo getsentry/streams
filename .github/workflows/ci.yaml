@@ -7,6 +7,7 @@ on:
     branches:
       - main
       - release-sentry-streams/**
+      - release-sentry-streams-k8s/**
   pull_request:
 
 jobs:
@@ -30,6 +31,9 @@ jobs:
         run: make tests-flink
         env:
           FLINK_LIBS: ./flink_libs
+
+      - name: Run k8s test
+        run: make tests-k8s
 
   integration-tests:
     name: "Run integration tests"

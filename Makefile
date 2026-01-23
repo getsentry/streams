@@ -8,6 +8,7 @@ install-dev:
 	which uv || (curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh)
 	uv sync --project ./sentry_streams
 	PROJECT_ROOT=`pwd`/sentry_flink uv sync --project ./sentry_flink
+	PROJECT_ROOT=`pwd`/sentry_streams_k8s uv sync --project ./sentry_streams_k8s
 .PHONY: install-dev
 
 install-pre-commit-hook:
@@ -33,11 +34,16 @@ tests-flink:
 	./sentry_flink/.venv/bin/pytest -vv sentry_flink/tests
 .PHONY: tests-flink
 
+tests-k8s:
+	./sentry_streams_k8s/.venv/bin/pytest -vv sentry_streams_k8s/tests
+.PHONY: tests-k8s
+
 typecheck:
 	. ./sentry_streams/.venv/bin/activate && cd ./sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms/ && maturin develop
 	. ./sentry_streams/.venv/bin/activate && cd ./sentry_streams/tests/rust_test_functions/ && maturin develop
 	./sentry_streams/.venv/bin/mypy --config-file sentry_streams/mypy.ini --strict sentry_streams/
 	./sentry_flink/.venv/bin/mypy --config-file sentry_flink/mypy.ini --strict sentry_flink/sentry_flink/
+	./sentry_streams_k8s/.venv/bin/mypy --config-file sentry_streams_k8s/mypy.ini --strict sentry_streams_k8s/sentry_streams_k8s/
 .PHONY: typecheck
 
 build-streams:
@@ -45,6 +51,12 @@ build-streams:
 	cd sentry_streams && uv pip install build
 	cd sentry_streams && .venv/bin/python -m build --wheel
 .PHONY: build-streams
+
+build-streams-k8s:
+	cd sentry_streams_k8s && uv pip install wheel
+	cd sentry_streams_k8s && uv pip install build
+	cd sentry_streams_k8s && .venv/bin/python -m build --wheel
+.PHONY: build-streams-k8s
 
 docs:
 	uv sync --project ./sentry_streams --group docs
