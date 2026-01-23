@@ -22,6 +22,7 @@ from sentry_streams.pipeline.pipeline import (
     Pipeline,
     WithInput,
 )
+from sentry_streams.pipeline.validation import validate_all_branches_have_sinks
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,7 @@ def load_runtime(
 
     assigned_segment_id = int(segment_id) if segment_id else None
     pipeline: Pipeline[Any] = pipeline_globals["pipeline"]
+    validate_all_branches_have_sinks(pipeline)
     runtime: Any = load_adapter(adapter, environment_config, assigned_segment_id, metric_config)
     translator = RuntimeTranslator(runtime)
 

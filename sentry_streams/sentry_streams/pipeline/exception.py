@@ -8,3 +8,15 @@ class InvalidMessageError(Exception):
     """
 
     pass
+
+
+class InvalidPipelineError(Exception):
+    """
+    Exception raised when a pipeline is invalid or misconfigured.
+
+    This includes cases like:
+    - Pipeline branches that don't terminate with Sink steps
+    - Malformed pipeline graph structure
+    """
+
+    pass
