@@ -483,3 +483,44 @@ def test_devnullsink_override_config() -> None:
     assert sink.batch_time_ms == 5000.0
     assert sink.average_sleep_time_ms == 100.0
     assert sink.max_sleep_time_ms == 200.0
+
+
+def test_gcssink_override_config() -> None:
+    """Test that GCSSink config can be overridden from deployment config."""
+    from sentry_streams.pipeline.pipeline import GCSSink
+
+    sink = GCSSink[str](
+        name="gcs_sink",
+        bucket="default-bucket",
+        object_generator=lambda: "test-file.txt",
+        thread_count=1,
+    )
+
+    config = {
+        "bucket": "override-bucket",
+        "parallelism": {
+            "threads": 4,
+        },
+    }
+    sink.override_config(config)
+
+    assert sink.bucket == "override-bucket"
+    assert sink.thread_count == 4
+
+
+def test_gcssink_override_config_empty() -> None:
+    """Test that GCSSink handles empty config correctly."""
+    from sentry_streams.pipeline.pipeline import GCSSink
+
+    sink = GCSSink[str](
+        name="gcs_sink",
+        bucket="original-bucket",
+        object_generator=lambda: "test-file.txt",
+        thread_count=3,
+    )
+
+    config: Mapping[str, Any] = {}
+    sink.override_config(config)
+
+    assert sink.bucket == "original-bucket"
+    assert sink.thread_count == 3
