@@ -269,19 +269,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step.validate()
 
         if isinstance(step, GCSSink):
-            if sink_config := self.steps_config.get(step.name):
-                bucket = (
-                    step.bucket if not sink_config.get("bucket") else str(sink_config.get("bucket"))
-                )
-                parallelism_config = cast(Mapping[str, Any], sink_config.get("parallelism"))
-                if parallelism_config:
-                    thread_count = cast(int, parallelism_config["threads"])
-                else:
-                    thread_count = 1
-            else:
-                bucket = step.bucket
-                thread_count = 1
-
             # TODO: This object_generator is just used to get the name of the object that is being written.
             # Fix this to wrap the actual step instead of just the object_generator.
             # This will at least capture the number of calls to the step, if nothing else.
@@ -294,7 +281,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
             logger.info(f"Adding GCS sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, bucket, wrapped_generator, thread_count)
+                RuntimeOperator.GCSSink(route, step.bucket, wrapped_generator, step.thread_count)
             )
 
         elif isinstance(step, DevNullSink):
