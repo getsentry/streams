@@ -1,10 +1,13 @@
 import importlib
 import json
 import logging
-from typing import Any, Optional, cast
+import multiprocessing
+import sys
+from typing import Any, Mapping, Optional, cast
 
 import click
 import jsonschema
+import sentry_sdk
 import yaml
 
 from sentry_streams.adapters.loader import load_adapter
@@ -60,13 +63,36 @@ def iterate_edges(
                     step_streams[branch_name] = next_step_stream[branch_name]
 
 
+def _load_pipeline(application: str) -> Pipeline[Any]:
+    """
+    Worker function that runs in a separate process to load the pipeline.
+    Returns the Pipeline object directly, or raises an exception on error.
+
+    Customer code exceptions are allowed to propagate naturally so that the customer's
+    Sentry SDK (if initialized) can capture them.
+    """
+    import contextlib
+
+    pipeline_globals: dict[str, Any] = {}
+
+    with contextlib.redirect_stdout(sys.stderr):
+        with open(application, "r") as f:
+            exec(f.read(), pipeline_globals)
+
+    if "pipeline" not in pipeline_globals:
+        raise ValueError("Application file must define a 'pipeline' variable")
+
+    pipeline = cast(Pipeline[Any], pipeline_globals["pipeline"])
+    return pipeline
+
+
 def load_runtime(
     name: str,
     log_level: str,
     adapter: str,
-    config: str,
     segment_id: Optional[str],
     application: str,
+    environment_config: Mapping[str, Any],
 ) -> Any:
 
     logging.basicConfig(
@@ -74,23 +100,10 @@ def load_runtime(
         format="%(asctime)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-
-    pipeline_globals: dict[str, Any] = {}
-
-    with open(application) as f:
-        exec(f.read(), pipeline_globals)
-
-    with open(config, "r") as config_file:
-        environment_config = yaml.safe_load(config_file)
-
-    config_template = importlib.resources.files("sentry_streams") / "config.json"
-    with config_template.open("r") as file:
-        schema = json.load(file)
-
-        try:
-            jsonschema.validate(environment_config, schema)
-        except Exception:
-            raise
+    with multiprocessing.Pool(processes=1) as pool:
+        pipeline: Pipeline[Any] = pool.apply(_load_pipeline, (application,))
+        logger.info("Successfully loaded pipeline from subprocess")
+    validate_all_branches_have_sinks(pipeline)
 
     metric_config = environment_config.get("metrics", {})
     if metric_config.get("type") == "datadog":
@@ -114,14 +127,40 @@ def load_runtime(
         metric_config = {}
 
     assigned_segment_id = int(segment_id) if segment_id else None
-    pipeline: Pipeline[Any] = pipeline_globals["pipeline"]
-    validate_all_branches_have_sinks(pipeline)
     runtime: Any = load_adapter(adapter, environment_config, assigned_segment_id, metric_config)
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
 
     return runtime
+
+
+def run_with_config_file(
+    name: str,
+    log_level: str,
+    adapter: str,
+    config: str,
+    segment_id: Optional[str],
+    application: str,
+) -> None:
+    with open(config, "r") as f:
+        environment_config = yaml.safe_load(f)
+
+    config_template = importlib.resources.files("sentry_streams") / "config.json"
+    with config_template.open("r") as file:
+        schema = json.load(file)
+
+        try:
+            jsonschema.validate(environment_config, schema)
+        except Exception:
+            raise
+
+    streaming_platform_config = environment_config.get("streaming_platform_config")
+    if streaming_platform_config:
+        sentry_sdk.init(dsn=streaming_platform_config["dsn"])
+
+    runtime = load_runtime(name, log_level, adapter, segment_id, application, environment_config)
+    runtime.run()
 
 
 @click.command()
@@ -171,7 +210,7 @@ def load_runtime(
     "application",
     required=True,
 )
-def main(
+def run_with_cli(
     name: str,
     log_level: str,
     adapter: str,
@@ -179,9 +218,8 @@ def main(
     segment_id: Optional[str],
     application: str,
 ) -> None:
-    runtime = load_runtime(name, log_level, adapter, config, segment_id, application)
-    runtime.run()
+    run_with_config_file(name, log_level, adapter, config, segment_id, application)
 
 
 if __name__ == "__main__":
-    main()
+    run_with_cli()

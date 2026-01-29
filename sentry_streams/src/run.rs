@@ -37,24 +37,24 @@ pub struct RuntimeConfig {
     #[arg(short, long)]
     pub name: String,
 
-    /// The name of the Sentry Streams application
+    /// The logging level
     #[arg(short, long)]
     pub log_level: String,
 
-    /// The name of the adapter
+    /// The stream adapter to use (e.g., "arroyo", "rust_arroyo")
     #[arg(short, long)]
-    pub adapter_name: String,
+    pub adapter: String,
 
     /// The deployment config file path. Each config file currently corresponds to a specific pipeline.
     #[arg(short, long)]
-    pub config_file: OsString,
+    pub config: OsString,
 
     /// The segment id to run the pipeline for
     #[arg(short, long)]
     pub segment_id: Option<String>,
 
-    /// The name of the application
-    pub application_name: String,
+    /// The application file path
+    pub application: String,
 }
 
 pub fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
@@ -63,6 +63,19 @@ pub fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         runtime_config,
     } = args;
 
+    // Set PYTHONPATH environment variable if module_paths are provided
+    // This ensures subprocesses spawned via multiprocessing inherit the paths
+    if let Some(ref module_paths) = py_config.module_paths {
+        let separator = if cfg!(windows) { ";" } else { ":" };
+        let path_string = module_paths
+            .iter()
+            .filter_map(|p| p.to_str())
+            .collect::<Vec<_>>()
+            .join(separator);
+
+        std::env::set_var("PYTHONPATH", path_string);
+    }
+
     traced_with_gil!(|py| -> PyResult<()> {
         if let Some(exec_path) = py_config.exec_path {
             PyModule::import(py, "sys")?.setattr("executable", exec_path)?;
@@ -70,31 +83,21 @@ pub fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(module_paths) = py_config.module_paths {
             PyModule::import(py, "sys")?.setattr("path", module_paths)?;
         }
-        Ok(())
-    })?;
-
-    let runtime: Py<PyAny> = traced_with_gil!(|py| {
-        let runtime = py
-            .import("sentry_streams.runner")?
-            .getattr("load_runtime")?
+        py.import("sentry_streams.runner")?
+            .getattr("run_with_config_file")?
             .call1((
                 runtime_config.name,
                 runtime_config.log_level,
-                runtime_config.adapter_name,
-                runtime_config.config_file,
+                runtime_config.adapter,
+                runtime_config.config.to_str().ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err("Invalid config file path")
+                })?,
                 runtime_config.segment_id,
-                runtime_config.application_name,
-            ))?
-            .unbind();
-        PyResult::Ok(runtime)
-    })?;
+                runtime_config.application,
+            ))?;
 
-    traced_with_gil!(|py| {
-        runtime
-            .bind(py)
-            .call_method0("run")
-            .expect("Unable to start runtime");
-    });
+        Ok(())
+    })?;
 
     Ok(())
 }

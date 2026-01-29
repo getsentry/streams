@@ -13,6 +13,9 @@
                 },
                 "metrics": {
                     "$ref": "#/definitions/Metrics"
+                },
+                "streaming_platform_config": {
+                    "$ref": "#/definitions/StreamingPlatformConfig"
                 }
             }
         },
@@ -75,6 +78,15 @@
                     "required": ["type"]
                 }
             ]
+        },
+        "StreamingPlatformConfig": {
+            "type": "object",
+            "properties": {
+                "dsn": {
+                    "type": "string"
+                }
+            },
+            "required": ["dsn"]
         }
     }
 }

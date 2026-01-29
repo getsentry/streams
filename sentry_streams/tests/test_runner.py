@@ -8,7 +8,6 @@ from sentry_streams.adapters.stream_adapter import PipelineConfig, RuntimeTransl
 from sentry_streams.dummy.dummy_adapter import DummyAdapter
 from sentry_streams.pipeline import Filter, Map, branch, streaming_source
 from sentry_streams.pipeline.pipeline import (
-    DevNullSink,
     Pipeline,
 )
 from sentry_streams.runner import iterate_edges
@@ -28,20 +27,16 @@ def create_pipeline() -> Pipeline[bytes]:
             "router1",
             routing_function=lambda x: RouterBranch.BRANCH1.value,
             routing_table={
-                RouterBranch.BRANCH1.value: branch("map4_segment")
-                .apply(Map("map4", function=lambda x: x.payload))
-                .sink(DevNullSink("sink_map4")),
-                RouterBranch.BRANCH2.value: branch("map5_segment")
-                .apply(Map("map5", function=lambda x: x.payload))
-                .sink(DevNullSink("sink_map5")),
+                RouterBranch.BRANCH1.value: branch("map4_segment").apply(
+                    Map("map4", function=lambda x: x.payload)
+                ),
+                RouterBranch.BRANCH2.value: branch("map5_segment").apply(
+                    Map("map5", function=lambda x: x.payload)
+                ),
             },
         )
     )
-    broadcast_branch_2 = (
-        branch("branch2")
-        .apply(Map("map3", function=lambda x: x.payload))
-        .sink(DevNullSink("sink_map3"))
-    )
+    broadcast_branch_2 = branch("branch2").apply(Map("map3", function=lambda x: x.payload))
 
     test_pipeline = (
         streaming_source("source1", stream_name="foo")
@@ -72,11 +67,8 @@ def test_iterate_edges(create_pipeline: Pipeline[bytes]) -> None:
         "map2",
         "map3",
         "router1",
-        "sink_map3",
         "map4",
         "map5",
-        "sink_map4",
-        "sink_map5",
     ]
     assert runtime.branches == [
         "branch1",

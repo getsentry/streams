@@ -7,7 +7,6 @@ import pytest
 from sentry_streams.pipeline.pipeline import (
     Batch,
     ComplexStep,
-    DevNullSink,
     Filter,
     FlatMap,
     Map,
@@ -182,7 +181,7 @@ TOut = TypeVar("TOut")
 def test_register_steps(step: Union[Transform[Any, Any], ComplexStep[Any, Any]]) -> None:
     name = step.name
     pipeline = Pipeline(StreamSource(name="mysource", stream_name="name"))
-    pipeline.apply(step).sink(DevNullSink("test_sink"))
+    pipeline.apply(step)
     assert pipeline.steps[name] == step
     assert pipeline.steps[name].name == name
     assert pipeline.incoming_edges[name] == ["mysource"]
