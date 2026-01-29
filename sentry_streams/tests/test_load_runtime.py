@@ -80,8 +80,8 @@ def test_multiprocess_pipe_communication_success(
     app_file = temp_fixture_dir / "simple_app.py"
     app_file.write_text(
         """
-from sentry_streams.pipeline import streaming_source
-pipeline = streaming_source(name="test", stream_name="test-stream")
+from sentry_streams.pipeline import streaming_source, StreamSink
+pipeline = streaming_source(name="test", stream_name="test-stream").sink(StreamSink("test-sink", stream_name="test-output"))
 """
     )
 
