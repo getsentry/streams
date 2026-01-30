@@ -53,6 +53,7 @@ def test_parse_context() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 2,
     }
 
     parsed_context = parse_context(context)
@@ -81,6 +82,7 @@ def test_parse_context() -> None:
     assert parsed_context["cpu_per_process"] == 1000
     assert parsed_context["memory_per_process"] == 512
     assert parsed_context["segment_id"] == 0
+    assert parsed_context["replicas"] == 2
 
     context["deployment_template"] = yaml.dump(context["deployment_template"])
     context["container_template"] = yaml.dump(context["container_template"])
@@ -104,6 +106,7 @@ def test_parse_context() -> None:
             ]
         },
     }
+    assert parsed_context["replicas"] == 2
 
 
 def test_build_container() -> None:
@@ -197,6 +200,7 @@ def test_validate_context_valid() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 1,
     }
 
     # Should not raise any exception
@@ -310,6 +314,7 @@ def test_run_generates_complete_manifests() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 1,
     }
 
     pipeline_step = PipelineStep()
@@ -418,6 +423,7 @@ def test_run_with_base_templates() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 1,
     }
 
     pipeline_step = PipelineStep()
@@ -450,9 +456,7 @@ def test_user_template_overrides_base() -> None:
         "service_name": "my-service",
         "pipeline_name": "profiles",
         "deployment_template": {
-            # Override base replicas
             "spec": {
-                "replicas": 5,
                 "template": {
                     "spec": {
                         # Override base terminationGracePeriodSeconds
@@ -485,6 +489,7 @@ def test_user_template_overrides_base() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 5,
     }
 
     pipeline_step = PipelineStep()
@@ -492,8 +497,8 @@ def test_user_template_overrides_base() -> None:
 
     deployment = result["deployment"]
 
-    # Check that user overrides took effect
-    assert deployment["spec"]["replicas"] == 5  # User override, not base 1
+    # Check that replicas parameter took effect
+    assert deployment["spec"]["replicas"] == 5
     assert (
         deployment["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == 60
     )  # User override, not base 30
@@ -573,3 +578,73 @@ def test_user_volumes_and_containers_preserved() -> None:
     volume_mount_names = [vm["name"] for vm in pipeline_container["volumeMounts"]]
     assert "user-volume" in volume_mount_names
     assert "pipeline-config" in volume_mount_names
+
+
+def test_replicas_parameter() -> None:
+    """Test that replicas parameter correctly sets deployment replicas."""
+    # Test with default replicas (should be 1)
+    context_default: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {},
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+        # replicas not specified, should default to 1
+    }
+
+    pipeline_step = PipelineStep()
+    result_default = pipeline_step.run(context_default)
+    deployment_default = result_default["deployment"]
+    assert deployment_default["spec"]["replicas"] == 1
+
+    # Test with custom replicas value
+    context_custom: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {},
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+        "replicas": 5,
+    }
+
+    result_custom = pipeline_step.run(context_custom)
+    deployment_custom = result_custom["deployment"]
+    assert deployment_custom["spec"]["replicas"] == 5

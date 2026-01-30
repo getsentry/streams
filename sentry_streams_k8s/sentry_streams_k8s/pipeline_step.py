@@ -134,6 +134,7 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
         "cpu_per_process": context["cpu_per_process"],
         "memory_per_process": context["memory_per_process"],
         "segment_id": context["segment_id"],
+        "replicas": context.get("replicas", 1),
     }
 
 
@@ -150,6 +151,7 @@ class PipelineStepContext(TypedDict):
     cpu_per_process: int
     memory_per_process: int
     segment_id: int
+    replicas: int
 
 
 class PipelineStep(ExternalMacro):
@@ -192,6 +194,7 @@ class PipelineStep(ExternalMacro):
                 "segment_id": 0,
                 "cpu_per_process": 1000,
                 "memory_per_process": 512,
+                "replicas": 3,
             }
         )
     }}
@@ -244,6 +247,7 @@ class PipelineStep(ExternalMacro):
         pipeline_name = ctx["pipeline_name"]
         segment_id = ctx["segment_id"]
         service_name = ctx["service_name"]
+        replicas = ctx["replicas"]
 
         # Create deployment
 
@@ -272,6 +276,7 @@ class PipelineStep(ExternalMacro):
                 "labels": labels,
             },
             "spec": {
+                "replicas": replicas,
                 "selector": {
                     "matchLabels": labels,
                 },
