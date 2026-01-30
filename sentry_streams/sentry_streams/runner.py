@@ -100,9 +100,12 @@ def load_runtime(
         format="%(asctime)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    with multiprocessing.Pool(processes=1) as pool:
-        pipeline: Pipeline[Any] = pool.apply(_load_pipeline, (application,))
-        logger.info("Successfully loaded pipeline from subprocess")
+    try:
+        with multiprocessing.Pool(processes=1) as pool:
+            pipeline: Pipeline[Any] = pool.apply(_load_pipeline, (application,))
+            logger.info("Successfully loaded pipeline from subprocess")
+    except Exception:
+        raise
     validate_all_branches_have_sinks(pipeline)
 
     metric_config = environment_config.get("metrics", {})

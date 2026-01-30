@@ -6,7 +6,7 @@ import sentry_sdk
 from sentry_sdk.transport import Transport
 
 from sentry_streams.pipeline.pipeline import Pipeline
-from sentry_streams.runner import load_runtime
+from sentry_streams.runner import load_runtime, run_with_config_file
 
 
 class CaptureTransport(Transport):
@@ -120,29 +120,66 @@ def test_subprocess_sends_error_status_with_details(
     platform_transport: CaptureTransport, temp_fixture_dir: Any
 ) -> None:
     """Test that detailed error messages are captured when subprocess sends status='error'."""
-    sentry_sdk.init(
-        dsn="https://platform@example.com/456",
-        transport=platform_transport,
-    )
 
-    # Create an app file that doesn't define 'pipeline' variable
     app_file = temp_fixture_dir / "missing_pipeline.py"
     app_file.write_text(
         """
+import sentry_sdk
+
+# Initialize customer's Sentry SDK in the subprocess
+sentry_sdk.init(dsn="https://customer@example.com/123")
+
 from sentry_streams.pipeline import streaming_source
 # Intentionally not defining 'pipeline' variable
 my_pipeline = streaming_source(name="test", stream_name="test-stream")
 """
     )
 
-    with pytest.raises(ValueError) as exc_info:
-        load_runtime(
-            name="test",
-            log_level="INFO",
-            adapter="arroyo",
-            segment_id=None,
-            application=str(app_file),
-            environment_config={"metrics": {"type": "dummy"}},
-        )
+    config_file = temp_fixture_dir / "config.yaml"
+    config_file.write_text(
+        """
+streaming_platform_config:
+  dsn: "https://platform@example.com/456"
+metrics:
+  type: dummy
+"""
+    )
 
-    assert "Application file must define a 'pipeline' variable" in str(exc_info.value)
+    # Patch sentry_sdk.init to use our custom transport
+    original_init = sentry_sdk.init
+    error_raised = False
+
+    def custom_init(**kwargs: Any) -> None:
+        kwargs["transport"] = platform_transport
+        original_init(**kwargs)
+
+    with patch("sentry_streams.runner.sentry_sdk.init", side_effect=custom_init):
+        try:
+            run_with_config_file(
+                name="test",
+                log_level="INFO",
+                adapter="arroyo",
+                config=str(config_file),
+                segment_id=None,
+                application=str(app_file),
+            )
+        except ValueError as e:
+            error_raised = True
+            sentry_sdk.capture_exception(e)
+            sentry_sdk.flush()
+            assert "Application file must define a 'pipeline' variable" in str(e)
+
+    assert error_raised, "Expected intentiaonl ValueError to be raised"
+
+    assert len(platform_transport.envelopes) > 0, "Error should be captured in platform_transport"
+
+    envelope = platform_transport.envelopes[0]
+    items = envelope.items
+    assert len(items) > 0, "Envelope should contain at least one item"
+
+    event_item = items[0]
+    error_event = event_item.payload.json
+
+    assert "exception" in error_event
+    error_message = str(error_event["exception"]["values"][0]["value"])
+    assert "Application file must define a 'pipeline' variable" in error_message
