@@ -158,9 +158,9 @@ def run_with_config_file(
         except Exception:
             raise
 
-    streaming_platform_config = environment_config.get("streaming_platform_config")
-    if streaming_platform_config:
-        sentry_sdk.init(dsn=streaming_platform_config["dsn"])
+    sentry_sdk_config = environment_config.get("sentry_sdk_config")
+    if sentry_sdk_config:
+        sentry_sdk.init(dsn=sentry_sdk_config["dsn"])
 
     runtime = load_runtime(name, log_level, adapter, segment_id, application, environment_config)
     runtime.run()

@@ -138,7 +138,7 @@ my_pipeline = streaming_source(name="test", stream_name="test-stream")
     config_file = temp_fixture_dir / "config.yaml"
     config_file.write_text(
         """
-streaming_platform_config:
+sentry_sdk_config:
   dsn: "https://platform@example.com/456"
 metrics:
   type: dummy
