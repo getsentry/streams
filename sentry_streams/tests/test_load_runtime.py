@@ -1,4 +1,4 @@
-from typing import Any, Generator, List, Optional
+from typing import Any, List, Optional
 from unittest.mock import patch
 
 import pytest
@@ -33,31 +33,6 @@ def temp_fixture_dir(tmp_path: Any) -> Any:
     fixture_dir = tmp_path / "fixtures"
     fixture_dir.mkdir()
     return fixture_dir
-
-
-@pytest.fixture(autouse=True)
-def reset_metrics_backend() -> Generator[None, None, None]:
-    """Reset the global metrics backend between tests."""
-    from sentry_streams import metrics
-
-    try:
-        from arroyo.utils import metrics as arroyo_metrics
-
-        has_arroyo = True
-    except ImportError:
-        has_arroyo = False
-
-    # Reset before each test
-    metrics.metrics._metrics_backend = None
-    if has_arroyo:
-        arroyo_metrics._metrics_backend = None
-
-    yield
-
-    # Reset to None after each test
-    metrics.metrics._metrics_backend = None
-    if has_arroyo:
-        arroyo_metrics._metrics_backend = None
 
 
 @pytest.fixture
