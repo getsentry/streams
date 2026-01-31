@@ -138,14 +138,15 @@ def load_runtime(
     return runtime
 
 
-def run_with_config_file(
+def load_runtime_with_config_file(
     name: str,
     log_level: str,
     adapter: str,
     config: str,
     segment_id: Optional[str],
     application: str,
-) -> None:
+) -> Any:
+    """Load runtime from a config file path, returning the runtime object without calling run()."""
     with open(config, "r") as f:
         environment_config = yaml.safe_load(f)
 
@@ -162,7 +163,29 @@ def run_with_config_file(
     if sentry_sdk_config:
         sentry_sdk.init(dsn=sentry_sdk_config["dsn"])
 
-    runtime = load_runtime(name, log_level, adapter, segment_id, application, environment_config)
+    return load_runtime(name, log_level, adapter, segment_id, application, environment_config)
+
+
+def run_with_config_file(
+    name: str,
+    log_level: str,
+    adapter: str,
+    config: str,
+    segment_id: Optional[str],
+    application: str,
+) -> None:
+    """
+    Load runtime from config file and run it. Used by the Python CLI.
+
+    NOTE: This function is separate from load_runtime_with_config_file() for a reason:
+    - load_runtime_with_config_file() returns the runtime WITHOUT calling .run()
+    - This allows the Rust CLI (run.rs) to call .run() itself
+    - Do NOT combine these functions - it would break the Rust CLI which needs to
+      control when .run() is called
+    """
+    runtime = load_runtime_with_config_file(
+        name, log_level, adapter, config, segment_id, application
+    )
     runtime.run()
 
 
@@ -213,7 +236,7 @@ def run_with_config_file(
     "application",
     required=True,
 )
-def run_with_cli(
+def main(
     name: str,
     log_level: str,
     adapter: str,
@@ -225,4 +248,4 @@ def run_with_cli(
 
 
 if __name__ == "__main__":
-    run_with_cli()
+    main()

@@ -70,7 +70,7 @@ pub fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let runtime: Py<PyAny> = traced_with_gil!(|py| {
         let runtime = py
             .import("sentry_streams.runner")?
-            .getattr("run_with_config_file")?
+            .getattr("load_runtime_with_config_file")?
             .call1((
                 runtime_config.name,
                 runtime_config.log_level,

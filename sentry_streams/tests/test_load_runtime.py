@@ -33,13 +33,6 @@ class CaptureTransport(Transport):
 
 
 @pytest.fixture
-def temp_fixture_dir(tmp_path: Any) -> Any:
-    fixture_dir = tmp_path / "fixtures"
-    fixture_dir.mkdir()
-    return fixture_dir
-
-
-@pytest.fixture
 def platform_transport() -> CaptureTransport:
     transport = CaptureTransport()
     # Clear any existing Sentry client
@@ -47,9 +40,7 @@ def platform_transport() -> CaptureTransport:
     return transport
 
 
-def test_multiprocess_pipe_communication_success(
-    platform_transport: CaptureTransport, temp_fixture_dir: Any
-) -> None:
+def test_multiprocess_pipe_communication_success(platform_transport: CaptureTransport) -> None:
     sentry_sdk.init(
         dsn="https://platform@example.com/456",
         transport=platform_transport,
@@ -77,22 +68,11 @@ def test_multiprocess_pipe_communication_success(
     assert "test-sink" in runtime.input_streams
 
 
-def test_subprocess_sends_error_status_with_details(
-    platform_transport: CaptureTransport, temp_fixture_dir: Any
-) -> None:
+def test_subprocess_sends_error_status_with_details(platform_transport: CaptureTransport) -> None:
     """Test that detailed error messages are captured when subprocess sends status='error'."""
 
     app_file = FIXTURES_DIR / "missing_pipeline.py"
-
-    config_file = temp_fixture_dir / "config.yaml"
-    config_file.write_text(
-        """
-sentry_sdk_config:
-  dsn: "https://platform@example.com/456"
-metrics:
-  type: dummy
-"""
-    )
+    config_file = FIXTURES_DIR / "test_config.yaml"
 
     # Patch sentry_sdk.init to use our custom transport
     original_init = sentry_sdk.init
