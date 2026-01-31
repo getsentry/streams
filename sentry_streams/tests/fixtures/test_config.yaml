@@ -1,0 +1,4 @@
+sentry_sdk_config:
+  dsn: "https://platform@example.com/456"
+metrics:
+  type: dummy
