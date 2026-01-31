@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Generator, List, Optional
 from unittest.mock import patch
 
 import pytest
@@ -38,6 +38,24 @@ def platform_transport() -> CaptureTransport:
     # Clear any existing Sentry client
     sentry_sdk.get_client().close()
     return transport
+
+
+@pytest.fixture(autouse=True)
+def reset_metrics_backend() -> Generator:
+    """Reset metrics backend before and after each test.
+
+    This fixture prevents "Metrics is already set" errors when tests run in CI.
+    The metrics backend uses a global module-level variable that persists across
+    tests in the same pytest session. Since load_runtime() calls configure_metrics(),
+    we need to reset the global state to ensure test isolation.
+    """
+    import sentry_streams.metrics.metrics
+
+    # Reset before test runs (setup)
+    sentry_streams.metrics.metrics._metrics_backend = None
+    yield
+    # Reset after test completes (teardown)
+    sentry_streams.metrics.metrics._metrics_backend = None
 
 
 def test_multiprocess_pipe_communication_success(platform_transport: CaptureTransport) -> None:
