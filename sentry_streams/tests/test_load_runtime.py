@@ -41,7 +41,7 @@ def platform_transport() -> CaptureTransport:
 
 
 @pytest.fixture(autouse=True)
-def reset_metrics_backend() -> Generator:
+def reset_metrics_backend() -> Generator[None, None, None]:
     """Reset metrics backend before and after each test.
 
     This fixture prevents "Metrics is already set" errors when tests run in CI.
