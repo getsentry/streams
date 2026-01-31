@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, List, Optional
 from unittest.mock import patch
 
@@ -6,6 +7,9 @@ import sentry_sdk
 from sentry_sdk.transport import Transport
 
 from sentry_streams.runner import load_runtime, run_with_config_file
+
+# Path to fixtures directory
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 class CaptureTransport(Transport):
@@ -51,14 +55,7 @@ def test_multiprocess_pipe_communication_success(
         transport=platform_transport,
     )
 
-    app_file = temp_fixture_dir / "simple_app.py"
-    app_file.write_text(
-        """
-from sentry_streams.pipeline import streaming_source
-from sentry_streams.pipeline.pipeline import DevNullSink
-pipeline = streaming_source(name="test", stream_name="test-stream").sink(DevNullSink("test-sink"))
-"""
-    )
+    app_file = FIXTURES_DIR / "simple_app.py"
 
     runtime = load_runtime(
         name="test",
@@ -85,19 +82,7 @@ def test_subprocess_sends_error_status_with_details(
 ) -> None:
     """Test that detailed error messages are captured when subprocess sends status='error'."""
 
-    app_file = temp_fixture_dir / "missing_pipeline.py"
-    app_file.write_text(
-        """
-import sentry_sdk
-
-# Initialize customer's Sentry SDK in the subprocess
-sentry_sdk.init(dsn="https://customer@example.com/123")
-
-from sentry_streams.pipeline import streaming_source
-# Intentionally not defining 'pipeline' variable
-my_pipeline = streaming_source(name="test", stream_name="test-stream")
-"""
-    )
+    app_file = FIXTURES_DIR / "missing_pipeline.py"
 
     config_file = temp_fixture_dir / "config.yaml"
     config_file.write_text(
