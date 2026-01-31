@@ -49,13 +49,17 @@ def reset_metrics_backend() -> Generator:
     tests in the same pytest session. Since load_runtime() calls configure_metrics(),
     we need to reset the global state to ensure test isolation.
     """
+    import arroyo.utils.metrics
+
     import sentry_streams.metrics.metrics
 
     # Reset before test runs (setup)
     sentry_streams.metrics.metrics._metrics_backend = None
+    arroyo.utils.metrics._metrics_backend = None
     yield
     # Reset after test completes (teardown)
     sentry_streams.metrics.metrics._metrics_backend = None
+    arroyo.utils.metrics._metrics_backend = None
 
 
 def test_multiprocess_pipe_communication_success(platform_transport: CaptureTransport) -> None:
