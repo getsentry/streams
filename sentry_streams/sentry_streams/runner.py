@@ -100,12 +100,9 @@ def load_runtime(
         format="%(asctime)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    try:
-        with multiprocessing.Pool(processes=1) as pool:
-            pipeline: Pipeline[Any] = pool.apply(_load_pipeline, (application,))
-            logger.info("Successfully loaded pipeline from subprocess")
-    except Exception:
-        raise
+    with multiprocessing.Pool(processes=1) as pool:
+        pipeline: Pipeline[Any] = pool.apply(_load_pipeline, (application,))
+
     validate_all_branches_have_sinks(pipeline)
 
     metric_config = environment_config.get("metrics", {})
@@ -154,10 +151,7 @@ def load_runtime_with_config_file(
     with config_template.open("r") as file:
         schema = json.load(file)
 
-        try:
-            jsonschema.validate(environment_config, schema)
-        except Exception:
-            raise
+        jsonschema.validate(environment_config, schema)
 
     sentry_sdk_config = environment_config.get("sentry_sdk_config")
     if sentry_sdk_config:
