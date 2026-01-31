@@ -573,3 +573,221 @@ def test_user_volumes_and_containers_preserved() -> None:
     volume_mount_names = [vm["name"] for vm in pipeline_container["volumeMounts"]]
     assert "user-volume" in volume_mount_names
     assert "pipeline-config" in volume_mount_names
+
+
+def test_get_multiprocess_config_detects_processes() -> None:
+    """Test that get_multiprocess_config() correctly extracts process count."""
+    from sentry_streams_k8s.pipeline_step import get_multiprocess_config
+
+    pipeline_config = {
+        "env": {},
+        "pipeline": {
+            "segments": [
+                {
+                    "steps_config": {
+                        "myinput": {
+                            "starts_segment": True,
+                            "bootstrap_servers": ["127.0.0.1:9092"],
+                            "parallelism": 1,
+                        },
+                        "parser": {
+                            "starts_segment": True,
+                            "parallelism": {
+                                "multi_process": {
+                                    "processes": 4,
+                                    "batch_size": 1000,
+                                    "batch_time": 0.2,
+                                }
+                            },
+                        },
+                        "mysink": {
+                            "starts_segment": True,
+                            "bootstrap_servers": ["127.0.0.1:9092"],
+                        },
+                    }
+                }
+            ]
+        },
+    }
+
+    process_count, segments = get_multiprocess_config(pipeline_config)
+    assert process_count == 4
+    assert segments == [0]
+
+
+def test_build_container_with_multiprocessing() -> None:
+    """Test that build_container() correctly handles multiprocessing configuration."""
+    container_template: dict[str, Any] = {}
+
+    container = build_container(
+        container_template=container_template,
+        pipeline_name="profiles",
+        pipeline_module="sbc.profiles",
+        image_name="my-image:latest",
+        cpu_per_process=1000,
+        memory_per_process=512,
+        segment_id=0,
+        process_count=4,
+    )
+
+    # Check resources are multiplied by process count
+    assert container["resources"]["requests"]["cpu"] == "4000m"
+    assert container["resources"]["requests"]["memory"] == "2048Mi"
+    assert container["resources"]["limits"]["memory"] == "2048Mi"
+
+    # Check shared memory volume is added
+    volume_mount_names = [vm["name"] for vm in container["volumeMounts"]]
+    assert "pipeline-config" in volume_mount_names
+    assert "dshm" in volume_mount_names
+
+    dshm_mount = next(vm for vm in container["volumeMounts"] if vm["name"] == "dshm")
+    assert dshm_mount["mountPath"] == "/dev/shm"
+
+
+def test_build_container_without_multiprocessing() -> None:
+    """Test that build_container() works normally when multiprocessing is not configured."""
+    container_template: dict[str, Any] = {}
+
+    container = build_container(
+        container_template=container_template,
+        pipeline_name="profiles",
+        pipeline_module="sbc.profiles",
+        image_name="my-image:latest",
+        cpu_per_process=1000,
+        memory_per_process=512,
+        segment_id=0,
+        process_count=None,
+    )
+
+    # Check resources are NOT multiplied
+    assert container["resources"]["requests"]["cpu"] == "1000m"
+    assert container["resources"]["requests"]["memory"] == "512Mi"
+    assert container["resources"]["limits"]["memory"] == "512Mi"
+
+    volume_mount_names = [vm["name"] for vm in container["volumeMounts"]]
+    assert "pipeline-config" in volume_mount_names
+    assert "dshm" not in volume_mount_names
+
+
+def test_run_with_multiprocessing() -> None:
+    """Test complete deployment generation with multiprocessing configuration."""
+    context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {},
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            },
+                            "parser": {
+                                "starts_segment": True,
+                                "parallelism": {
+                                    "multi_process": {
+                                        "processes": 4,
+                                        "batch_size": 1000,
+                                        "batch_time": 0.2,
+                                    }
+                                },
+                            },
+                            "mysink": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            },
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+    }
+
+    pipeline_step = PipelineStep()
+    result = pipeline_step.run(context)
+
+    deployment = result["deployment"]
+
+    # Check resources are multiplied
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    assert container["resources"]["requests"]["cpu"] == "4000m"
+    assert container["resources"]["requests"]["memory"] == "2048Mi"
+
+    # Check shared memory volume is in deployment
+    volumes = deployment["spec"]["template"]["spec"]["volumes"]
+    volume_names = [v["name"] for v in volumes]
+    assert "pipeline-config" in volume_names
+    assert "dshm" in volume_names
+
+    dshm_volume = next(v for v in volumes if v["name"] == "dshm")
+    assert dshm_volume["emptyDir"]["medium"] == "Memory"
+
+    volume_mount_names = [vm["name"] for vm in container["volumeMounts"]]
+    assert "dshm" in volume_mount_names
+
+
+def test_run_rejects_multiple_segments_with_parallelism() -> None:
+    """Test that run() rejects configuration with parallelism in multiple segments."""
+    context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {},
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "step1": {
+                                "starts_segment": True,
+                                "parallelism": {
+                                    "multi_process": {
+                                        "processes": 4,
+                                        "batch_size": 1000,
+                                        "batch_time": 0.2,
+                                    }
+                                },
+                            }
+                        }
+                    },
+                    {
+                        "steps_config": {
+                            "step2": {
+                                "starts_segment": True,
+                                "parallelism": {
+                                    "multi_process": {
+                                        "processes": 2,
+                                        "batch_size": 500,
+                                        "batch_time": 0.1,
+                                    }
+                                },
+                            }
+                        }
+                    },
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+    }
+
+    pipeline_step = PipelineStep()
+
+    with pytest.raises(
+        ValueError,
+        match=r"Multi-processing configuration can only be specified in one segment",
+    ):
+        pipeline_step.run(context)
