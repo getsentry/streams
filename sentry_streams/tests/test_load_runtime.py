@@ -5,7 +5,6 @@ import pytest
 import sentry_sdk
 from sentry_sdk.transport import Transport
 
-from sentry_streams.pipeline.pipeline import Pipeline
 from sentry_streams.runner import load_runtime, run_with_config_file
 
 
@@ -80,40 +79,30 @@ def test_multiprocess_pipe_communication_success(
     app_file = temp_fixture_dir / "simple_app.py"
     app_file.write_text(
         """
-from sentry_streams.pipeline import streaming_source, StreamSink
-pipeline = streaming_source(name="test", stream_name="test-stream").sink(StreamSink("test-sink", stream_name="test-output"))
+from sentry_streams.pipeline import streaming_source
+from sentry_streams.pipeline.pipeline import DevNullSink
+pipeline = streaming_source(name="test", stream_name="test-stream").sink(DevNullSink("test-sink"))
 """
     )
 
-    with (
-        patch("sentry_streams.runner.load_adapter") as mock_load_adapter,
-        patch("sentry_streams.runner.iterate_edges") as mock_iterate_edges,
-    ):
-        mock_runtime = type(
-            "MockRuntime",
-            (),
-            {
-                "run": lambda self: None,
-                "source": lambda self, step: "mock_stream",
-                "complex_step_override": lambda self: {},
-            },
-        )()
-        mock_load_adapter.return_value = mock_runtime
+    runtime = load_runtime(
+        name="test",
+        log_level="INFO",
+        adapter="dummy",
+        segment_id=None,
+        application=str(app_file),
+        environment_config={"metrics": {"type": "dummy"}},
+    )
 
-        runtime = load_runtime(
-            name="test",
-            log_level="INFO",
-            adapter="arroyo",
-            segment_id=None,
-            application=str(app_file),
-            environment_config={"metrics": {"type": "dummy"}},
-        )
+    assert runtime is not None
 
-        assert runtime is not None
+    # Verify that the pipeline was loaded and edges were iterated
+    # The dummy adapter tracks input streams
+    from sentry_streams.dummy.dummy_adapter import DummyAdapter
 
-        mock_iterate_edges.assert_called_once()
-        pipeline_arg = mock_iterate_edges.call_args[0][0]  # First positional argument
-        assert isinstance(pipeline_arg, Pipeline)
+    assert isinstance(runtime, DummyAdapter)
+    assert "test" in runtime.input_streams
+    assert "test-sink" in runtime.input_streams
 
 
 def test_subprocess_sends_error_status_with_details(
