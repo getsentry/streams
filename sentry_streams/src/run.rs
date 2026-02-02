@@ -33,28 +33,22 @@ pub struct PyConfig {
 
 #[derive(Parser, Debug)]
 pub struct RuntimeConfig {
-    /// The name of the Sentry Streams application
     #[arg(short, long)]
     pub name: String,
 
-    /// The name of the Sentry Streams application
     #[arg(short, long)]
     pub log_level: String,
 
-    /// The name of the adapter
     #[arg(short, long)]
-    pub adapter_name: String,
+    pub adapter: String,
 
-    /// The deployment config file path. Each config file currently corresponds to a specific pipeline.
     #[arg(short, long)]
-    pub config_file: OsString,
+    pub config: OsString,
 
-    /// The segment id to run the pipeline for
     #[arg(short, long)]
     pub segment_id: Option<String>,
 
-    /// The name of the application
-    pub application_name: String,
+    pub application: String,
 }
 
 pub fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
@@ -76,14 +70,14 @@ pub fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let runtime: Py<PyAny> = traced_with_gil!(|py| {
         let runtime = py
             .import("sentry_streams.runner")?
-            .getattr("load_runtime")?
+            .getattr("load_runtime_with_config_file")?
             .call1((
                 runtime_config.name,
                 runtime_config.log_level,
-                runtime_config.adapter_name,
-                runtime_config.config_file,
+                runtime_config.adapter,
+                runtime_config.config,
                 runtime_config.segment_id,
-                runtime_config.application_name,
+                runtime_config.application,
             ))?
             .unbind();
         PyResult::Ok(runtime)
