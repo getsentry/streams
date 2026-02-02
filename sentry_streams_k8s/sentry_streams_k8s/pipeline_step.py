@@ -8,7 +8,7 @@ from typing import Any, TypedDict, cast
 import yaml
 from libsentrykube.ext import ExternalMacro
 
-from sentry_streams_k8s.merge import deepmerge
+from sentry_streams_k8s.merge import ScalarOverwriteError, deepmerge
 from sentry_streams_k8s.validation import validate_pipeline_config
 
 
@@ -299,7 +299,16 @@ class PipelineStep(ExternalMacro):
             },
         }
 
-        deployment = deepmerge(deployment, pipeline_additions)
+        # Merge pipeline_additions, failing if any scalar values would be overwritten
+        # This catches conflicts with both user-specified values and base template values
+        try:
+            deployment = deepmerge(deployment, pipeline_additions, fail_on_scalar_overwrite=True)
+        except ScalarOverwriteError as e:
+            raise ScalarOverwriteError(
+                f"{e}\n\n"
+                f"This field is automatically set by PipelineStep and should not be specified in deployment_template. "
+                f"Note: Lists and dicts can be provided (they get merged), but scalar values cannot be overridden."
+            ) from e
 
         # Create configmap
         configmap = {

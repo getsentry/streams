@@ -384,3 +384,117 @@ def test_deepmerge_kubernetes_deployment_example() -> None:
             },
         },
     }
+
+
+def test_fail_on_scalar_overwrite_catches_conflicts() -> None:
+    """Test that fail_on_scalar_overwrite raises error when overwriting different scalars."""
+    from sentry_streams_k8s.merge import ScalarOverwriteError
+
+    base = {"replicas": 1, "name": "old-name"}
+    override = {"replicas": 5, "extra": "value"}
+
+    # Should raise when trying to overwrite replicas with different value
+    with pytest.raises(ScalarOverwriteError, match="replicas.*1.*5"):
+        deepmerge(base, override, fail_on_scalar_overwrite=True)
+
+
+def test_fail_on_scalar_overwrite_allows_same_values() -> None:
+    """Test that fail_on_scalar_overwrite allows overwriting with same value."""
+    base = {"replicas": 1, "name": "my-name"}
+    override = {"replicas": 1, "extra": "value"}
+
+    # Should not raise when overwriting with same value
+    result = deepmerge(base, override, fail_on_scalar_overwrite=True)
+    assert result == {"replicas": 1, "name": "my-name", "extra": "value"}
+
+
+def test_fail_on_scalar_overwrite_allows_dicts_and_lists() -> None:
+    """Test that fail_on_scalar_overwrite still allows dict and list merging."""
+    base = {
+        "labels": {"app": "my-app", "version": "1.0"},
+        "volumes": [{"name": "vol1"}],
+        "replicas": 1,
+    }
+    override = {
+        "labels": {"env": "prod"},  # Dict merge - should work
+        "volumes": [{"name": "vol2"}],  # List append - should work
+        "replicas": 1,  # Same value - should work
+    }
+
+    result = deepmerge(base, override, fail_on_scalar_overwrite=True)
+    assert result == {
+        "labels": {"app": "my-app", "version": "1.0", "env": "prod"},
+        "volumes": [{"name": "vol1"}, {"name": "vol2"}],
+        "replicas": 1,
+    }
+
+
+def test_fail_on_scalar_overwrite_nested_path() -> None:
+    """Test that fail_on_scalar_overwrite provides correct path in error message."""
+    from sentry_streams_k8s.merge import ScalarOverwriteError
+
+    base = {
+        "metadata": {
+            "labels": {
+                "pipeline": "old-value",
+            }
+        }
+    }
+    override = {
+        "metadata": {
+            "labels": {
+                "pipeline": "new-value",
+            }
+        }
+    }
+
+    with pytest.raises(ScalarOverwriteError, match="metadata.labels.pipeline"):
+        deepmerge(base, override, fail_on_scalar_overwrite=True)
+
+
+def test_fail_on_scalar_overwrite_multiple_levels() -> None:
+    """Test that fail_on_scalar_overwrite works correctly with deeply nested structures."""
+    from sentry_streams_k8s.merge import ScalarOverwriteError
+
+    base = {
+        "spec": {
+            "template": {
+                "spec": {
+                    "replicas": 1,
+                    "containers": [{"name": "base-container"}],
+                }
+            }
+        }
+    }
+    override = {
+        "spec": {
+            "template": {
+                "spec": {
+                    "replicas": 3,  # Conflict here
+                    "containers": [{"name": "override-container"}],  # This is fine (list)
+                }
+            }
+        }
+    }
+
+    with pytest.raises(ScalarOverwriteError, match="spec.template.spec.replicas"):
+        deepmerge(base, override, fail_on_scalar_overwrite=True)
+
+
+def test_fail_on_scalar_overwrite_disabled_by_default() -> None:
+    """Test that scalar overwriting works normally when flag is not set."""
+    base = {"replicas": 1, "name": "old-name"}
+    override = {"replicas": 5, "name": "new-name"}
+
+    # Should work fine without the flag
+    result = deepmerge(base, override)
+    assert result == {"replicas": 5, "name": "new-name"}
+
+
+def test_fail_on_scalar_overwrite_with_new_keys() -> None:
+    """Test that fail_on_scalar_overwrite allows adding new keys."""
+    base = {"replicas": 1}
+    override = {"replicas": 1, "new_key": "new_value", "another": 42}
+
+    result = deepmerge(base, override, fail_on_scalar_overwrite=True)
+    assert result == {"replicas": 1, "new_key": "new_value", "another": 42}
