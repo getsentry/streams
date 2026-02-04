@@ -123,7 +123,6 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
     else:
         pipeline_config_parsed = context["pipeline_config"]
 
-    # Parse emergency_patch if present (defaults to empty dict)
     emergency_patch_parsed: dict[str, Any] = {}
     if "emergency_patch" in context:
         if isinstance(context["emergency_patch"], str):
@@ -307,8 +306,6 @@ class PipelineStep(ExternalMacro):
 
         deployment = deepmerge(deployment, pipeline_additions)
 
-        # Apply emergency patch as the final layer
-        # This allows overriding any deployment configuration in emergencies
         if emergency_patch:
             deployment = deepmerge(deployment, emergency_patch)
 
