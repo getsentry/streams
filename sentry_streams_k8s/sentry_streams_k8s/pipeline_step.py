@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from importlib.resources import files
-from typing import Any, TypedDict, cast
+from typing import Any, NotRequired, TypedDict, cast
 
 import yaml
 from libsentrykube.ext import ExternalMacro
@@ -123,6 +123,14 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
     else:
         pipeline_config_parsed = context["pipeline_config"]
 
+    # Parse emergency_patch if present (defaults to empty dict)
+    emergency_patch_parsed: dict[str, Any] = {}
+    if "emergency_patch" in context:
+        if isinstance(context["emergency_patch"], str):
+            emergency_patch_parsed = yaml.safe_load(context["emergency_patch"]) or {}
+        else:
+            emergency_patch_parsed = context["emergency_patch"] or {}
+
     return {
         "service_name": context["service_name"],
         "pipeline_name": context["pipeline_name"],
@@ -134,6 +142,7 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
         "cpu_per_process": context["cpu_per_process"],
         "memory_per_process": context["memory_per_process"],
         "segment_id": context["segment_id"],
+        "emergency_patch": emergency_patch_parsed,
     }
 
 
@@ -150,6 +159,7 @@ class PipelineStepContext(TypedDict):
     cpu_per_process: int
     memory_per_process: int
     segment_id: int
+    emergency_patch: NotRequired[dict[str, Any]]
 
 
 class PipelineStep(ExternalMacro):
@@ -244,6 +254,7 @@ class PipelineStep(ExternalMacro):
         pipeline_name = ctx["pipeline_name"]
         segment_id = ctx["segment_id"]
         service_name = ctx["service_name"]
+        emergency_patch = ctx.get("emergency_patch", {})
 
         # Create deployment
 
@@ -295,6 +306,11 @@ class PipelineStep(ExternalMacro):
         }
 
         deployment = deepmerge(deployment, pipeline_additions)
+
+        # Apply emergency patch as the final layer
+        # This allows overriding any deployment configuration in emergencies
+        if emergency_patch:
+            deployment = deepmerge(deployment, emergency_patch)
 
         # Create configmap
         configmap = {
