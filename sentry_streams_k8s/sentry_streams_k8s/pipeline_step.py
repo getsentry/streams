@@ -262,7 +262,6 @@ class PipelineStep(ExternalMacro):
         )
 
         base_deployment = load_base_template("deployment")
-        deployment = deepmerge(base_deployment, deployment_template)
 
         labels = {
             "pipeline-app": make_k8s_name(pipeline_module),
@@ -299,16 +298,23 @@ class PipelineStep(ExternalMacro):
             },
         }
 
-        # Merge pipeline_additions, failing if any scalar values would be overwritten
-        # This catches conflicts with both user-specified values and base template values
+        # Check for scalar conflicts between user template and pipeline additions
+        # This ensures pipeline additions don't override user-provided values
+        # while still allowing both to override base template defaults
         try:
-            deployment = deepmerge(deployment, pipeline_additions, fail_on_scalar_overwrite=True)
+            # Perform a test merge to detect conflicts
+            deepmerge(deployment_template, pipeline_additions, fail_on_scalar_overwrite=True)
         except ScalarOverwriteError as e:
             raise ScalarOverwriteError(
                 f"{e}\n\n"
-                f"This field is automatically set by PipelineStep and should not be specified in deployment_template. "
+                f"This field is automatically set by PipelineStep and conflicts with your deployment_template. "
                 f"Note: Lists and dicts can be provided (they get merged), but scalar values cannot be overridden."
             ) from e
+
+        # No conflicts found, proceed with merging
+        # Both user template and pipeline additions can override base template
+        deployment = deepmerge(base_deployment, deployment_template)
+        deployment = deepmerge(deployment, pipeline_additions)
 
         # Create configmap
         configmap = {
