@@ -8,7 +8,7 @@ from typing import Any, TypedDict, cast
 import yaml
 from libsentrykube.ext import ExternalMacro
 
-from sentry_streams_k8s.merge import deepmerge
+from sentry_streams_k8s.merge import ScalarOverwriteError, deepmerge
 from sentry_streams_k8s.validation import validate_pipeline_config
 
 
@@ -134,6 +134,7 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
         "cpu_per_process": context["cpu_per_process"],
         "memory_per_process": context["memory_per_process"],
         "segment_id": context["segment_id"],
+        "replicas": context.get("replicas", 1),
     }
 
 
@@ -150,6 +151,7 @@ class PipelineStepContext(TypedDict):
     cpu_per_process: int
     memory_per_process: int
     segment_id: int
+    replicas: int
 
 
 class PipelineStep(ExternalMacro):
@@ -192,6 +194,7 @@ class PipelineStep(ExternalMacro):
                 "segment_id": 0,
                 "cpu_per_process": 1000,
                 "memory_per_process": 512,
+                "replicas": 3,
             }
         )
     }}
@@ -244,6 +247,7 @@ class PipelineStep(ExternalMacro):
         pipeline_name = ctx["pipeline_name"]
         segment_id = ctx["segment_id"]
         service_name = ctx["service_name"]
+        replicas = ctx["replicas"]
 
         # Create deployment
 
@@ -258,7 +262,6 @@ class PipelineStep(ExternalMacro):
         )
 
         base_deployment = load_base_template("deployment")
-        deployment = deepmerge(base_deployment, deployment_template)
 
         labels = {
             "pipeline-app": make_k8s_name(pipeline_module),
@@ -272,6 +275,7 @@ class PipelineStep(ExternalMacro):
                 "labels": labels,
             },
             "spec": {
+                "replicas": replicas,
                 "selector": {
                     "matchLabels": labels,
                 },
@@ -294,6 +298,22 @@ class PipelineStep(ExternalMacro):
             },
         }
 
+        # Check for scalar conflicts between user template and pipeline additions
+        # This ensures pipeline additions don't override user-provided values
+        # while still allowing both to override base template defaults
+        try:
+            # Perform a test merge to detect conflicts
+            deepmerge(deployment_template, pipeline_additions, fail_on_scalar_overwrite=True)
+        except ScalarOverwriteError as e:
+            raise ScalarOverwriteError(
+                f"{e}\n\n"
+                f"This field is automatically set by PipelineStep and conflicts with your deployment_template. "
+                f"Note: Lists and dicts can be provided (they get merged), but scalar values cannot be overridden."
+            ) from e
+
+        # No conflicts found, proceed with merging
+        # Both user template and pipeline additions can override base template
+        deployment = deepmerge(base_deployment, deployment_template)
         deployment = deepmerge(deployment, pipeline_additions)
 
         # Create configmap
