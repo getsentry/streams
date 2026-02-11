@@ -13,6 +13,9 @@
                 },
                 "metrics": {
                     "$ref": "#/definitions/Metrics"
+                },
+                "sentry_sdk_config": {
+                    "$ref": "#/definitions/StreamingPlatformConfig"
                 }
             }
         },
@@ -49,7 +52,9 @@
                     "properties": {
                         "type": {
                             "type": "string",
-                            "enum": ["datadog"]
+                            "enum": [
+                                "datadog"
+                            ]
                         },
                         "host": {
                             "type": "string"
@@ -62,18 +67,37 @@
                             "additionalProperties": true
                         }
                     },
-                    "required": ["type", "host", "port"]
+                    "required": [
+                        "type",
+                        "host",
+                        "port"
+                    ]
                 },
                 {
                     "type": "object",
                     "properties": {
                         "type": {
                             "type": "string",
-                            "enum": ["dummy"]
+                            "enum": [
+                                "dummy"
+                            ]
                         }
                     },
-                    "required": ["type"]
+                    "required": [
+                        "type"
+                    ]
                 }
+            ]
+        },
+        "StreamingPlatformConfig": {
+            "type": "object",
+            "properties": {
+                "dsn": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "dsn"
             ]
         }
     }

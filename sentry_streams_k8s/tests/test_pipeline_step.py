@@ -4,6 +4,7 @@ import pytest
 import yaml
 from jsonschema import ValidationError
 
+from sentry_streams_k8s.merge import ScalarOverwriteError
 from sentry_streams_k8s.pipeline_step import (
     PipelineStep,
     build_container,
@@ -53,6 +54,7 @@ def test_parse_context() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 2,
     }
 
     parsed_context = parse_context(context)
@@ -81,6 +83,7 @@ def test_parse_context() -> None:
     assert parsed_context["cpu_per_process"] == 1000
     assert parsed_context["memory_per_process"] == 512
     assert parsed_context["segment_id"] == 0
+    assert parsed_context["replicas"] == 2
 
     context["deployment_template"] = yaml.dump(context["deployment_template"])
     context["container_template"] = yaml.dump(context["container_template"])
@@ -104,6 +107,7 @@ def test_parse_context() -> None:
             ]
         },
     }
+    assert parsed_context["replicas"] == 2
 
 
 def test_build_container() -> None:
@@ -197,6 +201,7 @@ def test_validate_context_valid() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 1,
     }
 
     # Should not raise any exception
@@ -310,6 +315,7 @@ def test_run_generates_complete_manifests() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 1,
     }
 
     pipeline_step = PipelineStep()
@@ -418,6 +424,7 @@ def test_run_with_base_templates() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 1,
     }
 
     pipeline_step = PipelineStep()
@@ -445,14 +452,12 @@ def test_run_with_base_templates() -> None:
 
 
 def test_user_template_overrides_base() -> None:
-    """Test that user template values take precedence over base template values."""
+    """Test that user template values can override base template for non-controlled fields."""
     context: dict[str, Any] = {
         "service_name": "my-service",
         "pipeline_name": "profiles",
         "deployment_template": {
-            # Override base replicas
             "spec": {
-                "replicas": 5,
                 "template": {
                     "spec": {
                         # Override base terminationGracePeriodSeconds
@@ -485,6 +490,7 @@ def test_user_template_overrides_base() -> None:
         "cpu_per_process": 1000,
         "memory_per_process": 512,
         "segment_id": 0,
+        "replicas": 1,  # Use base template value to avoid conflict
     }
 
     pipeline_step = PipelineStep()
@@ -492,8 +498,9 @@ def test_user_template_overrides_base() -> None:
 
     deployment = result["deployment"]
 
-    # Check that user overrides took effect
-    assert deployment["spec"]["replicas"] == 5  # User override, not base 1
+    # Check that replicas parameter took effect
+    assert deployment["spec"]["replicas"] == 1
+    # Check that user template overrides for non-controlled fields worked
     assert (
         deployment["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == 60
     )  # User override, not base 30
@@ -791,3 +798,108 @@ def test_run_rejects_multiple_segments_with_parallelism() -> None:
         match=r"Multi-processing configuration can only be specified in one segment",
     ):
         pipeline_step.run(context)
+
+
+def test_template_conflict_scalar_overwrite() -> None:
+    """Test that PipelineStep detects and prevents scalar field conflicts in templates."""
+    # Test conflict with replicas field
+    context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {
+            "spec": {
+                "replicas": 5,  # User tries to set replicas - conflicts with parameter
+            }
+        },
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+        "replicas": 3,  # Different from template value
+    }
+
+    pipeline_step = PipelineStep()
+    with pytest.raises(ScalarOverwriteError, match="spec.replicas"):
+        pipeline_step.run(context)
+
+
+def test_emergency_patch_overrides_final_deployment() -> None:
+    """Test that emergency_patch overrides all other layers including pipeline additions."""
+    context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {
+            "spec": {
+                "replicas": 1,  # Base template default
+            }
+        },
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+        # Emergency patch to override replicas and add security context
+        "emergency_patch": {
+            "spec": {
+                "replicas": 3,  # Override base template
+                "template": {
+                    "spec": {
+                        "securityContext": {
+                            "runAsNonRoot": True,
+                            "fsGroup": 2000,
+                        }
+                    }
+                },
+            }
+        },
+    }
+
+    pipeline_step = PipelineStep()
+    result = pipeline_step.run(context)
+    deployment = result["deployment"]
+
+    # Verify emergency patch overrides took effect
+    assert deployment["spec"]["replicas"] == 3  # Emergency patch value, not base 1
+
+    # Verify deeply nested emergency patch values are present
+    assert deployment["spec"]["template"]["spec"]["securityContext"]["runAsNonRoot"] is True
+    assert deployment["spec"]["template"]["spec"]["securityContext"]["fsGroup"] == 2000
+
+    # Verify pipeline additions are still present (not removed by emergency patch)
+    assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
+    assert deployment["metadata"]["labels"]["pipeline-app"] == "sbc-profiles"
+    assert len(deployment["spec"]["template"]["spec"]["containers"]) == 1
+    assert deployment["spec"]["template"]["spec"]["containers"][0]["name"] == "pipeline-consumer"
