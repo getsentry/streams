@@ -41,6 +41,45 @@ def make_k8s_name(name: str) -> str:
     return name
 
 
+def get_multiprocess_config(pipeline_config: dict[str, Any]) -> tuple[int | None, list[int]]:
+    """
+    Extract multiprocessing configuration from pipeline config.
+
+    Iterates through all segments in the pipeline configuration and looks for
+    parallelism.multi_process.processes configuration in any step.
+
+    Examples:
+        >>> config = {"pipeline": {"segments": [{"steps_config": {"step1": {"parallelism": {"multi_process": {"processes": 4}}}}}]}}
+        >>> get_multiprocess_config(config)
+        (4, [0])
+    """
+    segments_with_parallelism: list[int] = []
+    process_count: int | None = None
+
+    segments = pipeline_config["pipeline"]["segments"]
+
+    for segment_idx, segment in enumerate(segments):
+        steps_config = segment.get("steps_config", {})
+
+        for step_config in steps_config.values():
+            parallelism = step_config.get("parallelism")
+            if not parallelism or not isinstance(parallelism, dict):
+                continue
+
+            multi_process = parallelism.get("multi_process")
+            if not multi_process:
+                continue
+
+            processes = multi_process.get("processes")
+            if processes is not None:
+                segments_with_parallelism.append(segment_idx)
+                if process_count is None:
+                    process_count = processes
+                break  # Found parallelism in this segment, move to next segment
+
+    return process_count, segments_with_parallelism
+
+
 def build_container(
     container_template: dict[str, Any],
     pipeline_name: str,
@@ -49,6 +88,7 @@ def build_container(
     cpu_per_process: int,
     memory_per_process: int,
     segment_id: int,
+    process_count: int | None = None,
 ) -> dict[str, Any]:
     """
     Build a complete container specification for the pipeline step.
@@ -59,9 +99,33 @@ def build_container(
        some standard parameters like securityContext
     3. building the streaming pipeline specific parameters and merging them
        onto the result of step 2.
+
     """
     base_container = load_base_template("container")
     container = deepmerge(base_container, container_template)
+
+    # CPU and memory are provided per process, so we need to multiply them
+    # by the number of processes to get the total resources.
+    cpu_total = cpu_per_process * (process_count or 1)
+    memory_total = memory_per_process * (process_count or 1)
+
+    volume_mounts: list[dict[str, Any]] = [
+        {
+            "name": "pipeline-config",
+            "mountPath": "/etc/pipeline-config",
+            "readOnly": True,
+        }
+    ]
+
+    # Shared memory volume is needed to allow the communication between processes.
+    # via shared memory. Only needed when in multiprocess mode.
+    if process_count is not None and process_count > 1:
+        volume_mounts.append(
+            {
+                "name": "dshm",
+                "mountPath": "/dev/shm",
+            }
+        )
 
     pipeline_additions = {
         "name": "pipeline-consumer",
@@ -80,20 +144,14 @@ def build_container(
         ],
         "resources": {
             "requests": {
-                "cpu": f"{cpu_per_process}m",
-                "memory": f"{memory_per_process}Mi",
+                "cpu": f"{cpu_total}m",
+                "memory": f"{memory_total}Mi",
             },
             "limits": {
-                "memory": f"{memory_per_process}Mi",
+                "memory": f"{memory_total}Mi",
             },
         },
-        "volumeMounts": [
-            {
-                "name": "pipeline-config",
-                "mountPath": "/etc/pipeline-config",
-                "readOnly": True,
-            }
-        ],
+        "volumeMounts": volume_mounts,
     }
 
     return deepmerge(container, pipeline_additions)
@@ -259,7 +317,13 @@ class PipelineStep(ExternalMacro):
         replicas = ctx["replicas"]
         emergency_patch = ctx.get("emergency_patch", {})
 
-        # Create deployment
+        process_count, segments_with_parallelism = get_multiprocess_config(pipeline_config)
+        if len(segments_with_parallelism) > 1:
+            raise ValueError(
+                f"Multi-processing configuration can only be specified in one segment. "
+                f"Found parallelism configuration in {len(segments_with_parallelism)} segments "
+                f"(segment indices: {segments_with_parallelism})."
+            )
 
         container = build_container(
             container_template,
@@ -269,6 +333,7 @@ class PipelineStep(ExternalMacro):
             cpu_per_process,
             memory_per_process,
             segment_id,
+            process_count,
         )
 
         base_deployment = load_base_template("deployment")
@@ -278,6 +343,25 @@ class PipelineStep(ExternalMacro):
             "pipeline": make_k8s_name(pipeline_name),
         }
         configmap_name = make_k8s_name(f"{service_name}-pipeline-{pipeline_name}")
+
+        volumes: list[dict[str, Any]] = [
+            {
+                "name": "pipeline-config",
+                "configMap": {
+                    "name": configmap_name,
+                },
+            }
+        ]
+
+        # Shared memory volume is needed to allow the communication between processes.
+        # via shared memory. Only needed when in multiprocess mode.
+        if process_count is not None and process_count > 1:
+            volumes.append(
+                {
+                    "name": "dshm",
+                    "emptyDir": {"medium": "Memory"},
+                }
+            )
 
         pipeline_additions = {
             "metadata": {
@@ -295,14 +379,7 @@ class PipelineStep(ExternalMacro):
                     },
                     "spec": {
                         "containers": [container],
-                        "volumes": [
-                            {
-                                "name": "pipeline-config",
-                                "configMap": {
-                                    "name": configmap_name,
-                                },
-                            }
-                        ],
+                        "volumes": volumes,
                     },
                 },
             },
@@ -329,7 +406,6 @@ class PipelineStep(ExternalMacro):
         if emergency_patch:
             deployment = deepmerge(deployment, emergency_patch)
 
-        # Create configmap
         configmap = {
             "apiVersion": "v1",
             "kind": "ConfigMap",
@@ -342,7 +418,6 @@ class PipelineStep(ExternalMacro):
             },
         }
 
-        # Add namespace if present in deployment template
         if "namespace" in deployment.get("metadata", {}):
             metadata = cast(dict[str, Any], configmap["metadata"])
             metadata["namespace"] = deployment["metadata"]["namespace"]
