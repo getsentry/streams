@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from importlib.resources import files
-from typing import Any, TypedDict, cast
+from typing import Any, NotRequired, TypedDict, cast
 
 import yaml
 from libsentrykube.ext import ExternalMacro
@@ -123,6 +123,13 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
     else:
         pipeline_config_parsed = context["pipeline_config"]
 
+    emergency_patch_parsed: dict[str, Any] = {}
+    if "emergency_patch" in context:
+        if isinstance(context["emergency_patch"], str):
+            emergency_patch_parsed = yaml.safe_load(context["emergency_patch"]) or {}
+        else:
+            emergency_patch_parsed = context["emergency_patch"] or {}
+
     return {
         "service_name": context["service_name"],
         "pipeline_name": context["pipeline_name"],
@@ -135,6 +142,7 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
         "memory_per_process": context["memory_per_process"],
         "segment_id": context["segment_id"],
         "replicas": context.get("replicas", 1),
+        "emergency_patch": emergency_patch_parsed,
     }
 
 
@@ -152,6 +160,7 @@ class PipelineStepContext(TypedDict):
     memory_per_process: int
     segment_id: int
     replicas: int
+    emergency_patch: NotRequired[dict[str, Any]]
 
 
 class PipelineStep(ExternalMacro):
@@ -248,6 +257,7 @@ class PipelineStep(ExternalMacro):
         segment_id = ctx["segment_id"]
         service_name = ctx["service_name"]
         replicas = ctx["replicas"]
+        emergency_patch = ctx.get("emergency_patch", {})
 
         # Create deployment
 
@@ -315,6 +325,9 @@ class PipelineStep(ExternalMacro):
         # Both user template and pipeline additions can override base template
         deployment = deepmerge(base_deployment, deployment_template)
         deployment = deepmerge(deployment, pipeline_additions)
+
+        if emergency_patch:
+            deployment = deepmerge(deployment, emergency_patch)
 
         # Create configmap
         configmap = {

@@ -620,3 +620,68 @@ def test_template_conflict_scalar_overwrite() -> None:
     pipeline_step = PipelineStep()
     with pytest.raises(ScalarOverwriteError, match="spec.replicas"):
         pipeline_step.run(context)
+
+
+def test_emergency_patch_overrides_final_deployment() -> None:
+    """Test that emergency_patch overrides all other layers including pipeline additions."""
+    context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {
+            "spec": {
+                "replicas": 1,  # Base template default
+            }
+        },
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+        # Emergency patch to override replicas and add security context
+        "emergency_patch": {
+            "spec": {
+                "replicas": 3,  # Override base template
+                "template": {
+                    "spec": {
+                        "securityContext": {
+                            "runAsNonRoot": True,
+                            "fsGroup": 2000,
+                        }
+                    }
+                },
+            }
+        },
+    }
+
+    pipeline_step = PipelineStep()
+    result = pipeline_step.run(context)
+    deployment = result["deployment"]
+
+    # Verify emergency patch overrides took effect
+    assert deployment["spec"]["replicas"] == 3  # Emergency patch value, not base 1
+
+    # Verify deeply nested emergency patch values are present
+    assert deployment["spec"]["template"]["spec"]["securityContext"]["runAsNonRoot"] is True
+    assert deployment["spec"]["template"]["spec"]["securityContext"]["fsGroup"] == 2000
+
+    # Verify pipeline additions are still present (not removed by emergency patch)
+    assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
+    assert deployment["metadata"]["labels"]["pipeline-app"] == "sbc-profiles"
+    assert len(deployment["spec"]["template"]["spec"]["containers"]) == 1
+    assert deployment["spec"]["template"]["spec"]["containers"][0]["name"] == "pipeline-consumer"
