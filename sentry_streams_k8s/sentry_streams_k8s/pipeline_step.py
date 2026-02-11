@@ -56,14 +56,12 @@ def get_multiprocess_config(pipeline_config: dict[str, Any]) -> tuple[int | None
     segments_with_parallelism: list[int] = []
     process_count: int | None = None
 
-    # Pipeline and segments are guaranteed to exist by schema validation
     segments = pipeline_config["pipeline"]["segments"]
 
     for segment_idx, segment in enumerate(segments):
         steps_config = segment.get("steps_config", {})
 
         for step_config in steps_config.values():
-            # Check if this step has multiprocessing parallelism configured
             parallelism = step_config.get("parallelism")
             if not parallelism or not isinstance(parallelism, dict):
                 continue
@@ -75,7 +73,6 @@ def get_multiprocess_config(pipeline_config: dict[str, Any]) -> tuple[int | None
             processes = multi_process.get("processes")
             if processes is not None:
                 segments_with_parallelism.append(segment_idx)
-                # Store the first process count we find
                 if process_count is None:
                     process_count = processes
                 break  # Found parallelism in this segment, move to next segment
@@ -107,11 +104,11 @@ def build_container(
     base_container = load_base_template("container")
     container = deepmerge(base_container, container_template)
 
-    # Calculate total resources based on process count
+    # CPU and memory are provided per process, so we need to multiply them
+    # by the number of processes to get the total resources.
     cpu_total = cpu_per_process * (process_count or 1)
     memory_total = memory_per_process * (process_count or 1)
 
-    # Build volume mounts - add shared memory volume for multiprocessing
     volume_mounts: list[dict[str, Any]] = [
         {
             "name": "pipeline-config",
@@ -120,7 +117,8 @@ def build_container(
         }
     ]
 
-    # Add shared memory volume when multiprocessing is enabled
+    # Shared memory volume is needed to allow the communication between processes.
+    # via shared memory. Only needed when in multiprocess mode.
     if process_count is not None and process_count > 1:
         volume_mounts.append(
             {
@@ -319,7 +317,6 @@ class PipelineStep(ExternalMacro):
         replicas = ctx["replicas"]
         emergency_patch = ctx.get("emergency_patch", {})
 
-        # Detect and validate multiprocessing configuration
         process_count, segments_with_parallelism = get_multiprocess_config(pipeline_config)
         if len(segments_with_parallelism) > 1:
             raise ValueError(
@@ -327,8 +324,6 @@ class PipelineStep(ExternalMacro):
                 f"Found parallelism configuration in {len(segments_with_parallelism)} segments "
                 f"(segment indices: {segments_with_parallelism})."
             )
-
-        # Create deployment
 
         container = build_container(
             container_template,
@@ -349,7 +344,6 @@ class PipelineStep(ExternalMacro):
         }
         configmap_name = make_k8s_name(f"{service_name}-pipeline-{pipeline_name}")
 
-        # Build volumes list - add shared memory volume for multiprocessing
         volumes: list[dict[str, Any]] = [
             {
                 "name": "pipeline-config",
@@ -359,7 +353,8 @@ class PipelineStep(ExternalMacro):
             }
         ]
 
-        # Add shared memory volume when multiprocessing is enabled
+        # Shared memory volume is needed to allow the communication between processes.
+        # via shared memory. Only needed when in multiprocess mode.
         if process_count is not None and process_count > 1:
             volumes.append(
                 {
@@ -411,7 +406,6 @@ class PipelineStep(ExternalMacro):
         if emergency_patch:
             deployment = deepmerge(deployment, emergency_patch)
 
-        # Create configmap
         configmap = {
             "apiVersion": "v1",
             "kind": "ConfigMap",
@@ -424,7 +418,6 @@ class PipelineStep(ExternalMacro):
             },
         }
 
-        # Add namespace if present in deployment template
         if "namespace" in deployment.get("metadata", {}):
             metadata = cast(dict[str, Any], configmap["metadata"])
             metadata["namespace"] = deployment["metadata"]["namespace"]
