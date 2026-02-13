@@ -283,6 +283,7 @@ mod tests {
     use crate::testutils::build_routed_value;
     use crate::testutils::make_committable;
     use pyo3::ffi::c_str;
+    use pyo3::BoundObject;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::noop::Noop;
     use std::collections::{BTreeMap, HashMap};
@@ -519,6 +520,35 @@ class RustOperatorDelegateFactory:
                 let actual_messages = submitted_messages_clone.lock().unwrap();
                 assert_messages_match(py, expected_messages, actual_messages.deref());
             } // Unlock the MutexGuard around `actual_messages`
+        })
+    }
+
+    #[test]
+    fn test_arroyo_python_delegate() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let delegate = c_str!(
+                r#"
+from sentry_streams.adapters.arroyo.test_delegate import TestDelegateFactory
+                "#
+            );
+            let scope = PyModule::new(py, "test_scope").unwrap();
+            py.run(delegate, Some(&scope.dict()), None).unwrap();
+            let operator = scope.getattr("TestDelegateFactory").unwrap();
+            let instance = operator.call0().unwrap();
+
+            let mut operator = PythonAdapter::new(
+                Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                instance.unbind(),
+                Box::new(Noop {}),
+            );
+
+            let message = make_msg(py, "ok");
+            let res = operator.submit(message);
+            assert!(res.is_ok());
+
+            let commit_request = operator.poll();
+            assert!(commit_request.is_ok());
         })
     }
 }
