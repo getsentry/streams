@@ -1,3 +1,14 @@
+## 0.0.3
+
+### New Features ✨
+
+- (k8s) Add multi-processing support to PipelineStep macro by @fpacifici in [#232](https://github.com/getsentry/streams/pull/232)
+- (pipeline_step) Add emergency patch support for deployments by @fpacifici in [#233](https://github.com/getsentry/streams/pull/233)
+
+### Other
+
+- Add replicas parameter to PipelineStep macro by @fpacifici in [#231](https://github.com/getsentry/streams/pull/231)
+
 ## 0.0.2
 
 - Fill in the macro implementation by @fpacifici in [#227](https://github.com/getsentry/streams/pull/227)
