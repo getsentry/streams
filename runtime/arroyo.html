@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Arroyo Runtime &#8212; Sentry Streams 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=2709fde1"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Deploying on Kuberentes" href="../deployment.html" />
+    <link rel="prev" title="Pipeline runtime configuration" href="../configure_pipeline.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="arroyo-runtime">
+<h1>Arroyo Runtime<a class="headerlink" href="#arroyo-runtime" title="Link to this heading">¶</a></h1>
+<p>The Arroyo runtime uses the <a class="reference external" href="https://github.com/getsentry">getsentry/arroyo</a> library as its runtime backend.</p>
+<p>Docs for Arroyo can be found here: <a class="reference external" href="https://getsentry.github.io/arroyo/">https://getsentry.github.io/arroyo/</a></p>
+<p>The <code class="docutils literal notranslate"><span class="pre">arroyo</span></code> adapter which translates the pipeline into a series of arroyo steps can be found here:
+<a class="reference external" href="https://github.com/getsentry/streams/tree/main/sentry_streams/sentry_streams/adapters/arroyo">https://github.com/getsentry/streams/tree/main/sentry_streams/sentry_streams/adapters/arroyo</a>.</p>
+<section id="rust-arroyo-runtime">
+<h2>Rust Arroyo Runtime<a class="headerlink" href="#rust-arroyo-runtime" title="Link to this heading">¶</a></h2>
+<p>The Rust Arroyo runtime operates similarly to the standard Arroyo runtime,
+but uses the rust version of arroyo: <a class="reference external" href="https://github.com/getsentry/arroyo/tree/main/rust-arroyo">https://github.com/getsentry/arroyo/tree/main/rust-arroyo</a>.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">rust_arroyo</span></code> adapter can be found here: <a class="reference external" href="https://github.com/getsentry/streams/tree/main/sentry_streams/src">https://github.com/getsentry/streams/tree/main/sentry_streams/src</a>.</p>
+</section>
+<section id="routes">
+<h2>Routes<a class="headerlink" href="#routes" title="Link to this heading">¶</a></h2>
+<p>The streaming platform has multiple steps which can ‘route’ message to different downstream branches:</p>
+<ul class="simple">
+<li><p>the <a class="reference external" href="https://github.com/getsentry/streams/blob/4808eb17863e296d76800cc0d12aca82bddc4509/sentry_streams/sentry_streams/pipeline/pipeline.py#L305-L320">Router</a> step forwards messages to one of several given downstream steps</p></li>
+<li><p>the <a class="reference external" href="https://github.com/getsentry/streams/blob/4808eb17863e296d76800cc0d12aca82bddc4509/sentry_streams/sentry_streams/pipeline/pipeline.py#L324-L335">Broadcast</a> step sends a copy of a message to each downstream step</p></li>
+</ul>
+<p>However, arroyo has no concept of branching routes like this. In arroyo, each step in a pipeline is
+sequential and messages visit every step in order. To implement downstream branches, the first step in every
+pipeline wraps the message in a <code class="docutils literal notranslate"><span class="pre">RoutedValue</span></code> class.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">RoutedValue</span></code> contains a <code class="docutils literal notranslate"><span class="pre">Route</span></code> object, which consists of a <code class="docutils literal notranslate"><span class="pre">source</span></code> (indicating the source step of the message) and a list of <code class="docutils literal notranslate"><span class="pre">waypoints</span></code>,
+which represent the downstream ‘branch’ that a message should be processed by. Each step in the arroyo pipeline also
+has a corresponding <code class="docutils literal notranslate"><span class="pre">Route</span></code> object. At the start of each arroyo step, the step checks if the message <code class="docutils literal notranslate"><span class="pre">Route</span></code> matches the step’s <code class="docutils literal notranslate"><span class="pre">Route</span></code>.
+If they match, the message is processed by the step, otherwise the message is forwarded to the next step in the pipeline without processing.</p>
+<p>The arroyo <code class="docutils literal notranslate"><span class="pre">Router</span></code> step adds the value returned by the routing function to a message’s <code class="docutils literal notranslate"><span class="pre">waypoints</span></code> list.
+The arroyo <code class="docutils literal notranslate"><span class="pre">Broadcast</span></code> step creates a copy of a message for each downstream branch, and adds the corresponding
+branch’s name to that message’s <code class="docutils literal notranslate"><span class="pre">waypoints</span></code> list.</p>
+</section>
+<section id="watermarks">
+<h2>Watermarks<a class="headerlink" href="#watermarks" title="Link to this heading">¶</a></h2>
+<p>Introducing the concept of downstream branches into arroyo breaks the standard commit policy.
+Normally, arroyo will commit the offsets of messages which reach the end of the pipeline once per second.
+However, since a <code class="docutils literal notranslate"><span class="pre">Broadcast</span></code> step creates multiple copies of a message, we can’t commit the offset of a message
+as soon as the commit step receives it because the message isn’t fully processed until <em>each copy</em> of the message
+reaches the commit step.</p>
+<p>To solve this, we introduce Watermarks - internal messages which are regularly emitted into the pipeline (by default
+a watermark is send every 10 seconds).
+Each watermark message contains the combined <a class="reference external" href="https://getsentry.github.io/arroyo/strategies/index.html#arroyo.types.Message.committable">committable</a>
+of all messages which were picked up by the consumer since the last watermark message was sent.</p>
+<p>The end step of a consumer created by the arroyo runtime will be a custom commit step which commits the offsets
+stored in a watermark once it has received <code class="docutils literal notranslate"><span class="pre">N</span></code> copies of that watermark, where <code class="docutils literal notranslate"><span class="pre">N</span></code> is the number of possible
+branches in the pipeline.
+For example, if a pipeline contains a <code class="docutils literal notranslate"><span class="pre">Router</span></code> which routes messages to one of 2 downstream branches, then
+in one of those branches there is a <code class="docutils literal notranslate"><span class="pre">Broadcast</span></code> step that forwards messages to 3 downstream branches, the commit
+offsets step will only commit the offsets stored in a watermark after it receives a watermark for each downstream branch
+(4 watermarks total):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>  Source
+    |
+┎-Router-┓
+|        |
+1   ┎Broadcast┓
+    |    |    |
+    2    3    4
+</pre></div>
+</div>
+<p><em>Fig 1: Example pipeline with branching routes. One watermark from each branch is required to commit.</em></p>
+<p>Watermark messages are sent by a <code class="docutils literal notranslate"><span class="pre">WatermarkEmitter</span></code> step, which is automatically added at the start of a pipeline.
+By default watermark messages are emitted every 10 seconds.</p>
+<p>Currently, watermarks only exist in the <code class="docutils literal notranslate"><span class="pre">rust_arroyo</span></code> runtime and are a work in progress.</p>
+<p>Most steps in the pipeline immediately forward watermarks to the next step in the pipeline, but some
+steps have special beahviour when they encounter a watermark:</p>
+<ul class="simple">
+<li><p>a <code class="docutils literal notranslate"><span class="pre">Broadcast</span></code> step will duplicate a watermark message for each downstream branch (the same as it does when
+it sees a normal message)</p></li>
+<li><p>when a <code class="docutils literal notranslate"><span class="pre">Router</span></code> step encounters a watermark message, it has the same behaviour as the <code class="docutils literal notranslate"><span class="pre">Broadcast</span></code> step
+(submits a copy of the watermark for each downstream branch)</p>
+<ul>
+<li><p>this is because we don’t know which downstream branches have received messages since the last watermark,
+so we just send a watermark to all of them</p></li>
+</ul>
+</li>
+<li><p>a <code class="docutils literal notranslate"><span class="pre">Reduce</span></code> step will store the committables of all received watermark messages until the reduce window closes,
+after which it will forward the combined committables of all watermarks received</p></li>
+<li><p>in <code class="docutils literal notranslate"><span class="pre">rust-arroyo</span></code>, the <code class="docutils literal notranslate"><span class="pre">PythonAdapter</span></code> step will move the watermark from a rust <code class="docutils literal notranslate"><span class="pre">Watermark</span></code> struct into
+a <code class="docutils literal notranslate"><span class="pre">PyWatermark</span></code> python class, after which the internal Python step will handle the watermark</p></li>
+<li><p>TODO: how should a multiprocess step handle a watermark message?</p></li>
+</ul>
+</section>
+<section id="watermark-progress">
+<h2>Watermark Progress<a class="headerlink" href="#watermark-progress" title="Link to this heading">¶</a></h2>
+<p>Watermarks are still a work in progress. Currently they are only being implemented for the <code class="docutils literal notranslate"><span class="pre">rust_arroyo</span></code>
+adapter, with Python arroyo support coming later.</p>
+<p>Current progress:</p>
+<p>☑ <code class="docutils literal notranslate"><span class="pre">WatermarkEmitter</span></code> step sends watermarks downstream to the rest of the pipeline</p>
+<p>☑ Watermark messages are sent with the committable of each message consumed since the last watermark message</p>
+<p>☑ Watermarks can be passed into Python code via a <code class="docutils literal notranslate"><span class="pre">PythonAdapter</span></code> step</p>
+<p>☑ A <code class="docutils literal notranslate"><span class="pre">Broadcast</span></code> step has been created which broadcasts messages and watermarks to all downstream branches</p>
+<p>☐ The <code class="docutils literal notranslate"><span class="pre">Router</span></code> step needs to be rewritten to be a custom step that routes regular messages downstream (to a single downstream branch),
+but broadcasts watermarks downstream (to all branches)</p>
+<p>☐ <code class="docutils literal notranslate"><span class="pre">Reduce</span></code> and <code class="docutils literal notranslate"><span class="pre">Multiprocess</span></code> steps need to handle watermark messages</p>
+<p>☐ The custom commit step that commits only after receiving a watermark copy from each branch in the pipeline
+needs to be implemented (for now, the arroyo runtime uses the standard once-per-second commit step)</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">Sentry Streams</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../what_for.html">The rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../build_pipeline.html">Building a Pipeline</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../configure_pipeline.html">Pipeline runtime configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../configure_pipeline.html#distribution-and-parallelism">Distribution and parallelism</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Arroyo Runtime</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#rust-arroyo-runtime">Rust Arroyo Runtime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#routes">Routes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#watermarks">Watermarks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#watermark-progress">Watermark Progress</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment.html">Deploying on Kuberentes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../rust.html">Rust applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../rust.html#meeting-notes-july-24-2025">Meeting notes July 24, 2025</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="../configure_pipeline.html" title="previous chapter">Pipeline runtime configuration</a></li>
+      <li>Next: <a href="../deployment.html" title="next chapter">Deploying on Kuberentes</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, blank.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/runtime/arroyo.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

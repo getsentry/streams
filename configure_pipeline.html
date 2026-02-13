@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Pipeline runtime configuration &#8212; Sentry Streams 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=2709fde1"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs";mermaid.registerLayoutLoaders(elkLayouts);mermaid.initialize({startOnLoad:false});</script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";
+window.addEventListener("load", () => mermaid.run());
+</script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Arroyo Runtime" href="runtime/arroyo.html" />
+    <link rel="prev" title="Building a Pipeline" href="build_pipeline.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="pipeline-runtime-configuration">
+<h1>Pipeline runtime configuration<a class="headerlink" href="#pipeline-runtime-configuration" title="Link to this heading">¶</a></h1>
+<p>The pipeline definition described in <a class="reference internal" href="build_pipeline.html"><span class="doc">Building a Pipeline</span></a>
+is a logical view on the streaming pipeline.  It does not include any
+detail on how to run the code or how to configure the pipeline on
+specific environment.</p>
+<p>The configuration is managed by a YAML config file associated with the
+streaming pipeline itself.</p>
+<p>The config file specifies details like:</p>
+<ul class="simple">
+<li><p>Distribution and parallelism</p></li>
+<li><p>External resources configuration (like Kafka Brokers)</p></li>
+<li><p>Tuning configuration</p></li>
+<li><p>Runtime specific configuration to keep the pipeline agnostic</p></li>
+</ul>
+<p>The configuration is meant to rely on sensible defaults. Most parameters
+are supposed to have a default. Only overrides need to be specified in
+the configuration.</p>
+<p>Example</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">env</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span>
+
+<span class="nt">pipeline</span><span class="p">:</span>
+<span class="nt">segments</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">steps_config</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">myinput</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">starts_segment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">            </span><span class="nt">bootstrap_servers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;127.0.0.1:9092&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">            </span><span class="nt">parallelism</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">        </span><span class="nt">parser</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">starts_segment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">            </span><span class="nt">parallelism</span><span class="p">:</span>
+<span class="w">                </span><span class="nt">multi_process</span><span class="p">:</span>
+<span class="w">                </span><span class="nt">processes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
+<span class="w">                </span><span class="nt">batch_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
+<span class="w">                </span><span class="nt">batch_time</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span>
+<span class="w">        </span><span class="nt">mysink</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">starts_segment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">            </span><span class="nt">bootstrap_servers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;127.0.0.1:9092&quot;</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+</section>
+<section id="distribution-and-parallelism">
+<h1>Distribution and parallelism<a class="headerlink" href="#distribution-and-parallelism" title="Link to this heading">¶</a></h1>
+<p>Distribution and parallelism are not pipeline definition concerns. They are
+pipeline configuration concerns for several reasons:</p>
+<ul class="simple">
+<li><p>Different runtimes support different models</p></li>
+<li><p>Deploying the pipeline at different scale requires different distribution
+configuration.</p></li>
+<li><p>Even with a single runtime, there are generally different ways to parallelize
+workloads (threads, processes). Most of the times there is no reason to make
+a change to the application in order to switch from a model to another one.</p></li>
+</ul>
+<p>As an example: Flink allows distribution by deploying chains of operators on
+multiple nodes. Arroyo instead only supports distribution by deploying multiple
+replicas of the whole pipeline and parallelism via threads and processes.</p>
+<section id="segments">
+<h2>Segments<a class="headerlink" href="#segments" title="Link to this heading">¶</a></h2>
+<p>The main logical distribution concept is the <cite>segment</cite>. A <cite>segment</cite> represent
+a chunk of sequential steps of the pipeline that share distribution and parallelism
+configuration.</p>
+<ul class="simple">
+<li><p>A segment can contain branches.</p></li>
+<li><p>A segment is a logical concept. It can be implemented and distributed differently
+on each Runtime.</p></li>
+<li><p>The application can specify how data is logically repartitioned between segments.
+Some runtime may not support all repartitioning modes.</p></li>
+</ul>
+<pre  class="mermaid">
+        flowchart LR
+    source --&gt; segment1
+    segment1 -- re-partition --&gt; segment2
+    segment2 --&gt; sink
+
+    subgraph segment1 [Segment 1 - parallelism = 2]
+        direction LR
+        m1[Map 1] --&gt; m2[Filter 1]
+        m3[Map 1] --&gt; m4[Filter 1]
+    end
+
+    subgraph segment2 [Segment 2 - parallelism = 3]
+        direction LR
+        m11[Map 2]
+        m12[Map 2]
+        m13[Map 2]
+    end
+    </pre><p>The diagram above could be achieved with a configuration like this</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">pipeline</span><span class="p">:</span>
+<span class="nt">segments</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">steps_config</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">source</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">starts_segment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">            </span><span class="nt">parallelism</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">        </span><span class="s">&quot;Map</span><span class="nv"> </span><span class="s">1&quot;</span><span class="p p-Indicator">:</span>
+<span class="w">            </span><span class="nt">starts_segment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">            </span><span class="nt">parallelism</span><span class="p">:</span>
+<span class="w">                </span><span class="nt">multi_process</span><span class="p">:</span>
+<span class="w">                    </span><span class="nt">processes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="w">                    </span><span class="nt">batch_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
+<span class="w">                    </span><span class="nt">batch_time</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span>
+<span class="w">        </span><span class="s">&quot;Map</span><span class="nv"> </span><span class="s">2&quot;</span><span class="p p-Indicator">:</span>
+<span class="w">            </span><span class="nt">starts_segment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">            </span><span class="nt">parallelism</span><span class="p">:</span>
+<span class="w">                </span><span class="nt">multi_process</span><span class="p">:</span>
+<span class="w">                    </span><span class="nt">processes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">        </span><span class="nt">sink</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">starts_segment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">            </span><span class="nt">parallelism</span><span class="p">:</span>
+<span class="w">                </span><span class="nt">threads</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</pre></div>
+</div>
+<p>A segment is defined by marking a step in the configuration with the
+step with <cite>starts_segment: True</cite>.
+All the following steps are chained to the new segment. This approach
+allows us to minimize the boilerplate in the config file. Only the
+steps that impact distribution need to be configured.</p>
+<p>There are multiple types of parallelism and distribution configuration.
+In the example multi_process is shown. That’s the only one implemented
+as of now.
+Not all modes are supported by all runtimes.</p>
+<p>The parallelism factor (processes number in the multi process system) are
+considered absolute and not relative to the previous segment.
+In Arroyo, if we deploy 2 replicas and define a step with parallelism = 4,
+each replica will have 2 processes.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Sentry Streams</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="what_for.html">The rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_pipeline.html">Building a Pipeline</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Pipeline runtime configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#distribution-and-parallelism">Distribution and parallelism</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#segments">Segments</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="runtime/arroyo.html">Arroyo Runtime</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment.html">Deploying on Kuberentes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rust.html">Rust applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rust.html#meeting-notes-july-24-2025">Meeting notes July 24, 2025</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="build_pipeline.html" title="previous chapter">Building a Pipeline</a></li>
+      <li>Next: <a href="runtime/arroyo.html" title="next chapter">Arroyo Runtime</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, blank.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/configure_pipeline.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
