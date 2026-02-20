@@ -162,8 +162,19 @@ def test_build_container() -> None:
                 "name": "pipeline-config",
                 "mountPath": "/etc/pipeline-config",
                 "readOnly": True,
-            }
+            },
+            {
+                "name": "liveness-health",
+                "mountPath": "/tmp",
+            },
         ],
+        "livenessProbe": {
+            "exec": {
+                "command": ["rm", "/tmp/health.txt"],
+            },
+            "failureThreshold": 31,
+            "periodSeconds": 10,
+        },
         "securityContext": {
             "allowPrivilegeEscalation": False,
             "readOnlyRootFilesystem": True,
@@ -350,11 +361,14 @@ def test_run_generates_complete_manifests() -> None:
     assert containers[0]["resources"]["requests"]["memory"] == "512Mi"
     assert containers[0]["env"] == [{"name": "MY_VAR", "value": "my_value"}]
 
-    # Validate deployment has configmap volume
+    # Validate deployment has configmap volume and liveness-health volume
     volumes = deployment["spec"]["template"]["spec"]["volumes"]
-    assert len(volumes) == 1
-    assert volumes[0]["name"] == "pipeline-config"
-    assert volumes[0]["configMap"]["name"] == "my-service-pipeline-profiles"
+    assert len(volumes) == 2
+    volume_names = {v["name"] for v in volumes}
+    assert "pipeline-config" in volume_names
+    assert "liveness-health" in volume_names
+    pipeline_config_vol = next(v for v in volumes if v["name"] == "pipeline-config")
+    assert pipeline_config_vol["configMap"]["name"] == "my-service-pipeline-profiles"
 
     # Validate configmap structure
     assert configmap["apiVersion"] == "v1"
@@ -368,6 +382,75 @@ def test_run_generates_complete_manifests() -> None:
     config_yaml = configmap["data"]["pipeline_config.yaml"]
     parsed_config = yaml.safe_load(config_yaml)
     assert parsed_config == context["pipeline_config"]
+
+
+def test_run_includes_liveness_probe_when_enabled() -> None:
+    """Test that run() includes liveness probe and liveness-health volume when enabled, and omits them when disabled."""
+    base_context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {},
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+        "replicas": 1,
+    }
+
+    pipeline_step = PipelineStep()
+
+    # Default / enabled: deployment has livenessProbe and liveness-health volume/mount
+    result = pipeline_step.run(base_context)
+    deployment = result["deployment"]
+    containers = deployment["spec"]["template"]["spec"]["containers"]
+    volumes = deployment["spec"]["template"]["spec"]["volumes"]
+
+    assert len(containers) == 1
+    container = containers[0]
+    assert "livenessProbe" in container
+    assert container["livenessProbe"]["exec"]["command"] == ["rm", "/tmp/health.txt"]
+    assert container["livenessProbe"]["failureThreshold"] == 31
+    assert container["livenessProbe"]["periodSeconds"] == 10
+
+    liveness_health_volumes = [v for v in volumes if v["name"] == "liveness-health"]
+    assert len(liveness_health_volumes) == 1
+    assert liveness_health_volumes[0]["emptyDir"] == {}
+
+    liveness_mounts = [m for m in container["volumeMounts"] if m["name"] == "liveness-health"]
+    assert len(liveness_mounts) == 1
+    assert liveness_mounts[0]["mountPath"] == "/tmp"
+
+    # Disabled: no livenessProbe, no liveness-health volume or volumeMount
+    result_disabled = pipeline_step.run(
+        {**base_context, "enable_liveness_probe": False}
+    )
+    deployment_disabled = result_disabled["deployment"]
+    containers_disabled = deployment_disabled["spec"]["template"]["spec"]["containers"]
+    volumes_disabled = deployment_disabled["spec"]["template"]["spec"]["volumes"]
+
+    assert len(containers_disabled) == 1
+    assert "livenessProbe" not in containers_disabled[0]
+    assert not any(v["name"] == "liveness-health" for v in volumes_disabled)
+    assert not any(
+        m["name"] == "liveness-health" for m in containers_disabled[0]["volumeMounts"]
+    )
 
 
 def test_load_base_templates() -> None:
@@ -448,7 +531,7 @@ def test_run_with_base_templates() -> None:
     assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
     assert "pipeline" in deployment["metadata"]["labels"]
     assert len(deployment["spec"]["template"]["spec"]["containers"]) == 1
-    assert len(deployment["spec"]["template"]["spec"]["volumes"]) == 1
+    assert len(deployment["spec"]["template"]["spec"]["volumes"]) == 2  # pipeline-config + liveness-health
 
 
 def test_user_template_overrides_base() -> None:
@@ -568,18 +651,20 @@ def test_user_volumes_and_containers_preserved() -> None:
     assert "sidecar" in container_names
     assert "pipeline-consumer" in container_names
 
-    # Check that both user volume and pipeline volume are present
+    # Check that user volume, pipeline volume, and liveness-health volume are present
     volumes = deployment["spec"]["template"]["spec"]["volumes"]
-    assert len(volumes) == 2
+    assert len(volumes) == 3
     volume_names = [v["name"] for v in volumes]
     assert "user-volume" in volume_names
     assert "pipeline-config" in volume_names
+    assert "liveness-health" in volume_names
 
-    # Check that pipeline container has both user and pipeline volume mounts
+    # Check that pipeline container has user, pipeline, and liveness volume mounts
     pipeline_container = next(c for c in containers if c["name"] == "pipeline-consumer")
     volume_mount_names = [vm["name"] for vm in pipeline_container["volumeMounts"]]
     assert "user-volume" in volume_mount_names
     assert "pipeline-config" in volume_mount_names
+    assert "liveness-health" in volume_mount_names
 
 
 def test_get_multiprocess_config_detects_processes() -> None:
@@ -729,17 +814,19 @@ def test_run_with_multiprocessing() -> None:
     assert container["resources"]["requests"]["cpu"] == "4000m"
     assert container["resources"]["requests"]["memory"] == "2048Mi"
 
-    # Check shared memory volume is in deployment
+    # Check shared memory and liveness-health volumes are in deployment
     volumes = deployment["spec"]["template"]["spec"]["volumes"]
     volume_names = [v["name"] for v in volumes]
     assert "pipeline-config" in volume_names
     assert "dshm" in volume_names
+    assert "liveness-health" in volume_names
 
     dshm_volume = next(v for v in volumes if v["name"] == "dshm")
     assert dshm_volume["emptyDir"]["medium"] == "Memory"
 
     volume_mount_names = [vm["name"] for vm in container["volumeMounts"]]
     assert "dshm" in volume_mount_names
+    assert "liveness-health" in volume_mount_names
 
 
 def test_run_rejects_multiple_segments_with_parallelism() -> None:

@@ -89,6 +89,7 @@ def build_container(
     memory_per_process: int,
     segment_id: int,
     process_count: int | None = None,
+    enable_liveness_probe: bool = True,
 ) -> dict[str, Any]:
     """
     Build a complete container specification for the pipeline step.
@@ -127,7 +128,16 @@ def build_container(
             }
         )
 
-    pipeline_additions = {
+    # Liveness probe volume mount: /tmp is where the app writes health.txt for the probe.
+    if enable_liveness_probe:
+        volume_mounts.append(
+            {
+                "name": "liveness-health",
+                "mountPath": "/tmp",
+            }
+        )
+
+    pipeline_additions: dict[str, Any] = {
         "name": "pipeline-consumer",
         "image": image_name,
         "command": ["python", "-m", "sentry_streams.runner"],
@@ -153,6 +163,15 @@ def build_container(
         },
         "volumeMounts": volume_mounts,
     }
+
+    if enable_liveness_probe:
+        pipeline_additions["livenessProbe"] = {
+            "exec": {
+                "command": ["rm", "/tmp/health.txt"],
+            },
+            "failureThreshold": 31,
+            "periodSeconds": 10,
+        }
 
     return deepmerge(container, pipeline_additions)
 
@@ -201,6 +220,7 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
         "segment_id": context["segment_id"],
         "replicas": context.get("replicas", 1),
         "emergency_patch": emergency_patch_parsed,
+        "enable_liveness_probe": context.get("enable_liveness_probe", True),
     }
 
 
@@ -219,6 +239,7 @@ class PipelineStepContext(TypedDict):
     segment_id: int
     replicas: int
     emergency_patch: NotRequired[dict[str, Any]]
+    enable_liveness_probe: NotRequired[bool]
 
 
 class PipelineStep(ExternalMacro):
@@ -316,6 +337,7 @@ class PipelineStep(ExternalMacro):
         service_name = ctx["service_name"]
         replicas = ctx["replicas"]
         emergency_patch = ctx.get("emergency_patch", {})
+        enable_liveness_probe = ctx.get("enable_liveness_probe", True)
 
         process_count, segments_with_parallelism = get_multiprocess_config(pipeline_config)
         if len(segments_with_parallelism) > 1:
@@ -334,6 +356,7 @@ class PipelineStep(ExternalMacro):
             memory_per_process,
             segment_id,
             process_count,
+            enable_liveness_probe,
         )
 
         base_deployment = load_base_template("deployment")
@@ -360,6 +383,15 @@ class PipelineStep(ExternalMacro):
                 {
                     "name": "dshm",
                     "emptyDir": {"medium": "Memory"},
+                }
+            )
+
+        # Liveness probe: emptyDir for /tmp where the app writes health.txt.
+        if enable_liveness_probe:
+            volumes.append(
+                {
+                    "name": "liveness-health",
+                    "emptyDir": {},
                 }
             )
 
