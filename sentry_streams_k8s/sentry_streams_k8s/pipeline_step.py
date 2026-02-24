@@ -90,6 +90,7 @@ def build_container(
     segment_id: int,
     process_count: int | None = None,
     enable_liveness_probe: bool = True,
+    multiprocess_enabled: bool | None = None,
 ) -> dict[str, Any]:
     """
     Build a complete container specification for the pipeline step.
@@ -118,9 +119,11 @@ def build_container(
         }
     ]
 
+    if multiprocess_enabled is None:
+        multiprocess_enabled = process_count is not None and process_count > 1
+
     # Shared memory volume is needed to allow the communication between processes.
-    # via shared memory. Only needed when in multiprocess mode.
-    if process_count is not None and process_count > 1:
+    if multiprocess_enabled:
         volume_mounts.append(
             {
                 "name": "dshm",
@@ -128,8 +131,8 @@ def build_container(
             }
         )
 
-    # Liveness probe volume mount: /tmp is where the app writes health.txt for the probe.
-    if enable_liveness_probe:
+    # /tmp volume is needed for both liveness probe (health.txt) and multiprocess support.
+    if enable_liveness_probe or multiprocess_enabled:
         volume_mounts.append(
             {
                 "name": "liveness-health",
@@ -347,6 +350,8 @@ class PipelineStep(ExternalMacro):
                 f"(segment indices: {segments_with_parallelism})."
             )
 
+        multiprocess_enabled = process_count is not None and process_count > 1
+
         container = build_container(
             container_template,
             pipeline_name,
@@ -357,6 +362,7 @@ class PipelineStep(ExternalMacro):
             segment_id,
             process_count,
             enable_liveness_probe,
+            multiprocess_enabled,
         )
 
         base_deployment = load_base_template("deployment")
@@ -377,8 +383,7 @@ class PipelineStep(ExternalMacro):
         ]
 
         # Shared memory volume is needed to allow the communication between processes.
-        # via shared memory. Only needed when in multiprocess mode.
-        if process_count is not None and process_count > 1:
+        if multiprocess_enabled:
             volumes.append(
                 {
                     "name": "dshm",
@@ -386,8 +391,8 @@ class PipelineStep(ExternalMacro):
                 }
             )
 
-        # Liveness probe: emptyDir for /tmp where the app writes health.txt.
-        if enable_liveness_probe:
+        # /tmp volume is needed for both liveness probe (health.txt) and multiprocess support.
+        if enable_liveness_probe or multiprocess_enabled:
             volumes.append(
                 {
                     "name": "liveness-health",

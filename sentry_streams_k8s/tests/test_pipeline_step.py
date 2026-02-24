@@ -735,6 +735,11 @@ def test_build_container_with_multiprocessing() -> None:
     dshm_mount = next(vm for vm in container["volumeMounts"] if vm["name"] == "dshm")
     assert dshm_mount["mountPath"] == "/dev/shm"
 
+    # /tmp volume is needed for multiprocess support (and liveness probe when enabled)
+    assert "liveness-health" in volume_mount_names
+    liveness_mount = next(vm for vm in container["volumeMounts"] if vm["name"] == "liveness-health")
+    assert liveness_mount["mountPath"] == "/tmp"
+
 
 def test_build_container_without_multiprocessing() -> None:
     """Test that build_container() works normally when multiprocessing is not configured."""
@@ -827,6 +832,8 @@ def test_run_with_multiprocessing() -> None:
     volume_mount_names = [vm["name"] for vm in container["volumeMounts"]]
     assert "dshm" in volume_mount_names
     assert "liveness-health" in volume_mount_names
+    liveness_mount = next(vm for vm in container["volumeMounts"] if vm["name"] == "liveness-health")
+    assert liveness_mount["mountPath"] == "/tmp"
 
 
 def test_run_rejects_multiple_segments_with_parallelism() -> None:
