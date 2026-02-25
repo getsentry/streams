@@ -1,3 +1,7 @@
+## 0.0.4
+
+- Add optional liveness probe and health volume to PipelineStep manifest by @fpacifici in [#234](https://github.com/getsentry/streams/pull/234)
+
 ## 0.0.3
 
 ### New Features ✨
