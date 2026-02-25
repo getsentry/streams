@@ -313,7 +313,19 @@ class PipelineStep(ExternalMacro):
         assert "pipeline_name" in context, "Missing pipeline_name"
         assert "service_name" in context, "Missing service_name"
 
-        validate_pipeline_config(parse_context(context)["pipeline_config"])
+        ctx = parse_context(context)
+        validate_pipeline_config(ctx["pipeline_config"])
+
+        # When the macro manages the liveness probe, the user template must not define one.
+        if ctx.get("enable_liveness_probe", True) and ctx["container_template"].get(
+            "livenessProbe"
+        ):
+            raise ValueError(
+                "enable_liveness_probe is True but container_template already defines "
+                "livenessProbe. When the macro manages the liveness probe, the template must not "
+                "define one. Either set enable_liveness_probe to False or remove livenessProbe "
+                "from container_template."
+            )
 
     def run(self, context: dict[str, Any]) -> dict[str, Any]:
         """

@@ -286,6 +286,48 @@ def test_validate_context_invalid_pipeline_config() -> None:
         PipelineStep.validate_context(invalid_context)
 
 
+def test_validate_context_rejects_liveness_probe_in_template_when_enabled() -> None:
+    """When enable_liveness_probe is True, container_template must not define livenessProbe."""
+    valid_context = {
+        "service_name": "my-service",
+        "pipeline_name": "my-pipeline",
+        "deployment_template": {},
+        "container_template": {
+            "livenessProbe": {
+                "exec": {"command": ["custom-probe"]},
+                "periodSeconds": 5,
+            },
+        },
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "my_module",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+    }
+
+    with pytest.raises(ValueError, match="enable_liveness_probe is True but container_template"):
+        PipelineStep.validate_context(valid_context)
+
+    # With enable_liveness_probe=False, container_template may define livenessProbe.
+    valid_context["enable_liveness_probe"] = False
+    PipelineStep.validate_context(valid_context)
+
+
 def test_run_generates_complete_manifests() -> None:
     """Test that run() generates complete deployment and configmap manifests."""
     context: dict[str, Any] = {
@@ -438,9 +480,7 @@ def test_run_includes_liveness_probe_when_enabled() -> None:
     assert liveness_mounts[0]["mountPath"] == "/tmp"
 
     # Disabled: no livenessProbe, no liveness-health volume or volumeMount
-    result_disabled = pipeline_step.run(
-        {**base_context, "enable_liveness_probe": False}
-    )
+    result_disabled = pipeline_step.run({**base_context, "enable_liveness_probe": False})
     deployment_disabled = result_disabled["deployment"]
     containers_disabled = deployment_disabled["spec"]["template"]["spec"]["containers"]
     volumes_disabled = deployment_disabled["spec"]["template"]["spec"]["volumes"]
@@ -448,9 +488,7 @@ def test_run_includes_liveness_probe_when_enabled() -> None:
     assert len(containers_disabled) == 1
     assert "livenessProbe" not in containers_disabled[0]
     assert not any(v["name"] == "liveness-health" for v in volumes_disabled)
-    assert not any(
-        m["name"] == "liveness-health" for m in containers_disabled[0]["volumeMounts"]
-    )
+    assert not any(m["name"] == "liveness-health" for m in containers_disabled[0]["volumeMounts"])
 
 
 def test_load_base_templates() -> None:
@@ -531,7 +569,9 @@ def test_run_with_base_templates() -> None:
     assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
     assert "pipeline" in deployment["metadata"]["labels"]
     assert len(deployment["spec"]["template"]["spec"]["containers"]) == 1
-    assert len(deployment["spec"]["template"]["spec"]["volumes"]) == 2  # pipeline-config + liveness-health
+    assert (
+        len(deployment["spec"]["template"]["spec"]["volumes"]) == 2
+    )  # pipeline-config + liveness-health
 
 
 def test_user_template_overrides_base() -> None:
