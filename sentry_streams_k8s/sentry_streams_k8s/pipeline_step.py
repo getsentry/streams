@@ -89,6 +89,8 @@ def build_container(
     memory_per_process: int,
     segment_id: int,
     process_count: int | None = None,
+    enable_liveness_probe: bool = True,
+    multiprocess_enabled: bool | None = None,
 ) -> dict[str, Any]:
     """
     Build a complete container specification for the pipeline step.
@@ -117,9 +119,11 @@ def build_container(
         }
     ]
 
+    if multiprocess_enabled is None:
+        multiprocess_enabled = process_count is not None and process_count > 1
+
     # Shared memory volume is needed to allow the communication between processes.
-    # via shared memory. Only needed when in multiprocess mode.
-    if process_count is not None and process_count > 1:
+    if multiprocess_enabled:
         volume_mounts.append(
             {
                 "name": "dshm",
@@ -127,7 +131,16 @@ def build_container(
             }
         )
 
-    pipeline_additions = {
+    # /tmp volume is needed for both liveness probe (health.txt) and multiprocess support.
+    if enable_liveness_probe or multiprocess_enabled:
+        volume_mounts.append(
+            {
+                "name": "liveness-health",
+                "mountPath": "/tmp",
+            }
+        )
+
+    pipeline_additions: dict[str, Any] = {
         "name": "pipeline-consumer",
         "image": image_name,
         "command": ["python", "-m", "sentry_streams.runner"],
@@ -153,6 +166,15 @@ def build_container(
         },
         "volumeMounts": volume_mounts,
     }
+
+    if enable_liveness_probe:
+        pipeline_additions["livenessProbe"] = {
+            "exec": {
+                "command": ["rm", "/tmp/health.txt"],
+            },
+            "failureThreshold": 31,
+            "periodSeconds": 10,
+        }
 
     return deepmerge(container, pipeline_additions)
 
@@ -201,6 +223,7 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
         "segment_id": context["segment_id"],
         "replicas": context.get("replicas", 1),
         "emergency_patch": emergency_patch_parsed,
+        "enable_liveness_probe": context.get("enable_liveness_probe", True),
     }
 
 
@@ -219,6 +242,7 @@ class PipelineStepContext(TypedDict):
     segment_id: int
     replicas: int
     emergency_patch: NotRequired[dict[str, Any]]
+    enable_liveness_probe: NotRequired[bool]
 
 
 class PipelineStep(ExternalMacro):
@@ -289,7 +313,19 @@ class PipelineStep(ExternalMacro):
         assert "pipeline_name" in context, "Missing pipeline_name"
         assert "service_name" in context, "Missing service_name"
 
-        validate_pipeline_config(parse_context(context)["pipeline_config"])
+        ctx = parse_context(context)
+        validate_pipeline_config(ctx["pipeline_config"])
+
+        # When the macro manages the liveness probe, the user template must not define one.
+        if ctx.get("enable_liveness_probe", True) and ctx["container_template"].get(
+            "livenessProbe"
+        ):
+            raise ValueError(
+                "enable_liveness_probe is True but container_template already defines "
+                "livenessProbe. When the macro manages the liveness probe, the template must not "
+                "define one. Either set enable_liveness_probe to False or remove livenessProbe "
+                "from container_template."
+            )
 
     def run(self, context: dict[str, Any]) -> dict[str, Any]:
         """
@@ -316,6 +352,7 @@ class PipelineStep(ExternalMacro):
         service_name = ctx["service_name"]
         replicas = ctx["replicas"]
         emergency_patch = ctx.get("emergency_patch", {})
+        enable_liveness_probe = ctx.get("enable_liveness_probe", True)
 
         process_count, segments_with_parallelism = get_multiprocess_config(pipeline_config)
         if len(segments_with_parallelism) > 1:
@@ -324,6 +361,8 @@ class PipelineStep(ExternalMacro):
                 f"Found parallelism configuration in {len(segments_with_parallelism)} segments "
                 f"(segment indices: {segments_with_parallelism})."
             )
+
+        multiprocess_enabled = process_count is not None and process_count > 1
 
         container = build_container(
             container_template,
@@ -334,6 +373,8 @@ class PipelineStep(ExternalMacro):
             memory_per_process,
             segment_id,
             process_count,
+            enable_liveness_probe,
+            multiprocess_enabled,
         )
 
         base_deployment = load_base_template("deployment")
@@ -354,12 +395,20 @@ class PipelineStep(ExternalMacro):
         ]
 
         # Shared memory volume is needed to allow the communication between processes.
-        # via shared memory. Only needed when in multiprocess mode.
-        if process_count is not None and process_count > 1:
+        if multiprocess_enabled:
             volumes.append(
                 {
                     "name": "dshm",
                     "emptyDir": {"medium": "Memory"},
+                }
+            )
+
+        # /tmp volume is needed for both liveness probe (health.txt) and multiprocess support.
+        if enable_liveness_probe or multiprocess_enabled:
+            volumes.append(
+                {
+                    "name": "liveness-health",
+                    "emptyDir": {},
                 }
             )
 
