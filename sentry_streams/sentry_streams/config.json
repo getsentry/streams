@@ -24,6 +24,19 @@
             "title": "pipeline",
             "additionalProperties": true,
             "properties": {
+                "runtime_config": {
+                    "type": "object",
+                    "properties": {
+                        "arroyo": {
+                            "type": "object",
+                            "properties": {
+                                "write_healthcheck": {
+                                    "type": "boolean"
+                                }
+                            }
+                        }
+                    }
+                },
                 "segments": {
                     "type": "array",
                     "items": {

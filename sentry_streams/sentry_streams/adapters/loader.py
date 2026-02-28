@@ -34,7 +34,11 @@ def load_adapter(
     # no sense.
     """
     if segment_id is not None:
-        config = {"env": config["env"], **config["pipeline"]["segments"][segment_id]}
+        config = {
+            "env": config["env"],
+            "runtime_config": config["pipeline"].get("runtime_config"),
+            **config["pipeline"]["segments"][segment_id],
+        }
 
     if adapter_type == "dummy":
         from sentry_streams.dummy.dummy_adapter import DummyAdapter
