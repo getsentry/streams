@@ -1,14 +1,11 @@
 import importlib
-import json
 import logging
 import multiprocessing
 import sys
 from typing import Any, Mapping, Optional, cast
 
 import click
-import jsonschema
 import sentry_sdk
-import yaml
 
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
@@ -21,6 +18,7 @@ from sentry_streams.metrics import (
     DummyMetricsBackend,
     configure_metrics,
 )
+from sentry_streams.pipeline.config import load_config
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
     WithInput,
@@ -144,14 +142,7 @@ def load_runtime_with_config_file(
     application: str,
 ) -> Any:
     """Load runtime from a config file path, returning the runtime object without calling run()."""
-    with open(config, "r") as f:
-        environment_config = yaml.safe_load(f)
-
-    config_template = importlib.resources.files("sentry_streams") / "config.json"
-    with config_template.open("r") as file:
-        schema = json.load(file)
-
-        jsonschema.validate(environment_config, schema)
+    environment_config = load_config(config)
 
     sentry_sdk_config = environment_config.get("sentry_sdk_config")
     if sentry_sdk_config:

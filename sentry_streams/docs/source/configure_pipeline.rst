@@ -44,6 +44,34 @@ Example
                 starts_segment: True
                 bootstrap_servers: ["127.0.0.1:9092"]
 
+Environment variable overrides
+-----------------------------
+
+You can override **literal (string) fields** in the config using the
+``${envvar:VAR_NAME}`` syntax. The value is replaced with the environment
+variable at load time.
+
+* **Syntax**: Set a field to ``${envvar:VAR_NAME}`` (e.g. ``max.poll.interval.ms: "${envvar:MAX_POLL_INTERVAL_MS}"``).
+  Only string values are substituted; structured fields (nested objects) cannot
+  be replaced by an env var.
+* **Missing variable**: If a referenced environment variable is not set, the
+  pipeline fails at startup with a clear error that includes the variable name.
+
+Example with env var for a list entry:
+
+.. code-block:: yaml
+
+    pipeline:
+      segments:
+        - steps_config:
+            myinput:
+              starts_segment: true
+              bootstrap_servers: ["127.0.0.1:9092"]
+              override_params:
+                max.poll.interval.ms: "${envvar:MAX_POLL_INTERVAL_MS}"
+
+Run with the variable set, e.g. ``MAX_POLL_INTERVAL_MS=30000``.
+
 
 Distribution and parallelism
 ============================
