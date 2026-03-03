@@ -16,6 +16,19 @@ The config file specifies details like:
 * Tuning configuration
 * Runtime specific configuration to keep the pipeline agnostic
 
+Pipeline-level runtime options
+-----------------------------
+
+Under ``pipeline`` you can set optional ``adapter_config`` to control adapter
+behavior. For the Arroyo/Rust Arroyo adapter:
+
+* ``adapter_config.arroyo.write_healthcheck`` (boolean, default false): when true,
+  the consumer touches a file (by default ``/tmp/health.txt``) on each poll so that
+  Kubernetes liveness probes can detect a blocked main thread. See the
+  `Arroyo healthcheck strategy <https://github.com/getsentry/arroyo/blob/main/docs/source/strategies/healthcheck.rst>`_
+  for probe configuration (e.g. ``periodSeconds`` should be higher than
+  ``max.poll.interval.ms``).
+
 The configuration is meant to rely on sensible defaults. Most parameters
 are supposed to have a default. Only overrides need to be specified in
 the configuration.
@@ -27,7 +40,10 @@ Example
     env: {}
 
     pipeline:
-    segments:
+      adapter_config:
+        arroyo:
+          write_healthcheck: true   # optional; for Kubernetes liveness
+      segments:
         - steps_config:
             myinput:
                 starts_segment: True
