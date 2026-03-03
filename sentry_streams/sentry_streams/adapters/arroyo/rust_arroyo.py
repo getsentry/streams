@@ -200,10 +200,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self,
         steps_config: Mapping[str, StepConfig],
         metric_config: PyMetricConfig | None = None,
+        write_healthcheck: bool = False,
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
         self.__metric_config = metric_config
+        self.__write_healthcheck = write_healthcheck
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
 
@@ -214,8 +216,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         metric_config: PyMetricConfig | None = None,
     ) -> Self:
         steps_config = config["steps_config"]
+        adapter_config = config.get("adapter_config") or {}
+        arroyo_config = adapter_config.get("arroyo") or {}
+        write_healthcheck = bool(arroyo_config.get("write_healthcheck", False))
 
-        return cls(steps_config, metric_config)
+        return cls(steps_config, metric_config, write_healthcheck)
 
     def __close_chain(self, stream: Route) -> None:
         if self.__chains.exists(stream):
@@ -243,12 +248,14 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         source_config = self.steps_config.get(source_name)
         assert source_config is not None, f"Config not provided for source {source_name}"
 
+        assert isinstance(self.__write_healthcheck, bool)
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
             kafka_config=build_kafka_consumer_config(source_name, source_config),
             topic=step.stream_name,
             schema=step.stream_name,
             metric_config=self.__metric_config,
+            write_healthcheck=self.__write_healthcheck,
         )
         return Route(source_name, [])
 

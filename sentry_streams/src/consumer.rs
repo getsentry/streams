@@ -19,6 +19,7 @@ use crate::watermark::WatermarkEmitter;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
+use sentry_arroyo::processing::strategies::healthcheck::HealthCheck;
 use sentry_arroyo::processing::strategies::noop::Noop;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
@@ -28,6 +29,10 @@ use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 use std::sync::Arc;
+
+/// Default path for the healthcheck file touched when write_healthcheck is enabled.
+/// Matches Arroyo docs for Kubernetes liveness probes.
+const HEALTHCHECK_PATH: &str = "/tmp/health.txt";
 
 /// The class that represent the consumer.
 /// This class is exposed to python and it is the main entry point
@@ -61,19 +66,23 @@ pub struct ArroyoConsumer {
     concurrency_config: Arc<ConcurrencyConfig>,
 
     metric_config: Option<PyMetricConfig>,
+
+    /// When true, wrap the strategy chain with HealthCheck to touch a file on poll for liveness.
+    write_healthcheck: bool,
 }
 
 #[pymethods]
 impl ArroyoConsumer {
     #[new]
+    #[pyo3(signature = (source, kafka_config, topic, schema, metric_config=None, write_healthcheck=false))]
     fn new(
         source: String,
         kafka_config: PyKafkaConsumerConfig,
         topic: String,
         schema: Option<String>,
         metric_config: Option<PyMetricConfig>,
+        write_healthcheck: bool,
     ) -> Self {
-        // Create a new metrics recorder
         ArroyoConsumer {
             consumer_config: kafka_config,
             topic,
@@ -83,6 +92,7 @@ impl ArroyoConsumer {
             handle: None,
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
             metric_config,
+            write_healthcheck,
         }
     }
 
@@ -107,6 +117,7 @@ impl ArroyoConsumer {
             &self.steps,
             self.concurrency_config.clone(),
             self.schema.clone(),
+            self.write_healthcheck,
         );
         let config = self.consumer_config.clone().into();
         let processor = StreamProcessor::with_kafka(config, factory, Topic::new(&self.topic), None);
@@ -206,6 +217,7 @@ pub fn build_chain(
     ending_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
     concurrency_config: &ConcurrencyConfig,
     schema: &Option<String>,
+    write_healthcheck: bool,
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
     let mut next = ending_strategy;
     for step in steps.iter().rev() {
@@ -228,7 +240,12 @@ pub fn build_chain(
 
     let converter = RunTask::new(conversion_function, watermark_step);
 
-    Box::new(converter)
+    let chain: Box<dyn ProcessingStrategy<KafkaPayload>> = Box::new(converter);
+    if write_healthcheck {
+        Box::new(HealthCheck::new(chain, HEALTHCHECK_PATH))
+    } else {
+        chain
+    }
 }
 
 struct ArroyoStreamingFactory {
@@ -236,6 +253,7 @@ struct ArroyoStreamingFactory {
     steps: Vec<Py<RuntimeOperator>>,
     concurrency_config: Arc<ConcurrencyConfig>,
     schema: Option<String>,
+    write_healthcheck: bool,
 }
 
 impl ArroyoStreamingFactory {
@@ -245,6 +263,7 @@ impl ArroyoStreamingFactory {
         steps: &[Py<RuntimeOperator>],
         concurrency_config: Arc<ConcurrencyConfig>,
         schema: Option<String>,
+        write_healthcheck: bool,
     ) -> Self {
         let steps_copy = traced_with_gil!(|py| {
             steps
@@ -258,6 +277,7 @@ impl ArroyoStreamingFactory {
             steps: steps_copy,
             concurrency_config,
             schema,
+            write_healthcheck,
         }
     }
 }
@@ -272,6 +292,7 @@ impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
             Box::new(WatermarkCommitOffsets::new(1)),
             &self.concurrency_config,
             &self.schema,
+            self.write_healthcheck,
         )
     }
 }
@@ -289,7 +310,10 @@ mod tests {
     use pyo3::IntoPyObjectExt;
     use std::collections::BTreeMap;
     use std::ops::Deref;
+    use std::path::Path;
     use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn test_to_routed_value() {
@@ -375,6 +399,7 @@ mod tests {
                 Box::new(next_step),
                 &concurrency_config,
                 &Some("schema".to_string()),
+                true,
             );
             let message = make_msg(Some(b"test_payload".to_vec()), BTreeMap::new());
 
@@ -389,6 +414,19 @@ mod tests {
             let actual_messages = submitted_messages_clone.lock().unwrap();
 
             assert_messages_match(py, expected_messages, actual_messages.deref());
+
+            // Validate that the HealthCheck strategy writes the healthcheck file when poll() is called.
+            // HealthCheck touches the file at most once per second, so we poll, wait past the interval, then poll again.
+            let _ = chain.poll();
+            thread::sleep(Duration::from_secs(2));
+            let _ = chain.poll();
+            let healthcheck_path = Path::new(super::HEALTHCHECK_PATH);
+            assert!(
+                healthcheck_path.exists(),
+                "healthcheck file should exist at {} after poll() with write_healthcheck=true",
+                super::HEALTHCHECK_PATH
+            );
+            let _ = std::fs::remove_file(healthcheck_path);
         })
     }
 }

@@ -5,6 +5,9 @@
 env: {}
 
 pipeline:
+  adapter_config:
+    arroyo:
+      write_healthcheck: true
   segments:
     - steps_config:
         myinput:
