@@ -36,7 +36,7 @@ def load_adapter(
     if segment_id is not None:
         config = {
             "env": config["env"],
-            "runtime_config": config["pipeline"].get("runtime_config"),
+            "adapter_config": config["pipeline"].get("adapter_config"),
             **config["pipeline"]["segments"][segment_id],
         }
 

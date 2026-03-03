@@ -8,7 +8,7 @@ case of a Flink configuration file, that could mean setting certain properties t
 for an entire streaming pipeline.
 
 `pipeline` holds optional runtime-level options and configuration for each segment.
-You can set `pipeline.runtime_config.arroyo.write_healthcheck: true` to enable
+You can set `pipeline.adapter_config.arroyo.write_healthcheck: true` to enable
 the Arroyo healthcheck strategy (touches a file for Kubernetes liveness probes). A segment is defined as a set of steps or operators
 which will be executed on one unit (this could be a worker, a single consumer, or a Flink slot). Each
 segment can have a parallelism override if parallelism is a value other than 1. The segment also holds

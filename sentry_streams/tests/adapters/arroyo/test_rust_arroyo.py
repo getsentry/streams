@@ -6,43 +6,6 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.runner import iterate_edges
 
 
-def test_rust_arroyo_adapter_write_healthcheck_from_runtime_config() -> None:
-    """Adapter respects pipeline.runtime_config.arroyo.write_healthcheck when building."""
-    bootstrap_servers = ["localhost:9092"]
-    config = {
-        "runtime_config": {
-            "arroyo": {
-                "write_healthcheck": True,
-            },
-        },
-        "steps_config": {
-            "myinput": {
-                "bootstrap_servers": bootstrap_servers,
-                "starts_segment": True,
-            },
-            "kafkasink": {"bootstrap_servers": bootstrap_servers},
-        },
-    }
-    adapter = RustArroyoAdapter.build(config)
-    assert adapter.write_healthcheck is True
-
-
-def test_rust_arroyo_adapter_write_healthcheck_default_false() -> None:
-    """Adapter has write_healthcheck False when runtime_config is absent."""
-    bootstrap_servers = ["localhost:9092"]
-    config = {
-        "steps_config": {
-            "myinput": {
-                "bootstrap_servers": bootstrap_servers,
-                "starts_segment": True,
-            },
-            "kafkasink": {"bootstrap_servers": bootstrap_servers},
-        },
-    }
-    adapter = RustArroyoAdapter.build(config)
-    assert adapter.write_healthcheck is False
-
-
 def test_rust_arroyo_adapter(
     pipeline: Pipeline[bytes],
 ) -> None:

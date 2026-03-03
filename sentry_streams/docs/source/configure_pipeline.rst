@@ -19,10 +19,10 @@ The config file specifies details like:
 Pipeline-level runtime options
 -----------------------------
 
-Under ``pipeline`` you can set optional ``runtime_config`` to control runtime
+Under ``pipeline`` you can set optional ``adapter_config`` to control adapter
 behavior. For the Arroyo/Rust Arroyo adapter:
 
-* ``runtime_config.arroyo.write_healthcheck`` (boolean, default false): when true,
+* ``adapter_config.arroyo.write_healthcheck`` (boolean, default false): when true,
   the consumer touches a file (by default ``/tmp/health.txt``) on each poll so that
   Kubernetes liveness probes can detect a blocked main thread. See the
   `Arroyo healthcheck strategy <https://github.com/getsentry/arroyo/blob/main/docs/source/strategies/healthcheck.rst>`_
@@ -40,7 +40,7 @@ Example
     env: {}
 
     pipeline:
-      runtime_config:
+      adapter_config:
         arroyo:
           write_healthcheck: true   # optional; for Kubernetes liveness
       segments:

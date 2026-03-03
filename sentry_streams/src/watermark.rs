@@ -214,7 +214,7 @@ mod tests {
                 Box::new(WatermarkCommitOffsets::new(1)),
                 &ConcurrencyConfig::new(1),
                 &None,
-                true,
+                false,
             );
 
             let msg1 = make_msg(

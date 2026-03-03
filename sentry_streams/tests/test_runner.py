@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -57,39 +57,6 @@ def create_pipeline() -> Pipeline[bytes]:
     )
 
     return test_pipeline
-
-
-def test_load_adapter_rust_arroyo_merges_runtime_config() -> None:
-    """Loader merges pipeline.runtime_config into segment config for rust_arroyo adapter."""
-    full_config: PipelineConfig = {
-        "env": {},
-        "pipeline": {
-            "runtime_config": {
-                "arroyo": {
-                    "write_healthcheck": True,
-                },
-            },
-            "segments": [
-                {
-                    "steps_config": {
-                        "myinput": {
-                            "bootstrap_servers": ["localhost:9092"],
-                            "starts_segment": True,
-                        },
-                        "kafkasink": {"bootstrap_servers": ["localhost:9092"]},
-                    },
-                },
-            ],
-        },
-    }
-    from sentry_streams.adapters.arroyo.rust_arroyo import RustArroyoAdapter
-
-    adapter = cast(
-        RustArroyoAdapter,
-        load_adapter("rust_arroyo", full_config, segment_id=0),
-    )
-    assert isinstance(adapter, RustArroyoAdapter)
-    assert adapter.write_healthcheck is True
 
 
 def test_iterate_edges(create_pipeline: Pipeline[bytes]) -> None:

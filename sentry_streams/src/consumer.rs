@@ -426,7 +426,6 @@ mod tests {
                 "healthcheck file should exist at {} after poll() with write_healthcheck=true",
                 super::HEALTHCHECK_PATH
             );
-            // Clean up so we don't leave the file behind
             let _ = std::fs::remove_file(healthcheck_path);
         })
     }

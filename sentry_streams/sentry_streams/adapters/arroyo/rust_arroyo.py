@@ -216,8 +216,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         metric_config: PyMetricConfig | None = None,
     ) -> Self:
         steps_config = config["steps_config"]
-        runtime_config = config.get("runtime_config") or {}
-        arroyo_config = runtime_config.get("arroyo") or {}
+        adapter_config = config.get("adapter_config") or {}
+        arroyo_config = adapter_config.get("arroyo") or {}
         write_healthcheck = bool(arroyo_config.get("write_healthcheck", False))
 
         return cls(steps_config, metric_config, write_healthcheck)
@@ -229,11 +229,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
     def get_consumer(self, source: str) -> ArroyoConsumer:
         return self.__consumers[source]
-
-    @property
-    def write_healthcheck(self) -> bool:
-        """Whether the Arroyo consumer is configured to write a healthcheck file for liveness probes."""
-        return self.__write_healthcheck
 
     def complex_step_override(
         self,
@@ -253,23 +248,15 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         source_config = self.steps_config.get(source_name)
         assert source_config is not None, f"Config not provided for source {source_name}"
 
-        kwargs: MutableMapping[str, Any] = {
-            "source": source_name,
-            "kafka_config": build_kafka_consumer_config(source_name, source_config),
-            "topic": step.stream_name,
-            "schema": step.stream_name,
-            "metric_config": self.__metric_config,
-        }
-        if self.__write_healthcheck:
-            kwargs["write_healthcheck"] = True
-        try:
-            self.__consumers[source_name] = ArroyoConsumer(**kwargs)
-        except TypeError as e:
-            if "write_healthcheck" in str(e):
-                kwargs.pop("write_healthcheck", None)
-                self.__consumers[source_name] = ArroyoConsumer(**kwargs)
-            else:
-                raise
+        assert isinstance(self.__write_healthcheck, bool)
+        self.__consumers[source_name] = ArroyoConsumer(
+            source=source_name,
+            kafka_config=build_kafka_consumer_config(source_name, source_config),
+            topic=step.stream_name,
+            schema=step.stream_name,
+            metric_config=self.__metric_config,
+            write_healthcheck=self.__write_healthcheck,
+        )
         return Route(source_name, [])
 
     def sink(self, step: Sink[Any], stream: Route) -> Route:

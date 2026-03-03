@@ -24,7 +24,7 @@
             "title": "pipeline",
             "additionalProperties": true,
             "properties": {
-                "runtime_config": {
+                "adapter_config": {
                     "type": "object",
                     "properties": {
                         "arroyo": {
