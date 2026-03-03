@@ -3,7 +3,13 @@
 # As of now, the assumption is that local adapters (like Arroyo)
 # do not require overrides of this file
 env: {}
-
+metrics:
+  type: datadog
+  host: datadog-agent
+  port: 8125
+  tags:
+    sentry_region: sandbox
+    pipeline: processed_profiles
 pipeline:
   adapter_config:
     arroyo:
@@ -12,6 +18,6 @@ pipeline:
     - steps_config:
         myinput:
           starts_segment: True
-          bootstrap_servers: ["127.0.0.1:9092"]
+          bootstrap_servers: ["kafka-test-2-001:9092","kafka-test-3-001:9092","kafka-test-4-001:9092"]
         mysink:
-          bootstrap_servers: ["127.0.0.1:9092"]
+          bootstrap_servers: ["kafka-test-2-001:9092","kafka-test-3-001:9092","kafka-test-4-001:9092"]

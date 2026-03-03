@@ -26,14 +26,23 @@ impl Recorder for MetricsFacadeRecorder {
 
         match metric.ty {
             MetricType::Counter => {
+                //info!(
+                //    "Recorded counter metric: {} with value: {}",
+                //     &key, value_f64
+                //);
                 let counter = metrics::counter!(key, &labels);
                 counter.increment(value_f64 as u64);
             }
             MetricType::Gauge => {
+                //info!("Recorded gauge metric: {} with value: {}", &key, value_f64);
                 let gauge = metrics::gauge!(key, &labels);
                 gauge.set(value_f64);
             }
             MetricType::Timer => {
+                //info!(
+                //    "Recorded histogram metric: {} with value: {}",
+                //    &key, value_f64
+                //);
                 let histogram = metrics::histogram!(key, &labels);
                 histogram.record(value_f64);
             }
