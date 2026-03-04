@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Building a Pipeline &#8212; Sentry Streams 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=2709fde1"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Pipeline runtime configuration" href="configure_pipeline.html" />
+    <link rel="prev" title="Architecture" href="architecture.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="building-a-pipeline">
+<h1>Building a Pipeline<a class="headerlink" href="#building-a-pipeline" title="Link to this heading">¶</a></h1>
+<p>Pipelines are defined through a python DSL (more options will be provided) by
+chaining dataflow primitives.</p>
+<p>Chaining primitives means sending a message from one operator to the following
+one.</p>
+<p>Pipelines start with <cite>StreamingSource</cite> which represent a Kafka consumer. They
+can fork and broadcast messages to multiple branches. Each branch terminates
+with a Sink.</p>
+<p>As of now only Python operations can be used. Soon we will have Rust as well.</p>
+<p>Distribution is not visible at this level as it only defines the topology of
+the application, which is basically its business logic. The distribution is
+defined via the deployment descriptor so the operators can be distributed
+differently in different environments.</p>
+<p>The DSL operators are in the <cite>pipeline.py</cite> module.</p>
+<dl class="py class" id="module-sentry_streams.pipeline.pipeline">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Aggregate">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Aggregate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">window</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Window</span><span class="p"><span class="pre">[</span></span><span class="pre">MeasurementUnit</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregate_func</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Accumulator</span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">InputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">OutputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregate_backend</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">AggregationBackend</span><span class="p"><span class="pre">[</span></span><span class="pre">OutputType</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_by_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">GroupBy</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.REDUCE</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Aggregate" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Reduce" title="sentry_streams.pipeline.pipeline.Reduce"><code class="xref py py-class docutils literal notranslate"><span class="pre">Reduce</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">MeasurementUnit</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">InputType</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">OutputType</span></code>]</p>
+<p>A Reduce step which performs windowed aggregations. Can be keyed or non-keyed on the
+input stream. Supports an Accumulator-style aggregation which can have a configurable
+storage backend, for flushing intermediate aggregates.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Aggregate.aggregate_backend">
+<span class="sig-name descname"><span class="pre">aggregate_backend</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">AggregationBackend</span><span class="p"><span class="pre">[</span></span><span class="pre">OutputType</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Aggregate.aggregate_backend" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Aggregate.aggregate_fn">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">aggregate_fn</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Accumulator</span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">InputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">OutputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Aggregate.aggregate_fn" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Aggregate.aggregate_func">
+<span class="sig-name descname"><span class="pre">aggregate_func</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Accumulator</span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">InputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">OutputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Aggregate.aggregate_func" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Aggregate.group_by">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">group_by</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">GroupBy</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Aggregate.group_by" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Aggregate.group_by_key">
+<span class="sig-name descname"><span class="pre">group_by_key</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">GroupBy</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Aggregate.group_by_key" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Aggregate.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'reduce'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Aggregate.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Aggregate.window">
+<span class="sig-name descname"><span class="pre">window</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Window</span><span class="p"><span class="pre">[</span></span><span class="pre">MeasurementUnit</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Aggregate.window" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Aggregate.windowing">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">windowing</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Window</span><span class="p"><span class="pre">[</span></span><span class="pre">MeasurementUnit</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Aggregate.windowing" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Batch">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Batch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_timedelta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">timedelta</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">datetime.timedelta(seconds=10)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.REDUCE</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Batch" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Reduce" title="sentry_streams.pipeline.pipeline.Reduce"><code class="xref py py-class docutils literal notranslate"><span class="pre">Reduce</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">MeasurementUnit</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">InputType</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">MutableSequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">InputType</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]]], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">MeasurementUnit</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">InputType</span></code>]</p>
+<p>A step to Batch up the results of the prior step.</p>
+<p>Batch can be configured via batch size (count of events) and/or
+batch_timedelta (time duration). If neither is specified, defaults
+to a 10-second time window.</p>
+<p>Both batch_size and batch_timedelta can be overridden via the
+deployment config’s steps_config section.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Batch.aggregate_fn">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">aggregate_fn</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Accumulator</span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">InputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">MutableSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">InputType</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Batch.aggregate_fn" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Batch.batch_size">
+<span class="sig-name descname"><span class="pre">batch_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Batch.batch_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Batch.batch_timedelta">
+<span class="sig-name descname"><span class="pre">batch_timedelta</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">timedelta</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">datetime.timedelta(seconds=10)</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Batch.batch_timedelta" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Batch.group_by">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">group_by</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">GroupBy</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Batch.group_by" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Batch.override_config">
+<span class="sig-name descname"><span class="pre">override_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaded_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Batch.override_config" title="Link to this definition">¶</a></dt>
+<dd><p>Steps can implement custom overriding logic.
+Note: This does NOT automatically validate - call validate() explicitly after.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Batch.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'reduce'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Batch.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Batch.validate">
+<span class="sig-name descname"><span class="pre">validate</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Batch.validate" title="Link to this definition">¶</a></dt>
+<dd><p>Validate that at least one of batch_size or batch_timedelta is set.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Batch.windowing">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">windowing</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Window</span><span class="p"><span class="pre">[</span></span><span class="pre">MeasurementUnit</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Batch.windowing" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.BatchParser">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">BatchParser</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'str'</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.BatchParser" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.ComplexStep" title="sentry_streams.pipeline.pipeline.ComplexStep"><code class="xref py py-class docutils literal notranslate"><span class="pre">ComplexStep</span></code></a>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TransformFuncReturnType</span></code>]], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TransformFuncReturnType</span></code>]</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.BatchParser.convert">
+<span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><span class="pre">Transform</span></a><span class="p"><span class="pre">[</span></span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">TransformFuncReturnType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.BatchParser.convert" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Branch">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Branch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.BRANCH</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Branch" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.WithInput" title="sentry_streams.pipeline.pipeline.WithInput"><code class="xref py py-class docutils literal notranslate"><span class="pre">WithInput</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A Branch represents one branch in a pipeline, which is routed to
+by a Router. Note: Branch preserves the input type as output type.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Branch.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'branch'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Branch.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Broadcast">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Broadcast</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.BROADCAST</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Broadcast" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.WithInput" title="sentry_streams.pipeline.pipeline.WithInput"><code class="xref py py-class docutils literal notranslate"><span class="pre">WithInput</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A Broadcast step will forward messages to all downstream branches in a pipeline.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Broadcast.register">
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">previous</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><span class="pre">Step</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Broadcast.register" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Broadcast.routes">
+<span class="sig-name descname"><span class="pre">routes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Broadcast.routes" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Broadcast.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'broadcast'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Broadcast.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.ComplexStep">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">ComplexStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.ComplexStep" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.WithInput" title="sentry_streams.pipeline.pipeline.WithInput"><code class="xref py py-class docutils literal notranslate"><span class="pre">WithInput</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>]</p>
+<p>A wrapper around a simple step that allows for syntactic sugar/more complex steps.
+The convert() function must return a simple step.
+ComplexStep[TIn, TOut] represents a step that transforms TIn to TOut.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.ComplexStep.convert">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><span class="pre">Transform</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.ComplexStep.convert" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.DevNullSink">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">DevNullSink</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_time_ms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">average_sleep_time_ms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_sleep_time_ms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.SINK</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.DevNullSink" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Sink" title="sentry_streams.pipeline.pipeline.Sink"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sink</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A Sink which discards all messages (similar to /dev/null).
+Useful for testing and benchmarking pipelines.</p>
+<p>Simulates batching behavior with configurable delays:
+- batch_size: Number of messages before batch is flushed
+- batch_time_ms: Time duration (milliseconds) before batch is flushed
+- average_sleep_time_ms: Average time (milliseconds) to sleep when flushing
+- max_sleep_time_ms: Maximum time (milliseconds) to sleep when flushing</p>
+<p>Note: If average_sleep_time_ms is set, max_sleep_time_ms must also be set.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.DevNullSink.average_sleep_time_ms">
+<span class="sig-name descname"><span class="pre">average_sleep_time_ms</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.DevNullSink.average_sleep_time_ms" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.DevNullSink.batch_size">
+<span class="sig-name descname"><span class="pre">batch_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.DevNullSink.batch_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.DevNullSink.batch_time_ms">
+<span class="sig-name descname"><span class="pre">batch_time_ms</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.DevNullSink.batch_time_ms" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.DevNullSink.max_sleep_time_ms">
+<span class="sig-name descname"><span class="pre">max_sleep_time_ms</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.DevNullSink.max_sleep_time_ms" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.DevNullSink.override_config">
+<span class="sig-name descname"><span class="pre">override_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaded_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.DevNullSink.override_config" title="Link to this definition">¶</a></dt>
+<dd><p>Override batch parameters from deployment configuration.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.DevNullSink.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'sink'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.DevNullSink.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Filter">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">function</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.FILTER</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Filter" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><code class="xref py py-class docutils literal notranslate"><span class="pre">Transform</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A simple Filter, taking a single input and either returning it or None as output.
+Note: Filter preserves the input type as output type.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Filter.function">
+<span class="sig-name descname"><span class="pre">function</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Filter.function" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Filter.post_rust_function_validation">
+<span class="sig-name descname"><span class="pre">post_rust_function_validation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">InternalRustFunction</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Filter.post_rust_function_validation" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Filter.resolved_function">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">resolved_function</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Filter.resolved_function" title="Link to this definition">¶</a></dt>
+<dd><p>Returns a callable of the filter function defined, or referenced in the
+this class</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Filter.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'filter'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Filter.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FlatMap">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">FlatMap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">function</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.FLAT_MAP</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FlatMap" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><code class="xref py py-class docutils literal notranslate"><span class="pre">Transform</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>]</p>
+<p>A generic step for mapping and flattening (and therefore alerting the shape of) inputs to
+get outputs. Takes a single input to 0…N outputs.
+The function should return an Iterable[TOut], but the step itself outputs TOut.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FlatMap.function">
+<span class="sig-name descname"><span class="pre">function</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FlatMap.function" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FlatMap.resolved_function">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">resolved_function</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FlatMap.resolved_function" title="Link to this definition">¶</a></dt>
+<dd><p>Returns a callable of the flatmap function defined, or referenced in this class</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FlatMap.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'flat_map'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FlatMap.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FunctionTransform">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">FunctionTransform</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">function</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FunctionTransform" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><code class="xref py py-class docutils literal notranslate"><span class="pre">Transform</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>]</p>
+<p>A transform step that applies a function to transform TIn to TOut.
+function: supports reference to a function using dot notation, or a Callable</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FunctionTransform.function">
+<span class="sig-name descname"><span class="pre">function</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FunctionTransform.function" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FunctionTransform.post_rust_function_validation">
+<span class="sig-name descname"><span class="pre">post_rust_function_validation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">InternalRustFunction</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FunctionTransform.post_rust_function_validation" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FunctionTransform.resolved_function">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">resolved_function</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FunctionTransform.resolved_function" title="Link to this definition">¶</a></dt>
+<dd><p>Returns a callable of the transform function defined, or referenced in the
+this class</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FunctionTransform.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FunctionTransform.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.FunctionTransform.validate">
+<span class="sig-name descname"><span class="pre">validate</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.FunctionTransform.validate" title="Link to this definition">¶</a></dt>
+<dd><p>Validate rust function version if this is a rust function.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.GCSSink">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">GCSSink</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bucket</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">object_generator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">thread_count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.SINK</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.GCSSink" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Sink" title="sentry_streams.pipeline.pipeline.Sink"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sink</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A Sink which writes to GCS</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.GCSSink.bucket">
+<span class="sig-name descname"><span class="pre">bucket</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.GCSSink.bucket" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.GCSSink.object_generator">
+<span class="sig-name descname"><span class="pre">object_generator</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.GCSSink.object_generator" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.GCSSink.override_config">
+<span class="sig-name descname"><span class="pre">override_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaded_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.GCSSink.override_config" title="Link to this definition">¶</a></dt>
+<dd><p>Override bucket and thread_count from deployment configuration.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.GCSSink.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'sink'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.GCSSink.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.GCSSink.thread_count">
+<span class="sig-name descname"><span class="pre">thread_count</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.GCSSink.thread_count" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Map">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">function</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.MAP</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Map" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.FunctionTransform" title="sentry_streams.pipeline.pipeline.FunctionTransform"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionTransform</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>]</p>
+<p>A simple 1:1 Map, taking a single input to single output.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Map.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'map'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Map.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.ParquetSerializer">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">ParquetSerializer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'str'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema_fields</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'Mapping[str,</span> <span class="pre">DataType]'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compression</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'Optional[ParquetCompression]'</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'snappy'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.ParquetSerializer" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.ComplexStep" title="sentry_streams.pipeline.pipeline.ComplexStep"><code class="xref py py-class docutils literal notranslate"><span class="pre">ComplexStep</span></code></a>[<code class="xref py py-class docutils literal notranslate"><span class="pre">MutableSequence</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.ParquetSerializer.compression">
+<span class="sig-name descname"><span class="pre">compression</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'lz4'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'uncompressed'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'snappy'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'gzip'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'lzo'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'brotli'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'zstd'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'snappy'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.ParquetSerializer.compression" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.ParquetSerializer.convert">
+<span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><span class="pre">Transform</span></a><span class="p"><span class="pre">[</span></span><span class="pre">MutableSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.ParquetSerializer.convert" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.ParquetSerializer.schema_fields">
+<span class="sig-name descname"><span class="pre">schema_fields</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">DataType</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.ParquetSerializer.schema_fields" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Parser">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Parser</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Parser" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.ComplexStep" title="sentry_streams.pipeline.pipeline.ComplexStep"><code class="xref py py-class docutils literal notranslate"><span class="pre">ComplexStep</span></code></a>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TransformFuncReturnType</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TransformFuncReturnType</span></code>]</p>
+<p>A step to decode bytes, deserialize the resulting message and validate it against the schema
+which corresponds to the message type provided. The message type should be one which
+is supported by sentry-kafka-schemas. See examples/ for usage, this step can be plugged in
+flexibly into a pipeline. Keep in mind, data up until this step will simply be bytes.</p>
+<p>Supports both JSON and protobuf.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Parser.convert">
+<span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><span class="pre">Transform</span></a><span class="p"><span class="pre">[</span></span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TransformFuncReturnType</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Parser.convert" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Pipeline">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Pipeline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Source" title="sentry_streams.pipeline.pipeline.Source"><span class="pre">Source</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Branch" title="sentry_streams.pipeline.pipeline.Branch"><span class="pre">Branch</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Pipeline" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>]</p>
+<p>A graph representing the connections between
+logical Steps.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Pipeline.apply">
+<span class="sig-name descname"><span class="pre">apply</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><span class="pre">Transform</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TNewOut</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.ComplexStep" title="sentry_streams.pipeline.pipeline.ComplexStep"><span class="pre">ComplexStep</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">TNewOut</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TNewOut</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Pipeline.apply" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Pipeline.broadcast">
+<span class="sig-name descname"><span class="pre">broadcast</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Pipeline.broadcast" title="Link to this definition">¶</a></dt>
+<dd><p>Broadcast a message to multiple branches. Adding a broadcast step will close the pipeline, since
+more steps can’t be added after it. Thus it expects that all the branches are fully defined.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Pipeline.register">
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><span class="pre">Step</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Pipeline.register" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Pipeline.register_edge">
+<span class="sig-name descname"><span class="pre">register_edge</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">_from</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><span class="pre">Step</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">_to</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><span class="pre">Step</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Pipeline.register_edge" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Pipeline.route">
+<span class="sig-name descname"><span class="pre">route</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routing_function</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">RoutingFuncReturnType</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routing_table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">RoutingFuncReturnType</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Pipeline.route" title="Link to this definition">¶</a></dt>
+<dd><p>Route a message to a specific branch based on a routing function. Adding a router step will close the pipeline, since
+more steps can’t be added after it. Thus it expects that all the branches are fully defined.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Pipeline.sink">
+<span class="sig-name descname"><span class="pre">sink</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Sink" title="sentry_streams.pipeline.pipeline.Sink"><span class="pre">Sink</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TOut</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Pipeline.sink" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reduce">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Reduce</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reduce" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><code class="xref py py-class docutils literal notranslate"><span class="pre">Transform</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">InputType</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">OutputType</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">MeasurementUnit</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">InputType</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">OutputType</span></code>]</p>
+<p>A generic Step for a Reduce (or Accumulator-based) operation</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reduce.aggregate_fn">
+<em class="property"><span class="k"><span class="pre">abstract</span></span><span class="w"> </span><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">aggregate_fn</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Accumulator</span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">InputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">OutputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reduce.aggregate_fn" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reduce.group_by">
+<em class="property"><span class="k"><span class="pre">abstract</span></span><span class="w"> </span><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">group_by</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">GroupBy</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reduce.group_by" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reduce.windowing">
+<em class="property"><span class="k"><span class="pre">abstract</span></span><span class="w"> </span><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">windowing</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Window</span><span class="p"><span class="pre">[</span></span><span class="pre">MeasurementUnit</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reduce.windowing" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reducer">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Reducer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'str'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">window</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'Window[MeasurementUnit]'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregate_func</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'Callable[[],</span> <span class="pre">Accumulator[Message[InputType],</span> <span class="pre">OutputType]]'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregate_backend</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'AggregationBackend[OutputType]</span> <span class="pre">|</span> <span class="pre">None'</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_by_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'GroupBy</span> <span class="pre">|</span> <span class="pre">None'</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reducer" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.ComplexStep" title="sentry_streams.pipeline.pipeline.ComplexStep"><code class="xref py py-class docutils literal notranslate"><span class="pre">ComplexStep</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">InputType</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">OutputType</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">MeasurementUnit</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">InputType</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">OutputType</span></code>]</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reducer.aggregate_backend">
+<span class="sig-name descname"><span class="pre">aggregate_backend</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">AggregationBackend</span><span class="p"><span class="pre">[</span></span><span class="pre">OutputType</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reducer.aggregate_backend" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reducer.aggregate_func">
+<span class="sig-name descname"><span class="pre">aggregate_func</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Accumulator</span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">InputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">OutputType</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reducer.aggregate_func" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reducer.convert">
+<span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><span class="pre">Transform</span></a><span class="p"><span class="pre">[</span></span><span class="pre">InputType</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">OutputType</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reducer.convert" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reducer.group_by_key">
+<span class="sig-name descname"><span class="pre">group_by_key</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">GroupBy</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reducer.group_by_key" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Reducer.window">
+<span class="sig-name descname"><span class="pre">window</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Window</span><span class="p"><span class="pre">[</span></span><span class="pre">MeasurementUnit</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Reducer.window" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Router">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Router</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routing_function</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">RoutingFuncReturnType</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routing_table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">RoutingFuncReturnType</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.ROUTER</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Router" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.WithInput" title="sentry_streams.pipeline.pipeline.WithInput"><code class="xref py py-class docutils literal notranslate"><span class="pre">WithInput</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">RoutingFuncReturnType</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A step which takes a routing table of Branches and sends messages
+to those branches based on a routing function.
+Routing functions must only return a single output branch, routing
+to multiple branches simultaneously is not currently supported.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Router.register">
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">previous</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><span class="pre">Step</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Router.register" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Router.routing_function">
+<span class="sig-name descname"><span class="pre">routing_function</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Message</span><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">RoutingFuncReturnType</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Router.routing_function" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Router.routing_table">
+<span class="sig-name descname"><span class="pre">routing_table</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">RoutingFuncReturnType</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Router.routing_table" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Router.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'router'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Router.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Serializer">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Serializer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt_format</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Serializer" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.ComplexStep" title="sentry_streams.pipeline.pipeline.ComplexStep"><code class="xref py py-class docutils literal notranslate"><span class="pre">ComplexStep</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A step to serialize and encode messages into bytes. These bytes can be written
+to sink data to a Kafka topic, for example. This step will need to precede a
+sink step which writes to Kafka.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Serializer.convert">
+<span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform" title="sentry_streams.pipeline.pipeline.Transform"><span class="pre">Transform</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TIn</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Serializer.convert" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Serializer.dt_format">
+<span class="sig-name descname"><span class="pre">dt_format</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Serializer.dt_format" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Sink">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Sink</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Sink" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.WithInput" title="sentry_streams.pipeline.pipeline.WithInput"><code class="xref py py-class docutils literal notranslate"><span class="pre">WithInput</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A generic Sink that consumes input of type TIn.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Source">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Source</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Source" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><code class="xref py py-class docutils literal notranslate"><span class="pre">Step</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>]</p>
+<p>A generic Source that produces output of type TOut.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Step">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Step" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A generic Step, whose incoming
+and outgoing edges are registered
+against a Pipeline.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Step.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Step.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Step.override_config">
+<span class="sig-name descname"><span class="pre">override_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaded_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Step.override_config" title="Link to this definition">¶</a></dt>
+<dd><p>Steps can implement custom overriding logic.
+Note: This does NOT automatically validate - call validate() explicitly after.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Step.register">
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">previous</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><span class="pre">Step</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Step.register" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Step.validate">
+<span class="sig-name descname"><span class="pre">validate</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Step.validate" title="Link to this definition">¶</a></dt>
+<dd><p>Validate the step configuration. Should be called after construction
+and after applying config overrides.</p>
+<p>Subclasses should override this to add validation logic.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">StepType</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Enum</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType.BRANCH">
+<span class="sig-name descname"><span class="pre">BRANCH</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'branch'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType.BRANCH" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType.BROADCAST">
+<span class="sig-name descname"><span class="pre">BROADCAST</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'broadcast'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType.BROADCAST" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType.FILTER">
+<span class="sig-name descname"><span class="pre">FILTER</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'filter'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType.FILTER" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType.FLAT_MAP">
+<span class="sig-name descname"><span class="pre">FLAT_MAP</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'flat_map'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType.FLAT_MAP" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType.MAP">
+<span class="sig-name descname"><span class="pre">MAP</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'map'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType.MAP" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType.REDUCE">
+<span class="sig-name descname"><span class="pre">REDUCE</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'reduce'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType.REDUCE" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType.ROUTER">
+<span class="sig-name descname"><span class="pre">ROUTER</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'router'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType.ROUTER" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType.SINK">
+<span class="sig-name descname"><span class="pre">SINK</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'sink'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType.SINK" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StepType.SOURCE">
+<span class="sig-name descname"><span class="pre">SOURCE</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'source'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StepType.SOURCE" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StreamSink">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">StreamSink</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.SINK</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StreamSink" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Sink" title="sentry_streams.pipeline.pipeline.Sink"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sink</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A Sink which specifically writes to Kafka.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StreamSink.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'sink'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StreamSink.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StreamSink.stream_name">
+<span class="sig-name descname"><span class="pre">stream_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StreamSink.stream_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StreamSource">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">StreamSource</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">header_filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StepType.SOURCE</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StreamSource" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Source" title="sentry_streams.pipeline.pipeline.Source"><code class="xref py py-class docutils literal notranslate"><span class="pre">Source</span></code></a>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code>]</p>
+<p>A Source which reads from Kafka.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StreamSource.header_filter">
+<span class="sig-name descname"><span class="pre">header_filter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StreamSource.header_filter" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StreamSource.register">
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">previous</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><span class="pre">Step</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StreamSource.register" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StreamSource.step_type">
+<span class="sig-name descname"><span class="pre">step_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType" title="sentry_streams.pipeline.pipeline.StepType"><span class="pre">StepType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'source'</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StreamSource.step_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.StreamSource.stream_name">
+<span class="sig-name descname"><span class="pre">stream_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#sentry_streams.pipeline.pipeline.StreamSource.stream_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.Transform">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">Transform</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.Transform" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.WithInput" title="sentry_streams.pipeline.pipeline.WithInput"><code class="xref py py-class docutils literal notranslate"><span class="pre">WithInput</span></code></a>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">TOut</span></code>]</p>
+<p>A step that transforms input of type TIn to output of type TOut.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.TransformStep">
+<span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">TransformStep</span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.TransformStep" title="Link to this definition">¶</a></dt>
+<dd><p>alias of <a class="reference internal" href="#sentry_streams.pipeline.pipeline.FunctionTransform" title="sentry_streams.pipeline.pipeline.FunctionTransform"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionTransform</span></code></a></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.WithInput">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">WithInput</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.WithInput" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><code class="xref py py-class docutils literal notranslate"><span class="pre">Step</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TIn</span></code>]</p>
+<p>A generic Step representing a logical
+step which has inputs of type TIn.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.WithInput.register">
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">previous</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step" title="sentry_streams.pipeline.pipeline.Step"><span class="pre">Step</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.WithInput.register" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.branch">
+<span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">branch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.branch" title="Link to this definition">¶</a></dt>
+<dd><p>Used to create a new pipeline with a branch as the root step. This pipeline can then be added as part of
+a router or broadcast step.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.make_edge_sets">
+<span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">make_edge_sets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">edge_map</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Set</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.make_edge_sets" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="sentry_streams.pipeline.pipeline.streaming_source">
+<span class="sig-prename descclassname"><span class="pre">sentry_streams.pipeline.pipeline.</span></span><span class="sig-name descname"><span class="pre">streaming_source</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline" title="sentry_streams.pipeline.pipeline.Pipeline"><span class="pre">Pipeline</span></a><span class="p"><span class="pre">[</span></span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sentry_streams.pipeline.pipeline.streaming_source" title="Link to this definition">¶</a></dt>
+<dd><p>Used to create a new pipeline with a streaming source, where the stream_name is the
+name of the Kafka topic to read from.</p>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Sentry Streams</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="what_for.html">The rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Building a Pipeline</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Aggregate"><code class="docutils literal notranslate"><span class="pre">Aggregate</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Batch"><code class="docutils literal notranslate"><span class="pre">Batch</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.BatchParser"><code class="docutils literal notranslate"><span class="pre">BatchParser</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Branch"><code class="docutils literal notranslate"><span class="pre">Branch</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Broadcast"><code class="docutils literal notranslate"><span class="pre">Broadcast</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.ComplexStep"><code class="docutils literal notranslate"><span class="pre">ComplexStep</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.DevNullSink"><code class="docutils literal notranslate"><span class="pre">DevNullSink</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Filter"><code class="docutils literal notranslate"><span class="pre">Filter</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.FlatMap"><code class="docutils literal notranslate"><span class="pre">FlatMap</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.FunctionTransform"><code class="docutils literal notranslate"><span class="pre">FunctionTransform</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.GCSSink"><code class="docutils literal notranslate"><span class="pre">GCSSink</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Map"><code class="docutils literal notranslate"><span class="pre">Map</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.ParquetSerializer"><code class="docutils literal notranslate"><span class="pre">ParquetSerializer</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Parser"><code class="docutils literal notranslate"><span class="pre">Parser</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Pipeline"><code class="docutils literal notranslate"><span class="pre">Pipeline</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Reduce"><code class="docutils literal notranslate"><span class="pre">Reduce</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Reducer"><code class="docutils literal notranslate"><span class="pre">Reducer</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Router"><code class="docutils literal notranslate"><span class="pre">Router</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Serializer"><code class="docutils literal notranslate"><span class="pre">Serializer</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Sink"><code class="docutils literal notranslate"><span class="pre">Sink</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Source"><code class="docutils literal notranslate"><span class="pre">Source</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Step"><code class="docutils literal notranslate"><span class="pre">Step</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StepType"><code class="docutils literal notranslate"><span class="pre">StepType</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StreamSink"><code class="docutils literal notranslate"><span class="pre">StreamSink</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.StreamSource"><code class="docutils literal notranslate"><span class="pre">StreamSource</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.Transform"><code class="docutils literal notranslate"><span class="pre">Transform</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.TransformStep"><code class="docutils literal notranslate"><span class="pre">TransformStep</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.WithInput"><code class="docutils literal notranslate"><span class="pre">WithInput</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.branch"><code class="docutils literal notranslate"><span class="pre">branch()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.make_edge_sets"><code class="docutils literal notranslate"><span class="pre">make_edge_sets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sentry_streams.pipeline.pipeline.streaming_source"><code class="docutils literal notranslate"><span class="pre">streaming_source()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="configure_pipeline.html">Pipeline runtime configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configure_pipeline.html#distribution-and-parallelism">Distribution and parallelism</a></li>
+<li class="toctree-l1"><a class="reference internal" href="runtime/arroyo.html">Arroyo Runtime</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment.html">Deploying on Kuberentes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rust.html">Rust applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rust.html#meeting-notes-july-24-2025">Meeting notes July 24, 2025</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="architecture.html" title="previous chapter">Architecture</a></li>
+      <li>Next: <a href="configure_pipeline.html" title="next chapter">Pipeline runtime configuration</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, blank.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/build_pipeline.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
