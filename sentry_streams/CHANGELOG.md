@@ -1,3 +1,10 @@
+## 0.0.36
+
+### New Features ✨
+
+- (config) Pipeline config env var overrides and config module by @fpacifici in [#235](https://github.com/getsentry/streams/pull/235)
+- (sentry_streams) Pipeline healthcheck support for Arroyo consumer by @fpacifici in [#236](https://github.com/getsentry/streams/pull/236)
+
 ## 0.0.35
 
 - No documented changes.
