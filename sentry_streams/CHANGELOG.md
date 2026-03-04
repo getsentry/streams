@@ -1,3 +1,7 @@
+## 0.0.37
+
+- Upgrade Arroyo in the Stream library by @fpacifici in [#237](https://github.com/getsentry/streams/pull/237)
+
 ## 0.0.36
 
 ### New Features ✨
