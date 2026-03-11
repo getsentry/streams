@@ -1,3 +1,7 @@
+## 0.0.38
+
+- Enable SSL mode for arroyo rust by @fpacifici in [#238](https://github.com/getsentry/streams/pull/238)
+
 ## 0.0.37
 
 - Upgrade Arroyo in the Stream library by @fpacifici in [#237](https://github.com/getsentry/streams/pull/237)
