@@ -10,7 +10,7 @@ on:
 jobs:
   linux:
     permissions: read-all
-    timeout-minutes: 5
+    timeout-minutes: 15
     runs-on: ${{ matrix.platform.runner }}
     env:
       # Setting CMAKE_POLICY_VERSION_MINIMUM to 3.5 because librdkafka imported
