@@ -53,37 +53,72 @@ jobs:
           name: wheels-linux-${{ matrix.platform.target }}
           path: ./sentry_streams/dist
 
-  macos:
+  # Native aarch64 on Apple Silicon — no cross-compile; OpenSSL from Homebrew.
+  macos-aarch64:
     permissions: read-all
-    timeout-minutes: 5
-    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 15
+    runs-on: macos-latest
     env:
-      # Setting CMAKE_POLICY_VERSION_MINIMUM to 3.5 because librdkafka imported
-      # by rdkafka does not compile with cmake 4 provided by the maturin action.
       CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-    strategy:
-      matrix:
-        platform:
-          - runner: macos-latest
-            target: x86_64
-          - runner: macos-latest
-            target: aarch64
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: 3.11
+      - name: Install OpenSSL (Homebrew)
+        id: openssl
+        run: |
+          brew install openssl@3 pkg-config
+          echo "openssl_prefix=$(brew --prefix openssl@3)" >> "$GITHUB_OUTPUT"
       - name: Build wheels
         uses: PyO3/maturin-action@aef21716ff3dcae8a1c301d23ec3e4446972a6e3
+        env:
+          OPENSSL_DIR: ${{ steps.openssl.outputs.openssl_prefix }}
+          OPENSSL_ROOT_DIR: ${{ steps.openssl.outputs.openssl_prefix }}
+          PKG_CONFIG_PATH: ${{ steps.openssl.outputs.openssl_prefix }}/lib/pkgconfig
         with:
-          target: ${{ matrix.platform.target }}
+          target: aarch64
           args: --release --out dist --find-interpreter --features=extension-module
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           working-directory: ./sentry_streams
       - name: Upload wheels
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: wheels-macos-${{ matrix.platform.target }}
+          name: wheels-macos-aarch64
+          path: ./sentry_streams/dist
+
+  # Native x86_64 on Intel runner — avoids cross-compiling openssl-sys from ARM.
+  macos-x86_64:
+    permissions: read-all
+    timeout-minutes: 15
+    runs-on: macos-15-intel
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: 3.11
+      - name: Install OpenSSL (Homebrew)
+        id: openssl
+        run: |
+          brew install openssl@3 pkg-config
+          echo "openssl_prefix=$(brew --prefix openssl@3)" >> "$GITHUB_OUTPUT"
+      - name: Build wheels
+        uses: PyO3/maturin-action@aef21716ff3dcae8a1c301d23ec3e4446972a6e3
+        env:
+          OPENSSL_DIR: ${{ steps.openssl.outputs.openssl_prefix }}
+          OPENSSL_ROOT_DIR: ${{ steps.openssl.outputs.openssl_prefix }}
+          PKG_CONFIG_PATH: ${{ steps.openssl.outputs.openssl_prefix }}/lib/pkgconfig
+        with:
+          target: x86_64
+          args: --release --out dist --find-interpreter --features=extension-module
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          working-directory: ./sentry_streams
+      - name: Upload wheels
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wheels-macos-x86_64
           path: ./sentry_streams/dist
 
   sdist:
@@ -107,7 +142,7 @@ jobs:
     permissions: read-all
     name: Create Release Artifact
     runs-on: ubuntu-latest
-    needs: [linux, macos, sdist]
+    needs: [linux, macos-aarch64, macos-x86_64, sdist]
     steps:
       - uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
