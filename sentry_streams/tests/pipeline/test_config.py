@@ -4,7 +4,12 @@ from unittest import mock
 
 import pytest
 
-from sentry_streams.pipeline.config import ConfigEnvError, load_config, resolve_envvars
+from sentry_streams.pipeline.config import (
+    ConfigEnvError,
+    TypeMismatchError,
+    load_config,
+    resolve_envvars,
+)
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
@@ -105,3 +110,54 @@ def test_load_config_returns_pipeline_config() -> None:
         "127.0.0.1:9092",
     ]
     assert config.get("metrics", {}).get("type") == "dummy"
+
+
+def test_load_config_with_override_merges_and_validates() -> None:
+    """load_config with override_path deep-merges the override and passes schema validation."""
+    config_file = FIXTURES_DIR / "config_with_envvar.yaml"
+    override_file = FIXTURES_DIR / "override_config.yaml"
+    with mock.patch.dict(os.environ, {"BOOTSTRAP_SERVERS": "127.0.0.1:9092"}, clear=True):
+        config = load_config(str(config_file), override_path=str(override_file))
+    assert "pipeline" in config
+    # The override appends its segment to the base segment list (list concatenation)
+    segments = config["pipeline"]["segments"]
+    assert len(segments) == 2
+    # Second segment comes from the override
+    assert segments[1]["steps_config"]["myinput"]["bootstrap_servers"] == ["override-broker:9092"]
+    assert config.get("metrics", {}).get("type") == "dummy"
+
+
+def test_load_config_without_override_no_regression() -> None:
+    """load_config without override_path behaves exactly as before."""
+    config_file = FIXTURES_DIR / "config_with_envvar.yaml"
+    with mock.patch.dict(os.environ, {"BOOTSTRAP_SERVERS": "10.0.0.1:9092"}, clear=True):
+        config = load_config(str(config_file))
+    segments = config["pipeline"]["segments"]
+    assert len(segments) == 1
+    assert segments[0]["steps_config"]["myinput"]["bootstrap_servers"] == ["10.0.0.1:9092"]
+
+
+def test_load_config_override_type_mismatch_raises() -> None:
+    """load_config raises TypeMismatchError when override has incompatible type."""
+    import tempfile
+
+    import yaml
+
+    base_content = {
+        "metrics": {"type": "dummy"},
+        "pipeline": {"segments": []},
+        "env": {"key": {"nested": "value"}},
+    }
+    override_content = {"env": {"key": "string_not_dict"}}
+
+    with (
+        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as base_f,
+        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as override_f,
+    ):
+        yaml.dump(base_content, base_f)
+        yaml.dump(override_content, override_f)
+        base_path = base_f.name
+        override_path = override_f.name
+
+    with pytest.raises(TypeMismatchError):
+        load_config(base_path, override_path=override_path)
