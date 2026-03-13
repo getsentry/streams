@@ -1,0 +1,7 @@
+metrics:
+  type: dummy
+pipeline:
+  segments:
+    - steps_config:
+        myinput:
+          bootstrap_servers: ["override-broker:9092"]

@@ -1,7 +1,7 @@
-import importlib
 import logging
 import multiprocessing
 import sys
+from pathlib import Path
 from typing import Any, Mapping, Optional, cast
 
 import click
@@ -137,12 +137,13 @@ def load_runtime_with_config_file(
     name: str,
     log_level: str,
     adapter: str,
-    config: str,
+    config_file: str,
     segment_id: Optional[str],
     application: str,
+    override_config: Optional[str] = None,
 ) -> Any:
     """Load runtime from a config file path, returning the runtime object without calling run()."""
-    environment_config = load_config(config)
+    environment_config = load_config(config_file, override_config)
 
     sentry_sdk_config = environment_config.get("sentry_sdk_config")
     if sentry_sdk_config:
@@ -155,9 +156,10 @@ def run_with_config_file(
     name: str,
     log_level: str,
     adapter: str,
-    config: str,
+    config_file: str,
     segment_id: Optional[str],
     application: str,
+    override_config: Optional[str] = None,
 ) -> None:
     """
     Load runtime from config file and run it. Used by the Python CLI.
@@ -169,7 +171,7 @@ def run_with_config_file(
       control when .run() is called
     """
     runtime = load_runtime_with_config_file(
-        name, log_level, adapter, config, segment_id, application
+        name, log_level, adapter, config_file, segment_id, application, override_config
     )
     runtime.run()
 
@@ -205,11 +207,22 @@ def run_with_config_file(
     ),
 )
 @click.option(
-    "--config",
-    required=True,
+    "--config-path",
+    default=None,
     help=(
-        "The deployment config file path. Each config file currently corresponds to a specific pipeline."
+        "Directory containing config files. The config file is resolved as "
+        "<config-path>/<application-stem>.yaml. Mutually exclusive with --config-file."
     ),
+)
+@click.option(
+    "--config-file",
+    default=None,
+    help=("Direct path to the deployment config file. " "Mutually exclusive with --config-path."),
+)
+@click.option(
+    "--override-config",
+    default=None,
+    help="Path to an override YAML file to deep-merge on top of the base config.",
 )
 @click.option(
     "--segment-id",
@@ -225,11 +238,25 @@ def main(
     name: str,
     log_level: str,
     adapter: str,
-    config: str,
+    config_path: Optional[str],
+    config_file: Optional[str],
+    override_config: Optional[str],
     segment_id: Optional[str],
     application: str,
 ) -> None:
-    run_with_config_file(name, log_level, adapter, config, segment_id, application)
+    if config_path is None and config_file is None:
+        raise click.UsageError("One of --config-path or --config-file must be provided.")
+    if config_path is not None and config_file is not None:
+        raise click.UsageError("--config-path and --config-file are mutually exclusive.")
+
+    if config_path is not None:
+        resolved_config_file = str(Path(config_path) / (Path(application).stem + ".yaml"))
+    else:
+        resolved_config_file = config_file  # type: ignore[assignment]
+
+    run_with_config_file(
+        name, log_level, adapter, resolved_config_file, segment_id, application, override_config
+    )
 
 
 if __name__ == "__main__":
