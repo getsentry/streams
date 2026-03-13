@@ -386,6 +386,7 @@ def test_run_generates_complete_manifests() -> None:
     # Validate deployment name
     assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
     assert deployment["metadata"]["labels"]["pipeline-app"] == "sbc-profiles"
+    assert deployment["metadata"]["labels"]["service"] == "my-service"
     assert (
         deployment["spec"]["template"]["metadata"]["annotations"]["sidecar.istio.io/inject"]
         == "false"
@@ -394,6 +395,7 @@ def test_run_generates_complete_manifests() -> None:
     selector = deployment["spec"]["selector"]
     assert selector["matchLabels"]["pipeline-app"] == "sbc-profiles"
     assert selector["matchLabels"]["pipeline"] == "profiles"
+    assert selector["matchLabels"]["service"] == "my-service"
 
     # Validate deployment has container
     containers = deployment["spec"]["template"]["spec"]["containers"]
@@ -418,6 +420,7 @@ def test_run_generates_complete_manifests() -> None:
     assert configmap["metadata"]["name"] == "my-service-pipeline-profiles"
     assert configmap["metadata"]["labels"]["pipeline-app"] == "sbc-profiles"
     assert configmap["metadata"]["labels"]["pipeline"] == "profiles"
+    assert configmap["metadata"]["labels"]["service"] == "my-service"
 
     # Validate configmap data
     assert "pipeline_config.yaml" in configmap["data"]
@@ -568,6 +571,7 @@ def test_run_with_base_templates() -> None:
     # Check that pipeline additions are present
     assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
     assert "pipeline" in deployment["metadata"]["labels"]
+    assert "service" in deployment["metadata"]["labels"]
     assert len(deployment["spec"]["template"]["spec"]["containers"]) == 1
     assert (
         len(deployment["spec"]["template"]["spec"]["volumes"]) == 2
@@ -1035,5 +1039,6 @@ def test_emergency_patch_overrides_final_deployment() -> None:
     # Verify pipeline additions are still present (not removed by emergency patch)
     assert deployment["metadata"]["name"] == "my-service-pipeline-profiles-0"
     assert deployment["metadata"]["labels"]["pipeline-app"] == "sbc-profiles"
+    assert deployment["metadata"]["labels"]["service"] == "my-service"
     assert len(deployment["spec"]["template"]["spec"]["containers"]) == 1
     assert deployment["spec"]["template"]["spec"]["containers"][0]["name"] == "pipeline-consumer"
