@@ -237,6 +237,11 @@ class StreamSource(Source[bytes]):
     def register(self, ctx: Pipeline[bytes], previous: Step) -> None:
         super().register(ctx, previous)
 
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
+        """Override topic name from deployment configuration."""
+        if loaded_config.get("topic"):
+            self.stream_name = str(loaded_config.get("topic"))
+
 
 @dataclass
 class WithInput(Step, Generic[TIn]):
@@ -308,6 +313,11 @@ class StreamSink(Sink[TIn]):
 
     stream_name: str
     step_type: StepType = StepType.SINK
+
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
+        """Override topic name from deployment configuration."""
+        if loaded_config.get("topic"):
+            self.stream_name = str(loaded_config.get("topic"))
 
 
 @dataclass

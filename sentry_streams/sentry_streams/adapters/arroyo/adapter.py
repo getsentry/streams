@@ -104,6 +104,11 @@ class StreamSources:
                 )
             )
 
+        # Apply config overrides and validate
+        step_config: Mapping[str, Any] = self.config.get(step.name, {})
+        step.override_config(step_config)
+        step.validate()
+
         self.__source_topics[source_name] = Topic(step.stream_name)
 
     def get_topic(self, source: str) -> Topic:

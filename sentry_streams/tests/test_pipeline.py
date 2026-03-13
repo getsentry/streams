@@ -524,3 +524,51 @@ def test_gcssink_override_config_empty() -> None:
 
     assert sink.bucket == "original-bucket"
     assert sink.thread_count == 3
+
+
+def test_streamsource_override_config() -> None:
+    """Test that StreamSource topic can be overridden from deployment config."""
+    from sentry_streams.pipeline.pipeline import StreamSource
+
+    source = StreamSource(name="my_source", stream_name="original-topic")
+
+    config = {"topic": "overridden-topic"}
+    source.override_config(config)
+
+    assert source.stream_name == "overridden-topic"
+
+
+def test_streamsource_override_config_empty() -> None:
+    """Test that StreamSource handles empty config correctly."""
+    from sentry_streams.pipeline.pipeline import StreamSource
+
+    source = StreamSource(name="my_source", stream_name="original-topic")
+
+    config: Mapping[str, Any] = {}
+    source.override_config(config)
+
+    assert source.stream_name == "original-topic"
+
+
+def test_streamsink_override_config() -> None:
+    """Test that StreamSink topic can be overridden from deployment config."""
+    from sentry_streams.pipeline.pipeline import StreamSink
+
+    sink = StreamSink[str](name="my_sink", stream_name="original-topic")
+
+    config = {"topic": "overridden-topic"}
+    sink.override_config(config)
+
+    assert sink.stream_name == "overridden-topic"
+
+
+def test_streamsink_override_config_empty() -> None:
+    """Test that StreamSink handles empty config correctly."""
+    from sentry_streams.pipeline.pipeline import StreamSink
+
+    sink = StreamSink[str](name="my_sink", stream_name="original-topic")
+
+    config: Mapping[str, Any] = {}
+    sink.override_config(config)
+
+    assert sink.stream_name == "original-topic"

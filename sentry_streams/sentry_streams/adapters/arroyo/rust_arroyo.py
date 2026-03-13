@@ -248,6 +248,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         source_config = self.steps_config.get(source_name)
         assert source_config is not None, f"Config not provided for source {source_name}"
 
+        # Apply config overrides and validate
+        step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
+        step.override_config(step_config)
+        step.validate()
+
         assert isinstance(self.__write_healthcheck, bool)
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
