@@ -47,7 +47,6 @@ module-name = "sentry_streams.rust_streams"
 sentry_streams = [
     "py.typed",
     "config.json",
-    "deployment_config/test_flink.yaml",
 ]
 
 [tool.pytest.ini_options]
