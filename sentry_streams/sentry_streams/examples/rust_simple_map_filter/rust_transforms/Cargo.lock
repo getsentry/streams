@@ -167,9 +167,9 @@ checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 
 [[package]]
 name = "bytes"
-version = "1.10.1"
+version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
+checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "cc"
@@ -1525,6 +1525,7 @@ dependencies = [
  "libc",
  "libz-sys",
  "num_enum",
+ "openssl-sys",
  "pkg-config",
 ]
 
@@ -1605,6 +1606,7 @@ dependencies = [
  "metrics-exporter-dogstatsd",
  "pyo3",
  "pyo3-build-config",
+ "rand 0.8.5",
  "rdkafka",
  "reqwest",
  "sentry_arroyo",
@@ -1774,9 +1776,9 @@ dependencies = [
 
 [[package]]
 name = "sentry_arroyo"
-version = "2.37.0"
+version = "2.38.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3efd48f00cfc0fcfc0423c6a2409882e7446d006a063d610e9edfa8298942a16"
+checksum = "b7b07016527341581864447d1eb5bbef2e05703846cf2820c7074b02d779cdd0"
 dependencies = [
  "chrono",
  "coarsetime",
