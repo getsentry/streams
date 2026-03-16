@@ -123,7 +123,14 @@ class DatadogMetricsBackend(Metrics):
     Datadog metrics backend.
     """
 
-    def __init__(self, host: str, port: int, prefix: str, tags: Optional[Tags] = None) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        prefix: str,
+        tags: Optional[Tags] = None,
+        udp_queue_size: Optional[int] = None,
+    ) -> None:
         self.host = host
         self.port = port
         self.prefix = prefix if prefix.endswith(".") else prefix + "."
@@ -137,7 +144,8 @@ class DatadogMetricsBackend(Metrics):
         )
         # ignore mypy because that method just is untyped, yet part of public API
         self.datadog_client.enable_background_sender(  # type: ignore[no-untyped-call]
-            sender_queue_size=SENDER_QUEUE_SIZE, sender_queue_timeout=SENDER_QUEUE_TIMEOUT
+            sender_queue_size=udp_queue_size if udp_queue_size is not None else SENDER_QUEUE_SIZE,
+            sender_queue_timeout=SENDER_QUEUE_TIMEOUT,
         )
         self.__timers: dict[int, BufferedMetric] = {}
         self.__counters: dict[int, BufferedMetric] = {}

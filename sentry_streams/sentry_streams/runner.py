@@ -1,4 +1,3 @@
-import importlib
 import logging
 import multiprocessing
 import sys
@@ -113,12 +112,15 @@ def load_runtime(
             metric_config["port"],
             "sentry_streams",
             default_tags,
+            metric_config.get("udp_queue_size"),
         )
         configure_metrics(metrics)
         metric_config = {
             "host": metric_config["host"],
             "port": metric_config["port"],
             "tags": default_tags,
+            "flush_interval_ms": metric_config.get("flush_interval_ms"),
+            "udp_queue_size": metric_config.get("udp_queue_size"),
         }
     else:
         configure_metrics(DummyMetricsBackend())
