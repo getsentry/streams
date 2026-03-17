@@ -1,3 +1,9 @@
+## 0.0.6
+
+### New Features ✨
+
+- (pipeline-step) Add runner log level support by @fpacifici in [#272](https://github.com/getsentry/streams/pull/272)
+
 ## 0.0.5
 
 - Upgrade sentry-streams by @fpacifici in [#271](https://github.com/getsentry/streams/pull/271)
