@@ -10,7 +10,7 @@ use sentry_arroyo::backends::kafka::config::KafkaConfig;
 use sentry_arroyo::backends::kafka::InitialOffset as KafkaInitialOffset;
 use std::collections::HashMap;
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Copy, Default)]
 pub enum InitialOffset {
     #[default]
@@ -34,7 +34,7 @@ impl From<InitialOffset> for KafkaInitialOffset {
     }
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct OffsetResetConfig {
     #[pyo3(get, set)]
@@ -55,7 +55,7 @@ impl OffsetResetConfig {
 }
 
 // Python version of the Kafka consumer configuration
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyKafkaConsumerConfig {
     bootstrap_servers: Vec<String>,
@@ -101,7 +101,7 @@ impl From<PyKafkaConsumerConfig> for KafkaConfig {
     }
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyKafkaProducerConfig {
     bootstrap_servers: Vec<String>,

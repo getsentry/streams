@@ -49,7 +49,7 @@ where
     let thread_id = thread::current().id();
     let start_time = Instant::now();
 
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let acquire_time = Instant::now().duration_since(start_time);
 
         if acquire_time > warn_threshold {

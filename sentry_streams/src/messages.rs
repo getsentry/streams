@@ -54,7 +54,7 @@ pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(
         .try_iter()?
         .map(|item| -> PyResult<(String, Vec<u8>)> {
             let tuple_i = item?;
-            let tuple = tuple_i.downcast::<pyo3::types::PyTuple>()?;
+            let tuple = tuple_i.cast::<pyo3::types::PyTuple>()?;
             let key = tuple.get_item(0)?.unbind().extract(py)?;
             let value: Vec<u8> = tuple.get_item(1)?.unbind().extract(py)?;
             Ok((key, value))
@@ -333,7 +333,7 @@ pub fn into_pyraw(py: Python<'_>, message: RawMessage) -> PyResult<Py<RawMessage
 /// TODO: See the TODO at the module level. This is where we would put the message
 ///       metadata.
 #[derive(Debug)]
-#[pyclass]
+#[pyclass(from_py_object)]
 pub enum PyStreamingMessage {
     PyAnyMessage { content: Py<PyAnyMessage> },
     RawMessage { content: Py<RawMessage> },
@@ -454,12 +454,12 @@ impl From<Py<PyAny>> for PyStreamingMessage {
         traced_with_gil!(|py| {
             let bound = value.clone_ref(py).into_bound(py);
             if bound.is_instance_of::<PyAnyMessage>() {
-                let content = bound.downcast::<PyAnyMessage>()?;
+                let content = bound.cast::<PyAnyMessage>()?;
                 Ok(PyStreamingMessage::PyAnyMessage {
                     content: content.clone().unbind(),
                 })
             } else if bound.is_instance_of::<RawMessage>() {
-                let content = bound.downcast::<RawMessage>()?;
+                let content = bound.cast::<RawMessage>()?;
                 Ok(PyStreamingMessage::RawMessage {
                     content: content.clone().unbind(),
                 })
@@ -481,16 +481,16 @@ impl TryFrom<Py<PyAny>> for WatermarkMessage {
         traced_with_gil!(|py| {
             let bound = value.clone_ref(py).into_bound(py);
             if bound.is_instance_of::<PyWatermark>() {
-                let py_watermark = bound.downcast::<PyWatermark>()?;
+                let py_watermark = bound.cast::<PyWatermark>()?;
                 let py_committable = py_watermark
                     .getattr("committable")?
-                    .downcast::<PyDict>()?
+                    .cast::<PyDict>()?
                     .clone()
                     .unbind();
                 let committable = convert_py_committable(py, py_committable).unwrap();
                 let timestamp = match py_watermark
                     .getattr("timestamp")?
-                    .downcast::<PyInt>()?
+                    .cast::<PyInt>()?
                     .extract::<u64>()
                 {
                     Ok(time) => time,

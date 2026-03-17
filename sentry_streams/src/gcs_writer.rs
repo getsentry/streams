@@ -36,7 +36,7 @@ fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Ve
         }
         PyStreamingMessage::RawMessage { ref content } => {
             let payload_content = content.bind(py).getattr("payload").unwrap();
-            let py_bytes: &Bound<PyBytes> = payload_content.downcast().unwrap();
+            let py_bytes: &Bound<PyBytes> = payload_content.cast().unwrap();
             Ok(py_bytes.as_bytes().to_vec())
         }
     }
