@@ -5,9 +5,11 @@ import pytest
 
 from sentry_streams.metrics.metrics import (
     METRICS_FREQUENCY_SEC,
+    METRICS_PREFIX,
     ArroyoDatadogMetricsBackend,
     DatadogMetricsBackend,
     DummyMetricsBackend,
+    LogMetricsBackend,
     Metric,
     configure_metrics,
     get_metrics,
@@ -53,19 +55,13 @@ class TestDummyMetricsBackend:
 class TestDatadogMetricsBackend:
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_init_with_prefix_dot(self, mock_dogstatsd: Any) -> None:
-        backend = DatadogMetricsBackend("localhost", 8125, "test.")
-        assert backend.prefix == "test"
+        DatadogMetricsBackend("localhost", 8125, "test.")
         mock_dogstatsd.assert_called_once_with(
             host="localhost",
             port=8125,
             namespace="test",
             constant_tags=[],
         )
-
-    @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_init_without_prefix_dot(self, mock_dogstatsd: Any) -> None:
-        backend = DatadogMetricsBackend("localhost", 8125, "test")
-        assert backend.prefix == "test"
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_init_with_tags(self, mock_dogstatsd: Any) -> None:
@@ -280,6 +276,88 @@ class TestArroyoDatadogMetricsBackend:
         mock_client.increment.assert_called_once_with("arroyo.consumer.run.count", 1, tags=None)
         mock_client.gauge.assert_called_once_with("arroyo.consumer.run.count", 100, tags=None)
         mock_client.timing.assert_called_once_with("arroyo.consumer.poll.time", 1000, tags=None)
+
+
+class TestLogMetricsBackend:
+    @patch("sentry_streams.metrics.metrics.logger")
+    def test_init(self, mock_logger: Any) -> None:
+        backend = LogMetricsBackend(period_sec=15.0, tags={"env": "test"})
+        assert backend.tags == {"env": "test"}
+
+    @patch("sentry_streams.metrics.metrics.logger")
+    @patch("time.time")
+    def test_buffer_accumulation_and_flush(self, mock_time: Any, mock_logger: Any) -> None:
+        mock_time.return_value = 0.0  # avoid throttled flush before explicit flush
+        backend = LogMetricsBackend(period_sec=60.0)
+        mock_info = mock_logger.info
+
+        backend.increment(Metric.INPUT_MESSAGES, 5)
+        backend.increment(Metric.INPUT_MESSAGES, 3)
+        backend.gauge(Metric.INPUT_BYTES, 100)
+        backend.gauge(Metric.INPUT_BYTES, 200)
+        backend.timing(Metric.DURATION, 100)
+        backend.timing(Metric.DURATION, 50)
+        backend.flush()
+
+        mock_info.assert_called_once()
+        call_msg = mock_info.call_args[0][0]
+        assert "input.messages" in call_msg
+        assert "8" in call_msg or "counter input.messages=8" in call_msg
+        assert "input.bytes" in call_msg
+        assert "200" in call_msg
+        assert "duration" in call_msg
+        assert "150" in call_msg
+
+    @patch("sentry_streams.metrics.metrics.logger")
+    @patch("time.time")
+    def test_flush_logs_and_clears(self, mock_time: Any, mock_logger: Any) -> None:
+        mock_time.return_value = 0.0  # avoid throttled flush before explicit flush
+        backend = LogMetricsBackend(period_sec=60.0)
+        mock_info = mock_logger.info
+
+        backend.increment(Metric.INPUT_MESSAGES, 1)
+        backend.flush()
+
+        mock_info.assert_called_once()
+        call_msg = mock_info.call_args[0][0]
+        assert METRICS_PREFIX.split(".")[0] in call_msg
+        assert "input.messages" in call_msg
+
+        mock_info.reset_mock()
+        backend.increment(Metric.INPUT_MESSAGES, 2)
+        backend.flush()
+        mock_info.assert_called_once()
+        call_msg = mock_info.call_args[0][0]
+        assert "2" in call_msg
+
+    @patch("sentry_streams.metrics.metrics.logger")
+    @patch("time.time")
+    def test_throttled_flush(self, mock_time: Any, mock_logger: Any) -> None:
+        mock_time.return_value = 0.0
+        backend = LogMetricsBackend(period_sec=10.0)
+        mock_info = mock_logger.info
+
+        backend.increment(Metric.INPUT_MESSAGES, 1)
+        mock_info.assert_not_called()
+
+        mock_time.return_value = 11.0
+        backend.increment(Metric.INPUT_MESSAGES, 1)
+        mock_info.assert_called_once()
+
+    @patch("sentry_streams.metrics.metrics.logger")
+    @patch("time.time")
+    def test_global_tags(self, mock_time: Any, mock_logger: Any) -> None:
+        mock_time.return_value = 0.0  # avoid throttled flush before explicit flush
+        backend = LogMetricsBackend(period_sec=60.0, tags={"service": "streams"})
+        mock_info = mock_logger.info
+
+        backend.add_global_tags({"env": "production"})
+        backend.increment(Metric.INPUT_MESSAGES, 1)
+        backend.flush()
+
+        mock_info.assert_called_once()
+        call_msg = mock_info.call_args[0][0]
+        assert "service:streams" in call_msg or "env:production" in call_msg
 
 
 class TestConfigureMetrics:

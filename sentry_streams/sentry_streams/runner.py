@@ -13,8 +13,10 @@ from sentry_streams.adapters.stream_adapter import (
     StreamT,
 )
 from sentry_streams.metrics import (
+    METRICS_PREFIX,
     DatadogMetricsBackend,
     DummyMetricsBackend,
+    LogMetricsBackend,
     configure_metrics,
 )
 from sentry_streams.pipeline.config import load_config
@@ -110,7 +112,7 @@ def load_runtime(
         metrics = DatadogMetricsBackend(
             metric_config["host"],
             metric_config["port"],
-            "streams.pipeline",
+            METRICS_PREFIX,
             default_tags,
             metric_config.get("udp_queue_size"),
         )
@@ -122,6 +124,16 @@ def load_runtime(
             "flush_interval_ms": metric_config.get("flush_interval_ms"),
             "udp_queue_size": metric_config.get("udp_queue_size"),
         }
+    elif metric_config.get("type") == "log":
+        default_tags = metric_config.get("tags", {})
+        default_tags["pipeline"] = name
+
+        metrics = LogMetricsBackend(
+            period_sec=metric_config["period_sec"],
+            tags=default_tags,
+        )
+        configure_metrics(metrics)
+        metric_config = {}
     else:
         configure_metrics(DummyMetricsBackend())
         metric_config = {}
