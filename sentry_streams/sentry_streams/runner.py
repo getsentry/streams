@@ -110,7 +110,7 @@ def load_runtime(
         metrics = DatadogMetricsBackend(
             metric_config["host"],
             metric_config["port"],
-            "sentry_streams",
+            "streams.pipeline",
             default_tags,
             metric_config.get("udp_queue_size"),
         )

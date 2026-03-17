@@ -24,22 +24,22 @@ SENDER_QUEUE_TIMEOUT = 0
 class Metric(Enum):
     # This counts how many messages were input into the step in the pipeline.
     # Tags: step, pipeline
-    INPUT_MESSAGES = "streams.pipeline.input.messages"
+    INPUT_MESSAGES = "input.messages"
     # This counts how many bytes were input into the step in the pipeline.
     # Tags: step, pipeline
-    INPUT_BYTES = "streams.pipeline.input.bytes"
+    INPUT_BYTES = "input.bytes"
     # This counts how many messages were output from the step in the pipeline. Useful for filter/batch steps.
     # Tags: step, pipeline
-    OUTPUT_MESSAGES = "streams.pipeline.output.messages"
+    OUTPUT_MESSAGES = "output.messages"
     # This counts how many bytes were output from the step in the pipeline. Useful for filter/batch steps.
     # Tags: step, pipeline
-    OUTPUT_BYTES = "streams.pipeline.output.bytes"
+    OUTPUT_BYTES = "output.bytes"
     # This times how long the application code in the step took to run.
     # Tags: step, pipeline
-    DURATION = "streams.pipeline.duration"
+    DURATION = "duration"
     # This counts how many errors were encountered in the step in the pipeline.
     # Tags: step, pipeline, error_type
-    ERRORS = "streams.pipeline.errors"
+    ERRORS = "errors"
 
 
 @runtime_checkable
@@ -133,7 +133,7 @@ class DatadogMetricsBackend(Metrics):
     ) -> None:
         self.host = host
         self.port = port
-        self.prefix = prefix if prefix.endswith(".") else prefix + "."
+        self.prefix = prefix.strip(".")
         self.tags = tags
         self.__normalized_tags = self.__normalize_tags(tags) if tags is not None else []
         self.datadog_client = DogStatsd(
@@ -209,11 +209,11 @@ class DatadogMetricsBackend(Metrics):
 
     def flush(self) -> None:
         for name, value, tags in self.__timers.values():
-            self.datadog_client.timing(self.prefix + name.value, value, tags=tags)
+            self.datadog_client.timing(name.value, value, tags=tags)
         for name, value, tags in self.__counters.values():
-            self.datadog_client.increment(self.prefix + name.value, value, tags=tags)
+            self.datadog_client.increment(name.value, value, tags=tags)
         for name, value, tags in self.__gauges.values():
-            self.datadog_client.gauge(self.prefix + name.value, value, tags=tags)
+            self.datadog_client.gauge(name.value, value, tags=tags)
 
         self.__reset()
 

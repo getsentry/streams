@@ -17,12 +17,12 @@ from sentry_streams.metrics.metrics import (
 
 class TestMetric:
     def test_metric_enum_values(self) -> None:
-        assert Metric.INPUT_MESSAGES.value == "streams.pipeline.input.messages"
-        assert Metric.INPUT_BYTES.value == "streams.pipeline.input.bytes"
-        assert Metric.OUTPUT_MESSAGES.value == "streams.pipeline.output.messages"
-        assert Metric.OUTPUT_BYTES.value == "streams.pipeline.output.bytes"
-        assert Metric.DURATION.value == "streams.pipeline.duration"
-        assert Metric.ERRORS.value == "streams.pipeline.errors"
+        assert Metric.INPUT_MESSAGES.value == "input.messages"
+        assert Metric.INPUT_BYTES.value == "input.bytes"
+        assert Metric.OUTPUT_MESSAGES.value == "output.messages"
+        assert Metric.OUTPUT_BYTES.value == "output.bytes"
+        assert Metric.DURATION.value == "duration"
+        assert Metric.ERRORS.value == "errors"
 
 
 class TestDummyMetricsBackend:
@@ -54,18 +54,18 @@ class TestDatadogMetricsBackend:
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_init_with_prefix_dot(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test.")
-        assert backend.prefix == "test."
+        assert backend.prefix == "test"
         mock_dogstatsd.assert_called_once_with(
             host="localhost",
             port=8125,
-            namespace="test.",
+            namespace="test",
             constant_tags=[],
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_init_without_prefix_dot(self, mock_dogstatsd: Any) -> None:
         backend = DatadogMetricsBackend("localhost", 8125, "test")
-        assert backend.prefix == "test."
+        assert backend.prefix == "test"
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_init_with_tags(self, mock_dogstatsd: Any) -> None:
@@ -76,7 +76,7 @@ class TestDatadogMetricsBackend:
         mock_dogstatsd.assert_called_once_with(
             host="localhost",
             port=8125,
-            namespace="test.",
+            namespace="test",
             constant_tags=expected_tags,
         )
 
@@ -93,9 +93,7 @@ class TestDatadogMetricsBackend:
 
         backend.flush()
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 5, tags=[]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 5, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
@@ -106,9 +104,7 @@ class TestDatadogMetricsBackend:
 
         backend.increment(Metric.INPUT_MESSAGES, 5)
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 5, tags=[]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 5, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_increment_with_tags(self, mock_dogstatsd: Any) -> None:
@@ -119,9 +115,7 @@ class TestDatadogMetricsBackend:
         backend.increment(Metric.INPUT_MESSAGES, 1, tags)
         backend.flush()
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 1, tags=["env:test"]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 1, tags=["env:test"])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
@@ -134,9 +128,7 @@ class TestDatadogMetricsBackend:
         backend.increment(Metric.INPUT_MESSAGES, 3)
         backend.flush()
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 8, tags=[]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 8, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_gauge(self, mock_dogstatsd: Any) -> None:
@@ -146,7 +138,7 @@ class TestDatadogMetricsBackend:
         backend.gauge(Metric.INPUT_BYTES, 100)
         backend.flush()
 
-        mock_client.gauge.assert_called_once_with("test.streams.pipeline.input.bytes", 100, tags=[])
+        mock_client.gauge.assert_called_once_with("input.bytes", 100, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
@@ -159,7 +151,7 @@ class TestDatadogMetricsBackend:
         backend.gauge(Metric.INPUT_BYTES, 200)
         backend.flush()
 
-        mock_client.gauge.assert_called_once_with("test.streams.pipeline.input.bytes", 200, tags=[])
+        mock_client.gauge.assert_called_once_with("input.bytes", 200, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_timing(self, mock_dogstatsd: Any) -> None:
@@ -169,7 +161,7 @@ class TestDatadogMetricsBackend:
         backend.timing(Metric.DURATION, 1500)
         backend.flush()
 
-        mock_client.timing.assert_called_once_with("test.streams.pipeline.duration", 1500, tags=[])
+        mock_client.timing.assert_called_once_with("duration", 1500, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_add_global_tags_new(self, mock_dogstatsd: Any) -> None:
@@ -182,9 +174,7 @@ class TestDatadogMetricsBackend:
         backend.flush()
 
         assert backend.tags == tags
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 1, tags=["env:production"]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 1, tags=["env:production"])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_add_global_tags_existing(self, mock_dogstatsd: Any) -> None:
@@ -214,9 +204,7 @@ class TestDatadogMetricsBackend:
         backend.flush()
 
         assert backend.tags == {"service": "streams"}
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 1, tags=["service:streams"]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 1, tags=["service:streams"])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_remove_global_tags_nonexistent(self, mock_dogstatsd: Any) -> None:
@@ -237,11 +225,9 @@ class TestDatadogMetricsBackend:
 
         backend.flush()
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 5, tags=[]
-        )
-        mock_client.gauge.assert_called_once_with("test.streams.pipeline.input.bytes", 100, tags=[])
-        mock_client.timing.assert_called_once_with("test.streams.pipeline.duration", 1000, tags=[])
+        mock_client.increment.assert_called_once_with("input.messages", 5, tags=[])
+        mock_client.gauge.assert_called_once_with("input.bytes", 100, tags=[])
+        mock_client.timing.assert_called_once_with("duration", 1000, tags=[])
 
 
 class TestArroyoDatadogMetricsBackend:
