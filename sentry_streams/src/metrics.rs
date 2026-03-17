@@ -9,7 +9,7 @@ struct MetricsFacadeRecorder;
 
 impl Recorder for MetricsFacadeRecorder {
     fn record_metric(&self, metric: Metric<'_>) {
-        let key = format!("streams.pipeline{}", metric.key);
+        let key = format!("streams.pipeline.{}", metric.key);
         let value_f64 = match metric.value {
             sentry_arroyo::metrics::MetricValue::I64(v) => v as f64,
             sentry_arroyo::metrics::MetricValue::U64(v) => v as f64,
