@@ -1299,19 +1299,9 @@ dependencies = [
  "libc",
  "once_cell",
  "portable-atomic",
- "pyo3-build-config 0.28.2",
+ "pyo3-build-config",
  "pyo3-ffi",
  "pyo3-macros",
-]
-
-[[package]]
-name = "pyo3-build-config"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9b6c2b34cf71427ea37c7001aefbaeb85886a074795e35f161f5aecc7620a7a"
-dependencies = [
- "once_cell",
- "target-lexicon",
 ]
 
 [[package]]
@@ -1330,7 +1320,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "491aa5fc66d8059dd44a75f4580a2962c1862a1c2945359db36f6c2818b748dc"
 dependencies = [
  "libc",
- "pyo3-build-config 0.28.2",
+ "pyo3-build-config",
 ]
 
 [[package]]
@@ -1353,7 +1343,7 @@ checksum = "22faaa1ce6c430a1f71658760497291065e6450d7b5dc2bcf254d49f66ee700a"
 dependencies = [
  "heck",
  "proc-macro2",
- "pyo3-build-config 0.28.2",
+ "pyo3-build-config",
  "quote",
  "syn",
 ]
@@ -1589,7 +1579,6 @@ dependencies = [
  "metrics-exporter-dogstatsd",
  "parking_lot",
  "pyo3",
- "pyo3-build-config 0.24.0",
  "rand 0.8.5",
  "rdkafka",
  "reqwest",

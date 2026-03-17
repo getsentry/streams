@@ -39,9 +39,6 @@ cli = ["dep:clap", "pyo3/auto-initialize"]
 parking_lot = "0.12.1"
 pyo3 = { version = "*", features = ["auto-initialize"] }
 
-[build-dependencies]
-pyo3-build-config = "*"
-
 # For now (while we are still rolling out streams to SBC), let's enable maximal
 # debug information. There should only be overhead in space and when many
 # stacktraces are generated (thousands/sec)
