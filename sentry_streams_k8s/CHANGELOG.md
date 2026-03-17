@@ -1,3 +1,7 @@
+## 0.0.5
+
+- Upgrade sentry-streams by @fpacifici in [#271](https://github.com/getsentry/streams/pull/271)
+
 ## 0.0.4
 
 - Add optional liveness probe and health volume to PipelineStep manifest by @fpacifici in [#234](https://github.com/getsentry/streams/pull/234)
