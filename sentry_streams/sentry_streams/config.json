@@ -96,6 +96,29 @@
                         "type": {
                             "type": "string",
                             "enum": [
+                                "log"
+                            ]
+                        },
+                        "period_sec": {
+                            "type": "number",
+                            "minimum": 0.1
+                        },
+                        "tags": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "required": [
+                        "type",
+                        "period_sec"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": [
                                 "dummy"
                             ]
                         }
