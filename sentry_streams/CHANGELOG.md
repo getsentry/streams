@@ -1,3 +1,10 @@
+## 0.0.40
+
+### New Features ✨
+
+- (metrics) Fix metrics naming and add log metrics backend by @fpacifici in [#270](https://github.com/getsentry/streams/pull/270)
+- Update PyO3 0.24 -> 0.28.2 for Python 3.14 support by @joshuarli in [#266](https://github.com/getsentry/streams/pull/266)
+
 ## 0.0.39
 
 ### Bug Fixes 🐛
