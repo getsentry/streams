@@ -8,7 +8,7 @@ name = "rust_test_functions"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.24" }
+pyo3 = { version = "0.28" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 paste = "1.0"

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pyo3 = { version = "0.24.0" }
+pyo3 = { version = "0.28.2" }
 serde = { version = "1.0", features = ["derive"] }
 sentry_arroyo = { version = "2.38.2", features = ["ssl"] }
 chrono = "0.4.40"
