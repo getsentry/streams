@@ -4,6 +4,7 @@ from sentry_streams.metrics.metrics import (
     DummyMetricsBackend,
     LogMetricsBackend,
     Metric,
+    Metrics,
     configure_metrics,
     get_metrics,
     get_size,
@@ -17,5 +18,6 @@ __all__ = [
     "LogMetricsBackend",
     "METRICS_PREFIX",
     "Metric",
+    "Metrics",
     "get_size",
 ]

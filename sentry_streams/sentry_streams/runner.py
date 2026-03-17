@@ -17,6 +17,7 @@ from sentry_streams.metrics import (
     DatadogMetricsBackend,
     DummyMetricsBackend,
     LogMetricsBackend,
+    Metrics,
     configure_metrics,
 )
 from sentry_streams.pipeline.config import load_config
@@ -105,6 +106,7 @@ def load_runtime(
     validate_all_branches_have_sinks(pipeline)
 
     metric_config = environment_config.get("metrics", {})
+    metrics: Metrics
     if metric_config.get("type") == "datadog":
         default_tags = metric_config.get("tags", {})
         default_tags["pipeline"] = name
@@ -135,7 +137,8 @@ def load_runtime(
         configure_metrics(metrics)
         metric_config = {}
     else:
-        configure_metrics(DummyMetricsBackend())
+        metrics = DummyMetricsBackend()
+        configure_metrics(metrics)
         metric_config = {}
 
     assigned_segment_id = int(segment_id) if segment_id else None

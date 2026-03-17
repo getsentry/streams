@@ -68,12 +68,12 @@ class TestDatadogMetricsBackend:
         tags = {"env": "production", "service": "streams"}
         DatadogMetricsBackend("localhost", 8125, "test", tags)
 
-        expected_tags = ["env:production", "service:streams"]
+        # Tags are applied by BufferedMetricsBackend per metric, not as constant_tags
         mock_dogstatsd.assert_called_once_with(
             host="localhost",
             port=8125,
             namespace="test",
-            constant_tags=expected_tags,
+            constant_tags=[],
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")

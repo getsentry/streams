@@ -189,7 +189,7 @@ class LogFlusher:
         for name, value, tags in gauges:
             tags_str = " ".join(tags) if tags else ""
             parts.append(f"gauge {name.value}={value} {tags_str}".strip())
-        if parts:
+        if len(parts) > 1:
             logger.info(" | ".join(parts))
         else:
             logger.info("No metrics to flush")
@@ -303,16 +303,13 @@ class DatadogMetricsBackend(BufferedMetricsBackend):
         tags: Optional[Tags] = None,
         udp_queue_size: Optional[int] = None,
     ) -> None:
-        if tags is not None:
-            normalized_tags = [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
-        else:
-            normalized_tags = []
-
+        # Do not pass constant_tags to DogStatsd: BufferedMetricsBackend already
+        # adds tags to each metric. Passing both would duplicate tags.
         self.datadog_client = DogStatsd(
             host=host,
             port=port,
             namespace=prefix.strip("."),
-            constant_tags=normalized_tags,
+            constant_tags=[],
         )
         # ignore mypy because that method just is untyped, yet part of public API
         self.datadog_client.enable_background_sender(  # type: ignore[no-untyped-call]
