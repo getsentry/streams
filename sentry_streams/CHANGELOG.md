@@ -1,3 +1,29 @@
+## 0.0.40
+
+### New Features ✨
+
+- (metrics) Fix metrics naming and add log metrics backend by @fpacifici in [#270](https://github.com/getsentry/streams/pull/270)
+- Update PyO3 0.24 -> 0.28.2 for Python 3.14 support by @joshuarli in [#266](https://github.com/getsentry/streams/pull/266)
+
+## 0.0.39
+
+### Bug Fixes 🐛
+
+- (metrics) Forward flush_interval_ms and udp_queue_size from yaml config by @fpacifici in [#265](https://github.com/getsentry/streams/pull/265)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump virtualenv from 20.31.2 to 20.36.1 in /sentry_streams by @dependabot in [#248](https://github.com/getsentry/streams/pull/248)
+- Bump bytes from 1.10.1 to 1.11.1 in /sentry_streams by @dependabot in [#242](https://github.com/getsentry/streams/pull/242)
+- Bump urllib3 from 2.5.0 to 2.6.3 in /sentry_streams by @dependabot in [#239](https://github.com/getsentry/streams/pull/239)
+- Bump protobuf from 5.29.5 to 5.29.6 in /sentry_streams by @dependabot in [#244](https://github.com/getsentry/streams/pull/244)
+
+### Other
+
+- Remove sentry_flink package by @fpacifici in [#253](https://github.com/getsentry/streams/pull/253)
+
 ## 0.0.38
 
 - Enable SSL mode for arroyo rust by @fpacifici in [#238](https://github.com/getsentry/streams/pull/238)

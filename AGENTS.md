@@ -16,9 +16,6 @@ The repository is organized into two main Python packages:
 - **`sentry_streams_k8s/`** - Kubernetes integration and deployment automation for Sentry Streams (pure Python package)
   - See [sentry_streams_k8s/AGENTS.md](./sentry_streams_k8s/AGENTS.md) for package-specific development instructions
 
-- **`sentry_flink/`** - Apache Flink adapter for the streaming platform (pure Python package)
-  - See [sentry_flink/AGENTS.md](./sentry_flink/AGENTS.md) for package-specific development instructions
-
 
 ### Other Directories
 
@@ -35,9 +32,8 @@ The root Makefile provides commands for common development tasks across both pac
 make install-dev
 ```
 Installs development dependencies for all packages using `uv`. This will:
-- Download required Flink JARs
 - Install `uv` package manager if not present
-- Set up virtual environments for `sentry_streams`, `sentry_flink`, and `sentry_streams_k8s`
+- Set up virtual environments for `sentry_streams` and `sentry_streams_k8s`
 
 ```bash
 make install-pre-commit-hook
@@ -67,11 +63,6 @@ make tests-rust-streams
 Runs Rust tests for the `sentry_streams` package.
 
 ```bash
-make tests-flink
-```
-Runs tests for the `sentry_flink` package.
-
-```bash
 make tests-k8s
 ```
 Runs tests for the `sentry_streams_k8s` package.
@@ -84,7 +75,7 @@ make typecheck
 Runs `mypy` type checking on both packages. This will:
 - Build Rust modules needed for type checking
 - Run strict type checking on `sentry_streams`
-- Run strict type checking on `sentry_flink`
+- Run strict type checking on `sentry_streams_k8s`
 
 ### Building and Documentation
 
@@ -105,7 +96,7 @@ Builds the Sphinx documentation for the streaming platform.
 
 ## Development Prerequisites
 
-- **Python 3.11+** (Note: `sentry_flink` requires <3.12 due to PyFlink limitations)
+- **Python 3.11+**
 - **Rust toolchain** (for `sentry_streams` development)
 - **uv** package manager (automatically installed by `make install-dev`)
 - **direnv** (recommended for automatic environment setup)
@@ -115,7 +106,6 @@ Builds the Sphinx documentation for the streaming platform.
 For detailed development instructions specific to each package, including virtual environment requirements, testing, and type checking, see the AGENTS.md files in each package directory:
 
 - [sentry_streams/AGENTS.md](./sentry_streams/AGENTS.md)
-- [sentry_flink/AGENTS.md](./sentry_flink/AGENTS.md)
 
 ## Additional Notes
 

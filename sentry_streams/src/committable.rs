@@ -40,7 +40,7 @@ pub fn convert_py_committable(
     let mut committable = BTreeMap::new();
     let dict = py_committable.bind(py);
     for (key, value) in dict.iter() {
-        let partition = key.downcast::<PyTuple>()?;
+        let partition = key.cast::<PyTuple>()?;
         let topic: String = partition.get_item(0)?.extract()?;
         let index: u16 = partition.get_item(1)?.extract()?;
         let offset: u64 = value.extract()?;

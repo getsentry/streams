@@ -7,7 +7,7 @@
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyMetricConfig {
     host: String,
