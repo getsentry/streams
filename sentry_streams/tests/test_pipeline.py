@@ -543,6 +543,18 @@ def test_streamsource_override_config() -> None:
     assert source.consumer_group == "my-consumer-group"
 
 
+def test_streamsource_override_config_empty() -> None:
+    """Test that StreamSource handles empty config correctly."""
+    from sentry_streams.pipeline.pipeline import StreamSource
+
+    source = StreamSource(name="my_source", stream_name="original-topic")
+
+    config: Mapping[str, Any] = {}
+    source.override_config(config)
+
+    assert source.stream_name == "original-topic"
+
+
 def test_streamsink_override_config() -> None:
     """Test that StreamSink topic can be overridden from deployment config."""
     from sentry_streams.pipeline.pipeline import StreamSink
@@ -555,3 +567,15 @@ def test_streamsink_override_config() -> None:
 
     sink.override_config({})
     assert sink.stream_name == "production-output-v2"
+
+
+def test_streamsink_override_config_empty() -> None:
+    """Test that StreamSink handles empty config correctly."""
+    from sentry_streams.pipeline.pipeline import StreamSink
+
+    sink = StreamSink[str](name="my_sink", stream_name="original-topic")
+
+    config: Mapping[str, Any] = {}
+    sink.override_config(config)
+
+    assert sink.stream_name == "original-topic"

@@ -90,6 +90,7 @@ class StreamSources:
 
         step_config: Mapping[str, Any] = self.config.get(source_name, {})
         step.override_config(step_config)
+        step.validate()
 
         if source_name not in self.__sources:
 

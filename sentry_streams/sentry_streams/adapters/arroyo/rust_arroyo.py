@@ -258,6 +258,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step_config: Mapping[str, Any] = self.steps_config.get(source_name, {})
         schema_name = step.stream_name  # Logical name for schema/codec lookup (before override)
         step.override_config(step_config)
+        step.validate()
 
         assert isinstance(self.__write_healthcheck, bool)
         self.__consumers[source_name] = ArroyoConsumer(
