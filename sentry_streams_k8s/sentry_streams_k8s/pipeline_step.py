@@ -401,6 +401,7 @@ class PipelineStep(ExternalMacro):
         labels = {
             "pipeline-app": make_k8s_name(pipeline_module),
             "pipeline": make_k8s_name(pipeline_name),
+            "service": make_k8s_name(service_name),
         }
         configmap_name = make_k8s_name(f"{service_name}-pipeline-{pipeline_name}")
 
