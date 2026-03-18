@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The waypoints sequence contains the branches taken by the message
 /// in order following the pipeline.
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct Route {
     /// The name of the streaming source this route starts from.

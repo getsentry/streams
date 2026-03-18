@@ -329,7 +329,7 @@ mod tests {
 
             if let PyStreamingMessage::RawMessage { ref content } = py_payload {
                 let payload = content.getattr(py, "payload").unwrap();
-                let down: &Bound<PyBytes> = payload.bind(py).downcast().unwrap();
+                let down: &Bound<PyBytes> = payload.bind(py).cast().unwrap();
                 let payload_bytes: &[u8] = down.as_bytes();
                 assert_eq!(payload_bytes, payload_data);
             } else {
@@ -355,7 +355,7 @@ mod tests {
                     .getattr(py, "payload")
                     .unwrap()
                     .bind(py)
-                    .downcast::<PyBytes>()
+                    .cast::<PyBytes>()
                     .unwrap()
                     .as_bytes()
                     .to_vec();

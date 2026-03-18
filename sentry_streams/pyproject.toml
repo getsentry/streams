@@ -4,11 +4,17 @@ build-backend = "maturin"
 
 [project]
 name = "sentry-streams"
-version = "0.0.38"
+version = "0.0.40"
 description = "The python Sentry Streaming API"
 readme = "README.md"
 
 requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 
 dependencies = [
     "requests>=2.32.3",
@@ -47,7 +53,6 @@ module-name = "sentry_streams.rust_streams"
 sentry_streams = [
     "py.typed",
     "config.json",
-    "deployment_config/test_flink.yaml",
 ]
 
 [tool.pytest.ini_options]

@@ -5,9 +5,11 @@ import pytest
 
 from sentry_streams.metrics.metrics import (
     METRICS_FREQUENCY_SEC,
+    METRICS_PREFIX,
     ArroyoDatadogMetricsBackend,
     DatadogMetricsBackend,
     DummyMetricsBackend,
+    LogMetricsBackend,
     Metric,
     configure_metrics,
     get_metrics,
@@ -17,12 +19,12 @@ from sentry_streams.metrics.metrics import (
 
 class TestMetric:
     def test_metric_enum_values(self) -> None:
-        assert Metric.INPUT_MESSAGES.value == "streams.pipeline.input.messages"
-        assert Metric.INPUT_BYTES.value == "streams.pipeline.input.bytes"
-        assert Metric.OUTPUT_MESSAGES.value == "streams.pipeline.output.messages"
-        assert Metric.OUTPUT_BYTES.value == "streams.pipeline.output.bytes"
-        assert Metric.DURATION.value == "streams.pipeline.duration"
-        assert Metric.ERRORS.value == "streams.pipeline.errors"
+        assert Metric.INPUT_MESSAGES.value == "input.messages"
+        assert Metric.INPUT_BYTES.value == "input.bytes"
+        assert Metric.OUTPUT_MESSAGES.value == "output.messages"
+        assert Metric.OUTPUT_BYTES.value == "output.bytes"
+        assert Metric.DURATION.value == "duration"
+        assert Metric.ERRORS.value == "errors"
 
 
 class TestDummyMetricsBackend:
@@ -53,31 +55,25 @@ class TestDummyMetricsBackend:
 class TestDatadogMetricsBackend:
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_init_with_prefix_dot(self, mock_dogstatsd: Any) -> None:
-        backend = DatadogMetricsBackend("localhost", 8125, "test.")
-        assert backend.prefix == "test."
+        DatadogMetricsBackend("localhost", 8125, "test.")
         mock_dogstatsd.assert_called_once_with(
             host="localhost",
             port=8125,
-            namespace="test.",
+            namespace="test",
             constant_tags=[],
         )
-
-    @patch("sentry_streams.metrics.metrics.DogStatsd")
-    def test_init_without_prefix_dot(self, mock_dogstatsd: Any) -> None:
-        backend = DatadogMetricsBackend("localhost", 8125, "test")
-        assert backend.prefix == "test."
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_init_with_tags(self, mock_dogstatsd: Any) -> None:
         tags = {"env": "production", "service": "streams"}
         DatadogMetricsBackend("localhost", 8125, "test", tags)
 
-        expected_tags = ["env:production", "service:streams"]
+        # Tags are applied by BufferedMetricsBackend per metric, not as constant_tags
         mock_dogstatsd.assert_called_once_with(
             host="localhost",
             port=8125,
-            namespace="test.",
-            constant_tags=expected_tags,
+            namespace="test",
+            constant_tags=[],
         )
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
@@ -93,9 +89,7 @@ class TestDatadogMetricsBackend:
 
         backend.flush()
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 5, tags=[]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 5, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
@@ -106,9 +100,7 @@ class TestDatadogMetricsBackend:
 
         backend.increment(Metric.INPUT_MESSAGES, 5)
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 5, tags=[]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 5, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_increment_with_tags(self, mock_dogstatsd: Any) -> None:
@@ -119,9 +111,7 @@ class TestDatadogMetricsBackend:
         backend.increment(Metric.INPUT_MESSAGES, 1, tags)
         backend.flush()
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 1, tags=["env:test"]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 1, tags=["env:test"])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
@@ -134,9 +124,7 @@ class TestDatadogMetricsBackend:
         backend.increment(Metric.INPUT_MESSAGES, 3)
         backend.flush()
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 8, tags=[]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 8, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_gauge(self, mock_dogstatsd: Any) -> None:
@@ -146,7 +134,7 @@ class TestDatadogMetricsBackend:
         backend.gauge(Metric.INPUT_BYTES, 100)
         backend.flush()
 
-        mock_client.gauge.assert_called_once_with("test.streams.pipeline.input.bytes", 100, tags=[])
+        mock_client.gauge.assert_called_once_with("input.bytes", 100, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     @patch("time.time")
@@ -159,7 +147,7 @@ class TestDatadogMetricsBackend:
         backend.gauge(Metric.INPUT_BYTES, 200)
         backend.flush()
 
-        mock_client.gauge.assert_called_once_with("test.streams.pipeline.input.bytes", 200, tags=[])
+        mock_client.gauge.assert_called_once_with("input.bytes", 200, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_timing(self, mock_dogstatsd: Any) -> None:
@@ -169,7 +157,7 @@ class TestDatadogMetricsBackend:
         backend.timing(Metric.DURATION, 1500)
         backend.flush()
 
-        mock_client.timing.assert_called_once_with("test.streams.pipeline.duration", 1500, tags=[])
+        mock_client.timing.assert_called_once_with("duration", 1500, tags=[])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_add_global_tags_new(self, mock_dogstatsd: Any) -> None:
@@ -182,9 +170,7 @@ class TestDatadogMetricsBackend:
         backend.flush()
 
         assert backend.tags == tags
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 1, tags=["env:production"]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 1, tags=["env:production"])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_add_global_tags_existing(self, mock_dogstatsd: Any) -> None:
@@ -214,9 +200,7 @@ class TestDatadogMetricsBackend:
         backend.flush()
 
         assert backend.tags == {"service": "streams"}
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 1, tags=["service:streams"]
-        )
+        mock_client.increment.assert_called_once_with("input.messages", 1, tags=["service:streams"])
 
     @patch("sentry_streams.metrics.metrics.DogStatsd")
     def test_remove_global_tags_nonexistent(self, mock_dogstatsd: Any) -> None:
@@ -237,11 +221,9 @@ class TestDatadogMetricsBackend:
 
         backend.flush()
 
-        mock_client.increment.assert_called_once_with(
-            "test.streams.pipeline.input.messages", 5, tags=[]
-        )
-        mock_client.gauge.assert_called_once_with("test.streams.pipeline.input.bytes", 100, tags=[])
-        mock_client.timing.assert_called_once_with("test.streams.pipeline.duration", 1000, tags=[])
+        mock_client.increment.assert_called_once_with("input.messages", 5, tags=[])
+        mock_client.gauge.assert_called_once_with("input.bytes", 100, tags=[])
+        mock_client.timing.assert_called_once_with("duration", 1000, tags=[])
 
 
 class TestArroyoDatadogMetricsBackend:
@@ -294,6 +276,88 @@ class TestArroyoDatadogMetricsBackend:
         mock_client.increment.assert_called_once_with("arroyo.consumer.run.count", 1, tags=None)
         mock_client.gauge.assert_called_once_with("arroyo.consumer.run.count", 100, tags=None)
         mock_client.timing.assert_called_once_with("arroyo.consumer.poll.time", 1000, tags=None)
+
+
+class TestLogMetricsBackend:
+    @patch("sentry_streams.metrics.metrics.logger")
+    def test_init(self, mock_logger: Any) -> None:
+        backend = LogMetricsBackend(period_sec=15.0, tags={"env": "test"})
+        assert backend.tags == {"env": "test"}
+
+    @patch("sentry_streams.metrics.metrics.logger")
+    @patch("time.time")
+    def test_buffer_accumulation_and_flush(self, mock_time: Any, mock_logger: Any) -> None:
+        mock_time.return_value = 0.0  # avoid throttled flush before explicit flush
+        backend = LogMetricsBackend(period_sec=60.0)
+        mock_info = mock_logger.info
+
+        backend.increment(Metric.INPUT_MESSAGES, 5)
+        backend.increment(Metric.INPUT_MESSAGES, 3)
+        backend.gauge(Metric.INPUT_BYTES, 100)
+        backend.gauge(Metric.INPUT_BYTES, 200)
+        backend.timing(Metric.DURATION, 100)
+        backend.timing(Metric.DURATION, 50)
+        backend.flush()
+
+        mock_info.assert_called_once()
+        call_msg = mock_info.call_args[0][0]
+        assert "input.messages" in call_msg
+        assert "8" in call_msg or "counter input.messages=8" in call_msg
+        assert "input.bytes" in call_msg
+        assert "200" in call_msg
+        assert "duration" in call_msg
+        assert "150" in call_msg
+
+    @patch("sentry_streams.metrics.metrics.logger")
+    @patch("time.time")
+    def test_flush_logs_and_clears(self, mock_time: Any, mock_logger: Any) -> None:
+        mock_time.return_value = 0.0  # avoid throttled flush before explicit flush
+        backend = LogMetricsBackend(period_sec=60.0)
+        mock_info = mock_logger.info
+
+        backend.increment(Metric.INPUT_MESSAGES, 1)
+        backend.flush()
+
+        mock_info.assert_called_once()
+        call_msg = mock_info.call_args[0][0]
+        assert METRICS_PREFIX.split(".")[0] in call_msg
+        assert "input.messages" in call_msg
+
+        mock_info.reset_mock()
+        backend.increment(Metric.INPUT_MESSAGES, 2)
+        backend.flush()
+        mock_info.assert_called_once()
+        call_msg = mock_info.call_args[0][0]
+        assert "2" in call_msg
+
+    @patch("sentry_streams.metrics.metrics.logger")
+    @patch("time.time")
+    def test_throttled_flush(self, mock_time: Any, mock_logger: Any) -> None:
+        mock_time.return_value = 0.0
+        backend = LogMetricsBackend(period_sec=10.0)
+        mock_info = mock_logger.info
+
+        backend.increment(Metric.INPUT_MESSAGES, 1)
+        mock_info.assert_not_called()
+
+        mock_time.return_value = 11.0
+        backend.increment(Metric.INPUT_MESSAGES, 1)
+        mock_info.assert_called_once()
+
+    @patch("sentry_streams.metrics.metrics.logger")
+    @patch("time.time")
+    def test_global_tags(self, mock_time: Any, mock_logger: Any) -> None:
+        mock_time.return_value = 0.0  # avoid throttled flush before explicit flush
+        backend = LogMetricsBackend(period_sec=60.0, tags={"service": "streams"})
+        mock_info = mock_logger.info
+
+        backend.add_global_tags({"env": "production"})
+        backend.increment(Metric.INPUT_MESSAGES, 1)
+        backend.flush()
+
+        mock_info.assert_called_once()
+        call_msg = mock_info.call_args[0][0]
+        assert "service:streams" in call_msg or "env:production" in call_msg
 
 
 class TestConfigureMetrics:

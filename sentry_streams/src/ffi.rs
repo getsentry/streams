@@ -158,7 +158,7 @@ macro_rules! rust_function {
                 let rust_msg = $crate::ffi::convert_py_message_to_rust::<$input_type>(py, &py_msg)?;
 
                 // Release GIL and call Rust function
-                let result_msg = py.allow_threads(|| {
+                let result_msg = py.detach(|| {
                     // clone metadata, but try very hard to avoid cloning the payload
                     let (payload, metadata) = rust_msg.take();
                     let metadata_clone = metadata.clone();

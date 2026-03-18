@@ -104,7 +104,7 @@ fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
         RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { ref content }) => {
             traced_with_gil!(|py| {
                 let payload_content = content.bind(py).getattr("payload").unwrap();
-                let py_bytes: &Bound<PyBytes> = payload_content.downcast().unwrap();
+                let py_bytes: &Bound<PyBytes> = payload_content.cast().unwrap();
                 let raw_bytes = py_bytes.as_bytes();
                 let mut headers = Headers::new();
                 headers = headers.insert("is_watermark", Some(vec![0]));

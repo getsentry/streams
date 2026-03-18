@@ -65,11 +65,11 @@ impl PythonAdapter {
     /// the Python delegate.
     fn handle_py_return_value(&mut self, py: Python<'_>, payloads: Vec<Py<PyAny>>) {
         for py_payload in payloads {
-            let entry = py_payload.downcast_bound::<PyTuple>(py).unwrap();
+            let entry = py_payload.cast_bound::<PyTuple>(py).unwrap();
             let payload: Py<PyAny> = entry.get_item(0).unwrap().unbind();
             let committable: Py<PyAny> = entry.get_item(1).unwrap().unbind();
             let committable_dict = committable
-                .downcast_bound::<PyDict>(py)
+                .cast_bound::<PyDict>(py)
                 .unwrap()
                 .as_unbound()
                 .clone_ref(py);

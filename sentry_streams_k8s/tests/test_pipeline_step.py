@@ -83,11 +83,13 @@ def test_parse_context() -> None:
     assert parsed_context["cpu_per_process"] == 1000
     assert parsed_context["memory_per_process"] == 512
     assert parsed_context["segment_id"] == 0
+    assert parsed_context["log_level"] == "INFO"
     assert parsed_context["replicas"] == 2
 
     context["deployment_template"] = yaml.dump(context["deployment_template"])
     context["container_template"] = yaml.dump(context["container_template"])
     context["pipeline_config"] = yaml.dump(context["pipeline_config"])
+    context["log_level"] = "DEBUG"
 
     parsed_context = parse_context(context)
     assert parsed_context["deployment_template"] == {"kind": "Deployment"}
@@ -107,6 +109,7 @@ def test_parse_context() -> None:
             ]
         },
     }
+    assert parsed_context["log_level"] == "DEBUG"
     assert parsed_context["replicas"] == 2
 
 
@@ -140,6 +143,8 @@ def test_build_container() -> None:
         "args": [
             "-n",
             "profiles",
+            "--log-level",
+            "INFO",
             "--adapter",
             "rust_arroyo",
             "--segment-id",
@@ -183,6 +188,50 @@ def test_build_container() -> None:
             "runAsUser": 1000,
         },
     }
+
+
+def test_build_container_custom_name() -> None:
+    """Test that build_container uses the provided container_name."""
+    container = build_container(
+        container_template={},
+        pipeline_name="profiles",
+        pipeline_module="sbc.profiles",
+        image_name="my-image:latest",
+        cpu_per_process=1000,
+        memory_per_process=512,
+        segment_id=0,
+        container_name="my-custom-container",
+    )
+
+    assert container["name"] == "my-custom-container"
+
+
+def test_build_container_with_log_level() -> None:
+    """Test that build_container propagates a custom log level."""
+    container = build_container(
+        container_template={},
+        pipeline_name="profiles",
+        pipeline_module="sbc.profiles",
+        image_name="my-image:latest",
+        cpu_per_process=1000,
+        memory_per_process=512,
+        segment_id=0,
+        log_level="ERROR",
+    )
+
+    assert container["args"] == [
+        "-n",
+        "profiles",
+        "--log-level",
+        "ERROR",
+        "--adapter",
+        "rust_arroyo",
+        "--segment-id",
+        "0",
+        "--config",
+        "/etc/pipeline-config/pipeline_config.yaml",
+        "sbc.profiles",
+    ]
 
 
 def test_validate_context_valid() -> None:
@@ -1037,3 +1086,41 @@ def test_emergency_patch_overrides_final_deployment() -> None:
     assert deployment["metadata"]["labels"]["pipeline-app"] == "sbc-profiles"
     assert len(deployment["spec"]["template"]["spec"]["containers"]) == 1
     assert deployment["spec"]["template"]["spec"]["containers"][0]["name"] == "pipeline-consumer"
+
+
+def test_run_custom_container_name() -> None:
+    """Test that run() uses the provided container_name instead of the default."""
+    context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {},
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+        "replicas": 1,
+        "container_name": "my-custom-container",
+    }
+
+    pipeline_step = PipelineStep()
+    result = pipeline_step.run(context)
+    containers = result["deployment"]["spec"]["template"]["spec"]["containers"]
+    assert len(containers) == 1
+    assert containers[0]["name"] == "my-custom-container"
