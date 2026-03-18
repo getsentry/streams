@@ -94,6 +94,7 @@ def build_container(
     process_count: int | None = None,
     enable_liveness_probe: bool = True,
     multiprocess_enabled: bool | None = None,
+    container_name: str = "pipeline-consumer",
 ) -> dict[str, Any]:
     """
     Build a complete container specification for the pipeline step.
@@ -144,7 +145,7 @@ def build_container(
         )
 
     pipeline_additions: dict[str, Any] = {
-        "name": "pipeline-consumer",
+        "name": container_name,
         "image": image_name,
         "command": ["python", "-m", "sentry_streams.runner"],
         "args": [
@@ -230,6 +231,7 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
         "replicas": context.get("replicas", 1),
         "emergency_patch": emergency_patch_parsed,
         "enable_liveness_probe": context.get("enable_liveness_probe", True),
+        "container_name": context.get("container_name", "pipeline-consumer"),
     }
 
 
@@ -250,6 +252,7 @@ class PipelineStepContext(TypedDict):
     replicas: int
     emergency_patch: NotRequired[dict[str, Any]]
     enable_liveness_probe: NotRequired[bool]
+    container_name: NotRequired[str]
 
 
 class PipelineStep(ExternalMacro):
@@ -366,6 +369,7 @@ class PipelineStep(ExternalMacro):
         replicas = ctx["replicas"]
         emergency_patch = ctx.get("emergency_patch", {})
         enable_liveness_probe = ctx.get("enable_liveness_probe", True)
+        container_name = ctx.get("container_name", "pipeline-consumer")
 
         process_count, segments_with_parallelism = get_multiprocess_config(pipeline_config)
         if len(segments_with_parallelism) > 1:
@@ -389,6 +393,7 @@ class PipelineStep(ExternalMacro):
             process_count,
             enable_liveness_probe,
             multiprocess_enabled,
+            container_name,
         )
 
         base_deployment = load_base_template("deployment")
