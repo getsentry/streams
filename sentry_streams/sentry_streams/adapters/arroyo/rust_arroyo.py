@@ -131,13 +131,19 @@ def build_initial_offset(offset_reset: str) -> InitialOffset:
         raise ValueError(f"Invalid offset reset value: {offset_reset}")
 
 
-def build_kafka_consumer_config(source: str, source_config: StepConfig) -> PyKafkaConsumerConfig:
+def build_kafka_consumer_config(
+    source: str,
+    source_config: StepConfig,
+    consumer_group_override: str | None = None,
+) -> PyKafkaConsumerConfig:
     """
     Build the Kafka consumer configuration for the source.
     """
     consumer_config = cast(KafkaConsumerConfig, source_config)
     bootstrap_servers = consumer_config["bootstrap_servers"]
-    group_id = f"pipeline-{source}"
+    group_id = (
+        consumer_group_override or consumer_config.get("consumer_group") or f"pipeline-{source}"
+    )
     auto_offset_reset = build_initial_offset(consumer_config.get("auto_offset_reset", "latest"))
     strict_offset_reset = bool(consumer_config.get("strict_offset_reset", False))
     override_params = cast(Mapping[str, str], consumer_config.get("override_params", {}))
@@ -248,12 +254,19 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         source_config = self.steps_config.get(source_name)
         assert source_config is not None, f"Config not provided for source {source_name}"
 
+        # Apply config overrides (topic, consumer_group); preserve logical stream for schema
+        step_config: Mapping[str, Any] = self.steps_config.get(source_name, {})
+        schema_name = step.stream_name  # Logical name for schema/codec lookup (before override)
+        step.override_config(step_config)
+
         assert isinstance(self.__write_healthcheck, bool)
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
-            kafka_config=build_kafka_consumer_config(source_name, source_config),
+            kafka_config=build_kafka_consumer_config(
+                source_name, source_config, step.consumer_group
+            ),
             topic=step.stream_name,
-            schema=step.stream_name,
+            schema=schema_name,
             metric_config=self.__metric_config,
             write_healthcheck=self.__write_healthcheck,
         )
