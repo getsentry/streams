@@ -11,6 +11,8 @@ from libsentrykube.ext import ExternalMacro
 from sentry_streams_k8s.merge import ScalarOverwriteError, deepmerge
 from sentry_streams_k8s.validation import validate_pipeline_config
 
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+
 
 def load_base_template(file_name: str) -> dict[str, Any]:
     """
@@ -88,6 +90,7 @@ def build_container(
     cpu_per_process: int,
     memory_per_process: int,
     segment_id: int,
+    log_level: str = "INFO",
     process_count: int | None = None,
     enable_liveness_probe: bool = True,
     multiprocess_enabled: bool | None = None,
@@ -147,6 +150,8 @@ def build_container(
         "args": [
             "-n",
             pipeline_name,
+            "--log-level",
+            log_level,
             "--adapter",
             "rust_arroyo",
             "--segment-id",
@@ -221,6 +226,7 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
         "cpu_per_process": context["cpu_per_process"],
         "memory_per_process": context["memory_per_process"],
         "segment_id": context["segment_id"],
+        "log_level": context.get("log_level", "INFO"),
         "replicas": context.get("replicas", 1),
         "emergency_patch": emergency_patch_parsed,
         "enable_liveness_probe": context.get("enable_liveness_probe", True),
@@ -240,6 +246,7 @@ class PipelineStepContext(TypedDict):
     cpu_per_process: int
     memory_per_process: int
     segment_id: int
+    log_level: NotRequired[str]
     replicas: int
     emergency_patch: NotRequired[dict[str, Any]]
     enable_liveness_probe: NotRequired[bool]
@@ -283,6 +290,7 @@ class PipelineStep(ExternalMacro):
                 "pipeline_module": "sbc.profiles",
                 "image_name": "us-central1-docker.pkg.dev/my-project/my-image:latest",
                 "segment_id": 0,
+                "log_level": "INFO",
                 "cpu_per_process": 1000,
                 "memory_per_process": 512,
                 "replicas": 3,
@@ -315,6 +323,10 @@ class PipelineStep(ExternalMacro):
 
         ctx = parse_context(context)
         validate_pipeline_config(ctx["pipeline_config"])
+        if ctx["log_level"] not in LOG_LEVELS:
+            raise ValueError(
+                f"Invalid log_level {ctx['log_level']!r}; expected one of {', '.join(LOG_LEVELS)}"
+            )
 
         # When the macro manages the liveness probe, the user template must not define one.
         if ctx.get("enable_liveness_probe", True) and ctx["container_template"].get(
@@ -349,6 +361,7 @@ class PipelineStep(ExternalMacro):
         memory_per_process = ctx["memory_per_process"]
         pipeline_name = ctx["pipeline_name"]
         segment_id = ctx["segment_id"]
+        log_level = ctx["log_level"]
         service_name = ctx["service_name"]
         replicas = ctx["replicas"]
         emergency_patch = ctx.get("emergency_patch", {})
@@ -372,6 +385,7 @@ class PipelineStep(ExternalMacro):
             cpu_per_process,
             memory_per_process,
             segment_id,
+            log_level,
             process_count,
             enable_liveness_probe,
             multiprocess_enabled,

@@ -1,4 +1,4 @@
-use pyo3::{import_exception, prelude::*, types::PyTuple};
+use pyo3::{call::PyCallArgs, import_exception, prelude::*};
 
 import_exception!(sentry_streams.pipeline.exception, InvalidMessageError);
 
@@ -16,7 +16,7 @@ pub fn try_apply_py<'py, N>(
     args: N,
 ) -> ApplyResult<Py<PyAny>>
 where
-    N: IntoPyObject<'py, Target = PyTuple>,
+    N: PyCallArgs<'py>,
 {
     callable.call1(py, args).map_err(|py_err| {
         py_err.print(py);

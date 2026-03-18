@@ -1,0 +1,30 @@
+version = 1
+agents = ["claude", "cursor"]
+
+[trust]
+github_orgs = [ "getsentry" ]
+
+
+[[skills]]
+name = "dotagents"
+source = "getsentry/dotagents"
+
+[[skills]]
+name = "commit"
+source = "getsentry/skills"
+
+[[skills]]
+name = "create-branch"
+source = "getsentry/skills"
+
+[[skills]]
+name = "create-pr"
+source = "getsentry/skills"
+
+[[skills]]
+name = "iterate-pr"
+source = "getsentry/skills"
+
+[[skills]]
+name = "pr-writer"
+source = "getsentry/skills"
