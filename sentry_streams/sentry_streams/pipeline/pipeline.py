@@ -232,15 +232,18 @@ class StreamSource(Source[bytes]):
 
     stream_name: str
     header_filter: Optional[Tuple[str, bytes]] = None
+    consumer_group: Optional[str] = None
     step_type: StepType = StepType.SOURCE
 
     def register(self, ctx: Pipeline[bytes], previous: Step) -> None:
         super().register(ctx, previous)
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
-        """Override topic name from deployment configuration."""
+        """Override topic and consumer_group from deployment configuration."""
         if loaded_config.get("topic"):
             self.stream_name = str(loaded_config.get("topic"))
+        if loaded_config.get("consumer_group"):
+            self.consumer_group = str(loaded_config.get("consumer_group"))
 
 
 @dataclass

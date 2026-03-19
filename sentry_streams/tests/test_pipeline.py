@@ -527,15 +527,20 @@ def test_gcssink_override_config_empty() -> None:
 
 
 def test_streamsource_override_config() -> None:
-    """Test that StreamSource topic can be overridden from deployment config."""
+    """Test that StreamSource topic and consumer_group can be overridden from deployment config."""
     from sentry_streams.pipeline.pipeline import StreamSource
 
-    source = StreamSource(name="my_source", stream_name="original-topic")
+    source = StreamSource(name="my_source", stream_name="events")
+    assert source.stream_name == "events"
+    assert source.consumer_group is None
 
-    config = {"topic": "overridden-topic"}
-    source.override_config(config)
+    source.override_config({"topic": "production-events-v2", "consumer_group": "my-consumer-group"})
+    assert source.stream_name == "production-events-v2"
+    assert source.consumer_group == "my-consumer-group"
 
-    assert source.stream_name == "overridden-topic"
+    source.override_config({})
+    assert source.stream_name == "production-events-v2"
+    assert source.consumer_group == "my-consumer-group"
 
 
 def test_streamsource_override_config_empty() -> None:
@@ -554,12 +559,14 @@ def test_streamsink_override_config() -> None:
     """Test that StreamSink topic can be overridden from deployment config."""
     from sentry_streams.pipeline.pipeline import StreamSink
 
-    sink = StreamSink[str](name="my_sink", stream_name="original-topic")
+    sink = StreamSink[str](name="my_sink", stream_name="output")
+    assert sink.stream_name == "output"
 
-    config = {"topic": "overridden-topic"}
-    sink.override_config(config)
+    sink.override_config({"topic": "production-output-v2"})
+    assert sink.stream_name == "production-output-v2"
 
-    assert sink.stream_name == "overridden-topic"
+    sink.override_config({})
+    assert sink.stream_name == "production-output-v2"
 
 
 def test_streamsink_override_config_empty() -> None:

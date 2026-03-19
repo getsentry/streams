@@ -88,26 +88,28 @@ class StreamSources:
         assert isinstance(step, StreamSource), "Only Stream Sources are supported"
         source_name = step.name
 
+        step_config: Mapping[str, Any] = self.config.get(source_name, {})
+        step.override_config(step_config)
+        step.validate()
+
         if source_name not in self.__sources:
 
             source_config = self.config.get(source_name)
             assert source_config is not None, f"Config not provided for source {source_name}"
 
             source_config = cast(KafkaConsumerConfig, source_config)
+            group_id = step.consumer_group or source_config.get(
+                "consumer_group", f"pipeline-{source_name}"
+            )
 
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
                     default_config=source_config.get("additional_settings", {}),
                     bootstrap_servers=source_config.get("bootstrap_servers", ["localhost: 9092"]),
                     auto_offset_reset=(source_config.get("auto_offset_reset", "latest")),
-                    group_id=f"pipeline-{source_name}",
+                    group_id=group_id,
                 )
             )
-
-        # Apply config overrides and validate
-        step_config: Mapping[str, Any] = self.config.get(step.name, {})
-        step.override_config(step_config)
-        step.validate()
 
         self.__source_topics[source_name] = Topic(step.stream_name)
 
@@ -165,6 +167,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         # This is the Arroyo adapter, and it only supports consuming from StreamSource anyways
         assert isinstance(step, StreamSource)
 
+        # schema is logical stream name for codec lookup (StreamSources.add_source already applied overrides)
         self.__consumers[source_name] = ArroyoConsumer(
             source_name, step.stream_name, step.stream_name, step.header_filter
         )
@@ -184,17 +187,20 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         assert isinstance(step, StreamSink), "Only Stream Sinks are supported"
 
         sink_name = step.name
+        step_override_config: Mapping[str, Any] = self.steps_config.get(sink_name, {})
+        step.override_config(step_override_config)
+
         if sink_name not in self.__sinks:
 
-            sink_config = self.steps_config.get(sink_name)
-            assert sink_config is not None, f"Config not provided for sink {sink_name}"
+            producer_config = self.steps_config.get(sink_name)
+            assert producer_config is not None, f"Config not provided for sink {sink_name}"
 
-            sink_config = cast(KafkaProducerConfig, sink_config)
+            producer_config = cast(KafkaProducerConfig, producer_config)
 
             producer = KafkaProducer(
                 build_kafka_configuration(
-                    default_config=sink_config.get("additional_settings", {}),
-                    bootstrap_servers=sink_config.get("bootstrap_servers", "localhost:9092"),
+                    default_config=producer_config.get("additional_settings", {}),
+                    bootstrap_servers=producer_config.get("bootstrap_servers", "localhost:9092"),
                 )
             )
         else:
