@@ -47,10 +47,23 @@ class PyKafkaConsumerConfig:
     def override_params(self) -> Mapping[str, str] | None: ...
 
 class PyKafkaProducerConfig:
+    bootstrap_servers: Sequence[str]
+    override_params: Mapping[str, str] | None
+
     def __init__(
         self,
         bootstrap_servers: Sequence[str],
         override_params: Mapping[str, str] | None = None,
+    ) -> None: ...
+
+class DlqConfig:
+    topic: str
+    producer_config: PyKafkaProducerConfig
+
+    def __init__(
+        self,
+        topic: str,
+        producer_config: PyKafkaProducerConfig,
     ) -> None: ...
     @property
     def bootstrap_servers(self) -> Sequence[str]: ...
@@ -115,6 +128,8 @@ class RuntimeOperator:
     def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
 
 class ArroyoConsumer:
+    dlq_config: DlqConfig | None
+
     def __init__(
         self,
         source: str,
@@ -123,6 +138,7 @@ class ArroyoConsumer:
         schema: str | None,
         metric_config: PyMetricConfig | None = None,
         write_healthcheck: bool = False,
+        dlq_config: DlqConfig | None = None,
     ) -> None: ...
     def add_step(self, step: RuntimeOperator) -> None: ...
     def run(self) -> None: ...

@@ -44,6 +44,7 @@ from sentry_streams.pipeline.msg_codecs import (
 )
 from sentry_streams.pipeline.rust_function_protocol import InternalRustFunction
 from sentry_streams.pipeline.window import MeasurementUnit, TumblingWindow, Window
+from sentry_streams.rust_streams import DlqConfig, PyKafkaProducerConfig
 
 RoutingFuncReturnType = TypeVar("RoutingFuncReturnType")
 TransformFuncReturnType = TypeVar("TransformFuncReturnType")
@@ -233,17 +234,40 @@ class StreamSource(Source[bytes]):
     stream_name: str
     header_filter: Optional[Tuple[str, bytes]] = None
     consumer_group: Optional[str] = None
+    dlq_config: Optional[DlqConfig] = None
     step_type: StepType = StepType.SOURCE
 
     def register(self, ctx: Pipeline[bytes], previous: Step) -> None:
         super().register(ctx, previous)
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
-        """Override topic and consumer_group from deployment configuration."""
+        """Override topic, consumer_group, and dlq_config from deployment configuration."""
         if loaded_config.get("topic"):
             self.stream_name = str(loaded_config.get("topic"))
         if loaded_config.get("consumer_group"):
             self.consumer_group = str(loaded_config.get("consumer_group"))
+        if loaded_config.get("dlq"):
+            loaded_dlq = loaded_config["dlq"]
+            topic = loaded_dlq.get("topic") or (self.dlq_config.topic if self.dlq_config else None)
+            # bootstrap_servers and override_params are nested under producer_config
+            producer_config = loaded_dlq.get("producer_config", {})
+            servers = producer_config.get("bootstrap_servers") or (
+                self.dlq_config.producer_config.bootstrap_servers if self.dlq_config else None
+            )
+            override_params = producer_config.get("override_params") or (
+                self.dlq_config.producer_config.override_params if self.dlq_config else None
+            )
+
+            if not topic or not servers:
+                raise ValueError("DLQ config requires both 'topic' and 'bootstrap_servers'")
+
+            self.dlq_config = DlqConfig(
+                topic=topic,
+                producer_config=PyKafkaProducerConfig(
+                    bootstrap_servers=servers,
+                    override_params=override_params,
+                ),
+            )
 
 
 @dataclass

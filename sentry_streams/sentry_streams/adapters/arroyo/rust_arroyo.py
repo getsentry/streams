@@ -195,11 +195,7 @@ def build_kafka_producer_config(
     )
 
 
-def finalize_chain(
-    chains: TransformChains,
-    route: Route,
-    metrics_config: MetricsConfig,
-) -> RuntimeOperator:
+def finalize_chain(chains: TransformChains, route: Route) -> RuntimeOperator:
     rust_route = RustRoute(route.source, route.waypoints)
     config, func = chains.finalize(route)
     if config:
@@ -302,6 +298,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             schema=schema_name,
             metric_config=build_py_metrics_config(self.__metrics_config),
             write_healthcheck=self.__write_healthcheck,
+            dlq_config=step.dlq_config,
         )
         return Route(source_name, [])
 

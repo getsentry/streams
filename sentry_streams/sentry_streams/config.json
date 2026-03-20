@@ -144,6 +144,43 @@
             "required": [
                 "dsn"
             ]
+        },
+        "DlqProducerConfig": {
+            "type": "object",
+            "properties": {
+                "bootstrap_servers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 1
+                },
+                "override_params": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "bootstrap_servers"
+            ]
+        },
+        "DlqConfig": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "producer_config": {
+                    "$ref": "#/definitions/DlqProducerConfig"
+                }
+            },
+            "required": [
+                "topic",
+                "producer_config"
+            ]
         }
     }
 }
