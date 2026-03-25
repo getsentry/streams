@@ -1,3 +1,23 @@
+## 0.41.0
+
+### New Features ✨
+
+#### Streams
+
+- Add consumer group override for StreamSource by @fpacifici in [#273](https://github.com/getsentry/streams/pull/273)
+- Add topic name override for StreamSource and StreamSink by @fpacifici in [#257](https://github.com/getsentry/streams/pull/257)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump slab from 0.4.10 to 0.4.12 in /sentry_streams/tests/rust_test_functions by @dependabot in [#275](https://github.com/getsentry/streams/pull/275)
+- Bump tracing-subscriber from 0.3.19 to 0.3.20 in /sentry_streams/tests/rust_test_functions by @dependabot in [#261](https://github.com/getsentry/streams/pull/261)
+- Bump bytes from 1.10.1 to 1.11.1 in /sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms by @dependabot in [#259](https://github.com/getsentry/streams/pull/259)
+- Bump tracing-subscriber from 0.3.19 to 0.3.20 in /sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms by @dependabot in [#274](https://github.com/getsentry/streams/pull/274)
+- Bump time from 0.3.41 to 0.3.47 in /sentry_streams by @dependabot in [#267](https://github.com/getsentry/streams/pull/267)
+- Bump bytes from 1.10.1 to 1.11.1 in /sentry_streams/tests/rust_test_functions by @dependabot in [#268](https://github.com/getsentry/streams/pull/268)
+
 ## 0.0.40
 
 ### New Features ✨
