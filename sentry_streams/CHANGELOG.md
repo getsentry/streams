@@ -1,3 +1,7 @@
+## 0.0.41
+
+- No documented changes.
+
 ## 0.41.0
 
 ### New Features ✨
