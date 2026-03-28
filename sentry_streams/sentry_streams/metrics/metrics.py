@@ -6,7 +6,6 @@ from abc import abstractmethod
 from enum import Enum
 from typing import (
     Any,
-    Iterable,
     Mapping,
     Optional,
     Protocol,
@@ -15,7 +14,6 @@ from typing import (
 )
 
 from arroyo.utils.metric_defs import MetricName as ArroyoMetricName
-from arroyo.utils.metrics import DummyMetricsBackend as ArroyoDummyMetricsBackend
 from arroyo.utils.metrics import configure_metrics as arroyo_configure_metrics
 from datadog.dogstatsd.base import DogStatsd
 
@@ -55,13 +53,14 @@ class Metric(Enum):
     ERRORS = "errors"
 
 
-@runtime_checkable
-class Metrics(Protocol):
+class Metrics:
     """
     An abstract class that defines the interface for metrics backends.
     """
 
-    @abstractmethod
+    def __init__(self, backend: MetricsBackend) -> None:
+        self.__backend = backend
+
     def increment(
         self,
         name: Metric,
@@ -71,131 +70,179 @@ class Metrics(Protocol):
         """
         Increments a counter metric by a given value.
         """
+        self.__backend.increment(name.value, value, tags=tags)
+
+    def gauge(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        """
+        Sets a gauge metric to the given value.
+        """
+        self.__backend.gauge(name.value, value, tags=tags)
+
+    def timing(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        """
+        Records a timing metric.
+        """
+        self.__backend.timing(name.value, value, tags=tags)
+
+
+@runtime_checkable
+class MetricsBackend(Protocol):
+    """
+    An abstract class that defines the interface for metrics backends.
+    """
+
+    @abstractmethod
+    def increment(
+        self,
+        name: str,
+        value: Union[int, float] = 1,
+        tags: Optional[Tags] = None,
+    ) -> None:
+        """
+        Increments a counter metric by a given value.
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def gauge(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+    def gauge(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         """
         Sets a gauge metric to the given value.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def timing(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+    def timing(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         """
         Records a timing metric.
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def add_global_tags(self, tags: Tags) -> None:
-        """
-        Adds global tags to the metrics.
-        """
-        raise NotImplementedError
 
-    @abstractmethod
-    def remove_global_tags(self, tags: Tags) -> None:
-        """
-        Removes global tags from the metrics.
-        """
-        raise NotImplementedError
-
-
-class DummyMetricsBackend(Metrics):
+class DummyMetricsBackend(MetricsBackend):
     """
     Default metrics backend that does not record anything.
     """
 
     def increment(
         self,
-        name: Metric,
+        name: str,
         value: Union[int, float] = 1,
         tags: Optional[Tags] = None,
     ) -> None:
         pass
 
-    def gauge(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+    def gauge(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         pass
 
-    def timing(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
-        pass
-
-    def add_global_tags(self, tags: Tags) -> None:
-        pass
-
-    def remove_global_tags(self, tags: Tags) -> None:
+    def timing(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         pass
 
 
-BufferedMetric = tuple[Metric, float, list[str] | None]
+def _combine_tags(base: Tags, tags: Optional[Tags] = None) -> Tags:
+    if tags is None:
+        return base
+    return {
+        **base,
+        **tags,
+    }
 
 
-@runtime_checkable
-class MetricsFlusher(Protocol):
+class DatadogMetricsBackend(MetricsBackend):
     """
-    Protocol for flushing buffered metrics to a destination (e.g. Datadog or log).
+    Datadog metrics backend.
     """
 
-    def flush(
+    def __init__(
         self,
-        timers: Iterable[BufferedMetric],
-        counters: Iterable[BufferedMetric],
-        gauges: Iterable[BufferedMetric],
+        host: str,
+        port: int,
+        tags: Optional[Tags] = None,
+        udp_queue_size: Optional[int] = None,
     ) -> None:
-        """Write the buffered metrics to the destination."""
-        ...
+        # Do not pass constant_tags to DogStatsd: BufferedMetricsBackend already
+        # adds tags to each metric. Passing both would duplicate tags.
+        self.datadog_client = DogStatsd(
+            host=host,
+            port=port,
+            namespace=METRICS_PREFIX.strip("."),
+            constant_tags=[],
+        )
+        # ignore mypy because that method just is untyped, yet part of public API
+        self.datadog_client.enable_background_sender(  # type: ignore[no-untyped-call]
+            sender_queue_size=udp_queue_size if udp_queue_size is not None else SENDER_QUEUE_SIZE,
+            sender_queue_timeout=SENDER_QUEUE_TIMEOUT,
+        )
+        self.__tags: Tags = tags if tags is not None else {}
 
+    def __normalize_tags(self, tags: Tags) -> list[str]:
+        return [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
 
-class DatadogFlusher:
-    """Flusher that sends buffered metrics to a DogStatsd client."""
-
-    def __init__(self, client: DogStatsd) -> None:
-        self.__client = client
-
-    def flush(
-        self,
-        timers: Iterable[BufferedMetric],
-        counters: Iterable[BufferedMetric],
-        gauges: Iterable[BufferedMetric],
+    def increment(
+        self, name: str, value: Union[int, float] = 1, tags: Optional[Tags] = None
     ) -> None:
-        for name, value, tags in timers:
-            self.__client.timing(name.value, value, tags=tags or [])
-        for name, value, tags in counters:
-            self.__client.increment(name.value, value, tags=tags or [])
-        for name, value, tags in gauges:
-            self.__client.gauge(name.value, value, tags=tags or [])
+        self.datadog_client.increment(
+            name,
+            value,
+            tags=self.__normalize_tags(_combine_tags(self.__tags, tags)) if tags else None,
+        )
+
+    def gauge(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        self.datadog_client.gauge(
+            name,
+            value,
+            tags=self.__normalize_tags(_combine_tags(self.__tags, tags)) if tags else None,
+        )
+
+    def timing(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        self.datadog_client.timing(
+            name,
+            value,
+            tags=self.__normalize_tags(_combine_tags(self.__tags, tags)) if tags else None,
+        )
 
 
-class LogFlusher:
-    """Flusher that writes buffered metrics to a logger."""
+class LogMetricsBackend(MetricsBackend):
+    """
+    Metrics backend that logs each update immediately, using the same segment format
+    as LogFlusher: ``prefix | counter|gauge|timing name=value tag1:val1 ...``.
+    """
 
-    def __init__(self, prefix: str) -> None:
-        self.__prefix = prefix
+    def __init__(self, period_sec: float, tags: Optional[Tags] = None) -> None:
+        self.__prefix = METRICS_PREFIX.strip(".")
+        self.__base_tags: Tags = tags if tags is not None else {}
+        self._period_sec = period_sec
 
-    def flush(
-        self,
-        timers: Iterable[BufferedMetric],
-        counters: Iterable[BufferedMetric],
-        gauges: Iterable[BufferedMetric],
+    @staticmethod
+    def __normalize_tags(tags: Tags) -> list[str]:
+        return [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
+
+    def __tag_strings(self, tags: Optional[Tags]) -> list[str]:
+        return self.__normalize_tags(_combine_tags(self.__base_tags, tags))
+
+    def __emit(
+        self, kind: str, name: str, value: Union[int, float], tags: Optional[Tags] = None
     ) -> None:
-        parts: list[str] = [self.__prefix]
-        for name, value, tags in timers:
-            tags_str = " ".join(tags) if tags else ""
-            parts.append(f"timing {name.value}={value} {tags_str}".strip())
-        for name, value, tags in counters:
-            tags_str = " ".join(tags) if tags else ""
-            parts.append(f"counter {name.value}={value} {tags_str}".strip())
-        for name, value, tags in gauges:
-            tags_str = " ".join(tags) if tags else ""
-            parts.append(f"gauge {name.value}={value} {tags_str}".strip())
-        if len(parts) > 1:
-            logger.info(" | ".join(parts))
-        else:
-            logger.info("No metrics to flush")
+        tag_list = self.__tag_strings(tags)
+        tags_str = " ".join(tag_list) if tag_list else ""
+        parts = [self.__prefix, f"{kind} {name}={value} {tags_str}".strip()]
+        logger.info(" | ".join(parts))
+
+    def increment(
+        self, name: str, value: Union[int, float] = 1, tags: Optional[Tags] = None
+    ) -> None:
+        self.__emit("counter", name, value, tags)
+
+    def gauge(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        self.__emit("gauge", name, value, tags)
+
+    def timing(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        self.__emit("timing", name, value, tags)
 
 
-class BufferedMetricsBackend(Metrics):
+BufferedMetric = tuple[str, float, Tags]
+
+
+class BufferedMetricsBackend(MetricsBackend):
     """
     Metrics backend that buffers updates and periodically flushes them
     via an injected flusher (e.g. Datadog or log).
@@ -203,84 +250,68 @@ class BufferedMetricsBackend(Metrics):
 
     def __init__(
         self,
-        flusher: MetricsFlusher,
+        backend: MetricsBackend,
         throttle_interval_sec: float,
-        tags: Optional[Tags] = None,
     ) -> None:
-        self.__flusher = flusher
         self.__throttle_interval_sec = throttle_interval_sec
-        self.tags = tags
-        self.__normalized_tags = self.__normalize_tags(tags) if tags is not None else []
         self.__timers: dict[int, BufferedMetric] = {}
         self.__counters: dict[int, BufferedMetric] = {}
         self.__gauges: dict[int, BufferedMetric] = {}
         self.__last_flush_time = 0.0
+        self.__backend = backend
 
     def __add_to_buffer(
         self,
         buffer: dict[int, BufferedMetric],
-        name: Metric,
+        name: str,
         value: Union[int, float],
-        tags: Optional[Tags] = None,
+        tags: Tags,
         replace: bool = False,
     ) -> None:
         if tags is None:
             key = hash(name)
-            normalized_tags = self.__normalized_tags
         else:
-            normalized_tags = self.__normalize_tags(tags) + self.__normalized_tags
+            normalized_tags = self.__normalize_tags(tags)
             key = hash((name, frozenset(normalized_tags)))
 
         if key in buffer:
             new_value = buffer[key][1] + value if not replace else value
-            buffer[key] = (name, new_value, normalized_tags)
+            buffer[key] = (name, new_value, tags)
         else:
-            buffer[key] = (name, value, normalized_tags)
+            buffer[key] = (name, value, tags)
 
     def __normalize_tags(self, tags: Tags) -> list[str]:
         return [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
 
     def increment(
         self,
-        name: Metric,
+        name: str,
         value: Union[int, float] = 1,
         tags: Optional[Tags] = None,
     ) -> None:
-        self.__add_to_buffer(self.__counters, name, value, tags)
+        self.__add_to_buffer(self.__counters, name, value, tags or {})
         self.__throttled_flush()
 
-    def gauge(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
-        self.__add_to_buffer(self.__gauges, name, value, tags, replace=True)
+    def gauge(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        self.__add_to_buffer(self.__gauges, name, value, tags or {}, replace=True)
         self.__throttled_flush()
 
-    def timing(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
-        self.__add_to_buffer(self.__timers, name, value, tags)
+    def timing(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        self.__add_to_buffer(self.__timers, name, value, tags or {})
         self.__throttled_flush()
-
-    def add_global_tags(self, tags: Tags) -> None:
-        if self.tags is None:
-            self.tags = tags
-        else:
-            self.tags.update(tags)
-
-        self.__normalized_tags = self.__normalize_tags(self.tags)
-
-    def remove_global_tags(self, tags: Tags) -> None:
-        if self.tags:
-            for tag in tags:
-                self.tags.pop(tag, None)
-            self.__normalized_tags = self.__normalize_tags(self.tags)
 
     def __throttled_flush(self) -> None:
         if time.time() - self.__last_flush_time >= self.__throttle_interval_sec:
             self.flush()
 
     def flush(self) -> None:
-        self.__flusher.flush(
-            self.__timers.values(),
-            self.__counters.values(),
-            self.__gauges.values(),
-        )
+        for name, value, tags in self.__timers.values():
+            self.__backend.timing(name, value, tags=tags)
+        for name, value, tags in self.__counters.values():
+            self.__backend.increment(name, value, tags=tags)
+        for name, value, tags in self.__gauges.values():
+            self.__backend.gauge(name, value, tags=tags)
+
         self.__reset()
 
     def __reset(self) -> None:
@@ -290,61 +321,19 @@ class BufferedMetricsBackend(Metrics):
         self.__last_flush_time = time.time()
 
 
-class DatadogMetricsBackend(BufferedMetricsBackend):
-    """
-    Datadog metrics backend. Buffers metrics and flushes to DogStatsd.
-    """
-
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        prefix: str,
-        tags: Optional[Tags] = None,
-        udp_queue_size: Optional[int] = None,
-    ) -> None:
-        # Do not pass constant_tags to DogStatsd: BufferedMetricsBackend already
-        # adds tags to each metric. Passing both would duplicate tags.
-        self.datadog_client = DogStatsd(
-            host=host,
-            port=port,
-            namespace=prefix.strip("."),
-            constant_tags=[],
-        )
-        # ignore mypy because that method just is untyped, yet part of public API
-        self.datadog_client.enable_background_sender(  # type: ignore[no-untyped-call]
-            sender_queue_size=udp_queue_size if udp_queue_size is not None else SENDER_QUEUE_SIZE,
-            sender_queue_timeout=SENDER_QUEUE_TIMEOUT,
-        )
-        flusher = DatadogFlusher(self.datadog_client)
-        super().__init__(flusher, METRICS_FREQUENCY_SEC, tags)
+def _tags_from_mapping(tags: Optional[Mapping[str, str]]) -> Tags:
+    if not tags:
+        return {}
+    return dict(tags)
 
 
-class LogMetricsBackend(BufferedMetricsBackend):
+class ArroyoMetricsBackend:
     """
-    Metrics backend that buffers metrics and periodically logs accumulated
-    values at a configurable interval.
+    Facade that adapts Arroyo metric names and tag mappings to MetricsBackend.
     """
 
-    def __init__(
-        self,
-        period_sec: float,
-        tags: Optional[Tags] = None,
-    ) -> None:
-        flusher = LogFlusher(METRICS_PREFIX.strip("."))
-        super().__init__(flusher, period_sec, tags)
-
-
-class ArroyoDatadogMetricsBackend:
-    """
-    Arroyo wrapper around Datadog metrics backend.
-    """
-
-    def __init__(self, datadog_client: DogStatsd) -> None:
-        self.__datadog_client = datadog_client
-
-    def __normalize_tags(self, tags: Mapping[str, str]) -> list[str]:
-        return [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
+    def __init__(self, backend: MetricsBackend) -> None:
+        self.__backend = backend
 
     def increment(
         self,
@@ -352,9 +341,7 @@ class ArroyoDatadogMetricsBackend:
         value: Union[int, float] = 1,
         tags: Optional[Mapping[str, str]] = None,
     ) -> None:
-        self.__datadog_client.increment(
-            name, value, tags=self.__normalize_tags(tags) if tags else None
-        )
+        self.__backend.increment(name, value, tags=_tags_from_mapping(tags))
 
     def gauge(
         self,
@@ -362,7 +349,7 @@ class ArroyoDatadogMetricsBackend:
         value: Union[int, float],
         tags: Optional[Mapping[str, str]] = None,
     ) -> None:
-        self.__datadog_client.gauge(name, value, tags=self.__normalize_tags(tags) if tags else None)
+        self.__backend.gauge(name, value, tags=_tags_from_mapping(tags))
 
     def timing(
         self,
@@ -370,16 +357,14 @@ class ArroyoDatadogMetricsBackend:
         value: Union[int, float],
         tags: Optional[Mapping[str, str]] = None,
     ) -> None:
-        self.__datadog_client.timing(
-            name, value, tags=self.__normalize_tags(tags) if tags else None
-        )
+        self.__backend.timing(name, value, tags=_tags_from_mapping(tags))
 
 
-_metrics_backend: Optional[Metrics] = None
+_metrics_backend: Optional[MetricsBackend] = None
 _dummy_metrics_backend = DummyMetricsBackend()
 
 
-def configure_metrics(metrics: Metrics, force: bool = False) -> None:
+def configure_metrics(metrics: MetricsBackend, force: bool = False) -> None:
     """
     Metrics can generally only be configured once, unless force is passed
     on subsequent initializations.
@@ -391,18 +376,15 @@ def configure_metrics(metrics: Metrics, force: bool = False) -> None:
 
     # Perform a runtime check of metrics instance upon initialization of
     # this class to avoid errors down the line when it is used.
-    assert isinstance(metrics, Metrics)
+    assert isinstance(metrics, MetricsBackend)
     _metrics_backend = metrics
-    if isinstance(metrics, DatadogMetricsBackend):
-        arroyo_configure_metrics(ArroyoDatadogMetricsBackend(metrics.datadog_client))
-    else:
-        arroyo_configure_metrics(ArroyoDummyMetricsBackend())
+    arroyo_configure_metrics(ArroyoMetricsBackend(metrics))
 
 
 def get_metrics() -> Metrics:
     if _metrics_backend is None:
-        return _dummy_metrics_backend
-    return _metrics_backend
+        return Metrics(_dummy_metrics_backend)
+    return Metrics(_metrics_backend)
 
 
 def get_size(obj: Any) -> int | None:
