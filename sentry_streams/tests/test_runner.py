@@ -66,8 +66,8 @@ def test_iterate_edges(create_pipeline: Pipeline[bytes]) -> None:
         load_adapter(
             "dummy",
             dummy_config,
+            {"type": "dummy"},
             None,
-            metrics_config={"type": "dummy"},
         ),
     )
     translator: RuntimeTranslator[Any, Any] = RuntimeTranslator(runtime)

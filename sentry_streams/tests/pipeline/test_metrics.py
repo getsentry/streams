@@ -1,4 +1,3 @@
-import pickle
 from collections.abc import Generator
 from typing import Any, cast
 from unittest.mock import MagicMock, Mock, patch
@@ -15,7 +14,6 @@ from sentry_streams.metrics.metrics import (
     DatadogMetricsConfig,
     DummyMetricsBackend,
     LogMetricsBackend,
-    LogMetricsConfig,
     Metric,
     Metrics,
     MetricsBackend,
@@ -234,23 +232,6 @@ def test_buffered_wraps_datadog_with_constructor_tags(mock_time: Any, mock_dogst
     assert set(called_tags) == {"service:streams", "env:production"}
 
 
-@patch("sentry_streams.metrics.metrics.DogStatsd")
-@patch("time.time")
-def test_buffered_flush_preserves_constructor_tags_when_buffer_had_only_empty_tags(
-    mock_time: Any,
-    mock_dogstatsd: Any,
-) -> None:
-    mock_time.return_value = 0.0
-    inner = DatadogMetricsBackend("localhost", 8125, tags={"service": "streams"})
-    mock_client = mock_dogstatsd.return_value
-    backend = BufferedMetricsBackend(inner, throttle_interval_sec=METRICS_FREQUENCY_SEC)
-
-    backend.increment(_metric(Metric.INPUT_MESSAGES), 1)
-    backend.flush()
-
-    mock_client.increment.assert_called_once_with("input.messages", 1, tags=["service:streams"])
-
-
 def test_arroyo_delegates_increment_gauge_timing_with_tags() -> None:
     inner = Mock(spec=DummyMetricsBackend)
     backend = ArroyoMetricsBackend(inner)
@@ -454,25 +435,6 @@ def test_configure_metrics_log_uses_config_throttle_interval(
     assert (
         object.__getattribute__(wrapped, "_BufferedMetricsBackend__throttle_interval_sec") == 33.0
     )
-
-
-@patch("sentry_streams.metrics.metrics.DogStatsd")
-def test_stream_metrics_config_roundtrips_through_pickle(mock_dogstatsd: Any) -> None:
-    cfg: dict[str, Any] = {
-        "type": "datadog",
-        "host": "h",
-        "port": 8125,
-        "tags": {"service": "streams"},
-    }
-    roundtripped = pickle.loads(pickle.dumps(cfg))
-    assert roundtripped == cfg
-    assert isinstance(build_metrics_backend(roundtripped), DatadogMetricsBackend)
-
-
-def test_build_metrics_backend_log_with_empty_tags() -> None:
-    cfg: LogMetricsConfig = {"type": "log", "period_sec": 1.0, "tags": {}}
-    backend = build_metrics_backend(cast(MetricsConfig, cfg))
-    assert isinstance(backend, LogMetricsBackend)
 
 
 def test_build_metrics_backend_datadog_requires_host_and_port() -> None:

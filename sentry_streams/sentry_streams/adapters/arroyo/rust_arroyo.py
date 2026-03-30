@@ -78,6 +78,18 @@ from sentry_streams.rust_streams import (
 logger = logging.getLogger(__name__)
 
 
+def build_py_metrics_config(cfg: MetricsConfig) -> PyMetricConfig | None:
+    """Build Rust-side DogStatsD config from the same metrics dict used by configure_metrics."""
+    if cfg["type"] != "datadog":
+        return None
+    return PyMetricConfig(
+        host=cfg["host"],
+        port=cfg["port"],
+        tags=dict(cfg["tags"]),
+        flush_interval_ms=cfg.get("flush_interval_ms"),
+    )
+
+
 def initializer(metrics_config: MetricsConfig) -> None:
     configure_metrics(metrics_config, force=True)
 
@@ -222,13 +234,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self,
         steps_config: Mapping[str, StepConfig],
         metrics_config: MetricsConfig,
-        metric_config: PyMetricConfig | None = None,
         write_healthcheck: bool = False,
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
         self.__metrics_config = metrics_config
-        self.__metric_config = metric_config
+        self.__metric_config = build_py_metrics_config(metrics_config)
         self.__write_healthcheck = write_healthcheck
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
@@ -238,14 +249,13 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         cls,
         config: PipelineConfig,
         metrics_config: MetricsConfig,
-        metric_config: PyMetricConfig | None = None,
     ) -> Self:
         steps_config = config["steps_config"]
         adapter_config = config.get("adapter_config") or {}
         arroyo_config = adapter_config.get("arroyo") or {}
         write_healthcheck = bool(arroyo_config.get("write_healthcheck", False))
 
-        return cls(steps_config, metrics_config, metric_config, write_healthcheck)
+        return cls(steps_config, metrics_config, write_healthcheck)
 
     def __close_chain(self, stream: Route) -> None:
         if self.__chains.exists(stream):

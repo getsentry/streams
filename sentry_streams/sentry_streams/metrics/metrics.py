@@ -37,6 +37,8 @@ class DatadogMetricsConfig(TypedDict):
     port: int
     tags: Tags
     udp_queue_size: NotRequired[int]
+    # Rust consumer DogStatsD flush interval (Python BufferedMetricsBackend uses METRICS_FREQUENCY_SEC).
+    flush_interval_ms: NotRequired[int]
 
 
 class LogMetricsConfig(TypedDict):
