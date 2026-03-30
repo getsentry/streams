@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -15,6 +15,7 @@ from sentry_streams.metrics.metrics import (
     LogMetricsBackend,
     Metric,
     Metrics,
+    MetricsBackend,
     configure_metrics,
 )
 
@@ -23,8 +24,11 @@ def _metric(name: Metric) -> str:
     return name.value
 
 
-def _buffered_inner_backend(buffered: BufferedMetricsBackend):
-    return object.__getattribute__(buffered, "_BufferedMetricsBackend__backend")
+def _buffered_inner_backend(buffered: BufferedMetricsBackend) -> MetricsBackend:
+    return cast(
+        MetricsBackend,
+        object.__getattribute__(buffered, "_BufferedMetricsBackend__backend"),
+    )
 
 
 @pytest.fixture(autouse=True)
