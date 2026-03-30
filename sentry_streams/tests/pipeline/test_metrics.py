@@ -1,3 +1,4 @@
+import pickle
 from collections.abc import Generator
 from typing import Any, cast
 from unittest.mock import MagicMock, Mock, patch
@@ -16,6 +17,8 @@ from sentry_streams.metrics.metrics import (
     Metric,
     Metrics,
     MetricsBackend,
+    StreamMetricsConfig,
+    build_metrics_backend,
     configure_metrics,
 )
 
@@ -34,8 +37,12 @@ def _buffered_inner_backend(buffered: BufferedMetricsBackend) -> MetricsBackend:
 @pytest.fixture(autouse=True)
 def reset_metrics_backend() -> Generator[None, None, None]:
     metrics_module._metrics_backend = None
+    metrics_module._inner_metrics_backend = None
+    metrics_module._streams_metrics_config = None
     yield
     metrics_module._metrics_backend = None
+    metrics_module._inner_metrics_backend = None
+    metrics_module._streams_metrics_config = None
 
 
 def test_metric_enum_values() -> None:
@@ -275,7 +282,7 @@ def test_arroyo_methods_without_tags_pass_empty_dict() -> None:
 
 @patch("sentry_streams.metrics.metrics.logger")
 def test_log_increment_logs_immediately(mock_logger: Any) -> None:
-    backend = LogMetricsBackend(period_sec=15.0, tags={"env": "test"})
+    backend = LogMetricsBackend(tags={"env": "test"})
     mock_info = mock_logger.info
 
     backend.increment(_metric(Metric.INPUT_MESSAGES), 1)
@@ -288,7 +295,7 @@ def test_log_increment_logs_immediately(mock_logger: Any) -> None:
 
 @patch("sentry_streams.metrics.metrics.logger")
 def test_log_each_call_emits_separate_log_line(mock_logger: Any) -> None:
-    backend = LogMetricsBackend(period_sec=60.0)
+    backend = LogMetricsBackend()
     mock_info = mock_logger.info
 
     backend.increment(_metric(Metric.INPUT_MESSAGES), 1)
@@ -301,7 +308,7 @@ def test_log_each_call_emits_separate_log_line(mock_logger: Any) -> None:
 @patch("time.time")
 def test_buffered_log_accumulation_and_flush(mock_time: Any, mock_logger: Any) -> None:
     mock_time.return_value = 0.0
-    inner = LogMetricsBackend(period_sec=60.0)
+    inner = LogMetricsBackend()
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=60.0)
     mock_info = mock_logger.info
 
@@ -324,7 +331,7 @@ def test_buffered_log_accumulation_and_flush(mock_time: Any, mock_logger: Any) -
 @patch("time.time")
 def test_buffered_log_flush_logs_and_clears(mock_time: Any, mock_logger: Any) -> None:
     mock_time.return_value = 0.0
-    inner = LogMetricsBackend(period_sec=60.0)
+    inner = LogMetricsBackend()
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=60.0)
     mock_info = mock_logger.info
 
@@ -348,7 +355,7 @@ def test_buffered_log_flush_logs_and_clears(mock_time: Any, mock_logger: Any) ->
 @patch("time.time")
 def test_buffered_log_throttled_flush(mock_time: Any, mock_logger: Any) -> None:
     mock_time.return_value = 0.0
-    inner = LogMetricsBackend(period_sec=60.0)
+    inner = LogMetricsBackend()
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=10.0)
     mock_info = mock_logger.info
 
@@ -364,7 +371,7 @@ def test_buffered_log_throttled_flush(mock_time: Any, mock_logger: Any) -> None:
 @patch("time.time")
 def test_buffered_log_global_tags_from_inner(mock_time: Any, mock_logger: Any) -> None:
     mock_time.return_value = 0.0
-    inner = LogMetricsBackend(period_sec=60.0, tags={"service": "streams"})
+    inner = LogMetricsBackend(tags={"service": "streams"})
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=60.0)
     mock_info = mock_logger.info
 
@@ -379,13 +386,13 @@ def test_buffered_log_global_tags_from_inner(mock_time: Any, mock_logger: Any) -
 
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
 def test_configure_metrics_dummy(mock_arroyo_configure: Any) -> None:
-    backend = DummyMetricsBackend()
+    cfg = StreamMetricsConfig(backend="dummy")
 
-    configure_metrics(backend)
+    configure_metrics(cfg)
 
     wrapped = metrics_module._metrics_backend
     assert isinstance(wrapped, BufferedMetricsBackend)
-    assert _buffered_inner_backend(wrapped) is backend
+    assert isinstance(_buffered_inner_backend(wrapped), DummyMetricsBackend)
     assert (
         object.__getattribute__(wrapped, "_BufferedMetricsBackend__throttle_interval_sec")
         == METRICS_FREQUENCY_SEC
@@ -399,34 +406,64 @@ def test_configure_metrics_dummy(mock_arroyo_configure: Any) -> None:
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
 @patch("sentry_streams.metrics.metrics.DogStatsd")
 def test_configure_metrics_datadog(mock_dogstatsd: Any, mock_arroyo_configure: Any) -> None:
-    backend = DatadogMetricsBackend("localhost", 8125)
+    cfg = StreamMetricsConfig(backend="datadog", host="localhost", port=8125)
 
-    configure_metrics(backend)
+    configure_metrics(cfg)
 
     wrapped = metrics_module._metrics_backend
     assert isinstance(wrapped, BufferedMetricsBackend)
-    assert _buffered_inner_backend(wrapped) is backend
+    assert isinstance(_buffered_inner_backend(wrapped), DatadogMetricsBackend)
     mock_arroyo_configure.assert_called_once()
 
 
 def test_configure_metrics_already_set() -> None:
-    backend1 = DummyMetricsBackend()
-    backend2 = DummyMetricsBackend()
-
-    configure_metrics(backend1)
+    configure_metrics(StreamMetricsConfig(backend="dummy"))
 
     with pytest.raises(AssertionError, match="Metrics is already set"):
-        configure_metrics(backend2)
+        configure_metrics(StreamMetricsConfig(backend="dummy"))
 
 
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
 def test_configure_metrics_force(mock_arroyo_configure: Any) -> None:
-    backend1 = DummyMetricsBackend()
-    backend2 = DummyMetricsBackend()
-
-    configure_metrics(backend1)
-    configure_metrics(backend2, force=True)
+    configure_metrics(StreamMetricsConfig(backend="dummy"))
+    configure_metrics(
+        StreamMetricsConfig(backend="datadog", host="localhost", port=8125),
+        force=True,
+    )
 
     wrapped = metrics_module._metrics_backend
     assert isinstance(wrapped, BufferedMetricsBackend)
-    assert _buffered_inner_backend(wrapped) is backend2
+    assert isinstance(_buffered_inner_backend(wrapped), DatadogMetricsBackend)
+
+
+@patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
+def test_configure_metrics_log_uses_config_throttle_interval(
+    mock_arroyo_configure: Any,
+) -> None:
+    configure_metrics(
+        StreamMetricsConfig(backend="log", throttle_interval_sec=33.0, tags={"k": "v"})
+    )
+    wrapped = metrics_module._metrics_backend
+    assert isinstance(wrapped, BufferedMetricsBackend)
+    assert (
+        object.__getattribute__(wrapped, "_BufferedMetricsBackend__throttle_interval_sec") == 33.0
+    )
+
+
+@patch("sentry_streams.metrics.metrics.DogStatsd")
+def test_stream_metrics_config_roundtrips_through_pickle(mock_dogstatsd: Any) -> None:
+    cfg = StreamMetricsConfig(
+        backend="datadog",
+        host="h",
+        port=8125,
+        tags={"service": "streams"},
+        throttle_interval_sec=7.5,
+    )
+    roundtripped = pickle.loads(pickle.dumps(cfg))
+    assert roundtripped == cfg
+    assert isinstance(build_metrics_backend(roundtripped), DatadogMetricsBackend)
+
+
+def test_build_metrics_backend_datadog_requires_host_and_port() -> None:
+    with pytest.raises(ValueError, match="host and port"):
+        build_metrics_backend(StreamMetricsConfig(backend="datadog", host="localhost"))

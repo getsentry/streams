@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 import time
 from abc import abstractmethod
+from dataclasses import dataclass
 from enum import Enum
 from typing import (
     Any,
+    Literal,
     Mapping,
     Optional,
     Protocol,
@@ -20,8 +22,27 @@ from datadog.dogstatsd.base import DogStatsd
 Tags = dict[str, str]
 logger = logging.getLogger("sentry_streams.metrics.log_backend")
 
-
 METRICS_FREQUENCY_SEC = 10
+
+MetricsBackendKind = Literal["dummy", "datadog", "log"]
+
+
+@dataclass(frozen=True, slots=True)
+class StreamMetricsConfig:
+    """
+    Picklable metrics settings for the streaming process and multiprocessing workers.
+
+    ``throttle_interval_sec`` is the flush interval for :class:`BufferedMetricsBackend`,
+    which wraps the inner backend configured via ``backend``.
+    """
+
+    backend: MetricsBackendKind
+    throttle_interval_sec: float = METRICS_FREQUENCY_SEC
+    host: Optional[str] = None
+    port: Optional[int] = None
+    tags: Optional[Tags] = None
+    udp_queue_size: Optional[int] = None
+
 
 # Single source of truth for the metrics namespace used by both Datadog and Log backends.
 METRICS_PREFIX = "streams.pipeline"
@@ -179,10 +200,9 @@ class LogMetricsBackend(MetricsBackend):
     as LogFlusher: ``prefix | counter|gauge|timing name=value tag1:val1 ...``.
     """
 
-    def __init__(self, period_sec: float, tags: Optional[Tags] = None) -> None:
+    def __init__(self, tags: Optional[Tags] = None) -> None:
         self.__prefix = METRICS_PREFIX.strip(".")
         self.__base_tags: Tags = tags if tags is not None else {}
-        self._period_sec = period_sec
 
     @staticmethod
     def __normalize_tags(tags: Tags) -> list[str]:
@@ -379,26 +399,52 @@ class ArroyoMetricsBackend:
 
 _inner_metrics_backend: Optional[MetricsBackend] = None
 _metrics_backend: Optional[MetricsBackend] = None
+_streams_metrics_config: Optional[StreamMetricsConfig] = None
 _dummy_metrics_backend = DummyMetricsBackend()
 
 
-def configure_metrics(metrics: MetricsBackend, force: bool = False) -> None:
+def build_metrics_backend(config: StreamMetricsConfig) -> MetricsBackend:
+    """Construct the inner (unbuffered) metrics backend from picklable settings."""
+    if config.backend == "dummy":
+        return DummyMetricsBackend()
+    if config.backend == "datadog":
+        if config.host is None or config.port is None:
+            raise ValueError("datadog metrics require host and port")
+        tag_values = dict(config.tags) if config.tags else None
+        return DatadogMetricsBackend(
+            config.host,
+            config.port,
+            tags=tag_values,
+            udp_queue_size=config.udp_queue_size,
+        )
+    if config.backend == "log":
+        tag_values = dict(config.tags) if config.tags else None
+        return LogMetricsBackend(tags=tag_values)
+    raise ValueError(f"Unknown metrics backend: {config.backend!r}")
+
+
+def configure_metrics(config: StreamMetricsConfig, force: bool = False) -> None:
     """
     Metrics can generally only be configured once, unless force is passed
     on subsequent initializations.
 
     This method has to be called for each process the application uses.
+    Accepts a picklable :class:`StreamMetricsConfig` so worker processes can
+    rebuild the same backends under ``spawn`` multiprocessing.
     """
     global _metrics_backend
     global _inner_metrics_backend
+    global _streams_metrics_config
     if not force:
         assert _metrics_backend is None, "Metrics is already set"
 
-    # Runtime-check the metrics implementation so misconfiguration fails early.
-    assert isinstance(metrics, MetricsBackend)
-
-    _inner_metrics_backend = metrics
-    _metrics_backend = BufferedMetricsBackend(metrics, throttle_interval_sec=METRICS_FREQUENCY_SEC)
+    inner = build_metrics_backend(config)
+    _streams_metrics_config = config
+    _inner_metrics_backend = inner
+    _metrics_backend = BufferedMetricsBackend(
+        inner,
+        throttle_interval_sec=config.throttle_interval_sec,
+    )
     arroyo_configure_metrics(ArroyoMetricsBackend(_metrics_backend))
 
 

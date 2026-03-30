@@ -6,12 +6,15 @@ from sentry_streams.metrics.metrics import (
     Metric,
     Metrics,
     MetricsBackend,
+    StreamMetricsConfig,
+    build_metrics_backend,
     configure_metrics,
     get_metrics,
     get_size,
 )
 
 __all__ = [
+    "build_metrics_backend",
     "configure_metrics",
     "get_metrics",
     "DatadogMetricsBackend",
@@ -21,5 +24,6 @@ __all__ = [
     "Metric",
     "Metrics",
     "MetricsBackend",
+    "StreamMetricsConfig",
     "get_size",
 ]
