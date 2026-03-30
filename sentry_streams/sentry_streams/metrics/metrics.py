@@ -360,6 +360,7 @@ class ArroyoMetricsBackend:
         self.__backend.timing(name, value, tags=_tags_from_mapping(tags))
 
 
+_inner_metrics_backend: Optional[MetricsBackend] = None
 _metrics_backend: Optional[MetricsBackend] = None
 _dummy_metrics_backend = DummyMetricsBackend()
 
@@ -370,15 +371,23 @@ def configure_metrics(metrics: MetricsBackend, force: bool = False) -> None:
     on subsequent initializations.
     """
     global _metrics_backend
-
+    global _inner_metrics_backend
     if not force:
         assert _metrics_backend is None, "Metrics is already set"
 
     # Perform a runtime check of metrics instance upon initialization of
     # this class to avoid errors down the line when it is used.
     assert isinstance(metrics, MetricsBackend)
-    _metrics_backend = metrics
-    arroyo_configure_metrics(ArroyoMetricsBackend(metrics))
+
+    _inner_metrics_backend = metrics
+    _metrics_backend = BufferedMetricsBackend(metrics, throttle_interval_sec=METRICS_FREQUENCY_SEC)
+    arroyo_configure_metrics(ArroyoMetricsBackend(_metrics_backend))
+
+
+def get_inner_metrics() -> MetricsBackend:
+    if _inner_metrics_backend is None:
+        return _dummy_metrics_backend
+    return _inner_metrics_backend
 
 
 def get_metrics() -> Metrics:

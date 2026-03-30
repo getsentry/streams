@@ -34,7 +34,14 @@ from sentry_streams.config_types import (
     MultiProcessConfig,
     StepConfig,
 )
-from sentry_streams.metrics import Metric, get_metrics, get_size
+from sentry_streams.metrics import (
+    Metric,
+    MetricsBackend,
+    configure_metrics,
+    get_metrics,
+    get_size,
+)
+from sentry_streams.metrics.metrics import get_inner_metrics
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
@@ -70,6 +77,11 @@ from sentry_streams.rust_streams import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def initializer(metrics: MetricsBackend) -> None:
+    # Reinitialize the metrics backend for each process
+    configure_metrics(metrics)
 
 
 def _metrics_wrapped_function(
@@ -181,6 +193,7 @@ def finalize_chain(chains: TransformChains, route: Route) -> RuntimeOperator:
             f"batch_size={config['batch_size']}, "
             f"batch_time={config['batch_time']}"
         )
+
         return RuntimeOperator.PythonAdapter(
             rust_route,
             MultiprocessDelegateFactory(
@@ -189,6 +202,7 @@ def finalize_chain(chains: TransformChains, route: Route) -> RuntimeOperator:
                 config["batch_time"],
                 MultiprocessingPool(
                     num_processes=config["processes"],
+                    initializer=functools.partial(initializer, get_inner_metrics()),
                 ),
                 input_block_size=config.get("input_block_size"),
                 output_block_size=config.get("output_block_size"),

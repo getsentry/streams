@@ -4,7 +4,11 @@
 # process. Though chains are parallelized over multiple
 # processes.
 env: {}
-
+metrics:
+  type: log
+  period_sec: 5
+  tags:
+    pipeline: errors
 pipeline:
   segments:
     - steps_config:
