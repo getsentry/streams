@@ -23,6 +23,7 @@ def test_rust_arroyo_adapter(
                 "kafkasink": {"bootstrap_servers": bootstrap_servers, "additional_settings": {}},
             },
         },
+        {"type": "dummy"},
     )
     iterate_edges(pipeline, RuntimeTranslator(adapter))
 

@@ -34,7 +34,13 @@ from sentry_streams.config_types import (
     MultiProcessConfig,
     StepConfig,
 )
-from sentry_streams.metrics import Metric, get_metrics, get_size
+from sentry_streams.metrics import (
+    Metric,
+    MetricsConfig,
+    configure_metrics,
+    get_metrics,
+    get_size,
+)
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
@@ -70,6 +76,22 @@ from sentry_streams.rust_streams import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def build_py_metrics_config(cfg: MetricsConfig) -> PyMetricConfig | None:
+    """Build Rust-side DogStatsD config from the same metrics dict used by configure_metrics."""
+    if cfg["type"] != "datadog":
+        return None
+    return PyMetricConfig(
+        host=cfg["host"],
+        port=cfg["port"],
+        tags=dict(cfg["tags"]),
+        flush_interval_ms=cfg.get("flush_interval_ms"),
+    )
+
+
+def initializer(metrics_config: MetricsConfig) -> None:
+    configure_metrics(metrics_config, force=True)
 
 
 def _metrics_wrapped_function(
@@ -171,7 +193,11 @@ def build_kafka_producer_config(
     )
 
 
-def finalize_chain(chains: TransformChains, route: Route) -> RuntimeOperator:
+def finalize_chain(
+    chains: TransformChains,
+    route: Route,
+    metrics_config: MetricsConfig,
+) -> RuntimeOperator:
     rust_route = RustRoute(route.source, route.waypoints)
     config, func = chains.finalize(route)
     if config:
@@ -181,6 +207,7 @@ def finalize_chain(chains: TransformChains, route: Route) -> RuntimeOperator:
             f"batch_size={config['batch_size']}, "
             f"batch_time={config['batch_time']}"
         )
+
         return RuntimeOperator.PythonAdapter(
             rust_route,
             MultiprocessDelegateFactory(
@@ -189,6 +216,7 @@ def finalize_chain(chains: TransformChains, route: Route) -> RuntimeOperator:
                 config["batch_time"],
                 MultiprocessingPool(
                     num_processes=config["processes"],
+                    initializer=functools.partial(initializer, metrics_config),
                 ),
                 input_block_size=config.get("input_block_size"),
                 output_block_size=config.get("output_block_size"),
@@ -205,33 +233,35 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     def __init__(
         self,
         steps_config: Mapping[str, StepConfig],
-        metric_config: PyMetricConfig | None = None,
+        metrics_config: MetricsConfig,
         write_healthcheck: bool = False,
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
-        self.__metric_config = metric_config
+        self.__metrics_config = metrics_config
         self.__write_healthcheck = write_healthcheck
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
 
     @classmethod
-    def build(
+    def build(  # type: ignore[override]
         cls,
         config: PipelineConfig,
-        metric_config: PyMetricConfig | None = None,
+        metrics_config: MetricsConfig,
     ) -> Self:
         steps_config = config["steps_config"]
         adapter_config = config.get("adapter_config") or {}
         arroyo_config = adapter_config.get("arroyo") or {}
         write_healthcheck = bool(arroyo_config.get("write_healthcheck", False))
 
-        return cls(steps_config, metric_config, write_healthcheck)
+        return cls(steps_config, metrics_config, write_healthcheck)
 
     def __close_chain(self, stream: Route) -> None:
         if self.__chains.exists(stream):
             logger.info(f"Closing transformation chain: {stream} and adding to pipeline")
-            self.__consumers[stream.source].add_step(finalize_chain(self.__chains, stream))
+            self.__consumers[stream.source].add_step(
+                finalize_chain(self.__chains, stream, self.__metrics_config)
+            )
 
     def get_consumer(self, source: str) -> ArroyoConsumer:
         return self.__consumers[source]
@@ -268,7 +298,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             ),
             topic=step.stream_name,
             schema=schema_name,
-            metric_config=self.__metric_config,
+            metric_config=build_py_metrics_config(self.__metrics_config),
             write_healthcheck=self.__write_healthcheck,
         )
         return Route(source_name, [])

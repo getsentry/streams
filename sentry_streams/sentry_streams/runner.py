@@ -13,11 +13,8 @@ from sentry_streams.adapters.stream_adapter import (
     StreamT,
 )
 from sentry_streams.metrics import (
-    METRICS_PREFIX,
-    DatadogMetricsBackend,
-    DummyMetricsBackend,
-    LogMetricsBackend,
-    Metrics,
+    DatadogMetricsConfig,
+    MetricsConfig,
     configure_metrics,
 )
 from sentry_streams.pipeline.config import load_config
@@ -105,44 +102,45 @@ def load_runtime(
 
     validate_all_branches_have_sinks(pipeline)
 
-    metric_config = environment_config.get("metrics", {})
-    metrics: Metrics
-    if metric_config.get("type") == "datadog":
-        default_tags = metric_config.get("tags", {})
+    metric_config_raw = environment_config.get("metrics", {})
+    streams_config: MetricsConfig
+    if metric_config_raw.get("type") == "datadog":
+        default_tags = dict(metric_config_raw.get("tags", {}))
         default_tags["pipeline"] = name
 
-        metrics = DatadogMetricsBackend(
-            metric_config["host"],
-            metric_config["port"],
-            METRICS_PREFIX,
-            default_tags,
-            metric_config.get("udp_queue_size"),
-        )
-        configure_metrics(metrics)
-        metric_config = {
-            "host": metric_config["host"],
-            "port": metric_config["port"],
+        base_dd: DatadogMetricsConfig = {
+            "type": "datadog",
+            "host": metric_config_raw["host"],
+            "port": int(metric_config_raw["port"]),
             "tags": default_tags,
-            "flush_interval_ms": metric_config.get("flush_interval_ms"),
-            "udp_queue_size": metric_config.get("udp_queue_size"),
         }
-    elif metric_config.get("type") == "log":
-        default_tags = metric_config.get("tags", {})
+        if metric_config_raw.get("udp_queue_size") is not None:
+            base_dd["udp_queue_size"] = metric_config_raw["udp_queue_size"]
+        if metric_config_raw.get("flush_interval_ms") is not None:
+            base_dd["flush_interval_ms"] = int(metric_config_raw["flush_interval_ms"])
+        streams_config = cast(MetricsConfig, base_dd)
+        configure_metrics(streams_config)
+    elif metric_config_raw.get("type") == "log":
+        default_tags = dict(metric_config_raw.get("tags", {}))
         default_tags["pipeline"] = name
 
-        metrics = LogMetricsBackend(
-            period_sec=metric_config["period_sec"],
-            tags=default_tags,
-        )
-        configure_metrics(metrics)
-        metric_config = {}
+        streams_config = {
+            "type": "log",
+            "period_sec": float(metric_config_raw["period_sec"]),
+            "tags": default_tags,
+        }
+        configure_metrics(streams_config)
     else:
-        metrics = DummyMetricsBackend()
-        configure_metrics(metrics)
-        metric_config = {}
+        streams_config = {"type": "dummy"}
+        configure_metrics(streams_config)
 
     assigned_segment_id = int(segment_id) if segment_id else None
-    runtime: Any = load_adapter(adapter, environment_config, assigned_segment_id, metric_config)
+    runtime: Any = load_adapter(
+        adapter,
+        environment_config,
+        streams_config,
+        assigned_segment_id,
+    )
     translator = RuntimeTranslator(runtime)
 
     iterate_edges(pipeline, translator)
