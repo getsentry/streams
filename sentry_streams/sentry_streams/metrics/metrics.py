@@ -53,42 +53,15 @@ class Metric(Enum):
     ERRORS = "errors"
 
 
-class Metrics:
-    """
-    An abstract class that defines the interface for metrics backends.
-    """
-
-    def __init__(self, backend: MetricsBackend) -> None:
-        self.__backend = backend
-
-    def increment(
-        self,
-        name: Metric,
-        value: Union[int, float] = 1,
-        tags: Optional[Tags] = None,
-    ) -> None:
-        """
-        Increments a counter metric by a given value.
-        """
-        self.__backend.increment(name.value, value, tags=tags)
-
-    def gauge(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
-        """
-        Sets a gauge metric to the given value.
-        """
-        self.__backend.gauge(name.value, value, tags=tags)
-
-    def timing(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
-        """
-        Records a timing metric.
-        """
-        self.__backend.timing(name.value, value, tags=tags)
-
-
 @runtime_checkable
 class MetricsBackend(Protocol):
     """
-    An abstract class that defines the interface for metrics backends.
+    Provides an interface to produce metrics of counter, gauge and timing types.
+
+    This can be implemented by different backends, such as Datadog to actually
+    produce metrics on a real channel or platform.
+    This can be wrapped in an adapter class that provides a client-specific
+    metrics interface, for example Arroyo metrics.
     """
 
     @abstractmethod
@@ -121,6 +94,7 @@ class MetricsBackend(Protocol):
 class DummyMetricsBackend(MetricsBackend):
     """
     Default metrics backend that does not record anything.
+    Useful for tests.
     """
 
     def increment(
@@ -149,7 +123,12 @@ def _combine_tags(base: Tags, tags: Optional[Tags] = None) -> Tags:
 
 class DatadogMetricsBackend(MetricsBackend):
     """
-    Datadog metrics backend.
+    Backend to produce metrics to Datadog through the DogStatsd client.
+
+    For each metric produced, a call is made to the datadog agent almost
+    immediately. Instances of this class can be provided with default tags
+    to be attached to each metric and with a prefix to be added to each
+    metric name.
     """
 
     def __init__(
@@ -167,7 +146,7 @@ class DatadogMetricsBackend(MetricsBackend):
             namespace=METRICS_PREFIX.strip("."),
             constant_tags=[],
         )
-        # ignore mypy because that method just is untyped, yet part of public API
+        # Ignore mypy: this method is untyped but is part of the public API.
         self.datadog_client.enable_background_sender(  # type: ignore[no-untyped-call]
             sender_queue_size=udp_queue_size if udp_queue_size is not None else SENDER_QUEUE_SIZE,
             sender_queue_timeout=SENDER_QUEUE_TIMEOUT,
@@ -244,8 +223,17 @@ BufferedMetric = tuple[str, float, Tags]
 
 class BufferedMetricsBackend(MetricsBackend):
     """
-    Metrics backend that buffers updates and periodically flushes them
-    via an injected flusher (e.g. Datadog or log).
+    This delegate class wraps a MetricsBackend and buffers metrics to flush them
+    periodically.
+
+    This kind of pattern is especially useful when we produce metrics at
+    high throughput or in a tight loop so we do not incur the overhead
+    of producing metrics on each call.
+
+    An alternative option would be to use Datadog metrics sampling, but that
+    would only work on the Datadog backend. Moreover this backend aggregates
+    the metric to be produced rather than sampling, so we preserve metrics
+    that are produced rarely.
     """
 
     def __init__(
@@ -327,9 +315,45 @@ def _tags_from_mapping(tags: Optional[Mapping[str, str]]) -> Tags:
     return dict(tags)
 
 
+class Metrics:
+    """
+    An adapter to a Metrics backend for the Sentry Streams application.
+    The only added value to the metrics backend is that the metric name has
+    to be defined in the enum.
+    """
+
+    def __init__(self, backend: MetricsBackend) -> None:
+        self.__backend = backend
+
+    def increment(
+        self,
+        name: Metric,
+        value: Union[int, float] = 1,
+        tags: Optional[Tags] = None,
+    ) -> None:
+        """
+        Increments a counter metric by a given value.
+        """
+        self.__backend.increment(name.value, value, tags=tags)
+
+    def gauge(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        """
+        Sets a gauge metric to the given value.
+        """
+        self.__backend.gauge(name.value, value, tags=tags)
+
+    def timing(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
+        """
+        Records a timing metric.
+        """
+        self.__backend.timing(name.value, value, tags=tags)
+
+
 class ArroyoMetricsBackend:
     """
-    Facade that adapts Arroyo metric names and tag mappings to MetricsBackend.
+    An adapter to the Metrics backend used in the Arroyo library. Arroyo allows
+    the client application to provide its own metrics implementation. The
+    implementation has to comply with arroyo.utils.metrics.Metrics.
     """
 
     def __init__(self, backend: MetricsBackend) -> None:
@@ -369,14 +393,15 @@ def configure_metrics(metrics: MetricsBackend, force: bool = False) -> None:
     """
     Metrics can generally only be configured once, unless force is passed
     on subsequent initializations.
+
+    This method has to be called for each process the application uses.
     """
     global _metrics_backend
     global _inner_metrics_backend
     if not force:
         assert _metrics_backend is None, "Metrics is already set"
 
-    # Perform a runtime check of metrics instance upon initialization of
-    # this class to avoid errors down the line when it is used.
+    # Runtime-check the metrics implementation so misconfiguration fails early.
     assert isinstance(metrics, MetricsBackend)
 
     _inner_metrics_backend = metrics
