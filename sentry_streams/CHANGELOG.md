@@ -1,3 +1,9 @@
+## 0.0.42
+
+### Internal Changes 🔧
+
+- (metrics) Refactor metrics backend to make Arroyo metrics work by @fpacifici in [#285](https://github.com/getsentry/streams/pull/285)
+
 ## 0.0.41
 
 - No documented changes.
