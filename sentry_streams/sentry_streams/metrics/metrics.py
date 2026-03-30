@@ -156,28 +156,21 @@ class DatadogMetricsBackend(MetricsBackend):
     def __normalize_tags(self, tags: Tags) -> list[str]:
         return [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
 
+    def __datadog_tags_kw(self, tags: Optional[Tags]) -> Optional[list[str]]:
+        combined = _combine_tags(self.__tags, tags)
+        normalized = self.__normalize_tags(combined)
+        return normalized if normalized else None
+
     def increment(
         self, name: str, value: Union[int, float] = 1, tags: Optional[Tags] = None
     ) -> None:
-        self.datadog_client.increment(
-            name,
-            value,
-            tags=self.__normalize_tags(_combine_tags(self.__tags, tags)) if tags else None,
-        )
+        self.datadog_client.increment(name, value, tags=self.__datadog_tags_kw(tags))
 
     def gauge(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
-        self.datadog_client.gauge(
-            name,
-            value,
-            tags=self.__normalize_tags(_combine_tags(self.__tags, tags)) if tags else None,
-        )
+        self.datadog_client.gauge(name, value, tags=self.__datadog_tags_kw(tags))
 
     def timing(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
-        self.datadog_client.timing(
-            name,
-            value,
-            tags=self.__normalize_tags(_combine_tags(self.__tags, tags)) if tags else None,
-        )
+        self.datadog_client.timing(name, value, tags=self.__datadog_tags_kw(tags))
 
 
 class LogMetricsBackend(MetricsBackend):

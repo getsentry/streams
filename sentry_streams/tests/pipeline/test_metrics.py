@@ -139,6 +139,16 @@ def test_datadog_increment_merges_constructor_tags(mock_dogstatsd: Any) -> None:
 
 
 @patch("sentry_streams.metrics.metrics.DogStatsd")
+def test_datadog_preserves_constructor_tags_when_per_call_tags_empty_dict(
+    mock_dogstatsd: Any,
+) -> None:
+    backend = DatadogMetricsBackend("localhost", 8125, tags={"service": "streams"})
+    mock_client = mock_dogstatsd.return_value
+    backend.increment(_metric(Metric.INPUT_MESSAGES), 1, tags={})
+    mock_client.increment.assert_called_once_with("input.messages", 1, tags=["service:streams"])
+
+
+@patch("sentry_streams.metrics.metrics.DogStatsd")
 @patch("time.time")
 def test_buffered_increment_with_throttling(mock_time: Any, mock_dogstatsd: Any) -> None:
     mock_time.side_effect = [METRICS_FREQUENCY_SEC + 1, METRICS_FREQUENCY_SEC + 2]
@@ -217,6 +227,23 @@ def test_buffered_wraps_datadog_with_constructor_tags(mock_time: Any, mock_dogst
 
     called_tags = mock_client.increment.call_args[1]["tags"]
     assert set(called_tags) == {"service:streams", "env:production"}
+
+
+@patch("sentry_streams.metrics.metrics.DogStatsd")
+@patch("time.time")
+def test_buffered_flush_preserves_constructor_tags_when_buffer_had_only_empty_tags(
+    mock_time: Any,
+    mock_dogstatsd: Any,
+) -> None:
+    mock_time.return_value = 0.0
+    inner = DatadogMetricsBackend("localhost", 8125, tags={"service": "streams"})
+    mock_client = mock_dogstatsd.return_value
+    backend = BufferedMetricsBackend(inner, throttle_interval_sec=METRICS_FREQUENCY_SEC)
+
+    backend.increment(_metric(Metric.INPUT_MESSAGES), 1)
+    backend.flush()
+
+    mock_client.increment.assert_called_once_with("input.messages", 1, tags=["service:streams"])
 
 
 def test_arroyo_delegates_increment_gauge_timing_with_tags() -> None:
