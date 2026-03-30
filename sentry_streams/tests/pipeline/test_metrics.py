@@ -12,12 +12,14 @@ from sentry_streams.metrics.metrics import (
     ArroyoMetricsBackend,
     BufferedMetricsBackend,
     DatadogMetricsBackend,
+    DatadogMetricsConfig,
     DummyMetricsBackend,
     LogMetricsBackend,
+    LogMetricsConfig,
     Metric,
     Metrics,
     MetricsBackend,
-    StreamMetricsConfig,
+    MetricsConfig,
     build_metrics_backend,
     configure_metrics,
 )
@@ -37,12 +39,8 @@ def _buffered_inner_backend(buffered: BufferedMetricsBackend) -> MetricsBackend:
 @pytest.fixture(autouse=True)
 def reset_metrics_backend() -> Generator[None, None, None]:
     metrics_module._metrics_backend = None
-    metrics_module._inner_metrics_backend = None
-    metrics_module._streams_metrics_config = None
     yield
     metrics_module._metrics_backend = None
-    metrics_module._inner_metrics_backend = None
-    metrics_module._streams_metrics_config = None
 
 
 def test_metric_enum_values() -> None:
@@ -85,7 +83,7 @@ def test_metrics_facade_delegates_to_backend() -> None:
 
 @patch("sentry_streams.metrics.metrics.DogStatsd")
 def test_datadog_init_namespace_is_metrics_prefix(mock_dogstatsd: Any) -> None:
-    DatadogMetricsBackend("localhost", 8125)
+    DatadogMetricsBackend("localhost", 8125, tags={})
     mock_dogstatsd.assert_called_once_with(
         host="localhost",
         port=8125,
@@ -96,7 +94,7 @@ def test_datadog_init_namespace_is_metrics_prefix(mock_dogstatsd: Any) -> None:
 
 @patch("sentry_streams.metrics.metrics.DogStatsd")
 def test_datadog_increment(mock_dogstatsd: Any) -> None:
-    backend = DatadogMetricsBackend("localhost", 8125)
+    backend = DatadogMetricsBackend("localhost", 8125, tags={})
     mock_client = mock_dogstatsd.return_value
 
     backend.increment(_metric(Metric.INPUT_MESSAGES), 5)
@@ -110,7 +108,7 @@ def test_datadog_increment(mock_dogstatsd: Any) -> None:
 
 @patch("sentry_streams.metrics.metrics.DogStatsd")
 def test_datadog_increment_with_tags(mock_dogstatsd: Any) -> None:
-    backend = DatadogMetricsBackend("localhost", 8125)
+    backend = DatadogMetricsBackend("localhost", 8125, tags={})
     mock_client = mock_dogstatsd.return_value
     tags = {"env": "test"}
 
@@ -159,7 +157,7 @@ def test_datadog_preserves_constructor_tags_when_per_call_tags_empty_dict(
 @patch("time.time")
 def test_buffered_increment_with_throttling(mock_time: Any, mock_dogstatsd: Any) -> None:
     mock_time.side_effect = [METRICS_FREQUENCY_SEC + 1, METRICS_FREQUENCY_SEC + 2]
-    inner = DatadogMetricsBackend("localhost", 8125)
+    inner = DatadogMetricsBackend("localhost", 8125, tags={})
     mock_client = mock_dogstatsd.return_value
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=METRICS_FREQUENCY_SEC)
 
@@ -172,7 +170,7 @@ def test_buffered_increment_with_throttling(mock_time: Any, mock_dogstatsd: Any)
 @patch("time.time")
 def test_buffered_increment_accumulation(mock_time: Any, mock_dogstatsd: Any) -> None:
     mock_time.return_value = 0.0
-    inner = DatadogMetricsBackend("localhost", 8125)
+    inner = DatadogMetricsBackend("localhost", 8125, tags={})
     mock_client = mock_dogstatsd.return_value
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=METRICS_FREQUENCY_SEC)
 
@@ -187,7 +185,7 @@ def test_buffered_increment_accumulation(mock_time: Any, mock_dogstatsd: Any) ->
 @patch("time.time")
 def test_buffered_gauge_replacement(mock_time: Any, mock_dogstatsd: Any) -> None:
     mock_time.return_value = 0.0
-    inner = DatadogMetricsBackend("localhost", 8125)
+    inner = DatadogMetricsBackend("localhost", 8125, tags={})
     mock_client = mock_dogstatsd.return_value
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=METRICS_FREQUENCY_SEC)
 
@@ -202,7 +200,7 @@ def test_buffered_gauge_replacement(mock_time: Any, mock_dogstatsd: Any) -> None
 @patch("time.time")
 def test_buffered_flush_all_metric_types(mock_time: Any, mock_dogstatsd: Any) -> None:
     mock_time.return_value = 0.0
-    inner = DatadogMetricsBackend("localhost", 8125)
+    inner = DatadogMetricsBackend("localhost", 8125, tags={})
     mock_client = mock_dogstatsd.return_value
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=60.0)
 
@@ -295,7 +293,7 @@ def test_log_increment_logs_immediately(mock_logger: Any) -> None:
 
 @patch("sentry_streams.metrics.metrics.logger")
 def test_log_each_call_emits_separate_log_line(mock_logger: Any) -> None:
-    backend = LogMetricsBackend()
+    backend = LogMetricsBackend(tags={})
     mock_info = mock_logger.info
 
     backend.increment(_metric(Metric.INPUT_MESSAGES), 1)
@@ -308,7 +306,7 @@ def test_log_each_call_emits_separate_log_line(mock_logger: Any) -> None:
 @patch("time.time")
 def test_buffered_log_accumulation_and_flush(mock_time: Any, mock_logger: Any) -> None:
     mock_time.return_value = 0.0
-    inner = LogMetricsBackend()
+    inner = LogMetricsBackend(tags={})
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=60.0)
     mock_info = mock_logger.info
 
@@ -331,7 +329,7 @@ def test_buffered_log_accumulation_and_flush(mock_time: Any, mock_logger: Any) -
 @patch("time.time")
 def test_buffered_log_flush_logs_and_clears(mock_time: Any, mock_logger: Any) -> None:
     mock_time.return_value = 0.0
-    inner = LogMetricsBackend()
+    inner = LogMetricsBackend(tags={})
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=60.0)
     mock_info = mock_logger.info
 
@@ -355,7 +353,7 @@ def test_buffered_log_flush_logs_and_clears(mock_time: Any, mock_logger: Any) ->
 @patch("time.time")
 def test_buffered_log_throttled_flush(mock_time: Any, mock_logger: Any) -> None:
     mock_time.return_value = 0.0
-    inner = LogMetricsBackend()
+    inner = LogMetricsBackend(tags={})
     backend = BufferedMetricsBackend(inner, throttle_interval_sec=10.0)
     mock_info = mock_logger.info
 
@@ -386,7 +384,7 @@ def test_buffered_log_global_tags_from_inner(mock_time: Any, mock_logger: Any) -
 
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
 def test_configure_metrics_dummy(mock_arroyo_configure: Any) -> None:
-    cfg = StreamMetricsConfig(backend="dummy")
+    cfg: MetricsConfig = {"type": "dummy"}
 
     configure_metrics(cfg)
 
@@ -406,7 +404,12 @@ def test_configure_metrics_dummy(mock_arroyo_configure: Any) -> None:
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
 @patch("sentry_streams.metrics.metrics.DogStatsd")
 def test_configure_metrics_datadog(mock_dogstatsd: Any, mock_arroyo_configure: Any) -> None:
-    cfg = StreamMetricsConfig(backend="datadog", host="localhost", port=8125)
+    cfg: DatadogMetricsConfig = {
+        "type": "datadog",
+        "host": "localhost",
+        "port": 8125,
+        "tags": {},
+    }
 
     configure_metrics(cfg)
 
@@ -417,17 +420,22 @@ def test_configure_metrics_datadog(mock_dogstatsd: Any, mock_arroyo_configure: A
 
 
 def test_configure_metrics_already_set() -> None:
-    configure_metrics(StreamMetricsConfig(backend="dummy"))
+    configure_metrics({"type": "dummy"})
 
     with pytest.raises(AssertionError, match="Metrics is already set"):
-        configure_metrics(StreamMetricsConfig(backend="dummy"))
+        configure_metrics({"type": "dummy"})
 
 
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
 def test_configure_metrics_force(mock_arroyo_configure: Any) -> None:
-    configure_metrics(StreamMetricsConfig(backend="dummy"))
+    configure_metrics({"type": "dummy"})
     configure_metrics(
-        StreamMetricsConfig(backend="datadog", host="localhost", port=8125),
+        {
+            "type": "datadog",
+            "host": "localhost",
+            "port": 8125,
+            "tags": {},
+        },
         force=True,
     )
 
@@ -440,9 +448,7 @@ def test_configure_metrics_force(mock_arroyo_configure: Any) -> None:
 def test_configure_metrics_log_uses_config_throttle_interval(
     mock_arroyo_configure: Any,
 ) -> None:
-    configure_metrics(
-        StreamMetricsConfig(backend="log", throttle_interval_sec=33.0, tags={"k": "v"})
-    )
+    configure_metrics({"type": "log", "period_sec": 33.0, "tags": {}})
     wrapped = metrics_module._metrics_backend
     assert isinstance(wrapped, BufferedMetricsBackend)
     assert (
@@ -452,18 +458,28 @@ def test_configure_metrics_log_uses_config_throttle_interval(
 
 @patch("sentry_streams.metrics.metrics.DogStatsd")
 def test_stream_metrics_config_roundtrips_through_pickle(mock_dogstatsd: Any) -> None:
-    cfg = StreamMetricsConfig(
-        backend="datadog",
-        host="h",
-        port=8125,
-        tags={"service": "streams"},
-        throttle_interval_sec=7.5,
-    )
+    cfg: dict[str, Any] = {
+        "type": "datadog",
+        "host": "h",
+        "port": 8125,
+        "tags": {"service": "streams"},
+    }
     roundtripped = pickle.loads(pickle.dumps(cfg))
     assert roundtripped == cfg
     assert isinstance(build_metrics_backend(roundtripped), DatadogMetricsBackend)
 
 
+def test_build_metrics_backend_log_with_empty_tags() -> None:
+    cfg: LogMetricsConfig = {"type": "log", "period_sec": 1.0, "tags": {}}
+    backend = build_metrics_backend(cast(MetricsConfig, cfg))
+    assert isinstance(backend, LogMetricsBackend)
+
+
 def test_build_metrics_backend_datadog_requires_host_and_port() -> None:
     with pytest.raises(ValueError, match="host and port"):
-        build_metrics_backend(StreamMetricsConfig(backend="datadog", host="localhost"))
+        build_metrics_backend(
+            cast(
+                MetricsConfig,
+                {"type": "datadog", "host": "localhost"},
+            )
+        )

@@ -3,15 +3,17 @@ from __future__ import annotations
 import logging
 import time
 from abc import abstractmethod
-from dataclasses import dataclass
 from enum import Enum
 from typing import (
     Any,
     Literal,
     Mapping,
+    NotRequired,
     Optional,
     Protocol,
+    TypedDict,
     Union,
+    cast,
     runtime_checkable,
 )
 
@@ -24,24 +26,32 @@ logger = logging.getLogger("sentry_streams.metrics.log_backend")
 
 METRICS_FREQUENCY_SEC = 10
 
-MetricsBackendKind = Literal["dummy", "datadog", "log"]
+
+class DummyMetricsConfig(TypedDict):
+    type: Literal["dummy"]
 
 
-@dataclass(frozen=True, slots=True)
-class StreamMetricsConfig:
-    """
-    Picklable metrics settings for the streaming process and multiprocessing workers.
+class DatadogMetricsConfig(TypedDict):
+    type: Literal["datadog"]
+    host: str
+    port: int
+    tags: Tags
+    udp_queue_size: NotRequired[int]
 
-    ``throttle_interval_sec`` is the flush interval for :class:`BufferedMetricsBackend`,
-    which wraps the inner backend configured via ``backend``.
-    """
 
-    backend: MetricsBackendKind
-    throttle_interval_sec: float = METRICS_FREQUENCY_SEC
-    host: Optional[str] = None
-    port: Optional[int] = None
-    tags: Optional[Tags] = None
-    udp_queue_size: Optional[int] = None
+class LogMetricsConfig(TypedDict):
+    type: Literal["log"]
+    period_sec: float
+    tags: Tags
+
+
+MetricsConfig = Union[DummyMetricsConfig, DatadogMetricsConfig, LogMetricsConfig]
+
+
+def _buffer_throttle_interval_sec(config: MetricsConfig) -> float:
+    if config["type"] == "log":
+        return float(config["period_sec"])
+    return METRICS_FREQUENCY_SEC
 
 
 # Single source of truth for the metrics namespace used by both Datadog and Log backends.
@@ -83,6 +93,10 @@ class MetricsBackend(Protocol):
     produce metrics on a real channel or platform.
     This can be wrapped in an adapter class that provides a client-specific
     metrics interface, for example Arroyo metrics.
+
+    Concrete implementations define ``build(config)`` for their
+    :class:`MetricsConfig` variant; use :func:`build_metrics_backend`
+    to construct from an arbitrary config dict (discriminated by ``type``).
     """
 
     @abstractmethod
@@ -117,6 +131,10 @@ class DummyMetricsBackend(MetricsBackend):
     Default metrics backend that does not record anything.
     Useful for tests.
     """
+
+    @staticmethod
+    def build(config: DummyMetricsConfig) -> DummyMetricsBackend:
+        return DummyMetricsBackend()
 
     def increment(
         self,
@@ -156,7 +174,7 @@ class DatadogMetricsBackend(MetricsBackend):
         self,
         host: str,
         port: int,
-        tags: Optional[Tags] = None,
+        tags: Tags,
         udp_queue_size: Optional[int] = None,
     ) -> None:
         # Do not pass constant_tags to DogStatsd: BufferedMetricsBackend already
@@ -172,7 +190,21 @@ class DatadogMetricsBackend(MetricsBackend):
             sender_queue_size=udp_queue_size if udp_queue_size is not None else SENDER_QUEUE_SIZE,
             sender_queue_timeout=SENDER_QUEUE_TIMEOUT,
         )
-        self.__tags: Tags = tags if tags is not None else {}
+        self.__tags = tags
+
+    @staticmethod
+    def build(config: DatadogMetricsConfig) -> DatadogMetricsBackend:
+        host = config.get("host")
+        port = config.get("port")
+        if host is None or port is None:
+            raise ValueError("datadog metrics require host and port")
+        udp_queue_size = config.get("udp_queue_size")
+        return DatadogMetricsBackend(
+            host,
+            port,
+            tags=config["tags"],
+            udp_queue_size=udp_queue_size,
+        )
 
     def __normalize_tags(self, tags: Tags) -> list[str]:
         return [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
@@ -200,9 +232,13 @@ class LogMetricsBackend(MetricsBackend):
     as LogFlusher: ``prefix | counter|gauge|timing name=value tag1:val1 ...``.
     """
 
-    def __init__(self, tags: Optional[Tags] = None) -> None:
+    def __init__(self, tags: Tags) -> None:
         self.__prefix = METRICS_PREFIX.strip(".")
-        self.__base_tags: Tags = tags if tags is not None else {}
+        self.__base_tags = tags
+
+    @staticmethod
+    def build(config: LogMetricsConfig) -> LogMetricsBackend:
+        return LogMetricsBackend(tags=config["tags"])
 
     @staticmethod
     def __normalize_tags(tags: Tags) -> list[str]:
@@ -397,61 +433,42 @@ class ArroyoMetricsBackend:
         self.__backend.timing(name, value, tags=_tags_from_mapping(tags))
 
 
-_inner_metrics_backend: Optional[MetricsBackend] = None
 _metrics_backend: Optional[MetricsBackend] = None
-_streams_metrics_config: Optional[StreamMetricsConfig] = None
 _dummy_metrics_backend = DummyMetricsBackend()
 
 
-def build_metrics_backend(config: StreamMetricsConfig) -> MetricsBackend:
-    """Construct the inner (unbuffered) metrics backend from picklable settings."""
-    if config.backend == "dummy":
-        return DummyMetricsBackend()
-    if config.backend == "datadog":
-        if config.host is None or config.port is None:
-            raise ValueError("datadog metrics require host and port")
-        tag_values = dict(config.tags) if config.tags else None
-        return DatadogMetricsBackend(
-            config.host,
-            config.port,
-            tags=tag_values,
-            udp_queue_size=config.udp_queue_size,
-        )
-    if config.backend == "log":
-        tag_values = dict(config.tags) if config.tags else None
-        return LogMetricsBackend(tags=tag_values)
-    raise ValueError(f"Unknown metrics backend: {config.backend!r}")
+def build_metrics_backend(config: MetricsConfig) -> MetricsBackend:
+    """Construct the inner (unbuffered) metrics backend from a metrics config dict."""
+    kind = config["type"]
+    if kind == "dummy":
+        return DummyMetricsBackend.build(cast(DummyMetricsConfig, config))
+    if kind == "datadog":
+        return DatadogMetricsBackend.build(cast(DatadogMetricsConfig, config))
+    if kind == "log":
+        return LogMetricsBackend.build(cast(LogMetricsConfig, config))
+    raise ValueError(f"Unknown metrics type: {kind!r}")
 
 
-def configure_metrics(config: StreamMetricsConfig, force: bool = False) -> None:
+def configure_metrics(config: MetricsConfig, force: bool = False) -> None:
     """
     Metrics can generally only be configured once, unless force is passed
     on subsequent initializations.
 
     This method has to be called for each process the application uses.
-    Accepts a picklable :class:`StreamMetricsConfig` so worker processes can
-    rebuild the same backends under ``spawn`` multiprocessing.
+    Accepts a picklable metrics config dict (``type`` discriminator matches
+    ``config.json``) so worker processes can rebuild the same backends under
+    ``spawn`` multiprocessing.
     """
     global _metrics_backend
-    global _inner_metrics_backend
-    global _streams_metrics_config
     if not force:
         assert _metrics_backend is None, "Metrics is already set"
 
     inner = build_metrics_backend(config)
-    _streams_metrics_config = config
-    _inner_metrics_backend = inner
     _metrics_backend = BufferedMetricsBackend(
         inner,
-        throttle_interval_sec=config.throttle_interval_sec,
+        throttle_interval_sec=_buffer_throttle_interval_sec(config),
     )
     arroyo_configure_metrics(ArroyoMetricsBackend(_metrics_backend))
-
-
-def get_inner_metrics() -> MetricsBackend:
-    if _inner_metrics_backend is None:
-        return _dummy_metrics_backend
-    return _inner_metrics_backend
 
 
 def get_metrics() -> Metrics:

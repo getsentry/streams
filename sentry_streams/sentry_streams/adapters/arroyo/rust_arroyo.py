@@ -36,7 +36,7 @@ from sentry_streams.config_types import (
 )
 from sentry_streams.metrics import (
     Metric,
-    StreamMetricsConfig,
+    MetricsConfig,
     configure_metrics,
     get_metrics,
     get_size,
@@ -78,8 +78,8 @@ from sentry_streams.rust_streams import (
 logger = logging.getLogger(__name__)
 
 
-def initializer(streams_metrics_config: StreamMetricsConfig) -> None:
-    configure_metrics(streams_metrics_config, force=True)
+def initializer(metrics_config: MetricsConfig) -> None:
+    configure_metrics(metrics_config, force=True)
 
 
 def _metrics_wrapped_function(
@@ -184,7 +184,7 @@ def build_kafka_producer_config(
 def finalize_chain(
     chains: TransformChains,
     route: Route,
-    streams_metrics_config: StreamMetricsConfig,
+    metrics_config: MetricsConfig,
 ) -> RuntimeOperator:
     rust_route = RustRoute(route.source, route.waypoints)
     config, func = chains.finalize(route)
@@ -204,7 +204,7 @@ def finalize_chain(
                 config["batch_time"],
                 MultiprocessingPool(
                     num_processes=config["processes"],
-                    initializer=functools.partial(initializer, streams_metrics_config),
+                    initializer=functools.partial(initializer, metrics_config),
                 ),
                 input_block_size=config.get("input_block_size"),
                 output_block_size=config.get("output_block_size"),
@@ -221,38 +221,37 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     def __init__(
         self,
         steps_config: Mapping[str, StepConfig],
-        streams_metrics_config: StreamMetricsConfig,
+        metrics_config: MetricsConfig,
         metric_config: PyMetricConfig | None = None,
         write_healthcheck: bool = False,
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
-        self.__streams_metrics_config = streams_metrics_config
+        self.__metrics_config = metrics_config
         self.__metric_config = metric_config
         self.__write_healthcheck = write_healthcheck
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
 
     @classmethod
-    def build(
+    def build(  # type: ignore[override]
         cls,
         config: PipelineConfig,
+        metrics_config: MetricsConfig,
         metric_config: PyMetricConfig | None = None,
-        streams_metrics_config: StreamMetricsConfig | None = None,
     ) -> Self:
         steps_config = config["steps_config"]
         adapter_config = config.get("adapter_config") or {}
         arroyo_config = adapter_config.get("arroyo") or {}
         write_healthcheck = bool(arroyo_config.get("write_healthcheck", False))
-        smc = streams_metrics_config or StreamMetricsConfig(backend="dummy")
 
-        return cls(steps_config, smc, metric_config, write_healthcheck)
+        return cls(steps_config, metrics_config, metric_config, write_healthcheck)
 
     def __close_chain(self, stream: Route) -> None:
         if self.__chains.exists(stream):
             logger.info(f"Closing transformation chain: {stream} and adding to pipeline")
             self.__consumers[stream.source].add_step(
-                finalize_chain(self.__chains, stream, self.__streams_metrics_config)
+                finalize_chain(self.__chains, stream, self.__metrics_config)
             )
 
     def get_consumer(self, source: str) -> ArroyoConsumer:

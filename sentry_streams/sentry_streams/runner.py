@@ -12,7 +12,11 @@ from sentry_streams.adapters.stream_adapter import (
     StreamSinkT,
     StreamT,
 )
-from sentry_streams.metrics import StreamMetricsConfig, configure_metrics
+from sentry_streams.metrics import (
+    DatadogMetricsConfig,
+    MetricsConfig,
+    configure_metrics,
+)
 from sentry_streams.pipeline.config import load_config
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
@@ -99,18 +103,20 @@ def load_runtime(
     validate_all_branches_have_sinks(pipeline)
 
     metric_config_raw = environment_config.get("metrics", {})
-    streams_config: StreamMetricsConfig
+    streams_config: MetricsConfig
     if metric_config_raw.get("type") == "datadog":
         default_tags = dict(metric_config_raw.get("tags", {}))
         default_tags["pipeline"] = name
 
-        streams_config = StreamMetricsConfig(
-            backend="datadog",
-            host=metric_config_raw["host"],
-            port=int(metric_config_raw["port"]),
-            tags=default_tags,
-            udp_queue_size=metric_config_raw.get("udp_queue_size"),
-        )
+        base_dd: DatadogMetricsConfig = {
+            "type": "datadog",
+            "host": metric_config_raw["host"],
+            "port": int(metric_config_raw["port"]),
+            "tags": default_tags,
+        }
+        if metric_config_raw.get("udp_queue_size") is not None:
+            base_dd["udp_queue_size"] = metric_config_raw["udp_queue_size"]
+        streams_config = cast(MetricsConfig, base_dd)
         configure_metrics(streams_config)
         metric_config = {
             "host": metric_config_raw["host"],
@@ -123,15 +129,15 @@ def load_runtime(
         default_tags = dict(metric_config_raw.get("tags", {}))
         default_tags["pipeline"] = name
 
-        streams_config = StreamMetricsConfig(
-            backend="log",
-            throttle_interval_sec=float(metric_config_raw["period_sec"]),
-            tags=default_tags,
-        )
+        streams_config = {
+            "type": "log",
+            "period_sec": float(metric_config_raw["period_sec"]),
+            "tags": default_tags,
+        }
         configure_metrics(streams_config)
         metric_config = {}
     else:
-        streams_config = StreamMetricsConfig(backend="dummy")
+        streams_config = {"type": "dummy"}
         configure_metrics(streams_config)
         metric_config = {}
 
@@ -141,7 +147,7 @@ def load_runtime(
         environment_config,
         assigned_segment_id,
         metric_config,
-        streams_config,
+        metrics_config=streams_config,
     )
     translator = RuntimeTranslator(runtime)
 

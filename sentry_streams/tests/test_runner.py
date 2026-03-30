@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -61,7 +61,15 @@ def create_pipeline() -> Pipeline[bytes]:
 
 def test_iterate_edges(create_pipeline: Pipeline[bytes]) -> None:
     dummy_config: PipelineConfig = {}
-    runtime: DummyAdapter[Any, Any] = load_adapter("dummy", dummy_config, None)  # type: ignore
+    runtime = cast(
+        DummyAdapter[Any, Any],
+        load_adapter(
+            "dummy",
+            dummy_config,
+            None,
+            metrics_config={"type": "dummy"},
+        ),
+    )
     translator: RuntimeTranslator[Any, Any] = RuntimeTranslator(runtime)
     iterate_edges(create_pipeline, translator)
     assert runtime.input_streams == [
