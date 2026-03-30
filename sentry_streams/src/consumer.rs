@@ -5,6 +5,7 @@
 //! and all the steps following that source.
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
+use crate::backpressure_metrics::BackpressureNext;
 use crate::commit_policy::WatermarkCommitOffsets;
 use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
@@ -223,6 +224,10 @@ pub fn build_chain(
     for step in steps.iter().rev() {
         next = build(step, next, Box::new(Noop {}), concurrency_config);
     }
+    let next = Box::new(BackpressureNext::new(
+        next,
+        format!("WatermarkEmitter:{source}"),
+    ));
     let watermark_step = Box::new(WatermarkEmitter::new(
         next,
         Route {
@@ -238,7 +243,11 @@ pub fn build_chain(
         Ok(to_routed_value(&copied_source, message, &copied_schema))
     };
 
-    let converter = RunTask::new(conversion_function, watermark_step);
+    let watermark_wrapped = Box::new(BackpressureNext::new(
+        watermark_step,
+        format!("KafkaPayloadConverter:{source}"),
+    ));
+    let converter = RunTask::new(conversion_function, watermark_wrapped);
 
     let chain: Box<dyn ProcessingStrategy<KafkaPayload>> = Box::new(converter);
     if write_healthcheck {

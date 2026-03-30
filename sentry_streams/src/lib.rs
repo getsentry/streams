@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+mod backpressure_metrics;
 mod broadcaster;
 mod callers;
 mod commit_policy;

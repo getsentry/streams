@@ -1,3 +1,4 @@
+use crate::backpressure_metrics::BackpressureNext;
 use crate::broadcaster::Broadcaster;
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonAdapter;
@@ -91,13 +92,49 @@ pub enum RuntimeOperator {
     },
 }
 
+/// Stable label for `step` on backpressure metrics (one series per runtime operator).
+pub fn metric_label_for_runtime_operator(op: &RuntimeOperator) -> String {
+    fn route_seg(r: &Route) -> String {
+        if r.waypoints.is_empty() {
+            r.source.clone()
+        } else {
+            format!("{}>{}", r.source, r.waypoints.join(">"))
+        }
+    }
+    match op {
+        RuntimeOperator::Map { route, .. } => format!("Map:{}", route_seg(route)),
+        RuntimeOperator::Filter { route, .. } => format!("Filter:{}", route_seg(route)),
+        RuntimeOperator::StreamSink {
+            route, topic_name, ..
+        } => {
+            format!("StreamSink:{}:{}", route_seg(route), topic_name)
+        }
+        RuntimeOperator::GCSSink { route, bucket, .. } => {
+            format!("GCSSink:{}:{}", route_seg(route), bucket)
+        }
+        RuntimeOperator::DevNullSink { route, .. } => {
+            format!("DevNullSink:{}", route_seg(route))
+        }
+        RuntimeOperator::Broadcast { route, .. } => {
+            format!("Broadcast:{}", route_seg(route))
+        }
+        RuntimeOperator::Router { route, .. } => format!("Router:{}", route_seg(route)),
+        RuntimeOperator::PythonAdapter { route, .. } => {
+            format!("PythonAdapter:{}", route_seg(route))
+        }
+    }
+}
+
 pub fn build(
     step: &Py<RuntimeOperator>,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
     terminator_strategy: Box<dyn ProcessingStrategy<KafkaPayload>>,
     concurrency_config: &ConcurrencyConfig,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
-    match step.get() {
+    let op = step.get();
+    let label = metric_label_for_runtime_operator(&op);
+    let next = Box::new(BackpressureNext::new(next, label.clone()));
+    match op {
         RuntimeOperator::Map { function, route } => {
             // All functions (Python and Rust) are called the same way now
             // Rust functions automatically release the GIL internally
@@ -123,6 +160,7 @@ pub fn build(
                 topic_name,
                 next,
                 terminator_strategy,
+                label,
             ))
         }
         RuntimeOperator::GCSSink {
@@ -174,7 +212,7 @@ pub fn build(
             delegate_factory,
         } => {
             let factory = traced_with_gil!(|py| { delegate_factory.clone_ref(py) });
-            Box::new(PythonAdapter::new(route.clone(), factory, next))
+            Box::new(PythonAdapter::new(route.clone(), factory, next, label))
         }
         RuntimeOperator::Broadcast {
             route,
