@@ -14,11 +14,11 @@ const PREFIX: &str = "streams.pipeline";
 /// Tracks a single backpressure episode for histogram sampling.
 /// Episodes still open when the consumer stops are not recorded.
 #[derive(Debug, Default)]
-pub struct EpisodeTracker {
+pub struct BackpressureTracker {
     start: Option<Instant>,
 }
 
-impl EpisodeTracker {
+impl BackpressureTracker {
     /// Start or continue an episode (timer begins on first rejection in a run).
     pub fn on_message_rejected(&mut self) {
         if self.start.is_none() {
@@ -47,24 +47,24 @@ fn counter_increment(key: String, step: &str) {
 }
 
 /// Increment `send_backpressure` and extend the send-duration episode tracker.
-pub fn record_send_rejected(step: &str, tracker: &mut EpisodeTracker) {
+pub fn record_send_rejected(step: &str, tracker: &mut BackpressureTracker) {
     counter_increment(format!("{}.send_backpressure", PREFIX), step);
     tracker.on_message_rejected();
 }
 
 /// Increment `receive_backpressure` and extend the receive-duration episode tracker.
-pub fn record_rcvd_rejected(step: &str, tracker: &mut EpisodeTracker) {
+pub fn record_rcvd_rejected(step: &str, tracker: &mut BackpressureTracker) {
     counter_increment(format!("{}.receive_backpressure", PREFIX), step);
     tracker.on_message_rejected();
 }
 
 /// End a send backpressure episode after a successful submit path.
-pub fn send_on_success(step: &str, tracker: &mut EpisodeTracker) {
+pub fn send_on_success(step: &str, tracker: &mut BackpressureTracker) {
     tracker.on_success(step, "send_backpressure_duration");
 }
 
 /// End a receive backpressure episode after downstream accepted a submit.
-pub fn recv_on_success(step: &str, tracker: &mut EpisodeTracker) {
+pub fn recv_on_success(step: &str, tracker: &mut BackpressureTracker) {
     tracker.on_success(step, "receive_backpressure_duration");
 }
 
@@ -73,7 +73,7 @@ pub fn recv_on_success(step: &str, tracker: &mut EpisodeTracker) {
 pub struct BackpressureNext {
     inner: Box<dyn ProcessingStrategy<RoutedValue>>,
     step_label: String,
-    recv_tracker: EpisodeTracker,
+    recv_tracker: BackpressureTracker,
 }
 
 impl BackpressureNext {
@@ -81,13 +81,17 @@ impl BackpressureNext {
         Self {
             inner,
             step_label,
-            recv_tracker: EpisodeTracker::default(),
+            recv_tracker: BackpressureTracker::default(),
         }
     }
 }
 
 impl ProcessingStrategy<RoutedValue> for BackpressureNext {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
+        // `SubmitError::MessageRejected` is only returned from `submit`, not from `poll`.
+        // The wrapped `next` may still see backpressure when the inner strategy calls
+        // `submit` during its own `poll` (e.g. watermark flush, retrying pending messages);
+        // those calls go through `BackpressureNext::submit` and are instrumented there.
         self.inner.poll()
     }
 
@@ -120,7 +124,7 @@ mod tests {
 
     #[test]
     fn episode_consecutive_rejections_one_histogram_on_success() {
-        let mut t = EpisodeTracker::default();
+        let mut t = BackpressureTracker::default();
         t.on_message_rejected();
         std::thread::sleep(Duration::from_millis(2));
         t.on_message_rejected();
@@ -132,7 +136,7 @@ mod tests {
 
     #[test]
     fn episode_success_without_rejection_no_histogram() {
-        let mut t = EpisodeTracker::default();
+        let mut t = BackpressureTracker::default();
         t.on_success("step_b", "send_backpressure_duration");
         assert!(t.start.is_none());
     }

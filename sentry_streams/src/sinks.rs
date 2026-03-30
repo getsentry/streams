@@ -5,7 +5,8 @@
 //! This checks whether a message should be processed or forwarded
 //! via the `Route` attribute.
 use crate::backpressure_metrics::{
-    record_rcvd_rejected, record_send_rejected, recv_on_success, send_on_success, EpisodeTracker,
+    record_rcvd_rejected, record_send_rejected, recv_on_success, send_on_success,
+    BackpressureTracker,
 };
 use crate::messages::{PyStreamingMessage, RoutedValuePayload, Watermark, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
@@ -157,8 +158,8 @@ pub struct StreamSink {
     message_carried_over: Option<Message<KafkaPayload>>,
     commit_request_carried_over: Option<CommitRequest>,
     backpressure_step_label: String,
-    send_tracker: EpisodeTracker,
-    produce_recv_tracker: EpisodeTracker,
+    send_tracker: BackpressureTracker,
+    produce_recv_tracker: BackpressureTracker,
 }
 
 impl StreamSink {
@@ -185,8 +186,8 @@ impl StreamSink {
             message_carried_over: None,
             commit_request_carried_over: None,
             backpressure_step_label,
-            send_tracker: EpisodeTracker::default(),
-            produce_recv_tracker: EpisodeTracker::default(),
+            send_tracker: BackpressureTracker::default(),
+            produce_recv_tracker: BackpressureTracker::default(),
         }
     }
 }

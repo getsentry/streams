@@ -92,47 +92,17 @@ pub enum RuntimeOperator {
     },
 }
 
-/// Stable label for `step` on backpressure metrics (one series per runtime operator).
-pub fn metric_label_for_runtime_operator(op: &RuntimeOperator) -> String {
-    fn route_seg(r: &Route) -> String {
-        if r.waypoints.is_empty() {
-            r.source.clone()
-        } else {
-            format!("{}>{}", r.source, r.waypoints.join(">"))
-        }
-    }
-    match op {
-        RuntimeOperator::Map { route, .. } => format!("Map:{}", route_seg(route)),
-        RuntimeOperator::Filter { route, .. } => format!("Filter:{}", route_seg(route)),
-        RuntimeOperator::StreamSink {
-            route, topic_name, ..
-        } => {
-            format!("StreamSink:{}:{}", route_seg(route), topic_name)
-        }
-        RuntimeOperator::GCSSink { route, bucket, .. } => {
-            format!("GCSSink:{}:{}", route_seg(route), bucket)
-        }
-        RuntimeOperator::DevNullSink { route, .. } => {
-            format!("DevNullSink:{}", route_seg(route))
-        }
-        RuntimeOperator::Broadcast { route, .. } => {
-            format!("Broadcast:{}", route_seg(route))
-        }
-        RuntimeOperator::Router { route, .. } => format!("Router:{}", route_seg(route)),
-        RuntimeOperator::PythonAdapter { route, .. } => {
-            format!("PythonAdapter:{}", route_seg(route))
-        }
-    }
-}
-
+/// Wires `next` with backpressure instrumentation using the pipeline step name (DSL `Step.name`)
+/// passed from Python when the step is registered on the consumer.
 pub fn build(
     step: &Py<RuntimeOperator>,
+    pipeline_step_name: &str,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
     terminator_strategy: Box<dyn ProcessingStrategy<KafkaPayload>>,
     concurrency_config: &ConcurrencyConfig,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     let op = step.get();
-    let label = metric_label_for_runtime_operator(&op);
+    let label = pipeline_step_name.to_string();
     let next = Box::new(BackpressureNext::new(next, label.clone()));
     match op {
         RuntimeOperator::Map { function, route } => {

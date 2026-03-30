@@ -2,7 +2,7 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
-use crate::backpressure_metrics::{record_send_rejected, send_on_success, EpisodeTracker};
+use crate::backpressure_metrics::{record_send_rejected, send_on_success, BackpressureTracker};
 use crate::committable::{clone_committable, convert_committable_to_py, convert_py_committable};
 use crate::messages::{PyWatermark, RoutedValuePayload, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
@@ -40,7 +40,7 @@ pub struct PythonAdapter {
     next_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
     commit_request_carried_over: Option<CommitRequest>,
     backpressure_step_label: String,
-    send_tracker: EpisodeTracker,
+    send_tracker: BackpressureTracker,
 }
 
 impl PythonAdapter {
@@ -60,7 +60,7 @@ impl PythonAdapter {
                 transformed_messages: VecDeque::new(),
                 commit_request_carried_over: None,
                 backpressure_step_label,
-                send_tracker: EpisodeTracker::default(),
+                send_tracker: BackpressureTracker::default(),
             }
         })
     }
