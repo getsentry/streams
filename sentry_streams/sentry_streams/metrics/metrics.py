@@ -307,11 +307,8 @@ class BufferedMetricsBackend(MetricsBackend):
         tags: Tags,
         replace: bool = False,
     ) -> None:
-        if tags is None:
-            key = hash(name)
-        else:
-            normalized_tags = self.__normalize_tags(tags)
-            key = hash((name, frozenset(normalized_tags)))
+        normalized_tags = self.__normalize_tags(tags)
+        key = hash((name, frozenset(normalized_tags)))
 
         if key in buffer:
             new_value = buffer[key][1] + value if not replace else value

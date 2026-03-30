@@ -239,7 +239,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         super().__init__()
         self.steps_config = steps_config
         self.__metrics_config = metrics_config
-        self.__metric_config = build_py_metrics_config(metrics_config)
         self.__write_healthcheck = write_healthcheck
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
@@ -299,7 +298,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             ),
             topic=step.stream_name,
             schema=schema_name,
-            metric_config=self.__metric_config,
+            metric_config=build_py_metrics_config(self.__metrics_config),
             write_healthcheck=self.__write_healthcheck,
         )
         return Route(source_name, [])
