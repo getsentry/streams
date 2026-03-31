@@ -1,3 +1,16 @@
+## 0.0.43
+
+### New Features ✨
+
+- (gcs) Log payload, token, and request timing for GCS writes by @fpacifici in [#289](https://github.com/getsentry/streams/pull/289)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump pygments from 2.19.2 to 2.20.0 in /sentry_streams by @dependabot in [#286](https://github.com/getsentry/streams/pull/286)
+- Bump requests from 2.32.4 to 2.33.0 in /sentry_streams by @dependabot in [#287](https://github.com/getsentry/streams/pull/287)
+
 ## 0.0.42
 
 ### Internal Changes 🔧
