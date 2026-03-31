@@ -58,9 +58,6 @@ pub struct ArroyoConsumer {
 
     steps: Vec<Py<RuntimeOperator>>,
 
-    /// `Step.name` for each entry in `steps` (same order).
-    step_names: Vec<String>,
-
     /// The ProcessorHandle allows the main thread to stop the StreamingProcessor
     /// from a different thread.
     handle: Option<ProcessorHandle>,
@@ -93,7 +90,6 @@ impl ArroyoConsumer {
             source,
             schema,
             steps: Vec::new(),
-            step_names: Vec::new(),
             handle: None,
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
             metric_config,
@@ -102,10 +98,9 @@ impl ArroyoConsumer {
     }
 
     /// Add a step to the Consumer pipeline at the end of it.
-    /// `step_name` must be the pipeline DSL step name (`Step.name`) for backpressure metric labels.
-    fn add_step(&mut self, step: Py<RuntimeOperator>, step_name: String) {
+    /// Backpressure metric labels use each step's [`RuntimeOperator::pipeline_step_name`].
+    fn add_step(&mut self, step: Py<RuntimeOperator>) {
         self.steps.push(step);
-        self.step_names.push(step_name);
     }
 
     /// Runs the consumer.
@@ -120,7 +115,6 @@ impl ArroyoConsumer {
         let factory = ArroyoStreamingFactory::new(
             self.source.clone(),
             &self.steps,
-            &self.step_names,
             self.concurrency_config.clone(),
             self.schema.clone(),
             self.write_healthcheck,
@@ -220,26 +214,14 @@ fn to_routed_value(
 pub fn build_chain(
     source: &str,
     steps: &[Py<RuntimeOperator>],
-    step_names: &[String],
     ending_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
     concurrency_config: &ConcurrencyConfig,
     schema: &Option<String>,
     write_healthcheck: bool,
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
-    assert_eq!(
-        steps.len(),
-        step_names.len(),
-        "steps and step_names must have the same length"
-    );
     let mut next = ending_strategy;
-    for (step, name) in steps.iter().rev().zip(step_names.iter().rev()) {
-        next = build(
-            step,
-            name.as_str(),
-            next,
-            Box::new(Noop {}),
-            concurrency_config,
-        );
+    for step in steps.iter().rev() {
+        next = build(step, next, Box::new(Noop {}), concurrency_config);
     }
     let next = Box::new(BackpressureNext::new(
         next,
@@ -260,11 +242,7 @@ pub fn build_chain(
         Ok(to_routed_value(&copied_source, message, &copied_schema))
     };
 
-    let watermark_wrapped = Box::new(BackpressureNext::new(
-        watermark_step,
-        format!("KafkaPayloadConverter:{source}"),
-    ));
-    let converter = RunTask::new(conversion_function, watermark_wrapped);
+    let converter = RunTask::new(conversion_function, watermark_step);
 
     let chain: Box<dyn ProcessingStrategy<KafkaPayload>> = Box::new(converter);
     if write_healthcheck {
@@ -277,7 +255,6 @@ pub fn build_chain(
 struct ArroyoStreamingFactory {
     source: String,
     steps: Vec<Py<RuntimeOperator>>,
-    step_names: Vec<String>,
     concurrency_config: Arc<ConcurrencyConfig>,
     schema: Option<String>,
     write_healthcheck: bool,
@@ -288,16 +265,10 @@ impl ArroyoStreamingFactory {
     fn new(
         source: String,
         steps: &[Py<RuntimeOperator>],
-        step_names: &[String],
         concurrency_config: Arc<ConcurrencyConfig>,
         schema: Option<String>,
         write_healthcheck: bool,
     ) -> Self {
-        assert_eq!(
-            steps.len(),
-            step_names.len(),
-            "steps and step_names must have the same length"
-        );
         let steps_copy = traced_with_gil!(|py| {
             steps
                 .iter()
@@ -308,7 +279,6 @@ impl ArroyoStreamingFactory {
         ArroyoStreamingFactory {
             source,
             steps: steps_copy,
-            step_names: step_names.to_vec(),
             concurrency_config,
             schema,
             write_healthcheck,
@@ -321,7 +291,6 @@ impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
         build_chain(
             &self.source,
             &self.steps,
-            &self.step_names,
             // TODO: once Broadcast/Router work properly, count how many total downstream
             // branches a pipeline has and pass that value to the Watermark
             Box::new(WatermarkCommitOffsets::new(1)),
@@ -415,6 +384,7 @@ mod tests {
             let r = Py::new(
                 py,
                 RuntimeOperator::Map {
+                    step_name: "map".to_string(),
                     route: Route::new("source".to_string(), vec![]),
                     function: callable,
                 },
@@ -428,11 +398,9 @@ mod tests {
             let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
             let concurrency_config = ConcurrencyConfig::new(1);
-            let step_names = vec![String::from("map")];
             let mut chain = build_chain(
                 "source",
                 &steps,
-                &step_names,
                 Box::new(next_step),
                 &concurrency_config,
                 &Some("schema".to_string()),

@@ -32,18 +32,27 @@ pub enum RuntimeOperator {
     /// is provided to transform the message payload into a different
     /// one.
     #[pyo3(name = "Map")]
-    Map { route: Route, function: Py<PyAny> },
+    Map {
+        step_name: String,
+        route: Route,
+        function: Py<PyAny>,
+    },
 
     /// Represents a Filter step in the streaming pipeline.
     /// This translates to a custom Arroyo strategy (Filter step) where a function
     /// is provided to transform the message payload into a bool.
     #[pyo3(name = "Filter")]
-    Filter { route: Route, function: Py<PyAny> },
+    Filter {
+        step_name: String,
+        route: Route,
+        function: Py<PyAny>,
+    },
 
     /// Represents a Kafka Producer as a Sink in the pipeline.
     /// It is translated to an Arroyo Kafka producer.
     #[pyo3(name = "StreamSink")]
     StreamSink {
+        step_name: String,
         route: Route,
         topic_name: String,
         kafka_config: PyKafkaProducerConfig,
@@ -51,6 +60,7 @@ pub enum RuntimeOperator {
 
     #[pyo3(name = "GCSSink")]
     GCSSink {
+        step_name: String,
         route: Route,
         bucket: String,
         object_generator: Py<PyAny>,
@@ -61,6 +71,7 @@ pub enum RuntimeOperator {
     /// Simulates batching with configurable delays.
     #[pyo3(name = "DevNullSink")]
     DevNullSink {
+        step_name: String,
         route: Route,
         batch_size: Option<usize>,
         batch_time_ms: Option<f64>,
@@ -71,6 +82,7 @@ pub enum RuntimeOperator {
     /// message and submits a copy of that message to each downstream route.
     #[pyo3(name = "Broadcast")]
     Broadcast {
+        step_name: String,
         route: Route,
         downstream_routes: Py<PyAny>,
     },
@@ -78,6 +90,7 @@ pub enum RuntimeOperator {
     /// to one of the downstream routes.
     #[pyo3(name = "Router")]
     Router {
+        step_name: String,
         route: Route,
         routing_function: Py<PyAny>,
         downstream_routes: Py<PyAny>,
@@ -87,37 +100,66 @@ pub enum RuntimeOperator {
     /// to simplify the porting of python strategies to Rust.
     #[pyo3(name = "PythonAdapter")]
     PythonAdapter {
+        step_name: String,
         route: Route,
         delegate_factory: Py<PyAny>,
     },
 }
 
-/// Wires `next` with backpressure instrumentation using the pipeline step name (DSL `Step.name`)
-/// passed from Python when the step is registered on the consumer.
+impl RuntimeOperator {
+    /// Pipeline DSL `Step.name` for backpressure metric labels.
+    pub fn pipeline_step_name(&self) -> &str {
+        match self {
+            RuntimeOperator::Map { step_name, .. }
+            | RuntimeOperator::Filter { step_name, .. }
+            | RuntimeOperator::StreamSink { step_name, .. }
+            | RuntimeOperator::GCSSink { step_name, .. }
+            | RuntimeOperator::DevNullSink { step_name, .. }
+            | RuntimeOperator::Broadcast { step_name, .. }
+            | RuntimeOperator::Router { step_name, .. }
+            | RuntimeOperator::PythonAdapter { step_name, .. } => step_name.as_str(),
+        }
+    }
+}
+
+#[pymethods]
+impl RuntimeOperator {
+    /// Pipeline DSL step name (`Step.name`).
+    #[getter]
+    fn step_name(&self) -> String {
+        self.pipeline_step_name().to_string()
+    }
+}
+
+/// Wires `next` with backpressure instrumentation using [`RuntimeOperator::pipeline_step_name`].
 pub fn build(
     step: &Py<RuntimeOperator>,
-    pipeline_step_name: &str,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
     terminator_strategy: Box<dyn ProcessingStrategy<KafkaPayload>>,
     concurrency_config: &ConcurrencyConfig,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     let op = step.get();
-    let label = pipeline_step_name.to_string();
+    let label = op.pipeline_step_name().to_string();
     let next = Box::new(BackpressureNext::new(next, label.clone()));
     match op {
-        RuntimeOperator::Map { function, route } => {
-            // All functions (Python and Rust) are called the same way now
-            // Rust functions automatically release the GIL internally
+        RuntimeOperator::Map {
+            step_name: _,
+            function,
+            route,
+        } => {
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_map(route, func_ref, next)
         }
-        RuntimeOperator::Filter { function, route } => {
-            // All functions (Python and Rust) are called the same way now
-            // Rust functions automatically release the GIL internally
+        RuntimeOperator::Filter {
+            step_name: _,
+            function,
+            route,
+        } => {
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_filter(route, func_ref, next)
         }
         RuntimeOperator::StreamSink {
+            step_name: _,
             route,
             topic_name,
             kafka_config,
@@ -134,6 +176,7 @@ pub fn build(
             ))
         }
         RuntimeOperator::GCSSink {
+            step_name: _,
             route,
             bucket,
             object_generator,
@@ -150,6 +193,7 @@ pub fn build(
             ))
         }
         RuntimeOperator::DevNullSink {
+            step_name: _,
             route,
             batch_size,
             batch_time_ms,
@@ -167,9 +211,9 @@ pub fn build(
             ))
         }
         RuntimeOperator::Router {
+            step_name: _,
             route,
             routing_function,
-            // TODO: Router step will use downstream_routes once it's fixed to work with watermarks
             #[allow(unused_variables)]
             downstream_routes,
         } => {
@@ -178,6 +222,7 @@ pub fn build(
             build_router(route, func_ref, next)
         }
         RuntimeOperator::PythonAdapter {
+            step_name: _,
             route,
             delegate_factory,
         } => {
@@ -185,6 +230,7 @@ pub fn build(
             Box::new(PythonAdapter::new(route.clone(), factory, next, label))
         }
         RuntimeOperator::Broadcast {
+            step_name: _,
             route,
             downstream_routes,
         } => {

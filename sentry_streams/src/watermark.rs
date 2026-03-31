@@ -203,16 +203,15 @@ mod tests {
             let map_step = Py::new(
                 py,
                 RuntimeOperator::Map {
+                    step_name: "map".to_string(),
                     route: Route::new("source".to_string(), vec![]),
                     function: callable,
                 },
             )
             .unwrap();
-            let step_names = vec![String::from("map")];
             let mut watermark_step = build_chain(
                 "source",
                 &[map_step],
-                &step_names,
                 Box::new(WatermarkCommitOffsets::new(1)),
                 &ConcurrencyConfig::new(1),
                 &None,

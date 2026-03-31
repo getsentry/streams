@@ -92,7 +92,7 @@ class TransformChains:
 
     def segment_label(self, route: Route) -> str:
         """
-        Metric label for the chained map segment (joined step names), before `finalize`.
+        Metric label for the chained map segment: the first map step's name, before `finalize`.
         """
         hashable_route = _hashable_route(route)
         if hashable_route not in self.__chains:
@@ -100,7 +100,7 @@ class TransformChains:
         steps = self.__chains[hashable_route].steps
         if not steps:
             return route.source
-        return ">".join(step.name for step in steps)
+        return steps[0].name
 
     def finalize(
         self, route: Route
