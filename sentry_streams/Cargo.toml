@@ -36,6 +36,8 @@ extension-module = ["pyo3/extension-module"]
 cli = ["dep:clap", "pyo3/auto-initialize"]
 
 [dev-dependencies]
+metrics-util = { version = "0.20.1", default-features = false, features = ["debugging"] }
+ordered-float = { version = "5", default-features = false }
 parking_lot = "0.12.1"
 pyo3 = { version = "*", features = ["auto-initialize"] }
 
