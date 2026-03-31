@@ -90,6 +90,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         let route = message.payload().route.clone();
         let actual_route = self.route.clone();
 
+        let pybytes_start = std::time::Instant::now();
         let bytes: Vec<u8> = match message.payload().payload {
             RoutedValuePayload::PyStreamingMessage(ref py_message) => {
                 traced_with_gil!(|py| pybytes_to_bytes(py_message, py)).unwrap()
@@ -98,6 +99,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 return Box::pin(async move { Ok(message) });
             }
         };
+        let pybytes_ms = pybytes_start.elapsed().as_millis();
 
         let bytes_len = bytes.len();
 
@@ -113,6 +115,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
             // Lazily initialize the auth provider on first use. Since it is async, it may call
             // external services, so we don't want it to block initialization. If we fail to get an
             // auth provider the error is fatal and should stop the pipeline.
+            let token_start = std::time::Instant::now();
             let auth_provider = auth_provider_cell
                 .get_or_init(|| async {
                     provider().await.expect("Failed to get gcp_auth provider")
@@ -126,7 +129,9 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 tracing::warn!("Failed to obtain token: {:?}", e);
                 RunTaskError::RetryableError
             })?;
+            let token_ms = token_start.elapsed().as_millis();
 
+            let request_start = std::time::Instant::now();
             let response = client
                 .post(&url)
                 .header(
@@ -140,6 +145,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     tracing::warn!("Failed to send request: {:?}", e);
                     RunTaskError::RetryableError
                 })?;
+            let request_ms = request_start.elapsed().as_millis();
 
             let status = response.status();
             if !status.is_success() {
@@ -163,7 +169,13 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     bucket_str,
                     object_name
                 );
-                tracing::info!("Length of bytes successfully written: {}", bytes_len);
+                tracing::info!(
+                    "Length of bytes successfully written: {} (pybytes_to_bytes_ms={}, token_ms={}, request_ms={})",
+                    bytes_len,
+                    pybytes_ms,
+                    token_ms,
+                    request_ms
+                );
                 Ok(message)
             }
         })
