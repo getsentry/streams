@@ -1577,6 +1577,8 @@ dependencies = [
  "log",
  "metrics",
  "metrics-exporter-dogstatsd",
+ "metrics-util",
+ "ordered-float",
  "parking_lot",
  "pyo3",
  "rand 0.8.5",

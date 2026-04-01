@@ -90,6 +90,18 @@ class TransformChains:
             raise ValueError(f"Chain {route} not initialized")
         self.__chains[hashable_route].steps.append(step)
 
+    def segment_label(self, route: Route) -> str:
+        """
+        Metric label for the chained map segment: the first map step's name, before `finalize`.
+        """
+        hashable_route = _hashable_route(route)
+        if hashable_route not in self.__chains:
+            raise ValueError(f"No chain for route {route}")
+        steps = self.__chains[hashable_route].steps
+        if not steps:
+            return route.source
+        return steps[0].name
+
     def finalize(
         self, route: Route
     ) -> Tuple[MultiProcessConfig | None, Callable[[Message[Any]], Message[Any]]]:

@@ -2,6 +2,7 @@
 //! processing strategy that delegates the processing of messages to the
 //! python operator.
 
+use crate::backpressure_metrics::{record_send_rejected, send_on_success, BackpressureTracker};
 use crate::committable::{clone_committable, convert_committable_to_py, convert_py_committable};
 use crate::messages::{PyWatermark, RoutedValuePayload, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
@@ -38,6 +39,8 @@ pub struct PythonAdapter {
     // TODO: Add a mutex here
     next_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
     commit_request_carried_over: Option<CommitRequest>,
+    backpressure_step_label: String,
+    send_tracker: BackpressureTracker,
 }
 
 impl PythonAdapter {
@@ -45,6 +48,7 @@ impl PythonAdapter {
         route: Route,
         delegate_factory: Py<PyAny>,
         next_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
+        backpressure_step_label: String,
     ) -> Self {
         traced_with_gil!(|py| {
             let processing_step = delegate_factory.call_method0(py, "build").unwrap();
@@ -55,6 +59,8 @@ impl PythonAdapter {
                 next_strategy,
                 transformed_messages: VecDeque::new(),
                 commit_request_carried_over: None,
+                backpressure_step_label,
+                send_tracker: BackpressureTracker::default(),
             }
         })
     }
@@ -118,8 +124,13 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     ///
     /// Any other exception is unexpected and triggers a panic.
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
+        let label = &self.backpressure_step_label;
         if self.route != message.payload().route {
-            return self.next_strategy.submit(message);
+            let r = self.next_strategy.submit(message);
+            if r.is_ok() {
+                send_on_success(label, &mut self.send_tracker);
+            }
+            return r;
         }
 
         let committable = match &message.payload().payload {
@@ -142,10 +153,12 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                     .call_method1(py, "submit", (python_payload, py_committable));
 
             let Err(py_err) = res else {
+                send_on_success(label, &mut self.send_tracker);
                 return Ok(());
             };
 
             if py_err.is_instance(py, &py.get_type::<MessageRejected>()) {
+                record_send_rejected(label, &mut self.send_tracker);
                 Err(SubmitError::MessageRejected(
                     sentry_arroyo::processing::strategies::MessageRejected { message },
                 ))
@@ -377,6 +390,7 @@ class RustOperatorDelegateFactory:
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 instance.unbind(),
                 Box::new(Noop {}),
+                String::from("PythonAdapter:test"),
             );
 
             let message = make_msg(py, "ok");
@@ -428,6 +442,7 @@ class RustOperatorDelegateFactory:
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 instance.unbind(),
                 Box::new(next_step),
+                String::from("PythonAdapter:test"),
             );
 
             let message = make_msg(py, "ok");
@@ -497,6 +512,7 @@ class RustOperatorDelegateFactory:
                 Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 instance.unbind(),
                 Box::new(next_step),
+                String::from("PythonAdapter:test"),
             );
 
             let message = make_msg(py, "ok");

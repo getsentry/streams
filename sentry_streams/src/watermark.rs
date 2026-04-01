@@ -203,6 +203,7 @@ mod tests {
             let map_step = Py::new(
                 py,
                 RuntimeOperator::Map {
+                    step_name: "map".to_string(),
                     route: Route::new("source".to_string(), vec![]),
                     function: callable,
                 },

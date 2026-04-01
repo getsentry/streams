@@ -5,6 +5,7 @@
 //! and all the steps following that source.
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
+use crate::backpressure_metrics::BackpressureNext;
 use crate::commit_policy::WatermarkCommitOffsets;
 use crate::kafka_config::PyKafkaConsumerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
@@ -97,8 +98,7 @@ impl ArroyoConsumer {
     }
 
     /// Add a step to the Consumer pipeline at the end of it.
-    /// This class is supposed to be instantiated by the Python adapter
-    /// so it takes the steps descriptor as a Py<RuntimeOperator>.
+    /// Backpressure metric labels use each step's [`RuntimeOperator::pipeline_step_name`].
     fn add_step(&mut self, step: Py<RuntimeOperator>) {
         self.steps.push(step);
     }
@@ -223,6 +223,10 @@ pub fn build_chain(
     for step in steps.iter().rev() {
         next = build(step, next, Box::new(Noop {}), concurrency_config);
     }
+    let next = Box::new(BackpressureNext::new(
+        next,
+        format!("WatermarkEmitter:{source}"),
+    ));
     let watermark_step = Box::new(WatermarkEmitter::new(
         next,
         Route {
@@ -380,6 +384,7 @@ mod tests {
             let r = Py::new(
                 py,
                 RuntimeOperator::Map {
+                    step_name: "map".to_string(),
                     route: Route::new("source".to_string(), vec![]),
                     function: callable,
                 },

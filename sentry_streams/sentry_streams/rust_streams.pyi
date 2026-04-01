@@ -59,17 +59,26 @@ class PyMetricConfig:
     def flush_interval_ms(self) -> int | None: ...
 
 class RuntimeOperator:
+    @property
+    def step_name(self) -> str: ...
     @classmethod
-    def Map(cls, route: Route, function: Callable[[Message[Any]], Any]) -> Self: ...
+    def Map(cls, step_name: str, route: Route, function: Callable[[Message[Any]], Any]) -> Self: ...
     @classmethod
-    def Filter(cls, route: Route, function: Callable[[Message[Any]], bool]) -> Self: ...
+    def Filter(
+        cls, step_name: str, route: Route, function: Callable[[Message[Any]], bool]
+    ) -> Self: ...
     @classmethod
     def StreamSink(
-        cls, route: Route, topic_name: str, kafka_config: PyKafkaProducerConfig
+        cls,
+        step_name: str,
+        route: Route,
+        topic_name: str,
+        kafka_config: PyKafkaProducerConfig,
     ) -> Self: ...
     @classmethod
     def GCSSink(
         cls,
+        step_name: str,
         route: Route,
         bucket: str,
         object_generator: Callable[[], str],
@@ -78,6 +87,7 @@ class RuntimeOperator:
     @classmethod
     def DevNullSink(
         cls,
+        step_name: str,
         route: Route,
         batch_size: int | None = None,
         batch_time_ms: float | None = None,
@@ -87,14 +97,17 @@ class RuntimeOperator:
     @classmethod
     def Router(
         cls,
+        step_name: str,
         route: Route,
         function: Callable[[Message[Any]], str],
         downstream_routes: Sequence[str],
     ) -> Self: ...
     @classmethod
-    def Broadcast(cls, route: Route, downstream_routes: Sequence[str]) -> Self: ...
+    def Broadcast(cls, step_name: str, route: Route, downstream_routes: Sequence[str]) -> Self: ...
     @classmethod
-    def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
+    def PythonAdapter(
+        cls, step_name: str, route: Route, delegate_Factory: RustOperatorFactory
+    ) -> Self: ...
 
 class ArroyoConsumer:
     def __init__(

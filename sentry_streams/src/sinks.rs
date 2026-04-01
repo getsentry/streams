@@ -4,6 +4,10 @@
 //! As all the strategies in the Arroyo streaming pipeline adapter,
 //! This checks whether a message should be processed or forwarded
 //! via the `Route` attribute.
+use crate::backpressure_metrics::{
+    record_rcvd_rejected, record_send_rejected, recv_on_success, send_on_success,
+    BackpressureTracker,
+};
 use crate::messages::{PyStreamingMessage, RoutedValuePayload, Watermark, WatermarkMessage};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
@@ -153,6 +157,9 @@ pub struct StreamSink {
     /// passed to the transformer function and been mutated.
     message_carried_over: Option<Message<KafkaPayload>>,
     commit_request_carried_over: Option<CommitRequest>,
+    backpressure_step_label: String,
+    send_tracker: BackpressureTracker,
+    produce_recv_tracker: BackpressureTracker,
 }
 
 impl StreamSink {
@@ -163,6 +170,7 @@ impl StreamSink {
         topic: &str,
         next_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
         terminator_strategy: Box<dyn ProcessingStrategy<KafkaPayload>>,
+        backpressure_step_label: String,
     ) -> Self {
         let produce_strategy = Produce::new(
             terminator_strategy,
@@ -177,6 +185,9 @@ impl StreamSink {
             next_strategy,
             message_carried_over: None,
             commit_request_carried_over: None,
+            backpressure_step_label,
+            send_tracker: BackpressureTracker::default(),
+            produce_recv_tracker: BackpressureTracker::default(),
         }
     }
 }
@@ -198,17 +209,21 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
             produce_commit_request,
         );
 
+        let label = &self.backpressure_step_label;
         if let Some(message) = self.message_carried_over.take() {
             match self.produce_strategy.submit(message) {
                 Err(SubmitError::MessageRejected(MessageRejected {
                     message: transformed_message,
                 })) => {
+                    record_rcvd_rejected(label, &mut self.produce_recv_tracker);
                     self.message_carried_over = Some(transformed_message);
                 }
                 Err(SubmitError::InvalidMessage(invalid_message)) => {
                     return Err(invalid_message.into());
                 }
-                Ok(_) => {}
+                Ok(_) => {
+                    recv_on_success(label, &mut self.produce_recv_tracker);
+                }
             }
         }
 
@@ -219,27 +234,36 @@ impl ProcessingStrategy<RoutedValue> for StreamSink {
     /// corresponds to the route in the message correspond to the Route
     /// attribute in this strategy.
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
+        let label = &self.backpressure_step_label;
         if self.message_carried_over.is_some() {
+            record_send_rejected(label, &mut self.send_tracker);
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
         // TODO: pass watermark messages on to produce step once produce step is async and we have a wrapper
         // around it to handle watermarks
         if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
-            self.next_strategy.submit(message)
+            let r = self.next_strategy.submit(message);
+            if r.is_ok() {
+                send_on_success(label, &mut self.send_tracker);
+            }
+            r
         } else {
             match self.produce_strategy.submit(to_kafka_payload(message)) {
                 Err(SubmitError::MessageRejected(MessageRejected {
                     message: transformed_message,
                 })) => {
-                    println!("Message rejected: {:?}", transformed_message);
+                    record_rcvd_rejected(label, &mut self.produce_recv_tracker);
                     self.message_carried_over = Some(transformed_message);
                 }
                 Err(SubmitError::InvalidMessage(invalid_message)) => {
                     return Err(SubmitError::InvalidMessage(invalid_message));
                 }
-                Ok(_) => {}
+                Ok(_) => {
+                    recv_on_success(label, &mut self.produce_recv_tracker);
+                }
             }
+            send_on_success(label, &mut self.send_tracker);
             Ok(())
         }
     }
@@ -369,6 +393,7 @@ mod tests {
             "result-topic",
             Box::new(next_step),
             Box::new(Noop {}),
+            String::from("StreamSink:test"),
         );
 
         let watermark_val = RoutedValue {
@@ -409,6 +434,7 @@ mod tests {
             "result-topic",
             Box::new(next_step),
             Box::new(terminator),
+            String::from("StreamSink:test"),
         );
 
         traced_with_gil!(|py| {

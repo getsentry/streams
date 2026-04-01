@@ -197,6 +197,7 @@ def finalize_chain(
     chains: TransformChains,
     route: Route,
     metrics_config: MetricsConfig,
+    segment_label: str,
 ) -> RuntimeOperator:
     rust_route = RustRoute(route.source, route.waypoints)
     config, func = chains.finalize(route)
@@ -209,6 +210,7 @@ def finalize_chain(
         )
 
         return RuntimeOperator.PythonAdapter(
+            segment_label,
             rust_route,
             MultiprocessDelegateFactory(
                 func,
@@ -226,7 +228,7 @@ def finalize_chain(
         )
     else:
         logger.info(f"Finalizing chain for route {route} without multiprocessing")
-        return RuntimeOperator.Map(rust_route, lambda msg: func(msg).to_inner())
+        return RuntimeOperator.Map(segment_label, rust_route, lambda msg: func(msg).to_inner())
 
 
 class RustArroyoAdapter(StreamAdapter[Route, Route]):
@@ -259,8 +261,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
     def __close_chain(self, stream: Route) -> None:
         if self.__chains.exists(stream):
             logger.info(f"Closing transformation chain: {stream} and adding to pipeline")
+            segment_label = self.__chains.segment_label(stream)
             self.__consumers[stream.source].add_step(
-                finalize_chain(self.__chains, stream, self.__metrics_config)
+                finalize_chain(self.__chains, stream, self.__metrics_config, segment_label),
             )
 
     def get_consumer(self, source: str) -> ArroyoConsumer:
@@ -332,19 +335,22 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
             logger.info(f"Adding GCS sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, step.bucket, wrapped_generator, step.thread_count)
+                RuntimeOperator.GCSSink(
+                    step.name, route, step.bucket, wrapped_generator, step.thread_count
+                ),
             )
 
         elif isinstance(step, DevNullSink):
             logger.info(f"Adding DevNull sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.DevNullSink(
+                    step.name,
                     route,
                     batch_size=step.batch_size,
                     batch_time_ms=step.batch_time_ms,
                     average_sleep_time_ms=step.average_sleep_time_ms,
                     max_sleep_time_ms=step.max_sleep_time_ms,
-                )
+                ),
             )
 
         # Our fallback for now since there's no other Sink type
@@ -353,10 +359,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             logger.info(f"Adding stream sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.StreamSink(
+                    step.name,
                     route,
                     step.stream_name,
                     build_kafka_producer_config(step.name, self.steps_config),
-                )
+                ),
             )
 
         return stream
@@ -449,7 +456,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
 
-        self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.Filter(step.name, route, filter_msg)
+        )
 
         return stream
 
@@ -472,7 +481,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding reduce: {step.name} to pipeline")
 
         self.__consumers[stream.source].add_step(
-            RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
+            RuntimeOperator.PythonAdapter(step.name, route, ReduceDelegateFactory(step)),
         )
         return stream
 
@@ -495,8 +504,10 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding broadcast: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(
             RuntimeOperator.Broadcast(
-                route, downstream_routes=[branch.root.name for branch in step.routes]
-            )
+                step.name,
+                route,
+                downstream_routes=[branch.root.name for branch in step.routes],
+            ),
         )
         return build_branches(stream, step.routes)
 
@@ -534,8 +545,11 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding router: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(
             RuntimeOperator.Router(
-                route, routing_function, cast(Sequence[str], step.routing_table.values())
-            )
+                step.name,
+                route,
+                routing_function,
+                cast(Sequence[str], step.routing_table.values()),
+            ),
         )
         return build_branches(stream, step.routing_table.values())
 

@@ -341,13 +341,18 @@ def test_gcssink_instantiation() -> None:
 
     route = Route(source="test-source", waypoints=["step1", "step2"])
     RuntimeOperator.GCSSink(
-        route=route, bucket="my-bucket", object_generator=generate_file_name, thread_count=1
+        step_name="gcs_step",
+        route=route,
+        bucket="my-bucket",
+        object_generator=generate_file_name,
+        thread_count=1,
     )
 
 
 def test_devnullsink_instantiation() -> None:
     route = Route(source="test-source", waypoints=["step1", "step2"])
     RuntimeOperator.DevNullSink(
+        step_name="devnull",
         route=route,
         batch_size=None,
         batch_time_ms=None,
@@ -357,6 +362,7 @@ def test_devnullsink_instantiation() -> None:
 
     # Test with batch configuration
     RuntimeOperator.DevNullSink(
+        step_name="devnull_batched",
         route=route,
         batch_size=100,
         batch_time_ms=10000.0,  # 10 seconds in ms
