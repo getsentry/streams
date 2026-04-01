@@ -24,13 +24,17 @@ from multiprocessing import Process
 from typing import Final
 
 import click
-from confluent_kafka import Producer
+from confluent_kafka import KafkaError, Message, Producer
 from google.protobuf.timestamp_pb2 import Timestamp
 from sentry_protos.snuba.v1 import trace_item_pb2
 from sentry_protos.snuba.v1.request_common_pb2 import TraceItemType
 
 TARGET_PAYLOAD_BYTES: Final[int] = 2560
 SIZE_TOLERANCE: Final[int] = 120
+
+# librdkafka local queue: cap matches max outstanding; throttle earlier so callbacks drain.
+MAX_OUTSTANDING_MESSAGES: Final[int] = 100_000
+HIGH_WATER_OUTSTANDING: Final[int] = 90_000
 
 
 def _utc_timestamp() -> Timestamp:
@@ -131,7 +135,21 @@ def _producer_worker(
     else:
         rng = random.Random()
 
-    producer = Producer({"bootstrap.servers": bootstrap_servers})
+    outstanding = 0
+    delivery_failures: list[KafkaError] = []
+
+    def delivery_callback(err: KafkaError | None, _msg: Message) -> None:
+        nonlocal outstanding
+        outstanding -= 1
+        if err is not None:
+            delivery_failures.append(err)
+
+    producer = Producer(
+        {
+            "bootstrap.servers": bootstrap_servers,
+            "queue.buffering.max.messages": MAX_OUTSTANDING_MESSAGES,
+        }
+    )
 
     for i in range(messages_per_worker):
         header_item_type = 1 if rng.random() < 0.95 else 2
@@ -141,13 +159,28 @@ def _producer_worker(
             rng=rng,
             header_item_type=header_item_type,
         )
-        producer.produce(
-            topic,
-            value=payload,
-            headers=[("item_type", str(header_item_type).encode("ascii"))],
-        )
+        while True:
+            while outstanding >= HIGH_WATER_OUTSTANDING:
+                producer.poll(0.5)
+            try:
+                producer.produce(
+                    topic,
+                    value=payload,
+                    headers=[("item_type", str(header_item_type).encode("ascii"))],
+                    callback=delivery_callback,
+                )
+                outstanding += 1
+                producer.poll(0)
+                break
+            except BufferError:
+                producer.poll(0.5)
 
     producer.flush()
+    if delivery_failures:
+        raise RuntimeError(
+            f"worker {worker_id}: {len(delivery_failures)} message(s) failed delivery "
+            f"(first: {delivery_failures[0]!r})"
+        )
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
