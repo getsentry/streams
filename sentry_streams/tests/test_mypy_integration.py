@@ -14,7 +14,7 @@ def test_mypy_detects_correct_pipeline(tmp_path: Path) -> None:
 
     # Create a test file with correct types
     correct_code = """
-from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
+from sentry_streams.pipeline.pipeline import PredicateFilter, Map, Parser, streaming_source, StreamSink
 from sentry_streams.pipeline.message import Message
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 from sentry_streams.examples.transform_metrics import transform_msg
@@ -27,7 +27,7 @@ def create_correct_pipeline():
     return (
         streaming_source("input", "test-stream")
         .apply(Parser[IngestMetric]("parser"))                      # bytes -> IngestMetric
-        .apply(Filter("filter", function=filter_events))            # IngestMetric -> IngestMetric
+        .apply(PredicateFilter("filter", function=filter_events))            # IngestMetric -> IngestMetric
         .apply(Map("transform", function=transform_msg))            # IngestMetric -> Mapping[str, Any]
         .sink(StreamSink("output", "output-stream"))
     )
@@ -58,7 +58,7 @@ def test_mypy_detects_type_mismatch(tmp_path: Path) -> None:
     """Test that mypy detects type mismatches in pipeline definitions"""
 
     wrong_code = """
-from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
+from sentry_streams.pipeline.pipeline import PredicateFilter, Map, Parser, streaming_source, StreamSink
 from sentry_streams.pipeline.message import Message
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 from sentry_streams.examples.transform_metrics import transform_msg
@@ -72,7 +72,7 @@ def create_wrong_pipeline():
     return (
         streaming_source("input", "test-stream")
         .apply(Parser[IngestMetric]("parser"))              # bytes -> IngestMetric
-        .apply(Filter("filter", function=filter_events))    # IngestMetric -> IngestMetric
+        .apply(PredicateFilter("filter", function=filter_events))    # IngestMetric -> IngestMetric
         .apply(Map("transform", function=transform_msg))    # IngestMetric -> Mapping[str, Any]
         .apply(Map("wrong", function=transform_msg))        # Expects Message[IngestMetric], gets Message[Mapping[str, Any]]!
         .sink(StreamSink("output", "output-stream"))
@@ -108,7 +108,7 @@ def test_mypy_detects_correct_pipeline_rust(tmp_path: Path, rust_test_functions:
     # Create a test file with correct types
     correct_code = """
 from rust_test_functions import TestFilterCorrect, TestMapCorrect, TestMapString, TestMessage
-from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
+from sentry_streams.pipeline.pipeline import PredicateFilter, Map, Parser, streaming_source, StreamSink
 from sentry_streams.pipeline.message import Message
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 from sentry_streams.examples.transform_metrics import transform_msg
@@ -121,7 +121,7 @@ def create_correct_pipeline():
     return (
         streaming_source("input", "test-stream")
         .apply(Parser[TestMessage]("parser"))                       # bytes -> TestMessage
-        .apply(Filter("filter", function=TestFilterCorrect()))      # TestMessage -> TestMessage
+        .apply(PredicateFilter("filter", function=TestFilterCorrect()))      # TestMessage -> TestMessage
         .apply(Map("transform", function=TestMapCorrect()))         # TestMessage -> String
         .apply(Map("length", function=TestMapString()))             # String -> u64
         .sink(StreamSink("output", "output-stream"))
@@ -153,7 +153,7 @@ def test_mypy_detects_type_mismatch_rust(tmp_path: Path, rust_test_functions: ob
     """Test that mypy detects type mismatches in pipeline definitions"""
 
     wrong_code = """
-from sentry_streams.pipeline.pipeline import Filter, Map, Parser, streaming_source, StreamSink
+from sentry_streams.pipeline.pipeline import PredicateFilter, Map, Parser, streaming_source, StreamSink
 
 from rust_test_functions import TestFilterCorrect, TestMapCorrect, TestMapWrongType, TestMessage
 
@@ -162,7 +162,7 @@ def create_wrong_pipeline():
     return (
         streaming_source("input", "test-stream")
         .apply(Parser[TestMessage]("parser"))                       # bytes -> TestMessage
-        .apply(Filter("filter", function=TestFilterCorrect()))      # TestMessage -> TestMessage
+        .apply(PredicateFilter("filter", function=TestFilterCorrect()))      # TestMessage -> TestMessage
         .apply(Map("wrong", function=TestMapWrongType()))           # Expects Message[bool], gets Message[TestMessage]!
         .sink(StreamSink("output", "output-stream"))
     )

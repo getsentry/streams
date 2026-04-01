@@ -48,8 +48,9 @@ from sentry_streams.pipeline.pipeline import (
     ComplexStep,
     Filter,
     FlatMap,
-    HeaderIntFilter,
+    HeadersFilter,
     Map,
+    PredicateFilter,
     Reduce,
     Router,
     RoutingFuncReturnType,
@@ -234,7 +235,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         """
         raise NotImplementedError
 
-    def filter(self, step: Filter[Any] | HeaderIntFilter[Any], stream: Route) -> Route:
+    def filter(self, step: Filter[Any], stream: Route) -> Route:
         """
         Builds a filter operator for the platform the adapter supports.
         """
@@ -242,10 +243,15 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a filter"
 
-        if isinstance(step, HeaderIntFilter):
+        if isinstance(step, HeadersFilter):
             raise NotImplementedError(
-                "HeaderIntFilter is only supported by the Rust Arroyo adapter (rust_arroyo), "
+                "HeadersFilter is only supported by the Rust Arroyo adapter (rust_arroyo), "
                 "not the pure Python Arroyo adapter."
+            )
+        if not isinstance(step, PredicateFilter):
+            raise TypeError(
+                f"Unsupported filter step type {type(step).__name__!r}; "
+                "expected PredicateFilter (pure Python path) or HeadersFilter (use rust_arroyo)."
             )
         self.__consumers[stream.source].add_step(FilterStep(route=stream, pipeline_step=step))
         return stream

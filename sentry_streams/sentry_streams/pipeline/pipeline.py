@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
 from functools import partial
@@ -410,7 +410,7 @@ class FunctionTransform(Transform[TIn, TOut], Generic[TIn, TOut]):
         return func
 
     def post_rust_function_validation(self, func: InternalRustFunction[TIn, TOut]) -> None:
-        # Overridden in Filter step
+        # Overridden in PredicateFilter step
         pass
 
     def validate(self) -> None:
@@ -442,12 +442,33 @@ class Map(FunctionTransform[TIn, TOut], Generic[TIn, TOut]):
 @dataclass
 class Filter(Transform[TIn, TIn], Generic[TIn]):
     """
-    A simple Filter, taking a single input and either returning it or None as output.
-    Note: Filter preserves the input type as output type.
+    Base class for filter steps. Use :class:`PredicateFilter` for a callable predicate
+    or :class:`HeadersFilter` for integer equality on a Kafka-style header.
+
+    ``step_type`` is keyword-only so concrete filters keep a natural positional
+    ``(name, function, ...)`` constructor order.
+    """
+
+    step_type: StepType = field(default=StepType.FILTER, kw_only=True)
+
+    def __post_init__(self) -> None:
+        if type(self) is Filter:
+            raise TypeError(
+                "Filter is not directly instantiable; use PredicateFilter or HeadersFilter."
+            )
+
+
+@dataclass
+class PredicateFilter(Filter[TIn], Generic[TIn]):
+    """
+    Filter using a predicate: a Python (or internal Rust) callable that returns bool.
+    Preserves the input type as output type.
     """
 
     function: Union[Callable[[Message[TIn]], bool], str]
-    step_type: StepType = StepType.FILTER
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
 
     def post_rust_function_validation(self, func: InternalRustFunction[TIn, TOut]) -> None:
         output_type = func.output_type()
@@ -476,8 +497,12 @@ class Filter(Transform[TIn, TIn], Generic[TIn]):
         return function_callable
 
 
+# Backward compatibility (prefer PredicateFilter).
+FunctionFilter = PredicateFilter
+
+
 @dataclass
-class HeaderIntFilter(Transform[TIn, TIn], Generic[TIn]):
+class HeadersFilter(Filter[TIn], Generic[TIn]):
     """
     Keep messages whose Kafka-style header ``header_name`` equals ``value`` (integer).
 
@@ -489,11 +514,17 @@ class HeaderIntFilter(Transform[TIn, TIn], Generic[TIn]):
 
     header_name: str
     value: int
-    step_type: StepType = StepType.FILTER
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
 
     def validate(self) -> None:
         if not self.header_name:
             raise ValueError("header_name must be non-empty")
+
+
+# Backward compatibility (prefer HeadersFilter).
+HeaderIntFilter = HeadersFilter
 
 
 @dataclass

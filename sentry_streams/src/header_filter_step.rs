@@ -94,8 +94,7 @@ impl ProcessingStrategy<RoutedValue> for HeaderIntEqualityFilter {
     }
 
     fn join(&mut self, timeout: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
-        self.next_step.join(timeout)?;
-        Ok(None)
+        self.next_step.join(timeout)
     }
 }
 

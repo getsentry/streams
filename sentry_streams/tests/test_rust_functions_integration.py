@@ -14,8 +14,8 @@ from sentry_streams.adapters.arroyo.adapter import ArroyoAdapter
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.pipeline.message import PyMessage as Message
 from sentry_streams.pipeline.pipeline import (
-    Filter,
     Map,
+    PredicateFilter,
     Serializer,
     StreamSink,
     streaming_source,
@@ -25,7 +25,10 @@ from sentry_streams.runner import iterate_edges
 
 def test_basic_rust_function_execution(rust_test_functions: Any) -> None:
     """Test that Rust functions execute correctly in a pipeline"""
-    from rust_test_functions import TestFilterCorrect, TestMapCorrect
+    from rust_test_functions import (  # type: ignore[import-not-found]
+        TestFilterCorrect,
+        TestMapCorrect,
+    )
 
     # TestMessage in Rust corresponds to dicts with id/content in Python
     test_messages = [
@@ -86,7 +89,7 @@ def test_rust_functions_with_message_flow(rust_test_functions: Any) -> None:
     pipeline = (
         streaming_source("input", stream_name="ingest-metrics")
         .apply(Map("json_parser", function=cast(Any, parse_json_bytes)))
-        .apply(Filter("rust_filter", function=cast(Any, TestFilterCorrect())))
+        .apply(PredicateFilter("rust_filter", function=cast(Any, TestFilterCorrect())))
         .apply(Map("rust_map", function=cast(Any, TestMapCorrect())))
         .apply(Map("capture", function=cast(Any, capture_result)))
         .apply(Serializer("serializer"))

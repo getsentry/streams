@@ -5,9 +5,9 @@ Rust version of simple_map_filter.py example
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline.pipeline import (
-    Filter,
     Map,
     Parser,
+    PredicateFilter,
     Serializer,
     StreamSink,
     streaming_source,
@@ -15,7 +15,7 @@ from sentry_streams.pipeline.pipeline import (
 
 # Import the compiled Rust functions
 try:
-    from metrics_rust_transforms import (
+    from metrics_rust_transforms import (  # type: ignore[import-not-found]
         RustFilterEvents,
         RustTransformMsg,
     )
@@ -38,7 +38,7 @@ pipeline = streaming_source(
 (
     pipeline.apply(Parser[IngestMetric]("parser"))
     # This filter will run in native Rust with zero Python overhead
-    .apply(Filter("filter", function=RustFilterEvents()))
+    .apply(PredicateFilter("filter", function=RustFilterEvents()))
     # This transform will run in native Rust with zero Python overhead
     .apply(Map("transform", function=RustTransformMsg()))
     .apply(Serializer("serializer"))

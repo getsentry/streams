@@ -53,8 +53,9 @@ from sentry_streams.pipeline.pipeline import (
     Filter,
     FlatMap,
     GCSSink,
-    HeaderIntFilter,
+    HeadersFilter,
     Map,
+    PredicateFilter,
     Reduce,
     Router,
     RoutingFuncReturnType,
@@ -419,7 +420,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding flatMap: {step.name} to pipeline")
         raise NotImplementedError
 
-    def filter(self, step: Filter[Any] | HeaderIntFilter[Any], stream: Route) -> Route:
+    def filter(self, step: Filter[Any], stream: Route) -> Route:
         """
         Builds a filter operator for the platform the adapter supports.
         """
@@ -436,7 +437,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
 
-        if isinstance(step, HeaderIntFilter):
+        if isinstance(step, HeadersFilter):
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.HeaderIntFilter(
                     route=route,
@@ -445,6 +446,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 )
             )
             return stream
+
+        if not isinstance(step, PredicateFilter):
+            raise TypeError(
+                f"Unsupported filter step type {type(step).__name__!r}; "
+                "expected PredicateFilter or HeadersFilter."
+            )
 
         def filter_msg(msg: Message[Any]) -> bool:
             msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
