@@ -150,8 +150,12 @@ def _producer_worker(
             "queue.buffering.max.messages": MAX_OUTSTANDING_MESSAGES,
         }
     )
-
+    count = 0
     for i in range(messages_per_worker):
+        if count % 1000 == 0:
+            print(f"Produced {count} messages")
+            count += 1
+
         header_item_type = 1 if rng.random() < 0.95 else 2
         payload = _serialize_near_target_size(
             worker_id=worker_id,
