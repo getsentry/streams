@@ -72,6 +72,33 @@ pub fn build_routed_value(
 }
 
 #[cfg(test)]
+pub fn build_routed_value_with_headers(
+    py: Python<'_>,
+    msg_payload: Py<PyAny>,
+    source: &str,
+    waypoints: Vec<String>,
+    headers: Vec<(String, Vec<u8>)>,
+) -> RoutedValue {
+    let route = Route::new(source.to_string(), waypoints);
+    let payload = PyStreamingMessage::PyAnyMessage {
+        content: into_pyany(
+            py,
+            PyAnyMessage {
+                payload: msg_payload,
+                headers,
+                timestamp: 0.0,
+                schema: None,
+            },
+        )
+        .unwrap(),
+    };
+    RoutedValue {
+        route,
+        payload: RoutedValuePayload::PyStreamingMessage(payload),
+    }
+}
+
+#[cfg(test)]
 pub fn build_raw_routed_value(
     py: Python<'_>,
     msg_payload: Vec<u8>,
