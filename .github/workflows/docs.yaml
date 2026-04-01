@@ -10,15 +10,15 @@ jobs:
     name: Sphinx
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version-file: sentry_streams/.python-version
       - name: Build docs
         run: |
           make install-dev
           make docs
-      - uses: peaceiris/actions-gh-pages@v3.7.3
+      - uses: peaceiris/actions-gh-pages@9ff5650f8afb92c8ab30c4ba4ff4261dd7eeb9c3 # v3.7.3
         name: Publish to GitHub Pages
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -26,7 +26,7 @@ jobs:
           force_orphan: true
 
       - name: Archive Docs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: docs
           path: sentry_streams/docs/build
