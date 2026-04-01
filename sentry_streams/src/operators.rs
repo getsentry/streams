@@ -1,4 +1,5 @@
 use crate::broadcaster::Broadcaster;
+use crate::header_filter_step::build_header_int_filter;
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
@@ -38,6 +39,14 @@ pub enum RuntimeOperator {
     /// is provided to transform the message payload into a bool.
     #[pyo3(name = "Filter")]
     Filter { route: Route, function: Py<PyAny> },
+
+    /// Filter by integer equality on a message header (Rust-only, no Python predicate).
+    #[pyo3(name = "HeaderIntFilter")]
+    HeaderIntFilter {
+        route: Route,
+        header_name: String,
+        expected_value: i64,
+    },
 
     /// Represents a Kafka Producer as a Sink in the pipeline.
     /// It is translated to an Arroyo Kafka producer.
@@ -110,6 +119,11 @@ pub fn build(
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_filter(route, func_ref, next)
         }
+        RuntimeOperator::HeaderIntFilter {
+            route,
+            header_name,
+            expected_value,
+        } => build_header_int_filter(route, header_name.clone(), *expected_value, next),
         RuntimeOperator::StreamSink {
             route,
             topic_name,

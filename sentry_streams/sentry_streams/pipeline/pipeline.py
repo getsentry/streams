@@ -477,6 +477,26 @@ class Filter(Transform[TIn, TIn], Generic[TIn]):
 
 
 @dataclass
+class HeaderIntFilter(Transform[TIn, TIn], Generic[TIn]):
+    """
+    Keep messages whose Kafka-style header ``header_name`` equals ``value`` (integer).
+
+    The Rust runtime evaluates this without invoking Python; header bytes may be UTF-8
+    decimal text or a big-endian 8-byte i64.
+
+    Not supported by the pure Python Arroyo adapter (use the Rust ``rust_arroyo`` adapter).
+    """
+
+    header_name: str
+    value: int
+    step_type: StepType = StepType.FILTER
+
+    def validate(self) -> None:
+        if not self.header_name:
+            raise ValueError("header_name must be non-empty")
+
+
+@dataclass
 class Branch(WithInput[TIn], Generic[TIn]):
     """
     A Branch represents one branch in a pipeline, which is routed to

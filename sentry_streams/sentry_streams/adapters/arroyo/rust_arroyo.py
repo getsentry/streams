@@ -53,6 +53,7 @@ from sentry_streams.pipeline.pipeline import (
     Filter,
     FlatMap,
     GCSSink,
+    HeaderIntFilter,
     Map,
     Reduce,
     Router,
@@ -418,7 +419,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding flatMap: {step.name} to pipeline")
         raise NotImplementedError
 
-    def filter(self, step: Filter[Any], stream: Route) -> Route:
+    def filter(self, step: Filter[Any] | HeaderIntFilter[Any], stream: Route) -> Route:
         """
         Builds a filter operator for the platform the adapter supports.
         """
@@ -431,6 +432,19 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
         step.override_config(step_config)
         step.validate()
+
+        route = RustRoute(stream.source, stream.waypoints)
+        logger.info(f"Adding filter: {step.name} to pipeline")
+
+        if isinstance(step, HeaderIntFilter):
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.HeaderIntFilter(
+                    route=route,
+                    header_name=step.header_name,
+                    expected_value=int(step.value),
+                )
+            )
+            return stream
 
         def filter_msg(msg: Message[Any]) -> bool:
             msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
@@ -445,9 +459,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 raise e
             finally:
                 output_metrics(step.name, has_error, start_time, output_size)
-
-        route = RustRoute(stream.source, stream.waypoints)
-        logger.info(f"Adding filter: {step.name} to pipeline")
 
         self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
 

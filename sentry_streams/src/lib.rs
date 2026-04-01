@@ -7,6 +7,7 @@ mod consumer;
 mod dev_null_sink;
 mod filter_step;
 mod gcs_writer;
+mod header_filter_step;
 mod kafka_config;
 mod messages;
 mod metrics;
