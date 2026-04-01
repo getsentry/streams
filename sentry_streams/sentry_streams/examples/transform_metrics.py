@@ -18,3 +18,11 @@ def transform_msg(msg: Message[IngestMetric]) -> Mapping[str, Any]:
 def filter_events(msg: Message[IngestMetric]) -> bool:
     print(f"Filtering event: {msg.payload}")
     return bool(msg.payload["type"] == "c")
+
+
+def fast_filter_events(message) -> bool:
+    headers = message.headers
+    for k, v in headers:
+        if k == "item_type":
+            return int(v) == 1
+    return False
