@@ -108,6 +108,7 @@ class StreamSources:
                     bootstrap_servers=source_config.get("bootstrap_servers", ["localhost: 9092"]),
                     auto_offset_reset=(source_config.get("auto_offset_reset", "latest")),
                     group_id=group_id,
+                    override_params=source_config.get("override_params"),
                 )
             )
 
@@ -201,6 +202,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
                 build_kafka_configuration(
                     default_config=producer_config.get("additional_settings", {}),
                     bootstrap_servers=producer_config.get("bootstrap_servers", "localhost:9092"),
+                    override_params=producer_config.get("override_params"),
                 )
             )
         else:

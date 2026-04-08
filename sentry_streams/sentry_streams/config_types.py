@@ -14,11 +14,13 @@ class KafkaConsumerConfig(TypedDict, StepConfig):
     auto_offset_reset: str
     consumer_group: NotRequired[str]
     additional_settings: Mapping[str, Any]
+    override_params: Mapping[str, Any] | None
 
 
 class KafkaProducerConfig(TypedDict, StepConfig):
     bootstrap_servers: Sequence[str]
     additional_settings: Mapping[str, Any]
+    override_params: Mapping[str, Any] | None
 
 
 class SegmentConfig(TypedDict):
