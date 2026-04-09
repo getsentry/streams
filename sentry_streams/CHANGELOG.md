@@ -1,3 +1,17 @@
+## 0.0.44
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump rustls-webpki from 0.103.3 to 0.103.10 in /sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms by @dependabot in [#278](https://github.com/getsentry/streams/pull/278)
+- Bump slab from 0.4.10 to 0.4.12 in /sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms by @dependabot in [#281](https://github.com/getsentry/streams/pull/281)
+- Bump rustls-webpki from 0.103.3 to 0.103.10 in /sentry_streams/tests/rust_test_functions by @dependabot in [#283](https://github.com/getsentry/streams/pull/283)
+
+### Other
+
+- Add fast headers filter by @fpacifici in [#290](https://github.com/getsentry/streams/pull/290)
+
 ## 0.0.43
 
 ### New Features ✨
