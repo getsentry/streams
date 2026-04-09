@@ -439,37 +439,38 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         if isinstance(step, HeadersFilter):
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.HeaderIntFilter(
+                RuntimeOperator.HeaderFilter(
                     route=route,
                     header_name=step.header_name,
-                    expected_value=int(step.value),
+                    expected_value=step.value,
                 )
             )
             return stream
 
-        if not isinstance(step, PredicateFilter):
+        elif isinstance(step, PredicateFilter):
+
+            def filter_msg(msg: Message[Any]) -> bool:
+                msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+                start_time = input_metrics(step.name, msg_size)
+                has_error = output_size = None
+                try:
+                    result = step.resolved_function(msg)
+                    output_size = get_size(result)
+                    return result
+                except Exception as e:
+                    has_error = str(e.__class__.__name__)
+                    raise e
+                finally:
+                    output_metrics(step.name, has_error, start_time, output_size)
+
+            self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+            return stream
+
+        else:
             raise TypeError(
                 f"Unsupported filter step type {type(step).__name__!r}; "
                 "expected PredicateFilter or HeadersFilter."
             )
-
-        def filter_msg(msg: Message[Any]) -> bool:
-            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
-            start_time = input_metrics(step.name, msg_size)
-            has_error = output_size = None
-            try:
-                result = step.resolved_function(msg)
-                output_size = get_size(result)
-                return result
-            except Exception as e:
-                has_error = str(e.__class__.__name__)
-                raise e
-            finally:
-                output_metrics(step.name, has_error, start_time, output_size)
-
-        self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
-
-        return stream
 
     def reduce(
         self,

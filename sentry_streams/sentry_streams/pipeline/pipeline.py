@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
 from functools import partial
@@ -445,11 +445,8 @@ class Filter(Transform[TIn, TIn], Generic[TIn]):
     Base class for filter steps. Use :class:`PredicateFilter` for a callable predicate
     or :class:`HeadersFilter` for integer equality on a Kafka-style header.
 
-    ``step_type`` is keyword-only so concrete filters keep a natural positional
     ``(name, function, ...)`` constructor order.
     """
-
-    step_type: StepType = field(default=StepType.FILTER, kw_only=True)
 
     def __post_init__(self) -> None:
         if type(self) is Filter:
@@ -466,6 +463,7 @@ class PredicateFilter(Filter[TIn], Generic[TIn]):
     """
 
     function: Union[Callable[[Message[TIn]], bool], str]
+    step_type: StepType = StepType.FILTER
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -497,10 +495,6 @@ class PredicateFilter(Filter[TIn], Generic[TIn]):
         return function_callable
 
 
-# Backward compatibility (prefer PredicateFilter).
-FunctionFilter = PredicateFilter
-
-
 @dataclass
 class HeadersFilter(Filter[TIn], Generic[TIn]):
     """
@@ -514,6 +508,7 @@ class HeadersFilter(Filter[TIn], Generic[TIn]):
 
     header_name: str
     value: int
+    step_type: StepType = StepType.FILTER
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -521,10 +516,6 @@ class HeadersFilter(Filter[TIn], Generic[TIn]):
     def validate(self) -> None:
         if not self.header_name:
             raise ValueError("header_name must be non-empty")
-
-
-# Backward compatibility (prefer HeadersFilter).
-HeaderIntFilter = HeadersFilter
 
 
 @dataclass

@@ -25,7 +25,7 @@ from sentry_streams.runner import iterate_edges
 
 def test_basic_rust_function_execution(rust_test_functions: Any) -> None:
     """Test that Rust functions execute correctly in a pipeline"""
-    from rust_test_functions import (  # type: ignore[import-not-found]
+    from rust_test_functions import (
         TestFilterCorrect,
         TestMapCorrect,
     )

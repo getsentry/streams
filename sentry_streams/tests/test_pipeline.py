@@ -14,6 +14,7 @@ from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
+    HeadersFilter,
     Map,
     Pipeline,
     PredicateFilter,
@@ -38,7 +39,13 @@ def pipeline() -> Pipeline[str]:
                 function=simple_filter,
             )
         )
-        .apply(PredicateFilter[bytes](name="filter2", function=simple_filter))
+        .apply(
+            HeadersFilter[bytes](
+                name="filter2",
+                header_name="item_type",
+                value=1,
+            )
+        )
         .apply(Map[bytes, str](name="map", function=simple_map))
         .apply(Map[str, str](name="map2", function=simple_map_str))
         .route(
