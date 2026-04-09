@@ -205,7 +205,8 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
             return {step_name: self.adapter.reduce(step, stream)}
 
         elif step_type is StepType.FILTER:
-            assert isinstance(step, Filter) and stream is not None
+            assert stream is not None
+            assert isinstance(step, Filter), f"Expected a Filter step, got {type(step)}"
             return {step_name: self.adapter.filter(step, stream)}
 
         elif step_type is StepType.ROUTER:

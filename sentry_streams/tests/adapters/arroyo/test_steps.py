@@ -34,9 +34,9 @@ from sentry_streams.pipeline.message import PyMessage
 from sentry_streams.pipeline.pipeline import (
     Aggregate,
     Broadcast,
-    Filter,
     Map,
     Parser,
+    PredicateFilter,
     Router,
     branch,
     streaming_source,
@@ -107,7 +107,7 @@ def test_filter_step(metric: IngestMetric, transformed_metric: IngestMetric) -> 
         Parser[IngestMetric]("parser")
     )
 
-    pipeline_filter: Filter[IngestMetric] = Filter(
+    pipeline_filter: PredicateFilter[IngestMetric] = PredicateFilter(
         name="myfilter",
         function=lambda msg: msg.payload["name"] != "new_metric",
     )

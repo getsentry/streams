@@ -12,10 +12,10 @@ from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 from sentry_streams.pipeline.function_template import Accumulator
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
-    Filter,
     Map,
     Parser,
     Pipeline,
+    PredicateFilter,
     Reducer,
     Serializer,
     StreamSink,
@@ -108,7 +108,7 @@ def pipeline() -> Pipeline[bytes]:
     pipeline = (
         streaming_source("myinput", stream_name="ingest-metrics")
         .apply(Parser[IngestMetric]("decoder"))
-        .apply(Filter("myfilter", lambda msg: msg.payload["type"] == "s"))
+        .apply(PredicateFilter("myfilter", function=lambda msg: msg.payload["type"] == "s"))
         .apply(Map("mymap", basic_map))
         .apply(Serializer("serializer"))
         .sink(StreamSink("kafkasink", stream_name="transformed-events"))

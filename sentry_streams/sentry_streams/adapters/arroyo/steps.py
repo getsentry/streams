@@ -17,8 +17,8 @@ from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
 from sentry_streams.pipeline.message import PyMessage as StreamsMessage
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
-    Filter,
     Map,
+    PredicateFilter,
     Reduce,
     Router,
     RoutingFuncReturnType,
@@ -126,7 +126,7 @@ class FilterStep(ArroyoStep):
     based on the result of a filter function.
     """
 
-    pipeline_step: Filter[Any]
+    pipeline_step: PredicateFilter[Any]
 
     def build(
         self, next: ProcessingStrategy[Union[FilteredPayload, RoutedValue]], commit: Commit
