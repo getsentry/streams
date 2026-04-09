@@ -6,32 +6,47 @@ use crate::utils::traced_with_gil;
 use sentry_arroyo::processing::strategies::{
     CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
 };
-use sentry_arroyo::types::Message;
+use sentry_arroyo::types::{InnerMessage, Message};
 use std::time::Duration;
 
-/// Returns true if `value` encodes `expected` as big-endian i64 (8 bytes) or as UTF-8 decimal.
-fn header_value_eq_i64(value: &[u8], expected: i64) -> bool {
-    if value.len() == 8 {
-        let arr: [u8; 8] = match value.try_into() {
-            Ok(a) => a,
-            Err(_) => return false,
-        };
-        if i64::from_be_bytes(arr) == expected {
-            return true;
+/// `Ok(true)` if any header named `name` has a non-empty value that parses to `expected`.
+/// `Ok(false)` if there is no match (header missing, empty value, or different integer).
+/// `Err(())` if any value for `name` is non-empty but not a valid decimal integer (invalid message).
+///
+/// Header values are treated as UTF-8 (ASCII decimal from Relay): optional leading `+` / `-`, then digits.
+fn header_int_equality_decision(
+    headers: &[(String, Vec<u8>)],
+    name: &str,
+    expected: i64,
+) -> Result<bool, ()> {
+    let mut matched = false;
+    for (k, v) in headers {
+        if k != name {
+            continue;
+        }
+        if v.is_empty() {
+            continue;
+        }
+        let parsed = std::str::from_utf8(v)
+            .map_err(|_| ())?
+            .parse::<i64>()
+            .map_err(|_| ())?;
+        if parsed == expected {
+            matched = true;
         }
     }
-    if let Ok(s) = std::str::from_utf8(value) {
-        if let Ok(parsed) = s.trim().parse::<i64>() {
-            return parsed == expected;
-        }
-    }
-    false
+    Ok(matched)
 }
 
-fn headers_match_int(headers: &[(String, Vec<u8>)], name: &str, expected: i64) -> bool {
-    headers
-        .iter()
-        .any(|(k, v)| k == name && header_value_eq_i64(v, expected))
+fn invalid_message_submit_error(message: &Message<RoutedValue>) -> SubmitError<RoutedValue> {
+    match &message.inner_message {
+        InnerMessage::BrokerMessage(broker_message) => {
+            SubmitError::InvalidMessage(broker_message.into())
+        }
+        InnerMessage::AnyMessage(..) => panic!(
+            "HeaderIntEqualityFilter: invalid header on AnyMessage; Arroyo cannot surface InvalidMessage"
+        ),
+    }
 }
 
 fn streaming_message_headers(msg: &PyStreamingMessage) -> Vec<(String, Vec<u8>)> {
@@ -82,10 +97,10 @@ impl ProcessingStrategy<RoutedValue> for HeaderIntEqualityFilter {
         };
 
         let headers = streaming_message_headers(py_streaming_msg);
-        if headers_match_int(&headers, &self.header_name, self.expected) {
-            self.next_step.submit(message)
-        } else {
-            Ok(())
+        match header_int_equality_decision(&headers, &self.header_name, self.expected) {
+            Ok(true) => self.next_step.submit(message),
+            Ok(false) => Ok(()),
+            Err(()) => Err(invalid_message_submit_error(&message)),
         }
     }
 
@@ -121,6 +136,7 @@ mod tests {
     use crate::routes::Route;
     use crate::testutils::build_routed_value_with_headers;
     use crate::utils::traced_with_gil;
+    use pyo3::types::PyAnyMethods;
     use pyo3::IntoPyObjectExt;
     use sentry_arroyo::processing::strategies::ProcessingStrategy;
     use std::collections::BTreeMap;
@@ -128,7 +144,70 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     #[test]
-    fn test_header_int_filter_utf8() {
+    fn header_int_equality_decision_unit_cases() {
+        crate::testutils::initialize_python();
+
+        const NAME: &str = "pid";
+        const EXPECTED: i64 = 42;
+
+        assert_eq!(
+            header_int_equality_decision(&[], NAME, EXPECTED),
+            Ok(false),
+            "header not present: no headers"
+        );
+        assert_eq!(
+            header_int_equality_decision(&[("org".to_string(), b"1".to_vec())], NAME, EXPECTED,),
+            Ok(false),
+            "header not present: only other keys"
+        );
+        assert_eq!(
+            header_int_equality_decision(&[(NAME.to_string(), vec![])], NAME, EXPECTED),
+            Ok(false),
+            "header present but empty"
+        );
+        assert_eq!(
+            header_int_equality_decision(&[(NAME.to_string(), b"41".to_vec())], NAME, EXPECTED),
+            Ok(false),
+            "header has different integer"
+        );
+        assert_eq!(
+            header_int_equality_decision(&[(NAME.to_string(), b"42".to_vec())], NAME, EXPECTED),
+            Ok(true),
+            "header has expected value"
+        );
+
+        traced_with_gil!(|py| {
+            use pyo3::ffi::c_str;
+            let header_bytes: Vec<u8> = py
+                .eval(c_str!("str(42).encode('ascii')"), None, None)
+                .expect("str(42).encode('ascii')")
+                .extract()
+                .expect("extract header bytes");
+            assert_eq!(
+                header_int_equality_decision(&[(NAME.to_string(), header_bytes)], NAME, EXPECTED),
+                Ok(true),
+                "header value from Python str().encode('ascii')"
+            );
+        });
+
+        assert_eq!(
+            header_int_equality_decision(&[(NAME.to_string(), vec![0xFF])], NAME, EXPECTED),
+            Err(()),
+            "non-UTF-8 header value"
+        );
+        assert_eq!(
+            header_int_equality_decision(
+                &[(NAME.to_string(), b"not-int".to_vec())],
+                NAME,
+                EXPECTED
+            ),
+            Err(()),
+            "UTF-8 but not a decimal integer"
+        );
+    }
+
+    #[test]
+    fn test_header_int_filter_ascii_decimal() {
         crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let submitted = Arc::new(Mutex::new(Vec::new()));
@@ -183,12 +262,79 @@ mod tests {
     }
 
     #[test]
-    fn test_header_int_filter_be_i64() {
+    fn test_header_int_filter_empty_header_dropped() {
         crate::testutils::initialize_python();
         traced_with_gil!(|py| {
             let submitted = Arc::new(Mutex::new(Vec::new()));
             let submitted_clone = submitted.clone();
-            let next_step = FakeStrategy::new(submitted, Arc::default(), false);
+            let next_step = FakeStrategy::new(submitted_clone, Arc::default(), false);
+            let mut strategy = build_header_int_filter(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                "pid".to_string(),
+                42,
+                Box::new(next_step),
+            );
+
+            let msg = Message::new_any_message(
+                build_routed_value_with_headers(
+                    py,
+                    "y".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                    vec![("pid".to_string(), vec![])],
+                ),
+                BTreeMap::new(),
+            );
+            assert!(strategy.submit(msg).is_ok());
+            assert!(submitted.lock().unwrap().is_empty());
+        });
+    }
+
+    #[test]
+    fn test_header_int_filter_invalid_header_broker_returns_invalid_message() {
+        crate::testutils::initialize_python();
+        use chrono::Utc;
+        use sentry_arroyo::processing::strategies::InvalidMessage;
+        use sentry_arroyo::types::Partition;
+        use sentry_arroyo::types::Topic;
+
+        traced_with_gil!(|py| {
+            let mut strategy = build_header_int_filter(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                "pid".to_string(),
+                42,
+                Box::new(FakeStrategy::new(Arc::default(), Arc::default(), false)),
+            );
+
+            let message = Message::new_broker_message(
+                build_routed_value_with_headers(
+                    py,
+                    "x".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                    vec![("pid".to_string(), b"not-an-int".to_vec())],
+                ),
+                Partition::new(Topic::new("topic"), 2),
+                10,
+                Utc::now(),
+            );
+            let SubmitError::InvalidMessage(InvalidMessage { partition, offset }) =
+                strategy.submit(message).unwrap_err()
+            else {
+                panic!("Expected SubmitError::InvalidMessage")
+            };
+            assert_eq!(partition, Partition::new(Topic::new("topic"), 2));
+            assert_eq!(offset, 10);
+        });
+    }
+
+    #[test]
+    fn test_header_int_filter_negative_ascii_decimal() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let submitted = Arc::new(Mutex::new(Vec::new()));
+            let submitted_clone = submitted.clone();
+            let next_step = FakeStrategy::new(submitted_clone, Arc::default(), false);
             let mut strategy = build_header_int_filter(
                 &Route::new("s".to_string(), vec!["w".to_string()]),
                 "k".to_string(),
@@ -202,14 +348,14 @@ mod tests {
                     "p".into_py_any(py).unwrap(),
                     "s",
                     vec!["w".to_string()],
-                    vec![("k".to_string(), (-1i64).to_be_bytes().to_vec())],
+                    vec![("k".to_string(), b"-1".to_vec())],
                 ),
                 BTreeMap::new(),
             );
             assert!(strategy.submit(msg).is_ok());
 
             let expected = vec!["p".into_py_any(py).unwrap()];
-            assert_messages_match(py, expected, submitted_clone.lock().unwrap().deref());
+            assert_messages_match(py, expected, submitted.lock().unwrap().deref());
         });
     }
 
