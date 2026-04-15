@@ -28,9 +28,9 @@ from sentry_streams.adapters.arroyo.steps import (
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
     ComplexStep,
-    Filter,
     Map,
     Pipeline,
+    PredicateFilter,
     Reduce,
     Router,
 )
@@ -66,7 +66,7 @@ def test_single_route(
     consumer.add_step(
         FilterStep(
             route=empty_route,
-            pipeline_step=cast(Filter[IngestMetric], pipeline.steps["myfilter"]),
+            pipeline_step=cast(PredicateFilter[IngestMetric], pipeline.steps["myfilter"]),
         )
     )
     consumer.add_step(

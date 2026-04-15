@@ -23,7 +23,7 @@ from sentry_streams.pipeline.pipeline import (
     ComplexStep,
     Filter,
     FlatMap,
-    HeaderIntFilter,
+    HeadersFilter,
     Map,
     Reduce,
     Router,
@@ -106,9 +106,7 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
-    def filter(
-        self, step: Filter[Any] | HeaderIntFilter[Any], stream: StreamT
-    ) -> StreamT:
+    def filter(self, step: Filter[Any] | HeadersFilter[Any], stream: StreamT) -> StreamT:
         """
         Builds a filter operator for the platform the adapter supports.
         """
@@ -209,9 +207,7 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
 
         elif step_type is StepType.FILTER:
             assert stream is not None
-            assert isinstance(step, (Filter, HeaderIntFilter)), (
-                f"Expected Filter or HeaderIntFilter, got {type(step)}"
-            )
+            assert isinstance(step, Filter), f"Expected a Filter step, got {type(step)}"
             return {step_name: self.adapter.filter(step, stream)}
 
         elif step_type is StepType.ROUTER:

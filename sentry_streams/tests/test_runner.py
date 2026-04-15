@@ -6,7 +6,7 @@ import pytest
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import PipelineConfig, RuntimeTranslator
 from sentry_streams.dummy.dummy_adapter import DummyAdapter
-from sentry_streams.pipeline import Filter, Map, branch, streaming_source
+from sentry_streams.pipeline import Map, PredicateFilter, branch, streaming_source
 from sentry_streams.pipeline.pipeline import (
     DevNullSink,
     Pipeline,
@@ -46,7 +46,7 @@ def create_pipeline() -> Pipeline[bytes]:
     test_pipeline = (
         streaming_source("source1", stream_name="foo")
         .apply(Map("map1", function=lambda x: x.payload))
-        .apply(Filter("filter1", function=lambda x: True))
+        .apply(PredicateFilter("filter1", function=lambda x: True))
         .broadcast(
             "broadcast_to_maps",
             routes=[

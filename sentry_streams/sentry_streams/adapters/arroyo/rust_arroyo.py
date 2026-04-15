@@ -53,8 +53,9 @@ from sentry_streams.pipeline.pipeline import (
     Filter,
     FlatMap,
     GCSSink,
-    HeaderIntFilter,
+    HeadersFilter,
     Map,
+    PredicateFilter,
     Reduce,
     Router,
     RoutingFuncReturnType,
@@ -419,7 +420,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding flatMap: {step.name} to pipeline")
         raise NotImplementedError
 
-    def filter(self, step: Filter[Any] | HeaderIntFilter[Any], stream: Route) -> Route:
+    def filter(self, step: Filter[Any] | HeadersFilter[Any], stream: Route) -> Route:
         """
         Builds a filter operator for the platform the adapter supports.
         """
@@ -436,33 +437,40 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
         logger.info(f"Adding filter: {step.name} to pipeline")
 
-        if isinstance(step, HeaderIntFilter):
+        if isinstance(step, HeadersFilter):
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.HeaderIntFilter(
+                RuntimeOperator.HeaderFilter(
                     route=route,
                     header_name=step.header_name,
-                    expected_value=int(step.value),
+                    expected_value=step.value,
                 )
             )
             return stream
 
-        def filter_msg(msg: Message[Any]) -> bool:
-            msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
-            start_time = input_metrics(step.name, msg_size)
-            has_error = output_size = None
-            try:
-                result = step.resolved_function(msg)
-                output_size = get_size(result)
-                return result
-            except Exception as e:
-                has_error = str(e.__class__.__name__)
-                raise e
-            finally:
-                output_metrics(step.name, has_error, start_time, output_size)
+        elif isinstance(step, PredicateFilter):
 
-        self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+            def filter_msg(msg: Message[Any]) -> bool:
+                msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+                start_time = input_metrics(step.name, msg_size)
+                has_error = output_size = None
+                try:
+                    result = step.resolved_function(msg)
+                    output_size = get_size(result)
+                    return result
+                except Exception as e:
+                    has_error = str(e.__class__.__name__)
+                    raise e
+                finally:
+                    output_metrics(step.name, has_error, start_time, output_size)
 
-        return stream
+            self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+            return stream
+
+        else:
+            raise TypeError(
+                f"Unsupported filter step type {type(step).__name__!r}; "
+                "expected PredicateFilter or HeadersFilter."
+            )
 
     def reduce(
         self,

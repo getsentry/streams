@@ -8,10 +8,10 @@ from sentry_streams.pipeline.pipeline import (
     Batch,
     ComplexStep,
     DevNullSink,
-    Filter,
     FlatMap,
     Map,
     Pipeline,
+    PredicateFilter,
     Reducer,
     StreamSink,
     StreamSource,
@@ -166,7 +166,7 @@ TOut = TypeVar("TOut")
     "step",
     [
         pytest.param(Map("map_step", lambda msg: msg), id="Create map"),
-        pytest.param(Filter("filter_step", lambda msg: True), id="Create filter"),
+        pytest.param(PredicateFilter("filter_step", function=lambda msg: True), id="Create filter"),
         pytest.param(FlatMap("flatmap_step", lambda msg: [msg]), id="Create flatMap"),
         pytest.param(
             Reducer(

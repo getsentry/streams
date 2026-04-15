@@ -1,11 +1,12 @@
 use crate::broadcaster::Broadcaster;
+use crate::header_filter_step::build_header_int_filter;
+use crate::header_filter_step::build_header_int_filter;
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonAdapter;
 use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
 use crate::store_sinks::GCSSink;
-use crate::header_filter_step::build_header_int_filter;
 use crate::transformer::{build_filter, build_map};
 use crate::utils::traced_with_gil;
 use pyo3::prelude::*;
@@ -41,8 +42,8 @@ pub enum RuntimeOperator {
     Filter { route: Route, function: Py<PyAny> },
 
     /// Filter by integer equality on a message header (Rust-only, no Python predicate).
-    #[pyo3(name = "HeaderIntFilter")]
-    HeaderIntFilter {
+    #[pyo3(name = "HeaderFilter")]
+    HeaderFilter {
         route: Route,
         header_name: String,
         expected_value: i64,
@@ -119,7 +120,7 @@ pub fn build(
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_filter(route, func_ref, next)
         }
-        RuntimeOperator::HeaderIntFilter {
+        RuntimeOperator::HeaderFilter {
             route,
             header_name,
             expected_value,

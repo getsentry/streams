@@ -4,7 +4,13 @@ from sentry_streams.examples.word_counter_helpers import (
     simple_filter,
     simple_map,
 )
-from sentry_streams.pipeline import Filter, Map, Reducer, StreamSink, streaming_source
+from sentry_streams.pipeline import (
+    Map,
+    PredicateFilter,
+    Reducer,
+    StreamSink,
+    streaming_source,
+)
 from sentry_streams.pipeline.window import TumblingWindow
 
 # A sample window.
@@ -19,7 +25,7 @@ pipeline = (
         stream_name="events",
     )
     .apply(
-        Filter(
+        PredicateFilter(
             "myfilter",
             function=simple_filter,
         ),
