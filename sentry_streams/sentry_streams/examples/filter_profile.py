@@ -1,15 +1,19 @@
-from sentry_streams.examples.transform_metrics import (
-    fast_filter_events,
-)
 from sentry_streams.pipeline.pipeline import (
+    Batch,
     DevNullSink,
-    Filter,
-    HeaderIntFilter,
+    HeadersFilter,
     streaming_source,
 )
 
 pipeline = (
     streaming_source(name="myinput", stream_name="snuba-items")
-    .apply(HeaderIntFilter("header_filter", header_name="item_type", value=1))
+    .apply(
+        HeadersFilter(
+            name="spans_filter",
+            header_name="item_type",
+            value=1,
+        )
+    )
+    .apply(Batch(name="mybatch", batch_size=45000))
     .sink(DevNullSink(name="devnull"))
 )
