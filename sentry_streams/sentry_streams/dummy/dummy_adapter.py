@@ -11,7 +11,6 @@ from sentry_streams.pipeline.pipeline import (
     ComplexStep,
     Filter,
     FlatMap,
-    HeaderIntFilter,
     Map,
     Reduce,
     Router,
@@ -65,7 +64,7 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
         self.track_input_streams(cast(WithInput[Any], step))
         return self
 
-    def filter(self, step: Filter[Any] | HeaderIntFilter[Any], stream: Any) -> Any:
+    def filter(self, step: Filter[Any], stream: Any) -> Any:
         self.track_input_streams(cast(WithInput[Any], step))
         return self
 

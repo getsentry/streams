@@ -420,7 +420,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding flatMap: {step.name} to pipeline")
         raise NotImplementedError
 
-    def filter(self, step: Filter[Any] | HeadersFilter[Any], stream: Route) -> Route:
+    def filter(self, step: Filter[Any], stream: Route) -> Route:
         """
         Builds a filter operator for the platform the adapter supports.
         """
