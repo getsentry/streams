@@ -28,7 +28,7 @@ def test_kafka_sources() -> None:
             bootstrap_servers="localhost:9092",
             auto_offset_reset="earliest",
             consumer_group="test_group",
-            additional_settings={},
+            override_params={},
         ),
     }
     consumers = {

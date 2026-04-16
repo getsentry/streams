@@ -58,11 +58,17 @@ impl OffsetResetConfig {
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyKafkaConsumerConfig {
+    #[pyo3(get)]
     bootstrap_servers: Vec<String>,
+    #[pyo3(get)]
     group_id: String,
+    #[pyo3(get)]
     auto_offset_reset: InitialOffset,
+    #[pyo3(get)]
     strict_offset_reset: bool,
+    #[pyo3(get)]
     max_poll_interval_ms: usize,
+    #[pyo3(get)]
     override_params: Option<HashMap<String, String>>,
 }
 
@@ -104,7 +110,9 @@ impl From<PyKafkaConsumerConfig> for KafkaConfig {
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyKafkaProducerConfig {
+    #[pyo3(get)]
     bootstrap_servers: Vec<String>,
+    #[pyo3(get)]
     override_params: Option<HashMap<String, String>>,
 }
 

@@ -170,7 +170,7 @@ def build_kafka_consumer_config(
     )
     auto_offset_reset = build_initial_offset(consumer_config.get("auto_offset_reset", "latest"))
     strict_offset_reset = bool(consumer_config.get("strict_offset_reset", False))
-    override_params = cast(Mapping[str, str], consumer_config.get("override_params", {}))
+    override_params = consumer_config.get("override_params", {})
 
     return PyKafkaConsumerConfig(
         bootstrap_servers=bootstrap_servers,
@@ -191,7 +191,7 @@ def build_kafka_producer_config(
     producer_config = cast(KafkaProducerConfig, sink_config)
     return PyKafkaProducerConfig(
         bootstrap_servers=producer_config["bootstrap_servers"],
-        override_params=cast(Mapping[str, str], producer_config.get("override_params", {})),
+        override_params=producer_config.get("override_params", {}),
     )
 
 

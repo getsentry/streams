@@ -24,6 +24,13 @@ class OffsetResetConfig:
     def __init__(self, auto_offset_reset: InitialOffset, strict_offset_reset: bool) -> None: ...
 
 class PyKafkaConsumerConfig:
+    bootstrap_servers: Sequence[str]
+    group_id: str
+    auto_offset_reset: InitialOffset
+    strict_offset_reset: bool
+    max_poll_interval_ms: int
+    override_params: Mapping[str, str] | None
+
     def __init__(
         self,
         bootstrap_servers: Sequence[str],
@@ -31,14 +38,17 @@ class PyKafkaConsumerConfig:
         auto_offset_reset: InitialOffset,
         strict_offset_reset: bool,
         max_poll_interval_ms: int,
-        override_params: Mapping[str, str],
+        override_params: Mapping[str, str] | None = None,
     ) -> None: ...
 
 class PyKafkaProducerConfig:
+    bootstrap_servers: Sequence[str]
+    override_params: Mapping[str, str] | None
+
     def __init__(
         self,
         bootstrap_servers: Sequence[str],
-        override_params: Mapping[str, str],
+        override_params: Mapping[str, str] | None = None,
     ) -> None: ...
 
 class PyMetricConfig:
