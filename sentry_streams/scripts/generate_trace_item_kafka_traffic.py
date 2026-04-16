@@ -170,7 +170,7 @@ def _producer_worker(
                 producer.produce(
                     topic,
                     value=payload,
-                    headers=[("item_type", str(header_item_type).encode("ascii"))],
+                    # headers=[("item_type", str(header_item_type).encode("ascii"))],
                     callback=delivery_callback,
                 )
                 outstanding += 1
