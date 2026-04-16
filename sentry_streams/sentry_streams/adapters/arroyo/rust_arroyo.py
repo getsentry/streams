@@ -104,7 +104,7 @@ def _metrics_wrapped_function(
     This is defined at module level to be picklable for multiprocessing.
     """
     # msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
-    # start_time = input_metrics(step_name, msg_size)
+    start_time = input_metrics(step_name, 0)
     has_error = output_size = None
     try:
         result = application_function(msg)
@@ -114,8 +114,7 @@ def _metrics_wrapped_function(
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        # output_metrics(step_name, has_error, start_time, output_size)
-        pass
+        output_metrics(step_name, has_error, start_time, 0)
 
 
 def input_metrics(name: str, message_size: int | None) -> float:
