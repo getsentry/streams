@@ -15,6 +15,10 @@ def transform_msg(msg: Message[IngestMetric]) -> Mapping[str, Any]:
     return {**msg.payload, "transformed": True}
 
 
+def transform_raw(msg: Message[bytes]) -> Mapping[str, Any]:
+    return {"transformed": True}
+
+
 def filter_events(msg: Message[IngestMetric]) -> bool:
     print(f"Filtering event: {msg.payload}")
     return bool(msg.payload["type"] == "c")
