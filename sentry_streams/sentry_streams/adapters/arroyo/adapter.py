@@ -104,7 +104,7 @@ class StreamSources:
 
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
-                    default_config=source_config.get("additional_settings", {}),
+                    default_config=source_config.get("additional_settings", {}),  # type: ignore
                     bootstrap_servers=source_config.get("bootstrap_servers", ["localhost: 9092"]),
                     auto_offset_reset=(source_config.get("auto_offset_reset", "latest")),
                     group_id=group_id,
@@ -198,9 +198,10 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
 
             producer_config = cast(KafkaProducerConfig, producer_config)
 
+            # this arryo adapter is not being maintained. Only rust arroyo adapter is being maintained.
             producer = KafkaProducer(
                 build_kafka_configuration(
-                    default_config=producer_config.get("additional_settings", {}),
+                    default_config=producer_config.get("additional_settings", {}),  # type: ignore
                     bootstrap_servers=producer_config.get("bootstrap_servers", "localhost:9092"),
                     override_params=producer_config.get("override_params"),
                 )

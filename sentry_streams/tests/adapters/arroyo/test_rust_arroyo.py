@@ -26,9 +26,9 @@ def test_rust_arroyo_adapter(
                     "bootstrap_servers": bootstrap_servers,
                     "auto_offset_reset": "earliest",
                     "consumer_group": "test_group",
-                    "additional_settings": {},
+                    "override_params": {},
                 },
-                "kafkasink": {"bootstrap_servers": bootstrap_servers, "additional_settings": {}},
+                "kafkasink": {"bootstrap_servers": bootstrap_servers, "override_params": {}},
             },
         },
         {"type": "dummy"},
@@ -48,7 +48,6 @@ def test_rust_arroyo_adapter(
             {
                 "bootstrap_servers": ["localhost:9092"],
                 "auto_offset_reset": "earliest",
-                "additional_settings": {"session.timeout.ms": "10000"},
             },
             None,
             ["localhost:9092"],
@@ -64,26 +63,21 @@ def test_rust_arroyo_adapter(
                 "auto_offset_reset": "latest",
                 "consumer_group": "my-group",
                 "strict_offset_reset": True,
-                "additional_settings": {"session.timeout.ms": "10000"},
-                "override_params": {"session.timeout.ms": "30000"},
+                "override_params": {"session.timeout.ms": "10000"},
             },
             None,
             ["localhost:9092"],
             "my-group",
             InitialOffset.latest,
             True,
-            {"session.timeout.ms": "30000"},
-            id="override_params_override_defaults",
+            {"session.timeout.ms": "10000"},
+            id="override_params_pass_through",
         ),
         pytest.param(
             {
                 "bootstrap_servers": ["broker1:9092", "broker2:9092"],
                 "auto_offset_reset": "earliest",
                 "consumer_group": "config-group",
-                "additional_settings": {
-                    "session.timeout.ms": "10000",
-                    "heartbeat.interval.ms": "3000",
-                },
                 "override_params": {
                     "session.timeout.ms": "30000",
                     "heartbeat.interval.ms": "10000",
@@ -95,7 +89,7 @@ def test_rust_arroyo_adapter(
             InitialOffset.earliest,
             False,
             {"session.timeout.ms": "30000", "heartbeat.interval.ms": "10000"},
-            id="multiple_override_params",
+            id="multiple_override_params_pass_through",
         ),
     ],
 )
@@ -120,7 +114,6 @@ def test_build_kafka_consumer_config(
     assert result.group_id == expected_group_id
     assert result.auto_offset_reset == expected_auto_offset_reset
     assert result.strict_offset_reset == expected_strict_offset_reset
-    assert result.max_poll_interval_ms == 60000
     assert result.override_params == expected_override_params
 
 
@@ -132,7 +125,6 @@ def test_build_kafka_consumer_config(
             {
                 "my_sink": {
                     "bootstrap_servers": ["localhost:9092"],
-                    "additional_settings": {"acks": "1"},
                 }
             },
             ["localhost:9092"],
@@ -144,13 +136,12 @@ def test_build_kafka_consumer_config(
             {
                 "my_sink": {
                     "bootstrap_servers": ["broker1:9092", "broker2:9092"],
-                    "additional_settings": {"acks": "1", "retries": "0"},
                     "override_params": {"acks": "all", "retries": "3"},
                 }
             },
             ["broker1:9092", "broker2:9092"],
             {"acks": "all", "retries": "3"},
-            id="override_params_override_defaults",
+            id="override_params_pass_through",
         ),
     ],
 )
