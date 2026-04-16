@@ -129,6 +129,7 @@ def _producer_worker(
     worker_id: int,
     messages_per_worker: int,
     base_seed: int | None,
+    produce_headers: bool,
 ) -> None:
     if base_seed is not None:
         rng: random.Random = random.Random(base_seed + worker_id * 1_000_003)
@@ -167,12 +168,15 @@ def _producer_worker(
             while outstanding >= HIGH_WATER_OUTSTANDING:
                 producer.poll(0.5)
             try:
-                producer.produce(
-                    topic,
-                    value=payload,
-                    # headers=[("item_type", str(header_item_type).encode("ascii"))],
-                    callback=delivery_callback,
-                )
+                produce_kwargs: dict[str, object] = {
+                    "value": payload,
+                    "callback": delivery_callback,
+                }
+                if produce_headers:
+                    produce_kwargs["headers"] = [
+                        ("item_type", str(header_item_type).encode("ascii")),
+                    ]
+                producer.produce(topic, **produce_kwargs)
                 outstanding += 1
                 producer.poll(0)
                 break
@@ -217,12 +221,20 @@ def _producer_worker(
     default=None,
     help="Optional RNG seed (each worker uses a deterministic derivative).",
 )
+@click.option(
+    "--headers/--no-headers",
+    "produce_headers",
+    default=True,
+    show_default=True,
+    help="Attach Kafka item_type headers (same value as the payload trace item type).",
+)
 def main(
     bootstrap_servers: str,
     topic: str,
     workers: int,
     messages_per_worker: int,
     seed: int | None,
+    produce_headers: bool,
 ) -> None:
     if workers < 1:
         raise click.BadParameter("workers must be at least 1")
@@ -240,6 +252,7 @@ def main(
                 "worker_id": wid,
                 "messages_per_worker": messages_per_worker,
                 "base_seed": seed,
+                "produce_headers": produce_headers,
             },
         )
         p.start()
