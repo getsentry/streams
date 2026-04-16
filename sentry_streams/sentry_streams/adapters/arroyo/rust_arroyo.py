@@ -114,7 +114,8 @@ def _metrics_wrapped_function(
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        output_metrics(step_name, has_error, start_time, 0)
+        pass
+        # output_metrics(step_name, has_error, start_time, 0)
 
 
 def input_metrics(name: str, message_size: int | None) -> float:
