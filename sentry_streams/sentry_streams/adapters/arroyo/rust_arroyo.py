@@ -103,19 +103,18 @@ def _metrics_wrapped_function(
     Module-level wrapper function for adding metrics to step functions.
     This is defined at module level to be picklable for multiprocessing.
     """
-    # msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
-    start_time = input_metrics(step_name, 0)
+    msg_size = get_size(msg.payload) if hasattr(msg, "payload") else None
+    start_time = input_metrics(step_name, msg_size)
     has_error = output_size = None
     try:
         result = application_function(msg)
-        # output_size = get_size(result)
+        output_size = get_size(result)
         return result
     except Exception as e:
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        pass
-        # output_metrics(step_name, has_error, start_time, 0)
+        output_metrics(step_name, has_error, start_time, output_size)
 
 
 def input_metrics(name: str, message_size: int | None) -> float:
