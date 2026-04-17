@@ -3,13 +3,13 @@
 # As of now, the assumption is that local adapters (like Arroyo)
 # do not require overrides of this file
 env: {}
-metrics:
-  type: datadog
-  host: datadog-agent
-  port: 8125
-  tags:
-    sentry_region: sandbox
-    pipeline: filter_profile
+#metrics:
+#  type: datadog
+#  host: datadog-agent
+#  port: 8125
+#  tags:
+#    sentry_region: sandbox
+#    pipeline: filter_profile
 pipeline:
   adapter_config:
     arroyo:
