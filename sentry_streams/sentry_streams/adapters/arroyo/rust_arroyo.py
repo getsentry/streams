@@ -195,7 +195,11 @@ def build_kafka_producer_config(
     )
 
 
-def finalize_chain(chains: TransformChains, route: Route) -> RuntimeOperator:
+def finalize_chain(
+    chains: TransformChains,
+    route: Route,
+    metrics_config: MetricsConfig,
+) -> RuntimeOperator:
     rust_route = RustRoute(route.source, route.waypoints)
     config, func = chains.finalize(route)
     if config:
