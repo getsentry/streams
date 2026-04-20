@@ -178,7 +178,6 @@
                 }
             },
             "required": [
-                "topic",
                 "producer_config"
             ]
         }
