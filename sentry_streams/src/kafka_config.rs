@@ -111,15 +111,15 @@ impl From<PyKafkaConsumerConfig> for KafkaConfig {
 #[derive(Debug, Clone)]
 pub struct PyKafkaProducerConfig {
     #[pyo3(get)]
-    pub bootstrap_servers: Vec<String>,
+    bootstrap_servers: Vec<String>,
     #[pyo3(get)]
-    pub override_params: Option<HashMap<String, String>>,
+    override_params: Option<HashMap<String, String>>,
 }
 
 #[pymethods]
 impl PyKafkaProducerConfig {
     #[new]
-    pub fn new(
+    fn new(
         bootstrap_servers: Vec<String>,
         override_params: Option<HashMap<String, String>>,
     ) -> Self {
