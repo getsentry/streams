@@ -68,17 +68,6 @@ def test_consumer_creation(
         assert consumer.dlq_config.producer_config.bootstrap_servers == expected_bootstrap_servers
 
 
-def test_stream_source_dlq_stream_name() -> None:
-    """Test StreamSource stores dlq_stream_name and dlq_config is not set until override_config."""
-    source = StreamSource(
-        name="test_source",
-        stream_name="test-topic",
-        dlq_stream_name="my-dlq",
-    )
-    assert source.dlq_stream_name == "my-dlq"
-    assert source.dlq_config is None
-
-
 def test_stream_source_no_dlq() -> None:
     """Test StreamSource without DLQ."""
     source = StreamSource(
@@ -177,15 +166,3 @@ def test_stream_source_override_config_dlq_missing_bootstrap_servers() -> None:
         match="DLQ config requires 'bootstrap_servers' in deployment configuration",
     ):
         source.override_config({"dlq": {"topic": "my-dlq"}})
-
-
-def test_stream_source_override_config_no_dlq_stream_name_ignores_config() -> None:
-    """Test that override_config ignores dlq config when dlq_stream_name is not set."""
-    source = StreamSource(
-        name="my_source",
-        stream_name="my-topic",
-    )
-
-    source.override_config({"dlq": {"producer_config": {"bootstrap_servers": ["broker:9092"]}}})
-
-    assert source.dlq_config is None
