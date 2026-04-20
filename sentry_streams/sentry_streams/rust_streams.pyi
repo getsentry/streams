@@ -128,8 +128,6 @@ class RuntimeOperator:
     def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
 
 class ArroyoConsumer:
-    dlq_config: DlqConfig | None
-
     def __init__(
         self,
         source: str,
@@ -143,6 +141,8 @@ class ArroyoConsumer:
     def add_step(self, step: RuntimeOperator) -> None: ...
     def run(self) -> None: ...
     def shutdown(self) -> None: ...
+    @property
+    def dlq_config(self) -> DlqConfig | None: ...
 
 class PyAnyMessage:
     def __init__(
