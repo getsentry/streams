@@ -119,7 +119,7 @@ pub struct PyKafkaProducerConfig {
 #[pymethods]
 impl PyKafkaProducerConfig {
     #[new]
-    fn new(
+    pub fn new(
         bootstrap_servers: Vec<String>,
         override_params: Option<HashMap<String, String>>,
     ) -> Self {
