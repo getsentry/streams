@@ -44,7 +44,15 @@
                         "properties": {
                             "steps_config": {
                                 "type": "object",
-                                "title": "steps_config"
+                                "title": "steps_config",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "properties": {
+                                        "dlq": {
+                                            "$ref": "#/definitions/DlqConfig"
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
