@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
 from functools import partial
@@ -234,8 +234,9 @@ class StreamSource(Source[bytes]):
     stream_name: str
     header_filter: Optional[Tuple[str, bytes]] = None
     consumer_group: Optional[str] = None
-    dlq_config: Optional[DlqConfig] = None
+    dlq_stream_name: Optional[str] = None
     step_type: StepType = StepType.SOURCE
+    dlq_config: Optional[DlqConfig] = field(default=None, init=False, repr=False)
 
     def register(self, ctx: Pipeline[bytes], previous: Step) -> None:
         super().register(ctx, previous)
@@ -246,20 +247,17 @@ class StreamSource(Source[bytes]):
             self.stream_name = str(loaded_config.get("topic"))
         if loaded_config.get("consumer_group"):
             self.consumer_group = str(loaded_config.get("consumer_group"))
-        if loaded_config.get("dlq"):
+        if self.dlq_stream_name is not None and loaded_config.get("dlq"):
             loaded_dlq = loaded_config["dlq"]
-            topic = loaded_dlq.get("topic") or (self.dlq_config.topic if self.dlq_config else None)
-            # bootstrap_servers and override_params are nested under producer_config
+            topic = loaded_dlq.get("topic", self.dlq_stream_name)
             producer_config = loaded_dlq.get("producer_config", {})
-            servers = producer_config.get("bootstrap_servers") or (
-                self.dlq_config.producer_config.bootstrap_servers if self.dlq_config else None
-            )
-            override_params = producer_config.get("override_params") or (
-                self.dlq_config.producer_config.override_params if self.dlq_config else None
-            )
+            servers = producer_config.get("bootstrap_servers")
+            override_params = producer_config.get("override_params")
 
-            if not topic or not servers:
-                raise ValueError("DLQ config requires both 'topic' and 'bootstrap_servers'")
+            if not servers:
+                raise ValueError(
+                    "DLQ config requires 'bootstrap_servers' in deployment configuration"
+                )
 
             self.dlq_config = DlqConfig(
                 topic=topic,

@@ -110,25 +110,10 @@ impl From<PyKafkaConsumerConfig> for KafkaConfig {
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyKafkaProducerConfig {
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
     #[pyo3(get)]
-    bootstrap_servers: Vec<String>,
-    #[pyo3(get)]
-    override_params: Option<HashMap<String, String>>,
-=======
     pub bootstrap_servers: Vec<String>,
+    #[pyo3(get)]
     pub override_params: Option<HashMap<String, String>>,
->>>>>>> 5e8c045 (add unit test for consumer.build_dlq_policy)
-=======
-=======
-    #[pyo3(get)]
->>>>>>> e027560 (add parameterized python test for build_dlq_config)
-    bootstrap_servers: Vec<String>,
-    #[pyo3(get)]
-    override_params: Option<HashMap<String, String>>,
->>>>>>> 0023e30 (make new function pub)
 }
 
 #[pymethods]
