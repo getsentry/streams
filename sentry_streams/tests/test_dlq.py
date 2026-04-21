@@ -68,6 +68,22 @@ def test_consumer_creation(
         assert consumer.dlq_config.producer_config.bootstrap_servers == expected_bootstrap_servers
 
 
+def test_stream_source_dlq_config_not_constructor_param() -> None:
+    """Test that dlq_config cannot be passed as a constructor argument."""
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        StreamSource(  # type: ignore
+            name="test_source",
+            stream_name="test-topic",
+            dlq_config=DlqConfig(
+                topic="test-dlq",
+                producer_config=PyKafkaProducerConfig(
+                    bootstrap_servers=["localhost:9092"],
+                    override_params=None,
+                ),
+            ),
+        )
+
+
 def test_stream_source_no_dlq() -> None:
     """Test StreamSource without DLQ."""
     source = StreamSource(
