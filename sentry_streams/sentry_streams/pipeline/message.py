@@ -105,27 +105,32 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
         timestamp: float,
         schema: Optional[str] = None,
     ) -> None:
-        self.inner = PyAnyMessage(payload, headers, timestamp, schema)
+        self._payload = payload
+        self._headers = headers
+        self._timestamp = timestamp
+        self._schema = schema
+
+        self.inner = None
 
     @property
     def payload(self) -> TPayload:
-        return cast(TPayload, self.inner.payload)
+        return cast(TPayload, self._payload)
 
     @property
     def headers(self) -> Sequence[Tuple[str, bytes]]:
-        return self.inner.headers
+        return self._headers
 
     @property
     def timestamp(self) -> float:
-        return self.inner.timestamp
+        return self._timestamp
 
     @property
     def schema(self) -> str | None:
-        return self.inner.schema
+        return self._schema
 
     def size(self) -> int | None:
-        if isinstance(self.inner.payload, (str, bytes)):
-            return len(self.inner.payload)
+        if isinstance(self._payload, (str, bytes)):
+            return len(self._payload)
         return None
 
     def __repr__(self) -> str:
@@ -135,14 +140,16 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
         return repr(self)
 
     def to_inner(self) -> RustMessage:
+        if self.inner is None:
+            self.inner = PyAnyMessage(self._payload, self._headers, self._timestamp, self._schema)
         return self.inner
 
     def deepcopy(self) -> PyMessage[TPayload]:
         return PyMessage(
-            deepcopy(self.inner.payload),
-            deepcopy(self.inner.headers),
-            self.inner.timestamp,
-            self.inner.schema,
+            deepcopy(self._payload),
+            deepcopy(self._headers),
+            self._timestamp,
+            self._schema,
         )
 
     def __getstate__(self) -> Mapping[str, Any]:
@@ -174,26 +181,31 @@ class PyRawMessage(Message[bytes]):
         timestamp: float,
         schema: Optional[str] = None,
     ) -> None:
-        self.inner = RawMessage(payload, headers, timestamp, schema)
+
+        self._payload = payload
+        self._headers = headers
+        self._timestamp = timestamp
+        self._schema = schema
+        self.inner = None
 
     @property
     def payload(self) -> bytes:
-        return self.inner.payload
+        return self._payload
 
     @property
     def headers(self) -> Sequence[Tuple[str, bytes]]:
-        return self.inner.headers
+        return self._headers
 
     @property
     def timestamp(self) -> float:
-        return self.inner.timestamp
+        return self._timestamp
 
     @property
     def schema(self) -> str | None:
-        return self.inner.schema
+        return self._schema
 
     def size(self) -> int | None:
-        return len(self.inner.payload)
+        return len(self._payload)
 
     def __repr__(self) -> str:
         return f"RawMessage({self.inner.__repr__()})"
@@ -202,14 +214,16 @@ class PyRawMessage(Message[bytes]):
         return repr(self)
 
     def to_inner(self) -> RustMessage:
+        if self.inner is None:
+            self.inner = RawMessage(self._payload, self._headers, self._timestamp, self._schema)
         return self.inner
 
     def deepcopy(self) -> PyRawMessage:
         return PyRawMessage(
-            deepcopy(self.inner.payload),
-            deepcopy(self.inner.headers),
-            self.inner.timestamp,
-            self.inner.schema,
+            deepcopy(self._payload),
+            deepcopy(self._headers),
+            self._timestamp,
+            self._schema,
         )
 
     def __getstate__(self) -> Mapping[str, Any]:

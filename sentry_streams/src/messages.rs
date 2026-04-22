@@ -207,7 +207,7 @@ impl PyAnyMessage {
     ) -> PyResult<Self> {
         Ok(Self {
             payload,
-            headers: headers_to_vec(py, headers)?,
+            headers: vec![],
             timestamp,
             schema,
         })
