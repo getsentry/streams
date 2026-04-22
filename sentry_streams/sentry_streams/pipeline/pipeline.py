@@ -235,9 +235,9 @@ class StreamSource(Source[bytes]):
     consumer_group: Optional[str] = None
     dlq_stream_name: Optional[str] = None
     step_type: StepType = StepType.SOURCE
-    dlq_topic: Optional[str] = field(default=None, init=False, repr=False)
-    dlq_bootstrap_servers: Optional[Sequence[str]] = field(default=None, init=False, repr=False)
-    dlq_override_params: Optional[Mapping[str, str]] = field(default=None, init=False, repr=False)
+    dlq_topic: Optional[str] = field(default=None, init=False)
+    dlq_bootstrap_servers: Optional[Sequence[str]] = field(default=None, init=False)
+    dlq_override_params: Optional[Mapping[str, str]] = field(default=None, init=False)
 
     def register(self, ctx: Pipeline[bytes], previous: Step) -> None:
         super().register(ctx, previous)
