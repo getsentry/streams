@@ -219,7 +219,7 @@ def fake_transform(message: Message[Any]) -> PyAnyMessage | RawMessage:
     #    output_metrics("asdasd", has_error, start_time, output_size)
 
     next_msg = PyRawMessage(
-        payload=b"asdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdsa",
+        payload=next_msg.payload,
         headers=[],
         timestamp=0.0,
         schema=None,
