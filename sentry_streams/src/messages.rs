@@ -272,7 +272,7 @@ impl RawMessage {
     ) -> PyResult<Self> {
         Ok(Self {
             payload: payload.as_bytes(py).to_vec(),
-            headers: headers_to_vec(py, headers)?,
+            headers: vec![],
             timestamp,
             schema,
         })
