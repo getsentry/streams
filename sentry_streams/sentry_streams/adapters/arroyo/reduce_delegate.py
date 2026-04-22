@@ -39,11 +39,9 @@ def rust_msg_to_arroyo_reduce(
     }
 
     if isinstance(message, PyAnyMessage):
-        to_send: Message[Any] = PyMessage(
-            message.payload, message.headers, message.timestamp, message.schema
-        )
+        to_send: Message[Any] = PyMessage(message.payload, [], message.timestamp, message.schema)
     elif isinstance(message, RawMessage):
-        to_send = PyRawMessage(message.payload, message.headers, message.timestamp, message.schema)
+        to_send = PyRawMessage(message.payload, [], message.timestamp, message.schema)
 
     msg = ArroyoMessage(
         Value(
