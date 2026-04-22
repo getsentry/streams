@@ -6,7 +6,7 @@ from sentry_streams.pipeline.pipeline import (
 )
 
 pipeline = (
-    streaming_source(name="myinput", stream_name="snuba-items-2")
+    streaming_source(name="myinput", stream_name="snuba-items")
     .apply(Map("transform", function=transform_raw))
     .sink(DevNullSink(name="devnull"))
 )
