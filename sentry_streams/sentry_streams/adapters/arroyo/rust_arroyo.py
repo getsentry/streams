@@ -205,26 +205,23 @@ def fake_transform(message: Message[Any]) -> PyAnyMessage | RawMessage:
     """
     next_msg = message
     ret = next_msg.payload
-    head = next_msg.headers
-    timestamp = next_msg.timestamp
-    schema = next_msg.schema
-    # if isinstance(ret, bytes):
-    # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
-    # Thus TMapOut = bytes.
-    #    next_msg = PyRawMessage(
-    #        payload=ret,
-    #         headers=next_msg.headers,
-    #        timestamp=next_msg.timestamp,
-    #        schema=next_msg.schema,
-    #    )
-    # else:
-    #    next_msg = PyMessage(
-    #        payload=ret,
-    #        headers=next_msg.headers,
-    #        timestamp=next_msg.timestamp,
-    #        schema=next_msg.schema,
-    #    )
-    return next_msg
+    if isinstance(ret, bytes):
+        # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
+        # Thus TMapOut = bytes.
+        next_msg = PyRawMessage(
+            payload=ret,
+            headers=next_msg.headers,
+            timestamp=next_msg.timestamp,
+            schema=next_msg.schema,
+        )
+    else:
+        next_msg = PyMessage(
+            payload=ret,
+            headers=next_msg.headers,
+            timestamp=next_msg.timestamp,
+            schema=next_msg.schema,
+        )
+    return next_msg.to_inner()
 
 
 def finalize_chain(
