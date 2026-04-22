@@ -45,7 +45,7 @@ from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
-from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.message import Message, PyMessage, PyRawMessage
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
     ComplexStep,
@@ -204,8 +204,27 @@ def fake_transform(message: Message[Any]) -> PyAnyMessage | RawMessage:
     make it possible to pass it to a MultiProcess pool.
     """
     next_msg = message
-
-    return next_msg.to_inner()
+    ret = next_msg.payload
+    head = next_msg.headers
+    timestamp = next_msg.timestamp
+    schema = next_msg.schema
+    # if isinstance(ret, bytes):
+    # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
+    # Thus TMapOut = bytes.
+    #    next_msg = PyRawMessage(
+    #        payload=ret,
+    #         headers=next_msg.headers,
+    #        timestamp=next_msg.timestamp,
+    #        schema=next_msg.schema,
+    #    )
+    # else:
+    #    next_msg = PyMessage(
+    #        payload=ret,
+    #        headers=next_msg.headers,
+    #        timestamp=next_msg.timestamp,
+    #        schema=next_msg.schema,
+    #    )
+    return next_msg
 
 
 def finalize_chain(
