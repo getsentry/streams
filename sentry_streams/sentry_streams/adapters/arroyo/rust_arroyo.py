@@ -68,9 +68,11 @@ from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_streams.rust_streams import (
     ArroyoConsumer,
     InitialOffset,
+    PyAnyMessage,
     PyKafkaConsumerConfig,
     PyKafkaProducerConfig,
     PyMetricConfig,
+    RawMessage,
 )
 from sentry_streams.rust_streams import Route as RustRoute
 from sentry_streams.rust_streams import (
@@ -195,14 +197,15 @@ def build_kafka_producer_config(
     )
 
 
-def fake_transform(message: Message[Any]) -> Message[Any]:
+def fake_transform(message: Message[Any]) -> PyAnyMessage | RawMessage:
     """
     Executes a series of chained transformations.
     This function needs to be outside of the `StepsChain` class to
     make it possible to pass it to a MultiProcess pool.
     """
     next_msg = message
-    return next_msg
+
+    return next_msg.to_inner()
 
 
 def finalize_chain(
