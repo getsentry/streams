@@ -33,9 +33,9 @@ pub fn build_map(
 
         let route = message.payload().route.clone();
 
-        //let res = traced_with_gil!(|py| {
-        //    try_apply_py(py, &callable, (Into::<Py<PyAny>>::into(py_streaming_msg),))
-        //});
+        let res = traced_with_gil!(|py| {
+            try_apply_py(py, &callable, (Into::<Py<PyAny>>::into(py_streaming_msg),))
+        });
 
         //match (res, &message.inner_message) {
         //    (Ok(transformed), _) => Ok(message.replace(RoutedValue {
