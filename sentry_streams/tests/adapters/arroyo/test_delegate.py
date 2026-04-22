@@ -47,9 +47,7 @@ class SingleMessageTransformer(SingleMessageOperatorDelegate):
 
 def test_rust_step() -> None:
     def make_msg(payload: str) -> RustMessage:
-        return PyAnyMessage(
-            payload=payload, headers=[("head", "val".encode())], timestamp=0, schema=None
-        )
+        return PyAnyMessage(payload=payload, headers=[], timestamp=0, schema=None)
 
     step = SingleMessageTransformer()
     # Transform one message

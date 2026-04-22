@@ -148,7 +148,7 @@ class PyMessage(Generic[TPayload], Message[TPayload]):
 
     def to_inner(self) -> PyAnyMessage:
         if self._cached_inner is None:
-            self._cached_inner = PyAnyMessage(self._payload, None, self._timestamp, self._schema)
+            self._cached_inner = PyAnyMessage(self._payload, [], self._timestamp, self._schema)
         return self._cached_inner
 
     def deepcopy(self) -> PyMessage[TPayload]:
@@ -229,7 +229,7 @@ class PyRawMessage(Message[bytes]):
 
     def to_inner(self) -> RawMessage:
         if self._cached_inner is None:
-            self._cached_inner = RawMessage(self._payload, None, self._timestamp, self._schema)
+            self._cached_inner = RawMessage(self._payload, [], self._timestamp, self._schema)
         return self._cached_inner
 
     def deepcopy(self) -> PyRawMessage:

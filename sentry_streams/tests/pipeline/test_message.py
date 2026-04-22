@@ -38,7 +38,8 @@ def test_message_access(
     message: Union[PyRawMessage, PyMessage[str]],
     expected_rust_type: Union[Type[PyAnyMessage], Type[RawMessage]],
 ) -> None:
-    assert message.headers == [("header1", "test".encode())]
+    # Python wrappers do not surface Kafka headers; inner Rust messages get [].
+    assert message.headers == []
     assert message.timestamp == 10.0
     assert message.schema == "schema"
 
