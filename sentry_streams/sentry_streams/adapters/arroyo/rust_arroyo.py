@@ -195,6 +195,16 @@ def build_kafka_producer_config(
     )
 
 
+def fake_transform(message: Message[Any]) -> Message[Any]:
+    """
+    Executes a series of chained transformations.
+    This function needs to be outside of the `StepsChain` class to
+    make it possible to pass it to a MultiProcess pool.
+    """
+    next_msg = message
+    return next_msg
+
+
 def finalize_chain(
     chains: TransformChains,
     route: Route,
@@ -228,7 +238,9 @@ def finalize_chain(
         )
     else:
         logger.info(f"Finalizing chain for route {route} without multiprocessing")
-        return RuntimeOperator.Map(rust_route, lambda msg: func(msg).to_inner())
+        return RuntimeOperator.Map(rust_route, fake_transform)
+
+        # return RuntimeOperator.Map(rust_route, lambda msg: func(msg).to_inner())
 
 
 class RustArroyoAdapter(StreamAdapter[Route, Route]):
