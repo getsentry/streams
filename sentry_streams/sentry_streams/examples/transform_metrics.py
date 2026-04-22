@@ -19,7 +19,7 @@ def transform_msg(msg: Message[IngestMetric]) -> Mapping[str, Any]:
 
 
 def transform_raw(msg: Message[bytes]) -> Mapping[str, Any]:
-    CODEC.decode(msg.payload)
+    # CODEC.decode(msg.payload)
     return {"transformed": True}
 
 
