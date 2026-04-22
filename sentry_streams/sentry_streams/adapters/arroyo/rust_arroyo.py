@@ -218,10 +218,13 @@ def fake_transform(message: Message[Any]) -> PyAnyMessage | RawMessage:
     # finally:
     #    output_metrics("asdasd", has_error, start_time, output_size)
 
-    ret = next_msg.payload
-    a = len(ret)
-
-    return next_msg
+    next_msg = PyRawMessage(
+        payload=b"asdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdsa",
+        headers=[],
+        timestamp=0.0,
+        schema=None,
+    )
+    return next_msg.to_inner()
 
 
 def finalize_chain(
