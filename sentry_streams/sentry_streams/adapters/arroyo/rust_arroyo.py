@@ -204,23 +204,28 @@ def fake_transform(message: Message[Any]) -> PyAnyMessage | RawMessage:
     make it possible to pass it to a MultiProcess pool.
     """
     next_msg = message
+
+    # msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
+    # start_time = input_metrics("asdasd", msg_size)
+    # has_error = output_size = None
+    # try:
+    #    result = next_msg.payload
+    #    output_size = get_size(result)
+    #    ret = result
+    # except Exception as e:
+    #    has_error = str(e.__class__.__name__)
+    #    raise e
+    # finally:
+    #    output_metrics("asdasd", has_error, start_time, output_size)
+
     ret = next_msg.payload
-    if isinstance(ret, bytes):
-        # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
-        # Thus TMapOut = bytes.
-        next_msg = PyRawMessage(
-            payload=ret,
-            headers=next_msg.headers,
-            timestamp=next_msg.timestamp,
-            schema=next_msg.schema,
-        )
-    else:
-        next_msg = PyMessage(
-            payload=ret,
-            headers=next_msg.headers,
-            timestamp=next_msg.timestamp,
-            schema=next_msg.schema,
-        )
+
+    next_msg = PyRawMessage(
+        payload=ret,
+        headers=[],
+        timestamp=0.0,
+        schema=None,
+    )
     return next_msg.to_inner()
 
 
