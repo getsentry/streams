@@ -132,7 +132,7 @@ class PyAnyMessage:
     def __init__(
         self,
         payload: Any,
-        headers: Sequence[Tuple[str, bytes]] | None,
+        headers: Sequence[Tuple[str, bytes]],
         timestamp: float,
         schema: str | None,
     ) -> None: ...
@@ -149,7 +149,7 @@ class RawMessage:
     def __init__(
         self,
         payload: bytes,
-        headers: Sequence[Tuple[str, bytes]] | None,
+        headers: Sequence[Tuple[str, bytes]],
         timestamp: float,
         schema: str | None,
     ) -> None: ...
