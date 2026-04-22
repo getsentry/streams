@@ -67,6 +67,7 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_streams.rust_streams import (
     ArroyoConsumer,
+    DlqConfig,
     InitialOffset,
     PyKafkaConsumerConfig,
     PyKafkaProducerConfig,
@@ -292,6 +293,16 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step.override_config(step_config)
         step.validate()
 
+        dlq_config = None
+        if step.dlq_bootstrap_servers is not None:
+            dlq_config = DlqConfig(
+                topic=step.dlq_topic or step.dlq_stream_name or "",
+                producer_config=PyKafkaProducerConfig(
+                    bootstrap_servers=step.dlq_bootstrap_servers,
+                    override_params=step.dlq_override_params,
+                ),
+            )
+
         assert isinstance(self.__write_healthcheck, bool)
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
@@ -302,7 +313,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             schema=schema_name,
             metric_config=build_py_metrics_config(self.__metrics_config),
             write_healthcheck=self.__write_healthcheck,
-            dlq_config=step.dlq_config,
+            dlq_config=dlq_config,
         )
         return Route(source_name, [])
 
