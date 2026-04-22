@@ -158,7 +158,7 @@ def test_integration() -> None:
 
     expected = PyMessage(
         "foo_t1_t2", headers=[("h", "v".encode())], timestamp=123, schema="s"
-    ).inner
+    ).to_inner()
 
     ret_msg = cast(PyAnyMessage, ret_msg)
     assert ret_msg.payload == expected.payload

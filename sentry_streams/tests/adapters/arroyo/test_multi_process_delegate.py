@@ -108,7 +108,7 @@ def test_integration() -> None:
 
     expected = PyMessage(
         "transformed foo", headers=[("h", "v".encode())], timestamp=123, schema="s"
-    ).inner
+    ).to_inner()
 
     assert ret_msg.payload == expected.payload
     assert ret_msg.headers == expected.headers

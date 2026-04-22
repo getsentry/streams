@@ -200,14 +200,18 @@ impl PyAnyMessage {
     #[new]
     pub fn new(
         payload: Py<PyAny>,
-        headers: Py<PySequence>,
+        headers: Option<Py<PySequence>>,
         timestamp: f64,
         schema: Option<String>,
         py: Python<'_>,
     ) -> PyResult<Self> {
         Ok(Self {
             payload,
-            headers: headers_to_vec(py, headers)?,
+            // Optimization to avoid running the python code if there are no headers.
+            headers: match headers {
+                Some(h) => headers_to_vec(py, h)?,
+                None => Vec::new(),
+            },
             timestamp,
             schema,
         })
@@ -265,14 +269,18 @@ impl RawMessage {
     #[new]
     pub fn new(
         payload: Py<PyBytes>,
-        headers: Py<PySequence>,
+        headers: Option<Py<PySequence>>,
         timestamp: f64,
         schema: Option<String>,
         py: Python,
     ) -> PyResult<Self> {
         Ok(Self {
             payload: payload.as_bytes(py).to_vec(),
-            headers: headers_to_vec(py, headers)?,
+            // Optimization to avoid running the python code if there are no headers.
+            headers: match headers {
+                Some(h) => headers_to_vec(py, h)?,
+                None => Vec::new(),
+            },
             timestamp,
             schema,
         })
@@ -580,7 +588,7 @@ mod tests {
             // Create PyAnyMessage
             let msg = PyAnyMessage::new(
                 payload.clone_ref(py),
-                py_headers.clone_ref(py),
+                Some(py_headers.clone_ref(py)),
                 timestamp,
                 schema.clone(),
                 py,
@@ -636,7 +644,7 @@ mod tests {
             // Create RawMessage
             let msg = RawMessage::new(
                 py_payload.unbind(),
-                py_headers.clone_ref(py),
+                Some(py_headers.clone_ref(py)),
                 timestamp,
                 schema.clone(),
                 py,
@@ -730,9 +738,14 @@ mod tests {
             let py_headers = headers_to_sequence(py, &headers).unwrap();
             let payload_bytes = vec![100, 101, 102, 103];
             let py_payload = PyBytes::new(py, &payload_bytes);
-            let raw_msg =
-                RawMessage::new(py_payload.unbind(), py_headers.clone_ref(py), 0., None, py)
-                    .unwrap();
+            let raw_msg = RawMessage::new(
+                py_payload.unbind(),
+                Some(py_headers.clone_ref(py)),
+                0.,
+                None,
+                py,
+            )
+            .unwrap();
             let py_raw_msg = raw_msg.into_pyobject(py).unwrap().unbind();
             let msg = PyStreamingMessage::RawMessage {
                 content: py_raw_msg,

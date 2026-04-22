@@ -44,7 +44,10 @@ def test_message_access(
 
     assert str(message) == repr(message)
 
-    assert isinstance(message.to_inner(), expected_rust_type)
+    inner1 = message.to_inner()
+    inner2 = message.to_inner()
+    assert isinstance(inner1, expected_rust_type)
+    assert inner1 is inner2
 
     copy = message.deepcopy()
     assert id(copy) != id(message)
