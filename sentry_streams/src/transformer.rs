@@ -36,7 +36,7 @@ pub fn build_map(
         //let res = traced_with_gil!(|py| {
         //    try_apply_py(py, &callable, (Into::<Py<PyAny>>::into(py_streaming_msg),))
         //});
-        let _ = Into::<Py<PyAny>>::into(py_streaming_msg);
+        let _ = traced_with_gil!(|py| { Into::<Py<PyAny>>::into(py_streaming_msg) });
         //match (res, &message.inner_message) {
         //    (Ok(transformed), _) => Ok(message.replace(RoutedValue {
         //        route,
