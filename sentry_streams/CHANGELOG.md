@@ -1,3 +1,25 @@
+## 0.0.45
+
+### Bug Fixes 🐛
+
+- (kafka config) Connect override_params from yaml config to rust arroyo by @victoria-yining-huang in [#291](https://github.com/getsentry/streams/pull/291)
+- (type checking) Add property decorators by @victoria-yining-huang in [#297](https://github.com/getsentry/streams/pull/297)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump rand from 0.8.5 to 0.8.6 in /sentry_streams/tests/rust_test_functions by @dependabot in [#298](https://github.com/getsentry/streams/pull/298)
+- Bump rand from 0.8.5 to 0.8.6 in /sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms by @dependabot in [#300](https://github.com/getsentry/streams/pull/300)
+
+#### Other
+
+- (deps-dev) Bump pytest from 8.4.1 to 9.0.3 in /sentry_streams by @dependabot in [#295](https://github.com/getsentry/streams/pull/295)
+
+### Other
+
+- Reduce the number of payload copy between rust and python by @fpacifici in [#299](https://github.com/getsentry/streams/pull/299)
+
 ## 0.0.44
 
 ### Internal Changes 🔧
