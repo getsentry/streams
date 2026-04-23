@@ -1,3 +1,7 @@
+## 0.0.46
+
+- Test skip processing headers by @fpacifici in [#301](https://github.com/getsentry/streams/pull/301)
+
 ## 0.0.45
 
 ### Bug Fixes 🐛
