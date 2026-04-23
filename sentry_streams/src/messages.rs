@@ -207,6 +207,7 @@ impl PyAnyMessage {
     ) -> PyResult<Self> {
         Ok(Self {
             payload,
+            // Optimization to avoid running the python code if there are no headers.
             headers: headers_to_vec(py, headers)?,
             timestamp,
             schema,
@@ -272,6 +273,7 @@ impl RawMessage {
     ) -> PyResult<Self> {
         Ok(Self {
             payload: payload.as_bytes(py).to_vec(),
+            // Optimization to avoid running the python code if there are no headers.
             headers: headers_to_vec(py, headers)?,
             timestamp,
             schema,
