@@ -41,9 +41,7 @@ def test_process_message() -> None:
 
     result = process_message(transformer, msg)
 
-    assert result == PyMessage(
-        "transformed foo", headers=[("h", "v".encode())], timestamp=123, schema="s"
-    )
+    assert result == PyMessage("transformed foo", headers=[], timestamp=123, schema="s")
 
 
 def test_mapped_msg_none() -> None:
@@ -79,7 +77,7 @@ def test_rust_to_arroyo_msg_with_pyanymessage() -> None:
     assert isinstance(arroyo_msg.payload, PyMessage)
 
     assert arroyo_msg.payload.payload == "payload"
-    assert arroyo_msg.payload.headers == [("h", "v".encode())]
+    assert arroyo_msg.payload.headers == []
     assert arroyo_msg.payload.timestamp == 123
     assert arroyo_msg.payload.schema == "s"
     assert Partition(Topic("topic"), 0) in arroyo_msg.committable
@@ -106,9 +104,7 @@ def test_integration() -> None:
     ret_msg, _ = ret[0]
     ret_msg = cast(PyAnyMessage, ret_msg)
 
-    expected = PyMessage(
-        "transformed foo", headers=[("h", "v".encode())], timestamp=123, schema="s"
-    ).to_inner()
+    expected = PyMessage("transformed foo", headers=[], timestamp=123, schema="s").to_inner()
 
     assert ret_msg.payload == expected.payload
     assert ret_msg.headers == expected.headers

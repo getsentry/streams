@@ -44,6 +44,8 @@ use sentry_arroyo::types::Partition;
 use crate::committable::{convert_committable_to_py, convert_py_committable};
 use crate::utils::traced_with_gil;
 
+// Used from `mod tests` only; the library does not read headers from the Python constructor.
+#[allow(dead_code)]
 pub fn headers_to_vec(py: Python<'_>, headers: Py<PySequence>) -> PyResult<Vec<(String, Vec<u8>)>> {
     // Converts the Python consumable representation of the Message headers into
     // the Rust native representation (which is a Vec<(String, Vec<u8>)>).
@@ -203,12 +205,11 @@ impl PyAnyMessage {
         headers: Py<PySequence>,
         timestamp: f64,
         schema: Option<String>,
-        py: Python<'_>,
     ) -> PyResult<Self> {
         Ok(Self {
             payload,
-            // Optimization to avoid running the python code if there are no headers.
-            headers: headers_to_vec(py, headers)?,
+            // Kafka headers are not read from the constructor; keep an empty vec.
+            headers: Vec::new(),
             timestamp,
             schema,
         })
@@ -273,8 +274,8 @@ impl RawMessage {
     ) -> PyResult<Self> {
         Ok(Self {
             payload: payload.as_bytes(py).to_vec(),
-            // Optimization to avoid running the python code if there are no headers.
-            headers: headers_to_vec(py, headers)?,
+            // Kafka headers are not read from the constructor; keep an empty vec.
+            headers: Vec::new(),
             timestamp,
             schema,
         })
@@ -585,7 +586,6 @@ mod tests {
                 py_headers.clone_ref(py),
                 timestamp,
                 schema.clone(),
-                py,
             )
             .unwrap();
 
@@ -597,8 +597,8 @@ mod tests {
             let payload_val: String = msg.payload.bind(py).extract().unwrap();
             assert_eq!(payload_val, "payload");
 
-            // Check headers
-            assert_eq!(msg.headers, headers);
+            // Check headers (constructor ignores the argument; always empty)
+            assert!(msg.headers.is_empty());
 
             let new_msg = msg.replace_payload("new_payload".into_py_any(py).unwrap());
 
@@ -613,7 +613,10 @@ mod tests {
             let repr = pymsg.call_method0(py, "__repr__").unwrap();
             let expected_repr = format!(
                 "PyAnyMessage(payload='{}', headers={:?}, timestamp={}, schema={:?})",
-                payload_val, headers, timestamp, schema
+                payload_val,
+                Vec::<(String, Vec<u8>)>::new(),
+                timestamp,
+                schema
             );
             assert_eq!(repr.extract::<String>(py).unwrap(), expected_repr);
         });
@@ -652,8 +655,8 @@ mod tests {
             // Check payload
             assert_eq!(msg.payload, payload_bytes);
 
-            // Check headers
-            assert_eq!(msg.headers, headers);
+            // Check headers (constructor ignores the argument; always empty)
+            assert!(msg.headers.is_empty());
 
             // Test payload getter
             let py_payload_val = msg.payload(py).unwrap();
@@ -663,7 +666,7 @@ mod tests {
             // Test headers getter
             let py_headers_val = msg.headers(py).unwrap();
             let headers_val = headers_to_vec(py, py_headers_val).unwrap();
-            assert_eq!(headers_val, headers);
+            assert!(headers_val.is_empty());
 
             // Replace payload via python
             let new_payload_bytes = vec![200, 201, 202];
@@ -680,7 +683,10 @@ mod tests {
             let repr = pymsg.call_method0(py, "__repr__").unwrap();
             let expected_repr = format!(
                 "RawMessage(payload={:?}, headers={:?}, timestamp={}, schema={:?})",
-                payload_bytes, headers, timestamp, schema
+                payload_bytes,
+                Vec::<(String, Vec<u8>)>::new(),
+                timestamp,
+                schema
             );
             assert_eq!(repr.extract::<String>(py).unwrap(), expected_repr);
         });

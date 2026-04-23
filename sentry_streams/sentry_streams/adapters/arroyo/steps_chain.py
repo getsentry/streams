@@ -26,14 +26,14 @@ def transform(chain: Sequence[Map[Any, Any]], message: Message[Any]) -> Message[
             # Thus TMapOut = bytes.
             next_msg = PyRawMessage(
                 payload=ret,
-                headers=next_msg.headers,
+                headers=[],
                 timestamp=next_msg.timestamp,
                 schema=next_msg.schema,
             )
         else:
             next_msg = PyMessage(
                 payload=ret,
-                headers=next_msg.headers,
+                headers=[],
                 timestamp=next_msg.timestamp,
                 schema=next_msg.schema,
             )
