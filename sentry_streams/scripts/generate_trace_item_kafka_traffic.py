@@ -167,6 +167,7 @@ def _producer_worker(
             try:
                 produce_kwargs: dict[str, object] = {
                     "value": payload,
+                    "key": rng.getrandbits(64).to_bytes(8, "big"),
                     "callback": delivery_callback,
                 }
                 if produce_headers:
