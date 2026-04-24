@@ -28,7 +28,7 @@ pipeline: Pipeline[bytes] = (
     )
     .apply(Parser[TraceItem]("message_parser"))
     .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
-    .apply(Batch(name="batched_messages", batch_size=50000))
+    # .apply(Batch(name="batched_messages", batch_size=50000))
     # .apply(
     #    ParquetSerializer(
     #        name="serializer", schema_fields=gcs_processor.schema_fields_sentrystreams
