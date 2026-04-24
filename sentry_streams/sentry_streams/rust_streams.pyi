@@ -47,28 +47,26 @@ class PyKafkaConsumerConfig:
     def override_params(self) -> Mapping[str, str] | None: ...
 
 class PyKafkaProducerConfig:
-    bootstrap_servers: Sequence[str]
-    override_params: Mapping[str, str] | None
-
     def __init__(
         self,
         bootstrap_servers: Sequence[str],
         override_params: Mapping[str, str] | None = None,
     ) -> None: ...
+    @property
+    def bootstrap_servers(self) -> Sequence[str]: ...
+    @property
+    def override_params(self) -> Mapping[str, str] | None: ...
 
 class DlqConfig:
-    topic: str
-    producer_config: PyKafkaProducerConfig
-
     def __init__(
         self,
         topic: str,
         producer_config: PyKafkaProducerConfig,
     ) -> None: ...
     @property
-    def bootstrap_servers(self) -> Sequence[str]: ...
+    def topic(self) -> str: ...
     @property
-    def override_params(self) -> Mapping[str, str] | None: ...
+    def producer_config(self) -> PyKafkaProducerConfig: ...
 
 class PyMetricConfig:
     def __init__(

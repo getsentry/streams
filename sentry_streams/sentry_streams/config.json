@@ -153,9 +153,13 @@
                 "dsn"
             ]
         },
-        "DlqProducerConfig": {
+        "DlqConfig": {
             "type": "object",
             "properties": {
+                "topic": {
+                    "type": "string",
+                    "minLength": 1
+                },
                 "bootstrap_servers": {
                     "type": "array",
                     "items": {
@@ -172,21 +176,6 @@
             },
             "required": [
                 "bootstrap_servers"
-            ]
-        },
-        "DlqConfig": {
-            "type": "object",
-            "properties": {
-                "topic": {
-                    "type": "string",
-                    "minLength": 1
-                },
-                "producer_config": {
-                    "$ref": "#/definitions/DlqProducerConfig"
-                }
-            },
-            "required": [
-                "producer_config"
             ]
         }
     }

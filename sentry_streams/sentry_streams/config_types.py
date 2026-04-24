@@ -16,7 +16,8 @@ class DlqConfig(TypedDict, total=False):
     """
 
     topic: str
-    producer_config: "KafkaProducerConfig"
+    bootstrap_servers: Sequence[str]
+    override_params: Mapping[str, str]
 
 
 class KafkaConsumerConfig(TypedDict, StepConfig):

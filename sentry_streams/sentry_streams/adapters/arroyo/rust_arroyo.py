@@ -196,6 +196,33 @@ def build_kafka_producer_config(
     )
 
 
+def build_dlq_config(
+    dlq_stream_name: str,
+    step_config: Mapping[str, Any],
+) -> DlqConfig | None:
+    """
+    Build the DLQ configuration from deployment config.
+    Returns None if no DLQ config is present.
+    """
+    loaded_dlq = step_config.get("dlq")
+    if not loaded_dlq:
+        return None
+
+    topic = loaded_dlq.get("topic", dlq_stream_name)
+    bootstrap_servers = loaded_dlq.get("bootstrap_servers")
+
+    if not bootstrap_servers:
+        raise ValueError("DLQ config requires 'bootstrap_servers' in deployment configuration")
+
+    return DlqConfig(
+        topic=topic,
+        producer_config=PyKafkaProducerConfig(
+            bootstrap_servers=bootstrap_servers,
+            override_params=loaded_dlq.get("override_params"),
+        ),
+    )
+
+
 def finalize_chain(
     chains: TransformChains,
     route: Route,
@@ -294,14 +321,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step.validate()
 
         dlq_config = None
-        if step.dlq_bootstrap_servers is not None:
-            dlq_config = DlqConfig(
-                topic=step.dlq_topic or step.dlq_stream_name or "",
-                producer_config=PyKafkaProducerConfig(
-                    bootstrap_servers=step.dlq_bootstrap_servers,
-                    override_params=step.dlq_override_params,
-                ),
-            )
+        if step.dlq_stream_name is not None:
+            dlq_config = build_dlq_config(step.dlq_stream_name, step_config)
 
         assert isinstance(self.__write_healthcheck, bool)
         self.__consumers[source_name] = ArroyoConsumer(

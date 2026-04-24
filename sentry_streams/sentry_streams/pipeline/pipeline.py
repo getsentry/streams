@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
 from functools import partial
@@ -235,30 +235,16 @@ class StreamSource(Source[bytes]):
     consumer_group: Optional[str] = None
     dlq_stream_name: Optional[str] = None
     step_type: StepType = StepType.SOURCE
-    dlq_topic: Optional[str] = field(default=None, init=False)
-    dlq_bootstrap_servers: Optional[Sequence[str]] = field(default=None, init=False)
-    dlq_override_params: Optional[Mapping[str, str]] = field(default=None, init=False)
 
     def register(self, ctx: Pipeline[bytes], previous: Step) -> None:
         super().register(ctx, previous)
 
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
-        """Override topic, consumer_group, and DLQ parameters from deployment configuration."""
+        """Override topic and consumer_group from deployment configuration."""
         if loaded_config.get("topic"):
             self.stream_name = str(loaded_config.get("topic"))
         if loaded_config.get("consumer_group"):
             self.consumer_group = str(loaded_config.get("consumer_group"))
-        if self.dlq_stream_name is not None and loaded_config.get("dlq"):
-            loaded_dlq = loaded_config["dlq"]
-            self.dlq_topic = loaded_dlq.get("topic", self.dlq_stream_name)
-            producer_config = loaded_dlq.get("producer_config", {})
-            self.dlq_bootstrap_servers = producer_config.get("bootstrap_servers")
-            self.dlq_override_params = producer_config.get("override_params")
-
-            if not self.dlq_bootstrap_servers:
-                raise ValueError(
-                    "DLQ config requires 'bootstrap_servers' in deployment configuration"
-                )
 
 
 @dataclass

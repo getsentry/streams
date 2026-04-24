@@ -2,6 +2,7 @@ from typing import Mapping, Sequence
 
 import pytest
 
+from sentry_streams.adapters.arroyo.rust_arroyo import build_dlq_config
 from sentry_streams.pipeline.pipeline import StreamSource
 from sentry_streams.rust_streams import (
     ArroyoConsumer,
@@ -35,12 +36,6 @@ def test_consumer_creation(
     expected_topic: str | None,
     expected_bootstrap_servers: Sequence[str] | None,
 ) -> None:
-    """Test that Rust ArroyoConsumer correctly accepts and stores DLQ configuration.
-
-    This parameterized test verifies:
-    1. Backward compatibility when DLQ param is omitted
-    2. Full DLQ configuration is accepted and stored correctly
-    """
     kafka_consumer_config = PyKafkaConsumerConfig(
         bootstrap_servers=["localhost:9092"],
         group_id="test-group",
@@ -74,13 +69,7 @@ def test_stream_source_dlq_config_not_constructor_param() -> None:
         StreamSource(  # type: ignore
             name="test_source",
             stream_name="test-topic",
-            dlq_config=DlqConfig(
-                topic="test-dlq",
-                producer_config=PyKafkaProducerConfig(
-                    bootstrap_servers=["localhost:9092"],
-                    override_params=None,
-                ),
-            ),
+            dlq_config="anything",
         )
 
 
@@ -91,7 +80,6 @@ def test_stream_source_no_dlq() -> None:
         stream_name="test-topic",
     )
     assert source.dlq_stream_name is None
-    assert source.dlq_config is None
 
 
 @pytest.mark.parametrize(
@@ -100,9 +88,7 @@ def test_stream_source_no_dlq() -> None:
         pytest.param(
             "my-dlq",
             {
-                "producer_config": {
-                    "bootstrap_servers": ["broker1:9092"],
-                },
+                "bootstrap_servers": ["broker1:9092"],
             },
             "my-dlq",
             ["broker1:9092"],
@@ -113,9 +99,7 @@ def test_stream_source_no_dlq() -> None:
             "my-dlq",
             {
                 "topic": "overridden-dlq-topic",
-                "producer_config": {
-                    "bootstrap_servers": ["broker1:9092"],
-                },
+                "bootstrap_servers": ["broker1:9092"],
             },
             "overridden-dlq-topic",
             ["broker1:9092"],
@@ -125,14 +109,12 @@ def test_stream_source_no_dlq() -> None:
         pytest.param(
             "my-dlq",
             {
-                "producer_config": {
-                    "bootstrap_servers": ["broker1:9092", "broker2:9092"],
-                    "override_params": {
-                        "security.protocol": "sasl_plaintext",
-                        "sasl.mechanism": "SCRAM-SHA-256",
-                        "sasl.username": "user",
-                        "sasl.password": "pass",
-                    },
+                "bootstrap_servers": ["broker1:9092", "broker2:9092"],
+                "override_params": {
+                    "security.protocol": "sasl_plaintext",
+                    "sasl.mechanism": "SCRAM-SHA-256",
+                    "sasl.username": "user",
+                    "sasl.password": "pass",
                 },
             },
             "my-dlq",
@@ -147,38 +129,31 @@ def test_stream_source_no_dlq() -> None:
         ),
     ],
 )
-def test_stream_source_yaml_override_config_dlq(
+def test_build_dlq_config(
     dlq_stream_name: str,
     override_dlq: Mapping[str, object],
     expected_topic: str,
     expected_bootstrap_servers: Sequence[str],
     expected_override_params: Mapping[str, str] | None,
 ) -> None:
-    """Test that StreamSource.override_config builds DLQ config from deployment config."""
-    source = StreamSource(
-        name="my_source",
-        stream_name="my-topic",
-        dlq_stream_name=dlq_stream_name,
-    )
+    """Test that build_dlq_config constructs DlqConfig from deployment config."""
+    result = build_dlq_config(dlq_stream_name, {"dlq": override_dlq})
 
-    source.override_config({"dlq": override_dlq})
-
-    assert source.dlq_config is not None
-    assert source.dlq_config.topic == expected_topic
-    assert source.dlq_config.producer_config.bootstrap_servers == expected_bootstrap_servers
-    assert source.dlq_config.producer_config.override_params == expected_override_params
+    assert result is not None
+    assert result.topic == expected_topic
+    assert result.producer_config.bootstrap_servers == expected_bootstrap_servers
+    assert result.producer_config.override_params == expected_override_params
 
 
-def test_stream_source_override_config_dlq_missing_bootstrap_servers() -> None:
-    """Test that override_config raises ValueError when bootstrap_servers is missing."""
-    source = StreamSource(
-        name="my_source",
-        stream_name="my-topic",
-        dlq_stream_name="my-dlq",
-    )
-
+def test_build_dlq_config_missing_bootstrap_servers() -> None:
+    """Test that build_dlq_config raises ValueError when bootstrap_servers is missing."""
     with pytest.raises(
         ValueError,
         match="DLQ config requires 'bootstrap_servers' in deployment configuration",
     ):
-        source.override_config({"dlq": {"topic": "my-dlq"}})
+        build_dlq_config("my-dlq", {"dlq": {"topic": "my-dlq"}})
+
+
+def test_build_dlq_config_no_dlq_section() -> None:
+    """Test that build_dlq_config returns None when no dlq section in config."""
+    assert build_dlq_config("my-dlq", {}) is None
