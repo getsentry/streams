@@ -7,6 +7,12 @@ use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::run_task::RunTask;
 use sentry_arroyo::processing::strategies::{ProcessingStrategy, SubmitError};
 use sentry_arroyo::types::{InnerMessage, Message};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Counts `try_apply_py` completions for the map step (across all threads) for sampling logs.
+static MAP_APPLY_COUNT: AtomicU64 = AtomicU64::new(0);
+
+const MAP_APPLY_LOG_EVERY: u64 = 100_000;
 
 /// Creates an Arroyo transformer strategy that uses a Python callable to
 /// transform messages. The callable is expected to take a Message<RoutedValue>
@@ -33,24 +39,27 @@ pub fn build_map(
 
         let route = message.payload().route.clone();
 
-        //let res = traced_with_gil!(|py| {
-        //    try_apply_py(py, &callable, (Into::<Py<PyAny>>::into(py_streaming_msg),))
-        //});
-        let res = Ok(traced_with_gil!(|py| {
-            Into::<Py<PyAny>>::into(py_streaming_msg).clone_ref(py)
-        }));
+        let res = traced_with_gil!(|py| {
+            try_apply_py(py, &callable, (Into::<Py<PyAny>>::into(py_streaming_msg),))
+        });
 
-        match (res, &message.inner_message) {
-            (Ok(transformed), _) => Ok(message.replace(RoutedValue {
-                route,
-                payload: RoutedValuePayload::PyStreamingMessage(transformed.into()),
-            })),
-            (Err(ApplyError::ApplyFailed), _) => panic!("Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
-            (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
-            (Err(ApplyError::InvalidMessage), InnerMessage::BrokerMessage(broker_message)) => {
-                Err(SubmitError::<RoutedValue>::InvalidMessage(broker_message.into()))
-            }
-        };
+        let n = MAP_APPLY_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+        if n % MAP_APPLY_LOG_EVERY == 0 {
+            eprintln!(
+                "build_map: map_apply count={n}, last_message_success={}",
+                res.is_ok()
+            );
+        }
+
+        //match (res, &message.inner_message) {
+        //    (Ok(transformed), _) => Ok(message.replace(RoutedValue {
+        //        route,
+        //        payload: RoutedValuePayload::PyStreamingMessage(transformed.into()),
+        //    })),
+        //    (Err(ApplyError::ApplyFailed), _) => panic!("Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
+        //    (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
+        //    (Err(ApplyError::InvalidMessage),  InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into()))
+        //}
         Ok(message)
     };
     Box::new(RunTask::new(mapper, next))
