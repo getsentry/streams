@@ -228,7 +228,7 @@ def finalize_chain(
         )
     else:
         logger.info(f"Finalizing chain for route {route} without multiprocessing")
-        return RuntimeOperator.Map(rust_route, lambda msg: msg)
+        return RuntimeOperator.Map(rust_route, lambda msg: func(msg))
 
 
 class RustArroyoAdapter(StreamAdapter[Route, Route]):
