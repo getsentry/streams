@@ -8,7 +8,7 @@ metrics:
   port: 8125
   tags:
     sentry_region: sandbox
-    pipeline: filter_profile
+    pipeline: spans
 pipeline:
   adapter_config:
     arroyo:

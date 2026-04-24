@@ -243,6 +243,7 @@ class ItemsSpanProcessor:
         return self.process_batch_messages(message)
 
     def process_stream_message(self, message: Message[TraceItem]) -> dict[str, Any]:
+        print("msg")
         return self.process_item(message.payload)
 
     def process_batch_messages(
