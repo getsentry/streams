@@ -39,9 +39,9 @@ pub fn build_map(
 
         let route = message.payload().route.clone();
 
-        //let res = traced_with_gil!(|py| {
-        //    try_apply_py(py, &callable, (Into::<Py<PyAny>>::into(py_streaming_msg),))
-        //});
+        let res = traced_with_gil!(|py| {
+            try_apply_py(py, &callable, (Into::<Py<PyAny>>::into(py_streaming_msg),))
+        });
         //let res = Ok::<Py<PyAny>, ApplyError>(traced_with_gil!(|py| {
         //   Into::<Py<PyAny>>::into(py_streaming_msg).clone_ref(py)
         //}));
@@ -54,16 +54,16 @@ pub fn build_map(
         //    );
         //}
 
-        //match (res, &message.inner_message) {
-        //    (Ok(transformed), _) => Ok(message.replace(RoutedValue {
-        //        route,
-        //        payload: RoutedValuePayload::PyStreamingMessage(transformed.into()),
-        //    })),
-        //    (Err(ApplyError::ApplyFailed), _) => panic!("Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
-        //    (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
-        //    (Err(ApplyError::InvalidMessage),  InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into()))
-        //}
-        Ok(message)
+        match (res, &message.inner_message) {
+            (Ok(transformed), _) => Ok(message.replace(RoutedValue {
+                route,
+                payload: RoutedValuePayload::PyStreamingMessage(transformed.into()),
+            })),
+            (Err(ApplyError::ApplyFailed), _) => panic!("Python map function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
+            (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
+            (Err(ApplyError::InvalidMessage),  InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into()))
+        }
+        // Ok(message)
     };
     Box::new(RunTask::new(mapper, next))
 }
