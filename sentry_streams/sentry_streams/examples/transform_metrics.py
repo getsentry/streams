@@ -113,7 +113,7 @@ GEN_AI_ATTRIBUTES_TO_COLUMNS = {
 
 
 def do_nothing(msg: Message[bytes]) -> bytes:
-    return b""
+    return None
 
 
 def uuid_from_item_id(item_id: bytes) -> str:
