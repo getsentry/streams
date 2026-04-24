@@ -12,6 +12,10 @@ from sentry_streams.pipeline.pipeline import Map
 logger = logging.getLogger(__name__)
 
 
+def fake_transform(message: Message[Any]) -> Message[Any]:
+    return message
+
+
 def transform(chain: Sequence[Map[Any, Any]], message: Message[Any]) -> Message[Any]:
     """
     Executes a series of chained transformations.
@@ -115,7 +119,8 @@ class TransformChains:
                 f"Error: {e}"
             ) from e
 
-        return (chain.parallelism, func)
+        return (chain.parallelism, fake_transform)
+        # return (chain.parallelism, func)
 
     def exists(self, route: Route) -> bool:
         return _hashable_route(route) in self.__chains
