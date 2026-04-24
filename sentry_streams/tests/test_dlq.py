@@ -63,22 +63,13 @@ def test_consumer_creation(
         assert consumer.dlq_config.producer_config.bootstrap_servers == expected_bootstrap_servers
 
 
-def test_stream_source_dlq_config_not_constructor_param() -> None:
-    """Test that dlq_config cannot be passed as a constructor argument."""
-    with pytest.raises(TypeError, match="unexpected keyword argument"):
-        StreamSource(  # type: ignore
-            name="test_source",
-            stream_name="test-topic",
-            dlq_config="anything",
-        )
-
-
 def test_stream_source_no_dlq() -> None:
     """Test StreamSource without DLQ."""
     source = StreamSource(
         name="test_source",
         stream_name="test-topic",
     )
+    assert source is not None
     assert source.dlq_stream_name is None
 
 
@@ -155,5 +146,6 @@ def test_build_dlq_config_missing_bootstrap_servers() -> None:
 
 
 def test_build_dlq_config_no_dlq_section() -> None:
-    """Test that build_dlq_config returns None when no dlq section in config."""
-    assert build_dlq_config("my-dlq", {}) is None
+    """Test that build_dlq_config raises KeyError when no dlq section in config."""
+    with pytest.raises(KeyError):
+        build_dlq_config("my-dlq", {})

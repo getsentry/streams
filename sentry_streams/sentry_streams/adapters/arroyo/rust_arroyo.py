@@ -199,15 +199,11 @@ def build_kafka_producer_config(
 def build_dlq_config(
     dlq_stream_name: str,
     step_config: Mapping[str, Any],
-) -> DlqConfig | None:
+) -> DlqConfig:
     """
     Build the DLQ configuration from deployment config.
-    Returns None if no DLQ config is present.
     """
-    loaded_dlq = step_config.get("dlq")
-    if not loaded_dlq:
-        return None
-
+    loaded_dlq = step_config["dlq"]
     topic = loaded_dlq.get("topic", dlq_stream_name)
     bootstrap_servers = loaded_dlq.get("bootstrap_servers")
 
