@@ -112,6 +112,10 @@ GEN_AI_ATTRIBUTES_TO_COLUMNS = {
 }
 
 
+def do_nothing(msg: Message[bytes]) -> bytes:
+    return b""
+
+
 def uuid_from_item_id(item_id: bytes) -> str:
     return uuid.UUID(int=int.from_bytes(item_id, byteorder="little", signed=False)).hex
 
