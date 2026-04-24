@@ -50,7 +50,8 @@ pub fn build_map(
             (Err(ApplyError::InvalidMessage), InnerMessage::BrokerMessage(broker_message)) => {
                 Err(SubmitError::<RoutedValue>::InvalidMessage(broker_message.into()))
             }
-        }
+        };
+        Ok(message)
     };
     Box::new(RunTask::new(mapper, next))
 }
