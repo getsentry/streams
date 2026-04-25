@@ -326,15 +326,15 @@ class BufferedMetricsBackend(MetricsBackend):
         tags: Optional[Tags] = None,
     ) -> None:
         self.__add_to_buffer(self.__counters, name, value, tags or {})
-        self.__throttled_flush()
+        # self.__throttled_flush()
 
     def gauge(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         self.__add_to_buffer(self.__gauges, name, value, tags or {}, replace=True)
-        self.__throttled_flush()
+        # self.__throttled_flush()
 
     def timing(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         self.__add_to_buffer(self.__timers, name, value, tags or {})
-        self.__throttled_flush()
+        # self.__throttled_flush()
 
     def __throttled_flush(self) -> None:
         if time.time() - self.__last_flush_time >= self.__throttle_interval_sec:
