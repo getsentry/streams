@@ -41,7 +41,19 @@ def output_metrics(
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
-    ret = msg_parser(message)
+    msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
+    # start_time = input_metrics("fake_transform", msg_size)
+    has_error = output_size = None
+    try:
+        ret = msg_parser(next_msg)
+        output_size = get_size(ret)
+    except Exception as e:
+        has_error = str(e.__class__.__name__)
+        raise e
+    finally:
+        # output_metrics("fake_transform", has_error, start_time, output_size)
+        pass
+
     if isinstance(ret, bytes):
         # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
         # Thus TMapOut = bytes.
