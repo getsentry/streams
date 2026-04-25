@@ -13,10 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
-    return PyMessage(
-        payload={
-            "message": message.payload,
-        },
+    return PyRawMessage(
+        payload=message.payload,
         headers=[],
         timestamp=message.timestamp,
         schema=message.schema,
