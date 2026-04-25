@@ -2,17 +2,41 @@ import logging
 import pickle
 from dataclasses import dataclass
 from functools import partial
+import time
 from typing import Any, Callable, MutableMapping, MutableSequence, Sequence, Tuple
 
 from sentry_streams.adapters.arroyo.routes import Route
-from sentry_streams.adapters.arroyo.rust_arroyo import input_metrics, output_metrics
 from sentry_streams.config_types import MultiProcessConfig
-from sentry_streams.metrics import get_size
+from sentry_streams.metrics import get_metrics, get_size, Metric
 from sentry_streams.pipeline.message import Message, PyMessage, PyRawMessage
 from sentry_streams.pipeline.msg_codecs import msg_parser
 from sentry_streams.pipeline.pipeline import Map
 
 logger = logging.getLogger(__name__)
+
+
+def input_metrics(name: str, message_size: int | None) -> float:
+    metrics = get_metrics()
+    tags = {"step": name}
+    metrics.increment(Metric.INPUT_MESSAGES, tags=tags)
+    if message_size is not None:
+        metrics.increment(Metric.INPUT_BYTES, tags=tags, value=message_size)
+    return time.time()
+
+
+def output_metrics(
+    name: str, error: str | None, start_time: float, message_size: int | None
+) -> None:
+    metrics = get_metrics()
+    tags = {"step": name}
+    if error:
+        tags["error"] = error
+        metrics.increment(Metric.ERRORS, tags=tags)
+
+    metrics.increment(Metric.OUTPUT_MESSAGES, tags=tags)
+    if message_size is not None:
+        metrics.increment(Metric.OUTPUT_BYTES, tags=tags, value=message_size)
+    metrics.timing(Metric.DURATION, time.time() - start_time, tags=tags)
 
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
