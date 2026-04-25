@@ -18,13 +18,11 @@ logger = logging.getLogger(__name__)
 
 def input_metrics(name: str, message_size: int | None) -> float:
     t = time.time()
-    if int(t) % 5 == 0:
-        return t
     metrics = get_metrics()
     tags = {"step": name}
     metrics.increment(Metric.INPUT_MESSAGES, tags=tags)
     if message_size is not None:
-        metrics.increment(Metric.INPUT_BYTES, tags=tags, value=message_size)
+        # metrics.increment(Metric.INPUT_BYTES, tags=tags, value=message_size)
         pass
     return t
 
@@ -33,8 +31,6 @@ def output_metrics(
     name: str, error: str | None, start_time: float, message_size: int | None
 ) -> None:
     t = time.time()
-    if int(t) % 5 == 0:
-        return
     metrics = get_metrics()
     tags = {"step": name}
     if error:
@@ -63,7 +59,7 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        output_metrics("fake_step", has_error, start_time, output_size)
+        # output_metrics("fake_step", has_error, start_time, output_size)
         pass
     ret = result
 
