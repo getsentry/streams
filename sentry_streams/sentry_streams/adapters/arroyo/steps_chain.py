@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 def input_metrics(name: str, message_size: int | None) -> float:
     metrics = get_metrics()
     tags = {"step": name}
-    # metrics.increment(Metric.INPUT_MESSAGES, tags=tags)
+    metrics.increment(Metric.INPUT_MESSAGES, tags=tags)
     if message_size is not None:
-        # metrics.increment(Metric.INPUT_BYTES, tags=tags, value=message_size)
+        metrics.increment(Metric.INPUT_BYTES, tags=tags, value=message_size)
         pass
     return time.time()
 
@@ -32,13 +32,13 @@ def output_metrics(
     tags = {"step": name}
     if error:
         tags["error"] = error
-        # metrics.increment(Metric.ERRORS, tags=tags)
+        metrics.increment(Metric.ERRORS, tags=tags)
 
-    # metrics.increment(Metric.OUTPUT_MESSAGES, tags=tags)
+    metrics.increment(Metric.OUTPUT_MESSAGES, tags=tags)
     if message_size is not None:
-        # metrics.increment(Metric.OUTPUT_BYTES, tags=tags, value=message_size)
+        metrics.increment(Metric.OUTPUT_BYTES, tags=tags, value=message_size)
         pass
-    # metrics.timing(Metric.DURATION, time.time() - start_time, tags=tags)
+    metrics.timing(Metric.DURATION, time.time() - start_time, tags=tags)
     pass
 
 
@@ -46,7 +46,7 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
     # msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
     msg_size = 100
-    start_time = input_metrics("fake_step", msg_size)
+    # start_time = input_metrics("fake_step", msg_size)
     has_error = output_size = None
     try:
         result = msg_parser(next_msg)
@@ -56,7 +56,7 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        output_metrics("fake_step", has_error, start_time, output_size)
+        # output_metrics("fake_step", has_error, start_time, output_size)
         pass
     ret = result
 
