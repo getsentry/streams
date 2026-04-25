@@ -5,7 +5,9 @@ from functools import partial
 from typing import Any, Callable, MutableMapping, MutableSequence, Sequence, Tuple
 
 from sentry_streams.adapters.arroyo.routes import Route
+from sentry_streams.adapters.arroyo.rust_arroyo import input_metrics, output_metrics
 from sentry_streams.config_types import MultiProcessConfig
+from sentry_streams.metrics import get_size
 from sentry_streams.pipeline.message import Message, PyMessage, PyRawMessage
 from sentry_streams.pipeline.msg_codecs import msg_parser
 from sentry_streams.pipeline.pipeline import Map
@@ -15,7 +17,19 @@ logger = logging.getLogger(__name__)
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
-    ret = msg_parser(next_msg)
+    msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
+    start_time = input_metrics("fake_transform", msg_size)
+    has_error = output_size = None
+    try:
+        result = msg_parser(next_msg)
+        output_size = get_size(result)
+        ret = result
+    except Exception as e:
+        has_error = str(e.__class__.__name__)
+        raise e
+    finally:
+        output_metrics("fake_transform", has_error, start_time, output_size)
+
     if isinstance(ret, bytes):
         # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
         # Thus TMapOut = bytes.
