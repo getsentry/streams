@@ -474,7 +474,6 @@ def configure_metrics(config: MetricsConfig, force: bool = False) -> None:
 
 
 def get_metrics() -> Metrics:
-    return Metrics(_dummy_metrics_backend)
     if _metrics_backend is None:
         return Metrics(_dummy_metrics_backend)
     return Metrics(_metrics_backend)

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def input_metrics(name: str, message_size: int | None) -> float:
-    # metrics = get_metrics()
+    metrics = get_metrics()
     tags = {"step": name}
     # metrics.increment(Metric.INPUT_MESSAGES, tags=tags)
     if message_size is not None:
@@ -28,7 +28,7 @@ def input_metrics(name: str, message_size: int | None) -> float:
 def output_metrics(
     name: str, error: str | None, start_time: float, message_size: int | None
 ) -> None:
-    # metrics = get_metrics()
+    metrics = get_metrics()
     tags = {"step": name}
     if error:
         tags["error"] = error
