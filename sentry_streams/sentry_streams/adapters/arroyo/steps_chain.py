@@ -59,7 +59,7 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        output_metrics("fake_step", has_error, start_time, output_size)
+        # output_metrics("fake_step", has_error, start_time, output_size)
         pass
     ret = result
 
