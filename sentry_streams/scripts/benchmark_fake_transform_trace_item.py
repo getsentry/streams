@@ -10,6 +10,7 @@ Example::
 
 from __future__ import annotations
 
+import argparse
 from datetime import datetime, timezone
 import importlib.util
 import random
@@ -27,7 +28,7 @@ from sentry_streams.pipeline.message import PyRawMessage
 
 # Logical stream name for ``sentry_kafka_schemas.get_codec`` (see ``items_spans`` example).
 TRACE_ITEM_STREAM_SCHEMA = "snuba-items"
-ITERATIONS = 100_000
+DEFAULT_ITERATIONS = 100_000
 
 
 def _utc_timestamp() -> Timestamp:
@@ -79,7 +80,24 @@ def _build_trace_item(
     return item
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run fake_transform repeatedly on one serialized TraceItem."
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=DEFAULT_ITERATIONS,
+        help="Number of fake_transform calls to run.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+    if args.iterations < 1:
+        raise ValueError("--iterations must be at least 1")
+
     item = _build_trace_item(
         worker_id=0,
         message_index=100,
@@ -112,10 +130,10 @@ def main() -> None:
         TRACE_ITEM_STREAM_SCHEMA,
     )
 
-    for _ in range(ITERATIONS):
+    for _ in range(args.iterations):
         fake_transform(msg)
 
-    print(f"Completed {ITERATIONS} iterations of fake_transform.")
+    print(f"Completed {args.iterations} iterations of fake_transform.")
 
 
 if __name__ == "__main__":
