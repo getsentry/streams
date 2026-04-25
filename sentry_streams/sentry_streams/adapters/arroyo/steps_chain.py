@@ -13,7 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
-    return message
+    return PyMessage(
+        payload={
+            "message": message.payload,
+        },
+        headers=[],
+        timestamp=message.timestamp,
+        schema=message.schema,
+    )
 
 
 def transform(chain: Sequence[Map[Any, Any]], message: Message[Any]) -> Message[Any]:
