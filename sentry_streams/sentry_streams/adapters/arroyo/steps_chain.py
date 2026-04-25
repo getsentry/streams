@@ -119,8 +119,8 @@ class TransformChains:
                 f"Error: {e}"
             ) from e
 
-        # return (chain.parallelism, fake_transform)
-        return (chain.parallelism, func)
+        return (chain.parallelism, fake_transform)
+        # return (chain.parallelism, func)
 
     def exists(self, route: Route) -> bool:
         return _hashable_route(route) in self.__chains
