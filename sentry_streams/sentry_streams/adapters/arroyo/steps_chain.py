@@ -32,6 +32,7 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
             timestamp=next_msg.timestamp,
             schema=next_msg.schema,
         )
+    return next_msg
 
 
 def transform(chain: Sequence[Map[Any, Any]], message: Message[Any]) -> Message[Any]:
