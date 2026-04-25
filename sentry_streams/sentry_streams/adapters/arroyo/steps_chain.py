@@ -47,19 +47,19 @@ def output_metrics(
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
-    # msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
-    msg_size = 100
+    msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
+    # msg_size = 100
     start_time = input_metrics("fake_step", msg_size)
     has_error = output_size = None
     try:
         result = msg_parser(next_msg)
-        # output_size = get_size(result)
-        output_size = 100
+        output_size = get_size(result)
+        # output_size = 100
     except Exception as e:
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        # output_metrics("fake_step", has_error, start_time, output_size)
+        output_metrics("fake_step", has_error, start_time, output_size)
         pass
     ret = result
 
