@@ -301,15 +301,15 @@ class BufferedMetricsBackend(MetricsBackend):
 
     def __add_to_buffer(
         self,
-        buffer: dict[int, BufferedMetric],
+        buffer: dict[str, BufferedMetric],
         name: str,
         value: Union[int, float],
         tags: Tags,
         replace: bool = False,
     ) -> None:
-        normalized_tags = self.__normalize_tags(tags)
-        key = hash((name, frozenset(normalized_tags)))
-
+        # normalized_tags = self.__normalize_tags(tags)
+        # key = hash((name, frozenset(normalized_tags)))
+        key = name
         if key in buffer:
             new_value = buffer[key][1] + value if not replace else value
             buffer[key] = (name, new_value, tags)
