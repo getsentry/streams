@@ -7,18 +7,31 @@ from typing import Any, Callable, MutableMapping, MutableSequence, Sequence, Tup
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.config_types import MultiProcessConfig
 from sentry_streams.pipeline.message import Message, PyMessage, PyRawMessage
+from sentry_streams.pipeline.msg_codecs import msg_parser
 from sentry_streams.pipeline.pipeline import Map
 
 logger = logging.getLogger(__name__)
 
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
-    return PyRawMessage(
-        payload=message.payload,
-        headers=[],
-        timestamp=message.timestamp,
-        schema=message.schema,
-    )
+    next_msg = message
+    ret = msg_parser(next_msg)
+    if isinstance(ret, bytes):
+        # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
+        # Thus TMapOut = bytes.
+        next_msg = PyRawMessage(
+            payload=ret,
+            headers=[],
+            timestamp=next_msg.timestamp,
+            schema=next_msg.schema,
+        )
+    else:
+        next_msg = PyMessage(
+            payload=ret,
+            headers=[],
+            timestamp=next_msg.timestamp,
+            schema=next_msg.schema,
+        )
 
 
 def transform(chain: Sequence[Map[Any, Any]], message: Message[Any]) -> Message[Any]:
