@@ -24,7 +24,7 @@ from datadog.dogstatsd.base import DogStatsd
 Tags = dict[str, str]
 logger = logging.getLogger("sentry_streams.metrics.log_backend")
 
-METRICS_FREQUENCY_SEC = 10
+METRICS_FREQUENCY_SEC = 120
 
 
 class DummyMetricsConfig(TypedDict):
