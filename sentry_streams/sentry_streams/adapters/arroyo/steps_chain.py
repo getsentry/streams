@@ -43,7 +43,7 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
     # msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
     msg_size = 100
-    # start_time = input_metrics("fake_step", msg_size)
+    start_time = input_metrics("fake_step", msg_size)
     has_error = output_size = None
     try:
         result = msg_parser(next_msg)
