@@ -43,6 +43,7 @@ def output_metrics(
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
+    result = msg_parser(next_msg)
     # input_metrics("fake_step", 0.1)
     # start_time = time.time()
     # has_error = None
@@ -55,7 +56,7 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
     #     # output_metrics("fake_step", has_error, start_time, 0.1)
     #     pass
     # ret = result
-    ret = next_msg.payload
+    ret = result
     if isinstance(next_msg.payload, bytes):
         # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
         # Thus TMapOut = bytes.
@@ -178,8 +179,8 @@ class TransformChains:
                 f"Error: {e}"
             ) from e
 
-        # return (chain.parallelism, fake_transform)
-        return (chain.parallelism, func)
+        return (chain.parallelism, fake_transform)
+        # return (chain.parallelism, func)
 
     def exists(self, route: Route) -> bool:
         return _hashable_route(route) in self.__chains
