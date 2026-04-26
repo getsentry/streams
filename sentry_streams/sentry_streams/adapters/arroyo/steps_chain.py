@@ -1,66 +1,58 @@
 import logging
 import pickle
+import random
+import time
 from dataclasses import dataclass
 from functools import partial
-import time
 from typing import Any, Callable, MutableMapping, MutableSequence, Sequence, Tuple
 
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.config_types import MultiProcessConfig
-from sentry_streams.metrics import get_metrics, get_size, Metric
+from sentry_streams.metrics import Metric, get_metrics
 from sentry_streams.pipeline.message import Message, PyMessage, PyRawMessage
 from sentry_streams.pipeline.msg_codecs import msg_parser
 from sentry_streams.pipeline.pipeline import Map
-import time
-import random
 
 logger = logging.getLogger(__name__)
 
 
-def input_metrics(name: str, message_size: int | None) -> float:
-    t = time.time()
+def input_metrics(name: str, sample_rate: float) -> None:
+    if random.random() > sample_rate:
+        return
     metrics = get_metrics()
     tags = {"step": name}
-    metrics.increment(Metric.INPUT_MESSAGES, tags=tags)
-    if message_size is not None:
-        # metrics.increment(Metric.INPUT_BYTES, tags=tags, value=message_size)
-        pass
-    return t
+    metrics.increment(Metric.INPUT_MESSAGES, value=1 / sample_rate, tags=tags)
 
 
 def output_metrics(
-    name: str, error: str | None, start_time: float, message_size: int | None
+    name: str,
+    error: str | None,
+    start_time: float,
+    sample_rate: float,
 ) -> None:
-    t = time.time()
+    if random.random() > sample_rate:
+        return
     metrics = get_metrics()
     tags = {"step": name}
     if error:
         tags["error"] = error
         metrics.increment(Metric.ERRORS, tags=tags)
 
-    metrics.increment(Metric.OUTPUT_MESSAGES, tags=tags)
-    if message_size is not None:
-        metrics.increment(Metric.OUTPUT_BYTES, tags=tags, value=message_size)
-        pass
-    metrics.timing(Metric.DURATION, t - start_time, tags=tags)
-    pass
+    metrics.timing(Metric.DURATION, time.time() - start_time, tags=tags)
 
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
-    # msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
-    msg_size = 100
-    start_time = input_metrics("fake_step", msg_size)
-    has_error = output_size = None
+    input_metrics("fake_step", 0.1)
+    start_time = time.time()
+    has_error = None
     try:
         result = msg_parser(next_msg)
-        # output_size = get_size(result)
-        output_size = 100
     except Exception as e:
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        # output_metrics("fake_step", has_error, start_time, output_size)
+        output_metrics("fake_step", has_error, start_time, 0.1)
         pass
     ret = result
 

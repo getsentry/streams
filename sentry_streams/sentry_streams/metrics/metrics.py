@@ -293,32 +293,28 @@ class BufferedMetricsBackend(MetricsBackend):
         throttle_interval_sec: float,
     ) -> None:
         self.__throttle_interval_sec = throttle_interval_sec
-        self.__timers: dict[str, BufferedMetric] = {}
-        self.__counters: dict[str, BufferedMetric] = {}
-        self.__gauges: dict[str, BufferedMetric] = {}
+        self.__timers: dict[int, BufferedMetric] = {}
+        self.__counters: dict[int, BufferedMetric] = {}
+        self.__gauges: dict[int, BufferedMetric] = {}
         self.__last_flush_time = 0.0
         self.__backend = backend
 
     def __add_to_buffer(
         self,
-        buffer: dict[str, BufferedMetric],
+        buffer: dict[int, BufferedMetric],
         name: str,
         value: Union[int, float],
         tags: Tags,
         replace: bool = False,
     ) -> None:
-        # normalized_tags = self.__normalize_tags(tags)
-        key = self.__hash_tags(name, tags)
+        normalized_tags = self.__normalize_tags(tags)
+        key = hash((name, frozenset(normalized_tags)))
 
         if key in buffer:
             new_value = buffer[key][1] + value if not replace else value
             buffer[key] = (name, new_value, tags)
         else:
             buffer[key] = (name, value, tags)
-
-    def __hash_tags(self, name: str, tags: Tags) -> str:
-        normalized_tags = ";".join([f"{key}:{value}" for key, value in tags.items()])
-        return name + ";" + normalized_tags
 
     def __normalize_tags(self, tags: Tags) -> list[str]:
         return [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
@@ -436,9 +432,8 @@ class ArroyoMetricsBackend:
         self.__backend.timing(name, value, tags=_tags_from_mapping(tags))
 
 
-_metrics_backend: Optional[MetricsBackend] = None
+_metrics: Optional[Metrics] = None
 _dummy_metrics_backend = DummyMetricsBackend()
-_metrics_adapter: Optional[Metrics] = None
 
 
 def build_metrics_backend(config: MetricsConfig) -> MetricsBackend:
@@ -463,26 +458,25 @@ def configure_metrics(config: MetricsConfig, force: bool = False) -> None:
     ``config.json``) so worker processes can rebuild the same backends under
     ``spawn`` multiprocessing.
     """
-    global _metrics_backend
+    global _metrics
     if not force:
-        assert _metrics_backend is None, "Metrics is already set"
+        assert _metrics is None, "Metrics is already set"
 
     inner = build_metrics_backend(config)
-    _metrics_backend = BufferedMetricsBackend(
+    backend = BufferedMetricsBackend(
         inner,
         throttle_interval_sec=_buffer_throttle_interval_sec(config),
     )
-    arroyo_configure_metrics(ArroyoMetricsBackend(_metrics_backend))
+    _metrics = Metrics(backend)
+    arroyo_configure_metrics(ArroyoMetricsBackend(backend))
 
 
 def get_metrics() -> Metrics:
-    global _metrics_adapter
-    if _metrics_adapter is None:
-        if _metrics_backend is None:
-            _metrics_adapter = Metrics(_dummy_metrics_backend)
-        else:
-            _metrics_adapter = Metrics(_metrics_backend)
-    return _metrics_adapter
+    global _metrics
+    if _metrics is None:
+        _metrics = Metrics(_dummy_metrics_backend)
+
+    return _metrics
 
 
 def get_size(obj: Any) -> int | None:

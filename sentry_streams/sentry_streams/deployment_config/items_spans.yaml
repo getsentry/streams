@@ -13,6 +13,7 @@ pipeline:
   adapter_config:
     arroyo:
       write_healthcheck: true
+      metrics_sample_rate: 0.01
   segments:
     - steps_config:
         kafka:
