@@ -106,7 +106,7 @@ def _metrics_wrapped_function(
     Module-level wrapper function for adding metrics to step functions.
     This is defined at module level to be picklable for multiprocessing.
     """
-    # input_metrics(step_name, sample_rate)
+    input_metrics(step_name, sample_rate)
     has_error = None
     start_time = time.time()
     try:
@@ -116,7 +116,7 @@ def _metrics_wrapped_function(
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        # output_metrics(step_name, has_error, start_time, sample_rate)
+        output_metrics(step_name, has_error, start_time, sample_rate)
         pass
 
 
