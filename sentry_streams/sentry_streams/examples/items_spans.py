@@ -29,7 +29,7 @@ pipeline: Pipeline[dict[str, Any]] = (
     # .apply(Map(name="do_nothing", function=do_nothing))
     .apply(Parser[TraceItem]("message_parser"))
     # .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
-    .apply(Batch(name="batched_messages", batch_size=100000))
+    # .apply(Batch(name="batched_messages", batch_size=100000))
     # .apply(
     #    ParquetSerializer(
     #        name="serializer", schema_fields=gcs_processor.schema_fields_sentrystreams
