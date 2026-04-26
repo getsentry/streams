@@ -22,9 +22,12 @@ from types import ModuleType
 
 from sentry_protos.snuba.v1 import trace_item_pb2
 from sentry_protos.snuba.v1.request_common_pb2 import TraceItemType
-from sentry_streams.adapters.arroyo.steps_chain import fake_transform
+from sentry_streams.adapters.arroyo.steps_chain import fake_transform, input_metrics, output_metrics
 from sentry_streams.metrics import DatadogMetricsConfig, LogMetricsConfig, configure_metrics
 from sentry_streams.pipeline.message import PyRawMessage
+
+import cProfile
+import pstats
 
 # Logical stream name for ``sentry_kafka_schemas.get_codec`` (see ``items_spans`` example).
 TRACE_ITEM_STREAM_SCHEMA = "snuba-items"
@@ -130,8 +133,15 @@ def main() -> None:
         TRACE_ITEM_STREAM_SCHEMA,
     )
 
+    profiler = cProfile.Profile()
+    profiler.enable()
     for _ in range(args.iterations):
+        # input_metrics("fake_step", len(msg.payload))
+        # output_metrics("fake_step", None, time.time(), len(msg.payload))
         fake_transform(msg)
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats("cumulative")
+    stats.print_stats(30)
 
     print(f"Completed {args.iterations} iterations of fake_transform.")
 

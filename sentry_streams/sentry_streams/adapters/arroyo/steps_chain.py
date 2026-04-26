@@ -12,6 +12,7 @@ from sentry_streams.pipeline.message import Message, PyMessage, PyRawMessage
 from sentry_streams.pipeline.msg_codecs import msg_parser
 from sentry_streams.pipeline.pipeline import Map
 import time
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +48,14 @@ def output_metrics(
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
-    msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
-    # msg_size = 100
+    # msg_size = get_size(next_msg.payload) if hasattr(next_msg, "payload") else None
+    msg_size = 100
     start_time = input_metrics("fake_step", msg_size)
     has_error = output_size = None
     try:
         result = msg_parser(next_msg)
-        output_size = get_size(result)
-        # output_size = 100
+        # output_size = get_size(result)
+        output_size = 100
     except Exception as e:
         has_error = str(e.__class__.__name__)
         raise e

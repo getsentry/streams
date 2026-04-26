@@ -24,7 +24,7 @@ from datadog.dogstatsd.base import DogStatsd
 Tags = dict[str, str]
 logger = logging.getLogger("sentry_streams.metrics.log_backend")
 
-METRICS_FREQUENCY_SEC = 120
+METRICS_FREQUENCY_SEC = 10
 
 
 class DummyMetricsConfig(TypedDict):
@@ -293,9 +293,9 @@ class BufferedMetricsBackend(MetricsBackend):
         throttle_interval_sec: float,
     ) -> None:
         self.__throttle_interval_sec = throttle_interval_sec
-        self.__timers: dict[int, BufferedMetric] = {}
-        self.__counters: dict[int, BufferedMetric] = {}
-        self.__gauges: dict[int, BufferedMetric] = {}
+        self.__timers: dict[str, BufferedMetric] = {}
+        self.__counters: dict[str, BufferedMetric] = {}
+        self.__gauges: dict[str, BufferedMetric] = {}
         self.__last_flush_time = 0.0
         self.__backend = backend
 
@@ -308,13 +308,17 @@ class BufferedMetricsBackend(MetricsBackend):
         replace: bool = False,
     ) -> None:
         # normalized_tags = self.__normalize_tags(tags)
-        # key = hash((name, frozenset(normalized_tags)))
-        key = name
+        key = self.__hash_tags(name, tags)
+
         if key in buffer:
             new_value = buffer[key][1] + value if not replace else value
             buffer[key] = (name, new_value, tags)
         else:
             buffer[key] = (name, value, tags)
+
+    def __hash_tags(self, name: str, tags: Tags) -> str:
+        normalized_tags = ";".join([f"{key}:{value}" for key, value in tags.items()])
+        return name + ";" + normalized_tags
 
     def __normalize_tags(self, tags: Tags) -> list[str]:
         return [f"{key}:{value.replace('|', '_')}" for key, value in tags.items()]
@@ -327,17 +331,14 @@ class BufferedMetricsBackend(MetricsBackend):
     ) -> None:
         self.__add_to_buffer(self.__counters, name, value, tags or {})
         self.__throttled_flush()
-        pass
 
     def gauge(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         self.__add_to_buffer(self.__gauges, name, value, tags or {}, replace=True)
-        pass
         self.__throttled_flush()
 
     def timing(self, name: str, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         self.__add_to_buffer(self.__timers, name, value, tags or {})
         self.__throttled_flush()
-        pass
 
     def __throttled_flush(self) -> None:
         if time.time() - self.__last_flush_time >= self.__throttle_interval_sec:
@@ -437,6 +438,7 @@ class ArroyoMetricsBackend:
 
 _metrics_backend: Optional[MetricsBackend] = None
 _dummy_metrics_backend = DummyMetricsBackend()
+_metrics_adapter: Optional[Metrics] = None
 
 
 def build_metrics_backend(config: MetricsConfig) -> MetricsBackend:
@@ -474,9 +476,13 @@ def configure_metrics(config: MetricsConfig, force: bool = False) -> None:
 
 
 def get_metrics() -> Metrics:
-    if _metrics_backend is None:
-        return Metrics(_dummy_metrics_backend)
-    return Metrics(_metrics_backend)
+    global _metrics_adapter
+    if _metrics_adapter is None:
+        if _metrics_backend is None:
+            _metrics_adapter = Metrics(_dummy_metrics_backend)
+        else:
+            _metrics_adapter = Metrics(_metrics_backend)
+    return _metrics_adapter
 
 
 def get_size(obj: Any) -> int | None:
