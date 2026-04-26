@@ -6,7 +6,7 @@ from typing import Any, Mapping, MutableMapping, Optional, Sequence
 import pyarrow as pa
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 from sentry_protos.snuba.v1.trace_item_pb2 import AnyValue, TraceItem
-
+from sentry_streams.pipeline.msg_codecs import msg_parser
 from sentry_streams.pipeline.datatypes import (
     Binary,
     Boolean,
@@ -112,8 +112,8 @@ GEN_AI_ATTRIBUTES_TO_COLUMNS = {
 }
 
 
-def do_nothing(msg: Message[bytes]) -> bytes:
-    return None
+def do_nothing(msg: Message[bytes]) -> Any:
+    return msg_parser(msg)
 
 
 def uuid_from_item_id(item_id: bytes) -> str:
