@@ -31,4 +31,4 @@ class FakeOperatorDelegate:
 
 class FakeOperatorDelegateFactory:
     def build(self):
-        return RustOperatorDelegate()
+        return FakeOperatorDelegate()
