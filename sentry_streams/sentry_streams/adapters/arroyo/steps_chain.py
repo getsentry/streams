@@ -32,7 +32,7 @@ def output_metrics(name: str, error: str | None, start_time: float) -> None:
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
 
-    input_metrics("fake_step")
+    # input_metrics("fake_step")
     has_error = None
     start_time = time.time()
     try:
@@ -41,7 +41,8 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        output_metrics("fake_step", has_error, start_time)
+        # output_metrics("fake_step", has_error, start_time)
+        pass
 
     ret = result
     if isinstance(ret, bytes):
@@ -166,8 +167,8 @@ class TransformChains:
                 f"Error: {e}"
             ) from e
 
-        # return (chain.parallelism, fake_transform)
-        return (chain.parallelism, func)
+        return (chain.parallelism, fake_transform)
+        # return (chain.parallelism, func)
 
     def exists(self, route: Route) -> bool:
         return _hashable_route(route) in self.__chains
