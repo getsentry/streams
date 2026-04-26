@@ -43,19 +43,18 @@ def output_metrics(
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
-    result = msg_parser(next_msg)
-    # input_metrics("fake_step", 0.1)
-    # start_time = time.time()
-    # has_error = None
-    # try:
-    #     result = msg_parser(next_msg)
-    # except Exception as e:
-    #     has_error = str(e.__class__.__name__)
-    #     raise e
-    # finally:
-    #     # output_metrics("fake_step", has_error, start_time, 0.1)
-    #     pass
-    # ret = result
+
+    input_metrics("fake_step", 0.01)
+    start_time = time.time()
+    has_error = None
+    try:
+        result = msg_parser(next_msg)
+    except Exception as e:
+        has_error = str(e.__class__.__name__)
+        raise e
+    finally:
+        output_metrics("fake_step", has_error, start_time, 0.01)
+        pass
     ret = result
     if isinstance(ret, bytes):
         # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
