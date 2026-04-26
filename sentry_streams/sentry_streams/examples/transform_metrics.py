@@ -2,7 +2,7 @@ import logging
 import os
 import uuid
 from typing import Any, Mapping, MutableMapping, Optional, Sequence
-
+from copy import deepcopy
 import pyarrow as pa
 from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 from sentry_protos.snuba.v1.trace_item_pb2 import AnyValue, TraceItem
@@ -113,8 +113,8 @@ GEN_AI_ATTRIBUTES_TO_COLUMNS = {
 
 
 def do_nothing(msg: Message[bytes]) -> Any:
-    size = len(msg.payload)
-    return {"size": size}
+    cp = deepcopy(msg.payload)
+    return {"size": len(cp)}
 
 
 def do_something(msg: Message[TraceItem]) -> Any:
