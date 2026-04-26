@@ -117,14 +117,14 @@ def do_nothing(msg: Message[bytes]) -> Any:
 
 
 def do_something(msg: Message[TraceItem]) -> Any:
-    span = msg.payload
-    processed: MutableMapping[str, Any] = {}
-    processed["organization_id"] = span.organization_id
-    processed["project_id"] = span.project_id
-    processed["trace_id"] = span.trace_id
-    processed["span_id"] = uuid_from_item_id(span.item_id)[16:]
-    processed["retention_days"] = span.retention_days
-    return processed
+    # span = msg.payload
+    # processed: MutableMapping[str, Any] = {}
+    # processed["organization_id"] = span.organization_id
+    # processed["project_id"] = span.project_id
+    # processed["trace_id"] = span.trace_id
+    # processed["span_id"] = uuid_from_item_id(span.item_id)[16:]
+    # processed["retention_days"] = span.retention_days
+    return msg.payload
 
 
 def uuid_from_item_id(item_id: bytes) -> str:
