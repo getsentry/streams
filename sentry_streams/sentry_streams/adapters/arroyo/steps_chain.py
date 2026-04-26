@@ -44,7 +44,7 @@ def output_metrics(
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
 
-    input_metrics("fake_step", 0.01)
+    input_metrics("fake_step", 0.001)
     start_time = time.time()
     has_error = None
     try:
@@ -53,7 +53,7 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        output_metrics("fake_step", has_error, start_time, 0.01)
+        output_metrics("fake_step", has_error, start_time, 0.001)
         pass
     ret = result
     if isinstance(ret, bytes):
