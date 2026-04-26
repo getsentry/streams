@@ -432,7 +432,7 @@ class ArroyoMetricsBackend:
         self.__backend.timing(name, value, tags=_tags_from_mapping(tags))
 
 
-_metrics_backend: Optional[MetricsBackend] = None
+_metrics: Optional[Metrics] = None
 _dummy_metrics_backend = DummyMetricsBackend()
 
 
@@ -458,22 +458,25 @@ def configure_metrics(config: MetricsConfig, force: bool = False) -> None:
     ``config.json``) so worker processes can rebuild the same backends under
     ``spawn`` multiprocessing.
     """
-    global _metrics_backend
+    global _metrics
     if not force:
-        assert _metrics_backend is None, "Metrics is already set"
+        assert _metrics is None, "Metrics is already set"
 
     inner = build_metrics_backend(config)
-    _metrics_backend = BufferedMetricsBackend(
+    backend = BufferedMetricsBackend(
         inner,
         throttle_interval_sec=_buffer_throttle_interval_sec(config),
     )
-    arroyo_configure_metrics(ArroyoMetricsBackend(_metrics_backend))
+    _metrics = Metrics(backend)
+    arroyo_configure_metrics(ArroyoMetricsBackend(backend))
 
 
 def get_metrics() -> Metrics:
-    if _metrics_backend is None:
-        return Metrics(_dummy_metrics_backend)
-    return Metrics(_metrics_backend)
+    global _metrics
+    if _metrics is None:
+        _metrics = Metrics(_dummy_metrics_backend)
+
+    return _metrics
 
 
 def get_size(obj: Any) -> int | None:
