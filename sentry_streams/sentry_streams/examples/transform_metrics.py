@@ -117,6 +117,11 @@ def do_nothing(msg: Message[bytes]) -> Any:
     return {"size": len(cp)}
 
 
+def do_count(msg: Message[dict[str, Any]]) -> Any:
+    cnt = msg.payload["size"]
+    return {"size": cnt * 2}
+
+
 def do_something(msg: Message[TraceItem]) -> Any:
     span = msg.payload
     processed: MutableMapping[str, Any] = {}

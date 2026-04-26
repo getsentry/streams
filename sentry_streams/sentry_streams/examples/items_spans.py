@@ -5,6 +5,7 @@ from sentry_protos.snuba.v1.trace_item_pb2 import TraceItem
 
 from sentry_streams.examples.transform_metrics import (
     ItemsSpanProcessor,
+    do_count,
     do_nothing,
     do_something,
 )
@@ -33,6 +34,7 @@ pipeline: Pipeline[dict[str, Any]] = (
         )
     )
     .apply(Map(name="do_nothing", function=do_nothing))
+    .apply(Map(name="do_count", function=do_count))
     # .apply(Parser[TraceItem]("message_parser"))
     # .apply(Map(name="do_something", function=do_something))
     # .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
