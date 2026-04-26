@@ -19,7 +19,7 @@ from arroyo.processing.strategies.reduce import Reduce
 from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
 
 from sentry_streams.adapters.arroyo.routes import Route, RoutedValue
-from sentry_streams.metrics import Metric, get_metrics, get_size
+from sentry_streams.metrics.stats import get_stats
 from sentry_streams.pipeline.function_template import (
     Accumulator,
     GroupBy,
@@ -82,30 +82,22 @@ class MetricsReportingAccumulator(Accumulator[PipelineMessage[InputType], Output
     ) -> None:
         self.acc = acc()
         self.start_time: float | None = None
-        self.metrics = get_metrics()
-        self.tags = {"step": name}
+        self.stats = get_stats()
+        self._step = name
 
     def add(self, value: PipelineMessage[InputType]) -> Self:
         if self.start_time is None:
             self.start_time = time.time()
-        # self.metrics.increment(Metric.INPUT_MESSAGES, tags=self.tags)
-        # size = get_size(value.payload)
-        # if size is not None:
-        #    self.metrics.increment(Metric.INPUT_BYTES, tags=self.tags, value=size)
 
+        self.stats.step_exec(self._step)
         self.acc.add(value)
 
         return self
 
     def get_value(self) -> OutputType:
         result = self.acc.get_value()
-        # self.metrics.increment(Metric.OUTPUT_MESSAGES, tags=self.tags)
-        # size = get_size(result)
-        # if size is not None:
-        #    self.metrics.increment(Metric.OUTPUT_BYTES, tags=self.tags, value=size)
-
-        # duration = time.time() - self.start_time if self.start_time is not None else 0
-        # self.metrics.timing(Metric.DURATION, duration, tags=self.tags)
+        duration = time.time() - self.start_time if self.start_time is not None else 0
+        self.stats.step_timing(self._step, duration)
         return result
 
     def merge(self, other: Self) -> Self:

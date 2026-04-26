@@ -9,6 +9,7 @@ from typing import Any, Callable, MutableMapping, MutableSequence, Sequence, Tup
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.config_types import MultiProcessConfig
 from sentry_streams.metrics import Metric, get_metrics
+from sentry_streams.metrics.stats import get_stats
 from sentry_streams.pipeline.message import Message, PyMessage, PyRawMessage
 from sentry_streams.pipeline.msg_codecs import msg_parser
 from sentry_streams.pipeline.pipeline import Map
@@ -16,45 +17,32 @@ from sentry_streams.pipeline.pipeline import Map
 logger = logging.getLogger(__name__)
 
 
-def input_metrics(name: str, sample_rate: float) -> None:
-    if random.random() > sample_rate:
-        return
-    metrics = get_metrics()
-    tags = {"step": name}
-    metrics.increment(Metric.INPUT_MESSAGES, value=1 / sample_rate, tags=tags)
+def input_metrics(name: str) -> None:
+    stats = get_stats()
+    stats.step_exec(name)
 
 
-def output_metrics(
-    name: str,
-    error: str | None,
-    start_time: float,
-    sample_rate: float,
-) -> None:
-    if random.random() > sample_rate:
-        return
-    metrics = get_metrics()
-    tags = {"step": name}
+def output_metrics(name: str, error: str | None, start_time: float) -> None:
+    stats = get_stats()
     if error:
-        tags["error"] = error
-        metrics.increment(Metric.ERRORS, tags=tags)
-
-    metrics.timing(Metric.DURATION, time.time() - start_time, tags=tags)
+        stats.step_error(name)
+    stats.step_timing(name, time.time() - start_time)
 
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
 
-    input_metrics("fake_step", 0.001)
-    start_time = time.time()
+    input_metrics("fake_step")
     has_error = None
+    start_time = time.time()
     try:
         result = msg_parser(next_msg)
     except Exception as e:
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        output_metrics("fake_step", has_error, start_time, 0.001)
-        pass
+        output_metrics("fake_step", has_error, start_time)
+
     ret = result
     if isinstance(ret, bytes):
         # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].

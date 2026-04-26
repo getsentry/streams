@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import logging
-import random
 import time
 from dataclasses import replace
 from typing import (
@@ -36,11 +35,10 @@ from sentry_streams.config_types import (
     StepConfig,
 )
 from sentry_streams.metrics import (
-    Metric,
     MetricsConfig,
     configure_metrics,
-    get_metrics,
 )
+from sentry_streams.metrics.stats import get_stats
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
@@ -97,16 +95,13 @@ def initializer(metrics_config: MetricsConfig) -> None:
 
 
 def _metrics_wrapped_function(
-    step_name: str,
-    sample_rate: float,
-    application_function: Callable[[Message[Any]], Any],
-    msg: Message[Any],
+    step_name: str, application_function: Callable[[Message[Any]], Any], msg: Message[Any]
 ) -> Any:
     """
     Module-level wrapper function for adding metrics to step functions.
     This is defined at module level to be picklable for multiprocessing.
     """
-    input_metrics(step_name, sample_rate)
+    input_metrics(step_name)
     has_error = None
     start_time = time.time()
     try:
@@ -116,33 +111,19 @@ def _metrics_wrapped_function(
         has_error = str(e.__class__.__name__)
         raise e
     finally:
-        output_metrics(step_name, has_error, start_time, sample_rate)
-        pass
+        output_metrics(step_name, has_error, start_time)
 
 
-def input_metrics(name: str, sample_rate: float) -> None:
-    if random.random() > sample_rate:
-        return
-    metrics = get_metrics()
-    tags = {"step": name}
-    metrics.increment(Metric.INPUT_MESSAGES, value=1 / sample_rate, tags=tags)
+def input_metrics(name: str) -> None:
+    stats = get_stats()
+    stats.step_exec(name)
 
 
-def output_metrics(
-    name: str,
-    error: str | None,
-    start_time: float,
-    sample_rate: float,
-) -> None:
-    if random.random() > sample_rate:
-        return
-    metrics = get_metrics()
-    tags = {"step": name}
+def output_metrics(name: str, error: str | None, start_time: float) -> None:
+    stats = get_stats()
     if error:
-        tags["error"] = error
-        metrics.increment(Metric.ERRORS, tags=tags)
-
-    metrics.timing(Metric.DURATION, time.time() - start_time, tags=tags)
+        stats.step_error(name)
+    stats.step_timing(name, time.time() - start_time)
 
 
 def build_initial_offset(offset_reset: str) -> InitialOffset:
@@ -241,7 +222,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         steps_config: Mapping[str, StepConfig],
         metrics_config: MetricsConfig,
         write_healthcheck: bool = False,
-        metrics_sample_rate: float = 0.1,
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
@@ -249,7 +229,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self.__write_healthcheck = write_healthcheck
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
-        self.__metrics_sample_rate = metrics_sample_rate
 
     @classmethod
     def build(  # type: ignore[override]
@@ -261,9 +240,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         adapter_config = config.get("adapter_config") or {}
         arroyo_config = adapter_config.get("arroyo") or {}
         write_healthcheck = bool(arroyo_config.get("write_healthcheck", False))
-        metrics_sample_rate = float(arroyo_config.get("metrics_sample_rate", 0.1))
 
-        return cls(steps_config, metrics_config, write_healthcheck, metrics_sample_rate)
+        return cls(steps_config, metrics_config, write_healthcheck)
 
     def __close_chain(self, stream: Route) -> None:
         if self.__chains.exists(stream):
@@ -333,12 +311,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             # Fix this to wrap the actual step instead of just the object_generator.
             # This will at least capture the number of calls to the step, if nothing else.
             def wrapped_generator() -> str:
+                input_metrics(step.name)
                 start_time = time.time()
-                input_metrics(step.name, self.__metrics_sample_rate)
                 try:
                     return step.object_generator()
                 finally:
-                    output_metrics(step.name, None, start_time, self.__metrics_sample_rate)
+                    output_metrics(step.name, None, start_time)
 
             logger.info(f"Adding GCS sink: {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
@@ -389,7 +367,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         application_function = step.resolved_function
 
         wrapped_function = functools.partial(
-            _metrics_wrapped_function, step.name, self.__metrics_sample_rate, application_function
+            _metrics_wrapped_function, step.name, application_function
         )
 
         step = replace(step, function=wrapped_function)
@@ -458,7 +436,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         elif isinstance(step, PredicateFilter):
 
             def filter_msg(msg: Message[Any]) -> bool:
-                input_metrics(step.name, self.__metrics_sample_rate)
+                input_metrics(step.name)
                 has_error = None
                 start_time = time.time()
                 try:
@@ -468,7 +446,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                     has_error = str(e.__class__.__name__)
                     raise e
                 finally:
-                    output_metrics(step.name, has_error, start_time, self.__metrics_sample_rate)
+                    output_metrics(step.name, has_error, start_time)
 
             self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
             return stream
@@ -544,7 +522,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         route = RustRoute(stream.source, stream.waypoints)
 
         def routing_function(msg: Message[Any]) -> str:
-            input_metrics(step.name, self.__metrics_sample_rate)
+            input_metrics(step.name)
             start_time = time.time()
             has_error = None
             try:
@@ -555,7 +533,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 has_error = str(e.__class__.__name__)
                 raise e
             finally:
-                output_metrics(step.name, has_error, start_time, self.__metrics_sample_rate)
+                output_metrics(step.name, has_error, start_time)
 
         logger.info(f"Adding router: {step.name} to pipeline")
         self.__consumers[stream.source].add_step(
