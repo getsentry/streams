@@ -43,20 +43,20 @@ def output_metrics(
 
 def fake_transform(message: Message[Any]) -> Message[Any]:
     next_msg = message
-    input_metrics("fake_step", 0.1)
-    start_time = time.time()
-    has_error = None
-    try:
-        result = msg_parser(next_msg)
-    except Exception as e:
-        has_error = str(e.__class__.__name__)
-        raise e
-    finally:
-        output_metrics("fake_step", has_error, start_time, 0.1)
-        pass
-    ret = result
-
-    if isinstance(ret, bytes):
+    # input_metrics("fake_step", 0.1)
+    # start_time = time.time()
+    # has_error = None
+    # try:
+    #     result = msg_parser(next_msg)
+    # except Exception as e:
+    #     has_error = str(e.__class__.__name__)
+    #     raise e
+    # finally:
+    #     # output_metrics("fake_step", has_error, start_time, 0.1)
+    #     pass
+    # ret = result
+    ret = next_msg.payload
+    if isinstance(next_msg.payload, bytes):
         # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
         # Thus TMapOut = bytes.
         next_msg = PyRawMessage(
