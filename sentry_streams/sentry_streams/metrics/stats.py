@@ -20,13 +20,16 @@ class PipielineStats:
 
     def step_exec(self, step: str) -> None:
         self._exec_buffer[step] += 1
+        self._maybe_flush()
 
     def step_error(self, step: str) -> None:
         self._error_buffer[step] += 1
+        self._maybe_flush()
 
     def step_timing(self, step: str, value: float) -> None:
         if self._timing_buffer[step] < value:
             self._timing_buffer[step] = value
+        self._maybe_flush()
 
     def _maybe_flush(self) -> None:
         if time.time() - self.__last_flush_time >= FLUSH_TIME:

@@ -20,13 +20,14 @@ def test_correct_values_are_flushed(
     """
     stats, inner = _make_stats()
     _mock_time.return_value = 100.0
+    stats._maybe_flush()  # Flush to set last flush time
     stats.step_exec("in_step")
     stats.step_exec("in_step")
     stats.step_error("err_step")
     stats.step_timing("timer_step", 0.1)
-    stats.step_timing("timer_step", 0.05)  # max is 0.1
     _mock_time.return_value = 120.0
-    stats._maybe_flush()
+    stats.step_timing("timer_step", 0.05)  # max is 0.1
+
     inner.increment.assert_has_calls(
         [
             call(Metric.INPUT_MESSAGES.value, 2, tags={"step": "in_step"}),
@@ -47,7 +48,6 @@ def test_no_flush_before_deadline(
     stats._maybe_flush()
     stats.step_exec("a")
     _mock_time.return_value = 105.0
-    stats._maybe_flush()
     inner.increment.assert_not_called()
     inner.timing.assert_not_called()
     # Last flush time is only set on a successful flush
@@ -63,14 +63,11 @@ def test_pipieline_stats_flush_clears_buffers(mock_time: MagicMock) -> None:
     stats, inner = _make_stats()
     mock_time.return_value = 100.0
     stats.step_exec("s")
-    stats._maybe_flush()
     inner.reset_mock()
     mock_time.return_value = 100.0
-    stats._maybe_flush()
     inner.assert_not_called()
     mock_time.return_value = 110.0
     stats.step_exec("s")
-    stats._maybe_flush()
     inner.increment.assert_called_once_with(Metric.INPUT_MESSAGES.value, 1, tags={"step": "s"})
 
 
@@ -78,10 +75,12 @@ def test_pipieline_stats_flush_clears_buffers(mock_time: MagicMock) -> None:
 def test_pipieline_stats_multiple_steps_one_flush(_mock_time: MagicMock) -> None:
     """One flush can emit several backend calls, one per buffered step (each tag set)."""
     stats, inner = _make_stats()
+    _mock_time.return_value = 100.0
+    stats._maybe_flush()  # Flush to set last flush time
     stats.step_exec("step_1")
     stats.step_exec("step_1")
+    _mock_time.return_value = 120.0
     stats.step_exec("step_2")
-    stats._maybe_flush()
     assert inner.increment.call_count == 2
     inner.increment.assert_has_calls(
         [
