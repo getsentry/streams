@@ -34,6 +34,9 @@ class PipielineStats:
     def _maybe_flush(self) -> None:
         if time.time() - self.__last_flush_time >= FLUSH_TIME:
             self.__last_flush_time = time.time()
+            print(
+                f"Flushing metrics: {self._metrics._backend} {self._exec_buffer} {self._error_buffer} {self._timing_buffer}"
+            )
             for step, value in self._exec_buffer.items():
                 tags = {"step": step}
                 self._metrics.increment(Metric.INPUT_MESSAGES, value, tags)
