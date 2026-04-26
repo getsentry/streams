@@ -1,8 +1,8 @@
 import time
 from collections import defaultdict
 
-from sentry_streams.metrics import Metrics, get_metrics
-from sentry_streams.metrics.metrics import Metric
+from sentry_streams.metrics import Metrics
+from sentry_streams.metrics.metrics import Metric, get_raw_metrics
 
 FLUSH_TIME = 10
 
@@ -52,5 +52,5 @@ _stats: PipielineStats | None = None
 def get_stats() -> PipielineStats:
     global _stats
     if _stats is None:
-        _stats = PipielineStats(get_metrics())
+        _stats = PipielineStats(get_raw_metrics())
     return _stats

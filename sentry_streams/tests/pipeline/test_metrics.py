@@ -38,8 +38,10 @@ def _buffered_inner_backend(buffered: BufferedMetricsBackend) -> MetricsBackend:
 @pytest.fixture(autouse=True)
 def reset_metrics_backend() -> Generator[None, None, None]:
     metrics_module._metrics = None
+    metrics_module._raw_metrics = None
     yield
     metrics_module._metrics = None
+    metrics_module._raw_metrics = None
 
 
 def test_metric_enum_values() -> None:
