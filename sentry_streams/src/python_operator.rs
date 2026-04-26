@@ -176,7 +176,6 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
     ///
     /// This is the method that sends messages to the next ProcessingStrategy.
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        return Ok(None);
         let out_messages = traced_with_gil!(|py| -> PyResult<Vec<Py<PyAny>>> {
             let ret = self.processing_step.call_method0(py, "poll")?;
             Ok(ret.extract(py).unwrap())

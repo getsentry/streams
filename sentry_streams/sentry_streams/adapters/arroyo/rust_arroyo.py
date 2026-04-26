@@ -19,6 +19,7 @@ from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MultiprocessingPool,
 )
 
+from sentry_streams.adapters.arroyo.fake_delegate import FakeOperatorDelegateFactory
 from sentry_streams.adapters.arroyo.multi_process_delegate import (
     MultiprocessDelegateFactory,
 )
@@ -476,7 +477,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding reduce: {step.name} to pipeline")
 
         self.__consumers[stream.source].add_step(
-            RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
+            RuntimeOperator.PythonAdapter(route, FakeOperatorDelegateFactory())
         )
         return stream
 
