@@ -54,11 +54,11 @@ def reset_metrics_backend() -> Generator[None, None, None]:
     import sentry_streams.metrics.metrics
 
     # Reset before test runs (setup)
-    sentry_streams.metrics.metrics._metrics_backend = None
+    sentry_streams.metrics.metrics._metrics = None
     arroyo.utils.metrics._metrics_backend = None
     yield
     # Reset after test completes (teardown)
-    sentry_streams.metrics.metrics._metrics_backend = None
+    sentry_streams.metrics.metrics._metrics = None
     arroyo.utils.metrics._metrics_backend = None
 
 
