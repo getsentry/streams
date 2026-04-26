@@ -88,10 +88,10 @@ class MetricsReportingAccumulator(Accumulator[PipelineMessage[InputType], Output
     def add(self, value: PipelineMessage[InputType]) -> Self:
         if self.start_time is None:
             self.start_time = time.time()
-        self.metrics.increment(Metric.INPUT_MESSAGES, tags=self.tags)
-        size = get_size(value.payload)
-        if size is not None:
-            self.metrics.increment(Metric.INPUT_BYTES, tags=self.tags, value=size)
+        # self.metrics.increment(Metric.INPUT_MESSAGES, tags=self.tags)
+        # size = get_size(value.payload)
+        # if size is not None:
+        #    self.metrics.increment(Metric.INPUT_BYTES, tags=self.tags, value=size)
 
         self.acc.add(value)
 
@@ -99,13 +99,13 @@ class MetricsReportingAccumulator(Accumulator[PipelineMessage[InputType], Output
 
     def get_value(self) -> OutputType:
         result = self.acc.get_value()
-        self.metrics.increment(Metric.OUTPUT_MESSAGES, tags=self.tags)
-        size = get_size(result)
-        if size is not None:
-            self.metrics.increment(Metric.OUTPUT_BYTES, tags=self.tags, value=size)
+        # self.metrics.increment(Metric.OUTPUT_MESSAGES, tags=self.tags)
+        # size = get_size(result)
+        # if size is not None:
+        #    self.metrics.increment(Metric.OUTPUT_BYTES, tags=self.tags, value=size)
 
-        duration = time.time() - self.start_time if self.start_time is not None else 0
-        self.metrics.timing(Metric.DURATION, duration, tags=self.tags)
+        # duration = time.time() - self.start_time if self.start_time is not None else 0
+        # self.metrics.timing(Metric.DURATION, duration, tags=self.tags)
         return result
 
     def merge(self, other: Self) -> Self:
