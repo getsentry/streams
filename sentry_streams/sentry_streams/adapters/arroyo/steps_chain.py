@@ -57,7 +57,7 @@ def fake_transform(message: Message[Any]) -> Message[Any]:
     #     pass
     # ret = result
     ret = result
-    if isinstance(next_msg.payload, bytes):
+    if isinstance(ret, bytes):
         # If `ret`` is bytes then function is Callable[Message[TMapIn], bytes].
         # Thus TMapOut = bytes.
         next_msg = PyRawMessage(
