@@ -113,7 +113,8 @@ GEN_AI_ATTRIBUTES_TO_COLUMNS = {
 
 
 def do_nothing(msg: Message[bytes]) -> Any:
-    return msg_parser(msg)
+    size = len(msg.payload)
+    return {"size": size}
 
 
 def do_something(msg: Message[TraceItem]) -> Any:
