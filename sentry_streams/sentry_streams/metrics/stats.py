@@ -1,4 +1,10 @@
-from arroyo.utils.metrics import Metrics, get_metrics
+import time
+from collections import defaultdict
+
+from sentry_streams.metrics import Metrics, get_metrics
+from sentry_streams.metrics.metrics import Metric
+
+FLUSH_TIME = 10
 
 
 class PipielineStats:
@@ -6,14 +12,38 @@ class PipielineStats:
     def __init__(self, metrics: Metrics) -> None:
         self._metrics = metrics
 
+        self._exec_buffer: dict[str, int] = defaultdict(int)
+        self._error_buffer: dict[str, int] = defaultdict(int)
+        self._timing_buffer: dict[str, float] = defaultdict(float)
+
+        self.__last_flush_time = 0.0
+
     def step_exec(self, step: str) -> None:
-        pass
+        self._exec_buffer[step] += 1
 
     def step_error(self, step: str) -> None:
-        pass
+        self._error_buffer[step] += 1
 
     def step_timing(self, step: str, value: float) -> None:
-        pass
+        if self._timing_buffer[step] < value:
+            self._timing_buffer[step] = value
+
+    def _maybe_flush(self) -> None:
+        if time.time() - self.__last_flush_time >= FLUSH_TIME:
+            self.__last_flush_time = time.time()
+            for step, value in self._exec_buffer.items():
+                tags = {"step": step}
+                self._metrics.increment(Metric.INPUT_MESSAGES, value, tags)
+            for step, value in self._error_buffer.items():
+                tags = {"step": step}
+                self._metrics.increment(Metric.ERRORS, value, tags)
+            for step, fvalue in self._timing_buffer.items():
+                tags = {"step": step}
+                self._metrics.timing(Metric.DURATION, fvalue, tags)
+
+            self._exec_buffer = defaultdict(int)
+            self._error_buffer = defaultdict(int)
+            self._timing_buffer = defaultdict(float)
 
 
 _stats: PipielineStats | None = None
