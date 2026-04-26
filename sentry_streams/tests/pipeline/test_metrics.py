@@ -20,6 +20,7 @@ from sentry_streams.metrics.metrics import (
     MetricsConfig,
     build_metrics_backend,
     configure_metrics,
+    get_metrics,
 )
 
 
@@ -36,9 +37,9 @@ def _buffered_inner_backend(buffered: BufferedMetricsBackend) -> MetricsBackend:
 
 @pytest.fixture(autouse=True)
 def reset_metrics_backend() -> Generator[None, None, None]:
-    metrics_module._metrics_backend = None
+    metrics_module._metrics = None
     yield
-    metrics_module._metrics_backend = None
+    metrics_module._metrics = None
 
 
 def test_metric_enum_values() -> None:
@@ -368,18 +369,19 @@ def test_configure_metrics_dummy(mock_arroyo_configure: Any) -> None:
     cfg: MetricsConfig = {"type": "dummy"}
 
     configure_metrics(cfg)
+    metrics = get_metrics()
+    inner = metrics._backend
 
-    wrapped = metrics_module._metrics_backend
-    assert isinstance(wrapped, BufferedMetricsBackend)
-    assert isinstance(_buffered_inner_backend(wrapped), DummyMetricsBackend)
+    assert isinstance(inner, BufferedMetricsBackend)
+    assert isinstance(_buffered_inner_backend(inner), DummyMetricsBackend)
     assert (
-        object.__getattribute__(wrapped, "_BufferedMetricsBackend__throttle_interval_sec")
+        object.__getattribute__(inner, "_BufferedMetricsBackend__throttle_interval_sec")
         == METRICS_FREQUENCY_SEC
     )
     mock_arroyo_configure.assert_called_once()
     arroyo_backend = mock_arroyo_configure.call_args[0][0]
     assert isinstance(arroyo_backend, ArroyoMetricsBackend)
-    assert object.__getattribute__(arroyo_backend, "_ArroyoMetricsBackend__backend") is wrapped
+    assert object.__getattribute__(arroyo_backend, "_ArroyoMetricsBackend__backend") is inner
 
 
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
@@ -392,24 +394,33 @@ def test_configure_metrics_datadog(mock_dogstatsd: Any, mock_arroyo_configure: A
         "tags": {},
     }
 
-    configure_metrics(cfg)
+    configure_metrics(
+        cfg,
+    )
 
-    wrapped = metrics_module._metrics_backend
-    assert isinstance(wrapped, BufferedMetricsBackend)
-    assert isinstance(_buffered_inner_backend(wrapped), DatadogMetricsBackend)
+    metrics = get_metrics()
+    inner = metrics._backend
+    assert isinstance(inner, BufferedMetricsBackend)
+    assert isinstance(_buffered_inner_backend(inner), DatadogMetricsBackend)
     mock_arroyo_configure.assert_called_once()
 
 
 def test_configure_metrics_already_set() -> None:
-    configure_metrics({"type": "dummy"})
+    configure_metrics(
+        {"type": "dummy"},
+    )
 
     with pytest.raises(AssertionError, match="Metrics is already set"):
-        configure_metrics({"type": "dummy"})
+        configure_metrics(
+            {"type": "dummy"},
+        )
 
 
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
 def test_configure_metrics_force(mock_arroyo_configure: Any) -> None:
-    configure_metrics({"type": "dummy"})
+    configure_metrics(
+        {"type": "dummy"},
+    )
     configure_metrics(
         {
             "type": "datadog",
@@ -420,7 +431,7 @@ def test_configure_metrics_force(mock_arroyo_configure: Any) -> None:
         force=True,
     )
 
-    wrapped = metrics_module._metrics_backend
+    wrapped = get_metrics()._backend
     assert isinstance(wrapped, BufferedMetricsBackend)
     assert isinstance(_buffered_inner_backend(wrapped), DatadogMetricsBackend)
 
@@ -429,8 +440,10 @@ def test_configure_metrics_force(mock_arroyo_configure: Any) -> None:
 def test_configure_metrics_log_uses_config_throttle_interval(
     mock_arroyo_configure: Any,
 ) -> None:
-    configure_metrics({"type": "log", "period_sec": 33.0, "tags": {}})
-    wrapped = metrics_module._metrics_backend
+    configure_metrics(
+        {"type": "log", "period_sec": 33.0, "tags": {}},
+    )
+    wrapped = get_metrics()._backend
     assert isinstance(wrapped, BufferedMetricsBackend)
     assert (
         object.__getattribute__(wrapped, "_BufferedMetricsBackend__throttle_interval_sec") == 33.0
