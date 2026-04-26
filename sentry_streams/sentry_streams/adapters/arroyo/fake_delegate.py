@@ -1,9 +1,15 @@
+from typing import Tuple
+
+from sentry_streams.adapters.arroyo.rust_step import Committable
+from sentry_streams.pipeline.message import PipelineMessage
+
+
 class FakeOperatorDelegate:
-    def __init__(self):
+    def __init__(self) -> None:
         self.payload = None
         self.committable = None
 
-    def submit(self, payload, committable):
+    def submit(self, payload, committable) -> None:
         self.committable = committable
         # Handle watermark messages (PyWatermark objects)
         if hasattr(payload, "committable"):
@@ -22,7 +28,9 @@ class FakeOperatorDelegate:
 
             raise InvalidMessage(Partition(Topic("topic"), 0), 42)
 
-    def poll(self):
+    def poll(self) -> list[Tuple[PipelineMessage, Committable]]:
+        if self.payload is None or self.committable is None:
+            return []
         return [(self.payload, self.committable), (self.payload, self.committable)]
 
     def flush(self, timeout: float | None = None):
