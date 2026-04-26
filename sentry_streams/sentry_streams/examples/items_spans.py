@@ -19,8 +19,7 @@ GCS_SINK_FOLDER = "items-span"
 gcs_processor = ItemsSpanProcessor()
 
 pipeline: Pipeline[dict[str, Any]] = (
-    streaming_source(name="kafka", stream_name=SBC_TOPIC)
-    .apply(
+    streaming_source(name="kafka", stream_name=SBC_TOPIC).apply(
         HeadersFilter(
             name="logs_filter",
             header_name="item_type",
@@ -29,8 +28,8 @@ pipeline: Pipeline[dict[str, Any]] = (
     )
     # .apply(Map(name="do_nothing", function=do_nothing))
     .apply(Parser[TraceItem]("message_parser"))
-    .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
-    # .apply(Batch(name="batched_messages", batch_size=50000))
+    # .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
+    .apply(Batch(name="batched_messages", batch_size=100000))
     # .apply(
     #    ParquetSerializer(
     #        name="serializer", schema_fields=gcs_processor.schema_fields_sentrystreams
