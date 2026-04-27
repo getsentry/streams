@@ -114,7 +114,7 @@ GEN_AI_ATTRIBUTES_TO_COLUMNS = {
 
 def do_nothing(msg: Message[bytes]) -> Any:
     cp = deepcopy(msg.payload)
-    return {"size": len(cp)}
+    return cp
 
 
 def count_batch(msg: Message[Sequence[bytes]]) -> Any:
