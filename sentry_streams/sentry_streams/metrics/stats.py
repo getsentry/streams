@@ -54,6 +54,9 @@ _stats: PipelineStats | None = None
 
 
 def get_stats() -> PipelineStats:
+    # TODO: ensure this is reconfigured if we reconfigure the metrics with the `configure_metrics` function.
+    # Today we do not allow the reconfiguration of metrics outside of tests. So not an issue, though
+    # it would be better to be robust to that change.
     global _stats
     if _stats is None:
         _stats = PipelineStats(get_raw_metrics())
