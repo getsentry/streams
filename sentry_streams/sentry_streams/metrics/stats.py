@@ -7,7 +7,7 @@ from sentry_streams.metrics.metrics import Metric, get_raw_metrics
 FLUSH_TIME = 10
 
 
-class PipielineStats:
+class PipelineStats:
 
     def __init__(self, metrics: Metrics) -> None:
         self._metrics = metrics
@@ -49,11 +49,11 @@ class PipielineStats:
             self._timing_buffer = defaultdict(float)
 
 
-_stats: PipielineStats | None = None
+_stats: PipelineStats | None = None
 
 
-def get_stats() -> PipielineStats:
+def get_stats() -> PipelineStats:
     global _stats
     if _stats is None:
-        _stats = PipielineStats(get_raw_metrics())
+        _stats = PipelineStats(get_raw_metrics())
     return _stats

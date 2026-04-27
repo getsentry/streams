@@ -1,13 +1,13 @@
 from unittest.mock import MagicMock, call, patch
 
 from sentry_streams.metrics.metrics import DummyMetricsBackend, Metric, Metrics
-from sentry_streams.metrics.stats import PipielineStats
+from sentry_streams.metrics.stats import PipelineStats
 
 
-def _make_stats() -> tuple[PipielineStats, MagicMock]:
-    """Build :class:`PipielineStats` with a mocked backend; return ``(stats, inner_backend)``."""
+def _make_stats() -> tuple[PipelineStats, MagicMock]:
+    """Build :class:`PipelineStats` with a mocked backend; return ``(stats, inner_backend)``."""
     inner = MagicMock(spec=DummyMetricsBackend)
-    return PipielineStats(Metrics(inner)), inner
+    return PipelineStats(Metrics(inner)), inner
 
 
 @patch("time.time")
@@ -51,7 +51,7 @@ def test_no_flush_before_deadline(
     inner.increment.assert_not_called()
     inner.timing.assert_not_called()
     # Last flush time is only set on a successful flush
-    last_flush: float = object.__getattribute__(stats, "_PipielineStats__last_flush_time")
+    last_flush: float = object.__getattribute__(stats, "_PipelineStats__last_flush_time")
     assert last_flush == 100.0
     exec_buf: dict[str, int] = stats._exec_buffer  # noqa: SLF001
     assert exec_buf["a"] == 1
