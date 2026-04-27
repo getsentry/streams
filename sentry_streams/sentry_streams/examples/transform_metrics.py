@@ -114,7 +114,7 @@ GEN_AI_ATTRIBUTES_TO_COLUMNS = {
 
 def do_nothing(msg: Message[bytes]) -> Any:
     cp = deepcopy(msg.payload)
-    return {"size": len(cp)}
+    return {"size": len(cp), "payload": cp}
 
 
 def do_nothing_py(msg: Message[dict[str, Any]]) -> Any:
