@@ -41,10 +41,10 @@ pipeline: Pipeline[dict[str, Any]] = (
     # .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
     .apply(Batch(name="batched_messages", batch_size=100000))
     # .apply(Map(name="count_batch", function=count_batch))
-    .apply(
-        ParquetSerializer(
-            name="serializer", schema_fields=gcs_processor.schema_fields_sentrystreams
-        )
-    )
+    # .apply(
+    #    ParquetSerializer(
+    #        name="serializer", schema_fields=gcs_processor.schema_fields_sentrystreams
+    #    )
+    # )
     .sink(DevNullSink(name="devnull"))
 )
