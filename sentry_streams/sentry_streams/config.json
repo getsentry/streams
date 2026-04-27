@@ -44,7 +44,15 @@
                         "properties": {
                             "steps_config": {
                                 "type": "object",
-                                "title": "steps_config"
+                                "title": "steps_config",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "properties": {
+                                        "dlq": {
+                                            "$ref": "#/definitions/DlqConfig"
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -143,6 +151,31 @@
             },
             "required": [
                 "dsn"
+            ]
+        },
+        "DlqConfig": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "bootstrap_servers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 1
+                },
+                "override_params": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "bootstrap_servers"
             ]
         }
     }

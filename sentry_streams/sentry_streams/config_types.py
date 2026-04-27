@@ -9,6 +9,17 @@ class StepConfig(TypedDict):
     starts_segment: Optional[bool]
 
 
+class DlqConfig(TypedDict, total=False):
+    """
+    Dead Letter Queue configuration for a StreamSource.
+    All fields are optional to allow for default behavior.
+    """
+
+    topic: str
+    bootstrap_servers: Sequence[str]
+    override_params: Mapping[str, str]
+
+
 class KafkaConsumerConfig(TypedDict, StepConfig):
     bootstrap_servers: Sequence[str]
     auto_offset_reset: str
