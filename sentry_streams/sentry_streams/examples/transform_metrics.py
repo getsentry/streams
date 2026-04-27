@@ -117,6 +117,11 @@ def do_nothing(msg: Message[bytes]) -> Any:
     return {"size": len(cp)}
 
 
+def count_batch(msg: Message[Sequence[bytes]]) -> Any:
+    print(f"Counting batch: {len(msg.payload)}")
+    return {"size": len(msg.payload)}
+
+
 def do_count(msg: Message[dict[str, Any]]) -> Any:
     cnt = msg.payload["size"]
     return {"size": cnt * 2}
