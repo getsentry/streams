@@ -22,9 +22,9 @@ pipeline:
         #do_nothing2:
         #  starts_segment: True
         batched_messages:
-          batch_size: 50000
+          batch_size: 10000
           batch_timedelta:
-            seconds: 5
+            seconds: 1
         batch_parser:
           starts_segment: True
           parallelism:
