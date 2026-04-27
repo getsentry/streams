@@ -28,6 +28,7 @@ class PipelineStats:
 
     def step_timing(self, step: str, value: float) -> None:
         if self._timing_buffer[step] < value:
+            # TODO: turn this into a moving average.
             self._timing_buffer[step] = value
         self._maybe_flush()
 
