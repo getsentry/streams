@@ -4,7 +4,7 @@ from sentry_streams.adapters.arroyo.rust_step import Committable, SingleMessageO
 from sentry_streams.pipeline.message import PipelineMessage, RustMessage
 
 
-class FakeOperatorDelegate[SingleMessageOperatorDelegate]:
+class FakeOperatorDelegate(SingleMessageOperatorDelegate):
     def __init__(self) -> None:
         pass
 
