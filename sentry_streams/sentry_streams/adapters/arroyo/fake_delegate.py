@@ -1,40 +1,15 @@
 from typing import Tuple
 
-from sentry_streams.adapters.arroyo.rust_step import Committable
-from sentry_streams.pipeline.message import PipelineMessage
+from sentry_streams.adapters.arroyo.rust_step import Committable, SingleMessageOperatorDelegate
+from sentry_streams.pipeline.message import PipelineMessage, RustMessage
 
 
-class FakeOperatorDelegate:
+class FakeOperatorDelegate[SingleMessageOperatorDelegate]:
     def __init__(self) -> None:
-        self.payload = None
-        self.committable = None
+        pass
 
-    def submit(self, payload, committable) -> None:
-        self.committable = committable
-        # Handle watermark messages (PyWatermark objects)
-        if hasattr(payload, "committable"):
-            self.payload = payload
-            return
-        if payload.payload == "ok":
-            self.payload = payload
-            return
-        elif payload.payload == "reject":
-            from arroyo.processing.strategies import MessageRejected
-
-            raise MessageRejected()
-        elif payload.payload == "invalid":
-            from arroyo.dlq import InvalidMessage
-            from arroyo import Partition, Topic
-
-            raise InvalidMessage(Partition(Topic("topic"), 0), 42)
-
-    def poll(self) -> list[Tuple[PipelineMessage, Committable]]:
-        if self.payload is None or self.committable is None:
-            return []
-        return [(self.payload, self.committable), (self.payload, self.committable)]
-
-    def flush(self, timeout: float | None = None):
-        return [(self.payload, self.committable)]
+    def _process_message(self, msg: RustMessage, committable: Committable) -> RustMessage | None:
+        return msg
 
 
 class FakeOperatorDelegateFactory:
