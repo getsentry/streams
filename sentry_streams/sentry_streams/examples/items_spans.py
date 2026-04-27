@@ -8,6 +8,7 @@ from sentry_streams.examples.transform_metrics import (
     count_batch,
     do_count,
     do_nothing,
+    do_nothing_py,
     do_something,
 )
 from sentry_streams.pipeline import (
@@ -35,7 +36,7 @@ pipeline: Pipeline[dict[str, Any]] = (
         )
     )
     .apply(Map(name="do_nothing", function=do_nothing))
-    .apply(Map(name="do_nothing2", function=do_nothing))
+    .apply(Map(name="do_nothing2", function=do_nothing_py))
     # .apply(Map(name="do_count", function=do_count))
     # .apply(Parser[TraceItem]("message_parser"))
     # .apply(Map(name="do_something", function=do_something))
