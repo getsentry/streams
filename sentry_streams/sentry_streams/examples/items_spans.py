@@ -36,12 +36,12 @@ pipeline: Pipeline[dict[str, Any]] = (
         )
     )
     .apply(Map(name="do_nothing", function=do_nothing))
-    .apply(Map(name="do_nothing2", function=do_nothing_py))
+    # .apply(Map(name="do_nothing2", function=do_nothing_py))
     # .apply(Map(name="do_count", function=do_count))
     # .apply(Parser[TraceItem]("message_parser"))
     # .apply(Map(name="do_something", function=do_something))
     # .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
-    # .apply(Batch(name="batched_messages", batch_size=100000))
+    .apply(Batch(name="batched_messages", batch_size=100000))
     # .apply(Map(name="count_batch", function=count_batch))
     # .apply(
     #    ParquetSerializer(
