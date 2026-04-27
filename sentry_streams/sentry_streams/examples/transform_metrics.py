@@ -118,7 +118,8 @@ def do_nothing(msg: Message[bytes]) -> Any:
 
 
 def do_nothing_py(msg: Message[dict[str, Any]]) -> Any:
-    return {"size2": msg.payload["size"] * 2}
+    cp = deepcopy(msg.payload["payload"])
+    return {"size2": msg.payload["size"] * 2, "payload": cp}
 
 
 def count_batch(msg: Message[Sequence[bytes]]) -> Any:
