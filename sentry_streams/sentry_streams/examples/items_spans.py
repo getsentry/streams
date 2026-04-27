@@ -35,6 +35,7 @@ pipeline: Pipeline[dict[str, Any]] = (
         )
     )
     .apply(Map(name="do_nothing", function=do_nothing))
+    .apply(Map(name="do_nothing2", function=do_nothing))
     # .apply(Map(name="do_count", function=do_count))
     # .apply(Parser[TraceItem]("message_parser"))
     # .apply(Map(name="do_something", function=do_something))
