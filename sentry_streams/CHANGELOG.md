@@ -1,3 +1,7 @@
+## 0.0.47
+
+- Introduce lightweight stats by @fpacifici in [#305](https://github.com/getsentry/streams/pull/305)
+
 ## 0.0.46
 
 - Test skip processing headers by @fpacifici in [#301](https://github.com/getsentry/streams/pull/301)
