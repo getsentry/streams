@@ -37,16 +37,16 @@ pipeline: Pipeline[dict[str, Any]] = (
         )
     )
     .apply(Batch(name="batched_messages", batch_size=100000))
-    .apply(BatchParser[TraceItem]("batch_parser"))
-    .apply(Map(name="processed_message", function=gcs_processor.process_batch_messages))
+    # .apply(BatchParser[TraceItem]("batch_parser"))
+    # .apply(Map(name="processed_message", function=gcs_processor.process_batch_messages))
     # .apply(Parser[TraceItem]("message_parser"))
     # .apply(Map(name="do_something", function=do_something))
     # .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
     # .apply(Map(name="count_batch", function=count_batch))
-    .apply(
-        ParquetSerializer(
-            name="serializer", schema_fields=gcs_processor.schema_fields_sentrystreams
-        )
-    )
+    # .apply(
+    #    ParquetSerializer(
+    #         name="serializer", schema_fields=gcs_processor.schema_fields_sentrystreams
+    #     )
+    # )
     .sink(DevNullSink(name="devnull"))
 )
