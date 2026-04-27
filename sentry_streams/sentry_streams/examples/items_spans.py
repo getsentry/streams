@@ -36,13 +36,13 @@ pipeline: Pipeline[dict[str, Any]] = (
             value=TraceItemType.TRACE_ITEM_TYPE_SPAN,
         )
     )
-    .apply(Batch(name="batched_messages", batch_size=100000))
-    .apply(BatchParser[TraceItem]("batch_parser"))
-    .apply(Map(name="processed_message", function=gcs_processor.process_batch_messages))
-    # .apply(Parser[TraceItem]("message_parser"))
+    # .apply(BatchParser[TraceItem]("batch_parser"))
+    # .apply(Map(name="processed_message", function=gcs_processor.process_batch_messages))
+    .apply(Parser[TraceItem]("message_parser"))
     # .apply(Map(name="do_something", function=do_something))
-    # .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
+    .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
     # .apply(Map(name="count_batch", function=count_batch))
+    .apply(Batch(name="batched_messages", batch_size=100000))
     .apply(
         ParquetSerializer(
             name="serializer", schema_fields=gcs_processor.schema_fields_sentrystreams
