@@ -51,6 +51,7 @@ class FakeOperatorDelegate(RustOperatorDelegate):
         self.__globbed_committable: Committable = {}
         self.__batch = Messagebatch(size=50000, time_sec=3.0)
         self.stats = get_stats()
+        self.__schema: str | None = None
 
     def __should_send_watermark(self, watermark: PyWatermark) -> bool:
         """
@@ -85,7 +86,7 @@ class FakeOperatorDelegate(RustOperatorDelegate):
         if not flushed:
             return ret
 
-        msg = PyMessage(flushed[0], [], time.time(), None).to_inner()
+        msg = PyMessage(flushed[0], [], time.time(), self.__schema).to_inner()
         ret.append((msg, flushed[1]))
         self.__globbed_committable.update(flushed[1])
         watermarks = self.__watermarks.copy()
@@ -97,6 +98,8 @@ class FakeOperatorDelegate(RustOperatorDelegate):
 
     def submit(self, message: PipelineMessage, committable: Committable) -> None:
         self.stats.step_exec("fake batch")
+        if self.__schema is None:
+            self.__schema = message.schema
         if isinstance(message, PyWatermark):
             self.__watermarks.add(message)
         else:
