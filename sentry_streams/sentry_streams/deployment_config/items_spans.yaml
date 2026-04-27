@@ -30,5 +30,5 @@ pipeline:
           parallelism:
             multi_process:
               processes: 8
-              batch_size: 10000
-              batch_time: 1
+              batch_size: 50000
+              batch_time: 5
