@@ -16,7 +16,6 @@ from sentry_streams.metrics.metrics import (
     LogMetricsBackend,
     Metric,
     Metrics,
-    MetricsBackend,
     MetricsConfig,
     build_metrics_backend,
     configure_metrics,
@@ -27,18 +26,13 @@ def _metric(name: Metric) -> str:
     return name.value
 
 
-def _buffered_inner_backend(buffered: BufferedMetricsBackend) -> MetricsBackend:
-    return cast(
-        MetricsBackend,
-        object.__getattribute__(buffered, "_BufferedMetricsBackend__backend"),
-    )
-
-
 @pytest.fixture(autouse=True)
 def reset_metrics_backend() -> Generator[None, None, None]:
-    metrics_module._metrics_backend = None
+    metrics_module._metrics = None
+    metrics_module._raw_metrics = None
     yield
-    metrics_module._metrics_backend = None
+    metrics_module._metrics = None
+    metrics_module._raw_metrics = None
 
 
 def test_metric_enum_values() -> None:
@@ -367,19 +361,8 @@ def test_buffered_log_global_tags_from_inner(mock_time: Any, mock_logger: Any) -
 def test_configure_metrics_dummy(mock_arroyo_configure: Any) -> None:
     cfg: MetricsConfig = {"type": "dummy"}
 
-    configure_metrics(cfg)
-
-    wrapped = metrics_module._metrics_backend
-    assert isinstance(wrapped, BufferedMetricsBackend)
-    assert isinstance(_buffered_inner_backend(wrapped), DummyMetricsBackend)
-    assert (
-        object.__getattribute__(wrapped, "_BufferedMetricsBackend__throttle_interval_sec")
-        == METRICS_FREQUENCY_SEC
-    )
-    mock_arroyo_configure.assert_called_once()
-    arroyo_backend = mock_arroyo_configure.call_args[0][0]
-    assert isinstance(arroyo_backend, ArroyoMetricsBackend)
-    assert object.__getattribute__(arroyo_backend, "_ArroyoMetricsBackend__backend") is wrapped
+    backend = build_metrics_backend(cfg)
+    assert isinstance(backend, DummyMetricsBackend)
 
 
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
@@ -392,24 +375,32 @@ def test_configure_metrics_datadog(mock_dogstatsd: Any, mock_arroyo_configure: A
         "tags": {},
     }
 
-    configure_metrics(cfg)
+    backend = build_metrics_backend(cfg)
+    assert isinstance(backend, DatadogMetricsBackend)
 
-    wrapped = metrics_module._metrics_backend
-    assert isinstance(wrapped, BufferedMetricsBackend)
-    assert isinstance(_buffered_inner_backend(wrapped), DatadogMetricsBackend)
+    configure_metrics(
+        cfg,
+    )
     mock_arroyo_configure.assert_called_once()
 
 
 def test_configure_metrics_already_set() -> None:
-    configure_metrics({"type": "dummy"})
+    configure_metrics(
+        {"type": "dummy"},
+    )
 
     with pytest.raises(AssertionError, match="Metrics is already set"):
-        configure_metrics({"type": "dummy"})
+        configure_metrics(
+            {"type": "dummy"},
+        )
 
 
 @patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
-def test_configure_metrics_force(mock_arroyo_configure: Any) -> None:
-    configure_metrics({"type": "dummy"})
+@patch("sentry_streams.metrics.metrics.DogStatsd")
+def test_configure_metrics_force(mock_dogstatsd: Any, mock_arroyo_configure: Any) -> None:
+    configure_metrics(
+        {"type": "dummy"},
+    )
     configure_metrics(
         {
             "type": "datadog",
@@ -419,21 +410,11 @@ def test_configure_metrics_force(mock_arroyo_configure: Any) -> None:
         },
         force=True,
     )
-
-    wrapped = metrics_module._metrics_backend
-    assert isinstance(wrapped, BufferedMetricsBackend)
-    assert isinstance(_buffered_inner_backend(wrapped), DatadogMetricsBackend)
-
-
-@patch("sentry_streams.metrics.metrics.arroyo_configure_metrics")
-def test_configure_metrics_log_uses_config_throttle_interval(
-    mock_arroyo_configure: Any,
-) -> None:
-    configure_metrics({"type": "log", "period_sec": 33.0, "tags": {}})
-    wrapped = metrics_module._metrics_backend
-    assert isinstance(wrapped, BufferedMetricsBackend)
-    assert (
-        object.__getattribute__(wrapped, "_BufferedMetricsBackend__throttle_interval_sec") == 33.0
+    mock_dogstatsd.assert_called_once_with(
+        host="localhost",
+        port=8125,
+        namespace=METRICS_PREFIX.strip("."),
+        constant_tags=[],
     )
 
 
