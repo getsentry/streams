@@ -5,13 +5,10 @@ from sentry_streams.pipeline.message import PipelineMessage, RustMessage
 
 
 class FakeOperatorDelegate(SingleMessageOperatorDelegate):
-    def __init__(self) -> None:
-        pass
-
     def _process_message(self, msg: RustMessage, committable: Committable) -> RustMessage | None:
         return msg
 
 
 class FakeOperatorDelegateFactory:
-    def build(self):
+    def build(self) -> FakeOperatorDelegate:
         return FakeOperatorDelegate()
