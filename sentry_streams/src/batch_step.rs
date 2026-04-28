@@ -384,7 +384,7 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
             if deadline.as_ref().is_some_and(|d| d.has_elapsed()) {
                 break;
             }
-            self.try_emit_batch(false)?;
+            self.try_emit_batch(true)?;
             self.drain_outbound()?;
             if !self.pending_batch
                 && self.batch.as_ref().map_or(true, |b| b.is_empty())
