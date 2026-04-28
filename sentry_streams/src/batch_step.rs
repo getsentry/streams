@@ -239,24 +239,13 @@ impl BatchStep {
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
-        let c = self.next_step.poll()?;
-        self.commit_request_carried_over =
-            merge_commit_request(self.commit_request_carried_over.take(), c);
-
-        match self.next_step.submit(batch_msg) {
-            Err(SubmitError::MessageRejected(MessageRejected { message })) => {
-                self.outbound.push_front(message);
-                self.stalled_batch = true;
-                self.watermark_buffer = wm_after_batch;
-            }
-            Err(SubmitError::InvalidMessage(e)) => {
-                self.watermark_buffer = wm_after_batch;
-                return Err(e.into());
-            }
-            Ok(()) => {
-                self.enqueue_watermark_tail(wm_after_batch, committable_for_synthetic);
-            }
-        }
+        // Order: batched `Message` first, then buffered route WMs, then the synthetic batch WM;
+        // [`drain_outbound`] performs all `poll`+`submit` (including [`SubmitError`]) like other
+        // outbound work. `stalled_batch` blocks new `PyAny` input until the batched `Message` is
+        // accepted, matching the old synchronous `submit` path.
+        self.outbound.push_back(batch_msg);
+        self.stalled_batch = true;
+        self.enqueue_watermark_tail(wm_after_batch, committable_for_synthetic);
         Ok(())
     }
 
