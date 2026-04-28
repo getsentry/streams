@@ -35,7 +35,7 @@ fn invalid_message_submit_error(message: &Message<RoutedValue>) -> SubmitError<R
 }
 
 /// Count- and/or time-based window of `PyAnyMessage` elements for one route. Start with
-/// [`Batch::from_initial_message`]; add more with [`Batch::append`].
+/// [`Batch::from_initial`]; add more with [`Batch::append`].
 pub(crate) struct Batch {
     route: Route,
     max_batch_size: Option<usize>,
@@ -46,55 +46,40 @@ pub(crate) struct Batch {
 }
 
 impl Batch {
-    /// First element in a window: applies this message’s committable, consumes it, and sets the
-    /// time-bounded deadline when `max_batch_time` is set.
-    pub fn from_initial_message(
+    /// First element in a window. `committable` and `content` are taken from the same
+    /// [`RoutedValue`] (see [`BatchStep::submit`]); `Batch` only ever holds `PyAnyMessage` elements.
+    pub fn from_initial(
         route: Route,
         max_batch_size: Option<usize>,
         max_batch_time: Option<Duration>,
-        message: Message<RoutedValue>,
+        committable: BTreeMap<Partition, u64>,
+        first_element: Py<PyAnyMessage>,
     ) -> Self {
         let mut batch_offsets: BTreeMap<Partition, u64> = BTreeMap::new();
-        for (p, o) in message.committable() {
+        for (p, o) in committable {
             batch_offsets
                 .entry(p)
                 .and_modify(|e| *e = (*e).max(o))
                 .or_insert(o);
         }
-        let inner = message.into_payload();
-        let pysm = match inner.payload {
-            RoutedValuePayload::PyStreamingMessage(m) => m,
-            _ => unreachable!(),
-        };
-        let PyStreamingMessage::PyAnyMessage { content } = pysm else {
-            unreachable!();
-        };
         let batch_deadline = max_batch_time.map(Deadline::new);
         Self {
             route,
             max_batch_size,
             batch_deadline,
-            elements: vec![content],
+            elements: vec![first_element],
             batch_offsets,
         }
     }
 
-    /// Merges committable from the message, consumes it, and appends the `PyAnyMessage` element.
-    pub fn append(&mut self, message: Message<RoutedValue>) {
-        for (p, o) in message.committable() {
+    /// Merges this message’s `committable` into the running offset map and appends `content`.
+    pub fn append(&mut self, committable: BTreeMap<Partition, u64>, content: Py<PyAnyMessage>) {
+        for (p, o) in committable {
             self.batch_offsets
                 .entry(p)
                 .and_modify(|e| *e = (*e).max(o))
                 .or_insert(o);
         }
-        let inner = message.into_payload();
-        let pysm = match inner.payload {
-            RoutedValuePayload::PyStreamingMessage(m) => m,
-            _ => unreachable!(),
-        };
-        let PyStreamingMessage::PyAnyMessage { content } = pysm else {
-            unreachable!();
-        };
         self.elements.push(content);
     }
 
@@ -128,8 +113,9 @@ impl Batch {
         self.batch_offsets.clone()
     }
 
-    /// GIL: build list payload from stored `Py<PyAnyMessage>` elements, wrap in a batched `Message`.
-    pub fn build_stacked_message(&self) -> Result<Message<RoutedValue>, StrategyError> {
+    /// GIL: build list payload from stored `Py<PyAnyMessage>` elements, wrap in a batched
+    /// [`Message`].
+    pub fn flush(&self) -> Result<Message<RoutedValue>, StrategyError> {
         if self.elements.is_empty() {
             return Err(StrategyError::Other("Batch: empty window".into()));
         }
@@ -175,16 +161,15 @@ pub struct BatchStep {
     max_batch_time: Option<Duration>,
     /// `None` until the first `PyAnyMessage` in a window; then the open batch.
     batch: Option<Batch>,
-    /// Watermarks received while the current batch window is open; moved to
-    /// [`Self::pending_watermarks`] when the batch is emitted successfully.
+    /// Watermarks received while the current batch window is open; on successful batch send they
+    /// are appended to [`Self::outbound`].
     watermark_buffer: Vec<Message<RoutedValue>>,
-    /// Watermarks (and the synthetic batch watermark) queued for the next step; appended on
-    /// batch flush, drained on each [`ProcessingStrategy::poll`] (same deque + re-queue pattern as
-    /// `PythonAdapter`'s transformed message queue).
-    pending_watermarks: VecDeque<Message<RoutedValue>>,
+    /// Batched follow-ups and downstream backpressure: anything not yet accepted by
+    /// `next_step` (watermarks, synthetic batch watermark, or other rejects), drained on
+    /// [`Self::drain_outbound`].
+    outbound: VecDeque<Message<RoutedValue>>,
 
     message_carried_over: Option<Message<RoutedValue>>,
-    pending_downstream: VecDeque<Message<RoutedValue>>,
     commit_request_carried_over: Option<CommitRequest>,
 }
 
@@ -202,45 +187,24 @@ impl BatchStep {
             max_batch_time,
             batch: None,
             watermark_buffer: Vec::new(),
-            pending_watermarks: VecDeque::new(),
+            outbound: VecDeque::new(),
             message_carried_over: None,
-            pending_downstream: VecDeque::new(),
             commit_request_carried_over: None,
         }
     }
 
-    fn submit_with_poll(&mut self, msg: Message<RoutedValue>) -> Result<bool, StrategyError> {
-        let c = self.next_step.poll()?;
-        self.commit_request_carried_over =
-            merge_commit_request(self.commit_request_carried_over.take(), c);
-        match self.next_step.submit(msg) {
-            Ok(()) => Ok(true),
-            Err(SubmitError::MessageRejected(MessageRejected { message })) => {
-                self.pending_downstream.push_front(message);
-                Ok(false)
-            }
-            Err(SubmitError::InvalidMessage(e)) => Err(e.into()),
-        }
-    }
-
-    fn drain_pending_downstream(&mut self) -> Result<(), StrategyError> {
-        while let Some(msg) = self.pending_downstream.pop_front() {
-            if !self.submit_with_poll(msg)? {
-                break;
-            }
-        }
-        Ok(())
-    }
-
-    fn drain_pending_watermarks(&mut self) -> Result<(), StrategyError> {
-        while let Some(msg) = self.pending_watermarks.pop_front() {
+    /// [`ProcessingStrategy::poll`], then merge `CommitRequest`, then `submit` each queued message
+    /// until a [`SubmitError::MessageRejected`] re-queues the front and stops (same idea as
+    /// `PythonAdapter`’s transformed message drain).
+    fn drain_outbound(&mut self) -> Result<(), StrategyError> {
+        while let Some(msg) = self.outbound.pop_front() {
             let c = self.next_step.poll()?;
             self.commit_request_carried_over =
                 merge_commit_request(self.commit_request_carried_over.take(), c);
             match self.next_step.submit(msg) {
                 Ok(()) => {}
                 Err(SubmitError::MessageRejected(MessageRejected { message })) => {
-                    self.pending_watermarks.push_front(message);
+                    self.outbound.push_front(message);
                     break;
                 }
                 Err(SubmitError::InvalidMessage(e)) => return Err(e.into()),
@@ -281,7 +245,7 @@ impl BatchStep {
             .as_ref()
             .ok_or_else(|| StrategyError::Other("BatchStep: emit without active batch".into()))?;
         let committable_for_synthetic = b.current_offsets_snapshot();
-        let batch_msg = b.build_stacked_message()?;
+        let batch_msg = b.flush()?;
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
@@ -305,15 +269,13 @@ impl BatchStep {
         Ok(())
     }
 
-    /// Pushes buffered route watermarks and the synthetic batch watermark into the pending queue
-    /// for delivery on subsequent poll cycles.
     fn enqueue_watermark_tail(
         &mut self,
         wm_after_batch: Vec<Message<RoutedValue>>,
         committable: BTreeMap<Partition, u64>,
     ) {
         for m in wm_after_batch {
-            self.pending_watermarks.push_back(m);
+            self.outbound.push_back(m);
         }
         let ts = current_epoch();
         let wmk = Message::new_any_message(
@@ -323,7 +285,7 @@ impl BatchStep {
             },
             committable,
         );
-        self.pending_watermarks.push_back(wmk);
+        self.outbound.push_back(wmk);
     }
 }
 
@@ -355,13 +317,12 @@ pub fn build_batch_step(
 
 impl ProcessingStrategy<RoutedValue> for BatchStep {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        self.drain_pending_downstream()?;
-        self.drain_pending_watermarks()?;
+        self.drain_outbound()?;
         self.retry_carried_batch()?;
         if self.message_carried_over.is_none() {
             self.try_emit_batch(false)?;
         }
-        self.drain_pending_watermarks()?;
+        self.drain_outbound()?;
         let c = self.next_step.poll()?;
         Ok(merge_commit_request(
             self.commit_request_carried_over.take(),
@@ -378,31 +339,52 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
             return self.next_step.submit(message);
         }
 
-        match &message.payload().payload {
-            RoutedValuePayload::WatermarkMessage(_) => {
+        if let RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { .. }) =
+            &message.payload().payload
+        {
+            return Err(invalid_message_submit_error(&message));
+        }
+
+        let committable: BTreeMap<Partition, u64> = message.committable().collect();
+        let rv = message.into_payload();
+        match rv.payload {
+            RoutedValuePayload::WatermarkMessage(wm) => {
                 if self.batch.as_ref().map_or(true, |b| b.is_empty()) {
-                    return self.next_step.submit(message);
+                    return self.next_step.submit(Message::new_any_message(
+                        RoutedValue {
+                            route: rv.route,
+                            payload: RoutedValuePayload::WatermarkMessage(wm),
+                        },
+                        committable,
+                    ));
                 }
-                self.watermark_buffer.push(message);
+                self.watermark_buffer.push(Message::new_any_message(
+                    RoutedValue {
+                        route: rv.route,
+                        payload: RoutedValuePayload::WatermarkMessage(wm),
+                    },
+                    committable,
+                ));
                 Ok(())
             }
             RoutedValuePayload::PyStreamingMessage(pysm) => {
-                if matches!(pysm, PyStreamingMessage::RawMessage { .. }) {
-                    return Err(invalid_message_submit_error(&message));
-                }
-
+                let PyStreamingMessage::PyAnyMessage { content } = pysm else {
+                    unreachable!("BatchStep: RawMessage should have been rejected above");
+                };
                 if self.batch.is_none() {
-                    self.batch = Some(Batch::from_initial_message(
+                    self.batch = Some(Batch::from_initial(
                         self.route.clone(),
                         self.max_batch_size,
                         self.max_batch_time,
-                        message,
+                        committable,
+                        content,
                     ));
                     return Ok(());
                 }
-
-                let b = self.batch.as_mut().expect("open batch");
-                b.append(message);
+                self.batch
+                    .as_mut()
+                    .expect("open batch")
+                    .append(committable, content);
                 Ok(())
             }
         }
@@ -418,17 +400,15 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
             if deadline.as_ref().is_some_and(|d| d.has_elapsed()) {
                 break;
             }
-            self.drain_pending_downstream()?;
-            self.drain_pending_watermarks()?;
+            self.drain_outbound()?;
             self.retry_carried_batch()?;
             if self.message_carried_over.is_none() {
                 self.try_emit_batch(true)?;
             }
-            self.drain_pending_watermarks()?;
+            self.drain_outbound()?;
             if self.message_carried_over.is_none()
                 && self.batch.as_ref().map_or(true, |b| b.is_empty())
-                && self.pending_downstream.is_empty()
-                && self.pending_watermarks.is_empty()
+                && self.outbound.is_empty()
                 && self.watermark_buffer.is_empty()
             {
                 break;
@@ -448,8 +428,8 @@ mod tests {
         //! [`Batch`] in isolation: elements, committable, `should_flush`, list build (GIL).
 
         use crate::batch_step::Batch;
-        use crate::messages::{PyStreamingMessage, RoutedValuePayload};
-        use crate::routes::Route;
+        use crate::messages::{PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
+        use crate::routes::{Route, RoutedValue};
         use crate::testutils::build_routed_value;
         use crate::utils::traced_with_gil;
         use chrono::Utc;
@@ -463,8 +443,23 @@ mod tests {
             Route::new("s".into(), vec!["w".into()])
         }
 
+        /// Test helper: same decomposition as [`BatchStep::submit`] for `PyAnyMessage` inputs.
+        fn committable_and_pyany(
+            message: Message<RoutedValue>,
+        ) -> (BTreeMap<Partition, u64>, Py<PyAnyMessage>) {
+            let c = message.committable().collect();
+            let rv = message.into_payload();
+            let RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
+                content,
+            }) = rv.payload
+            else {
+                panic!("test expects PyAnyMessage");
+            };
+            (c, content)
+        }
+
         #[test]
-        fn build_stacked_message_makes_list_payload() {
+        fn flush_makes_list_payload() {
             traced_with_gil!(|py| {
                 let r = route();
                 let p1 = 1i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -478,9 +473,11 @@ mod tests {
                     build_routed_value(py, p2, "s", vec!["w".into()]),
                     BTreeMap::from([(part, 2u64)]),
                 );
-                let mut b = Batch::from_initial_message(r.clone(), Some(2), None, m1);
-                b.append(m2);
-                let msg = b.build_stacked_message().expect("build");
+                let (c1, el1) = committable_and_pyany(m1);
+                let mut b = Batch::from_initial(r.clone(), Some(2), None, c1, el1);
+                let (c2, el2) = committable_and_pyany(m2);
+                b.append(c2, el2);
+                let msg = b.flush().expect("build");
                 assert!(
                     msg.committable().any(|(p, o)| p == part && o == 2),
                     "committable should include merged batch offsets"
@@ -516,8 +513,10 @@ mod tests {
                     9,
                     Utc::now(),
                 );
-                let mut b = Batch::from_initial_message(r, None, None, m1);
-                b.append(m2);
+                let (c1, el1) = committable_and_pyany(m1);
+                let mut b = Batch::from_initial(r, None, None, c1, el1);
+                let (c2, el2) = committable_and_pyany(m2);
+                b.append(c2, el2);
                 let snap = b.current_offsets_snapshot();
                 assert_eq!(snap.get(&part).copied(), Some(10u64));
             });
@@ -538,9 +537,11 @@ mod tests {
                     build_routed_value(py, p2, "s", vec!["w".into()]),
                     BTreeMap::from([(part, 1u64)]),
                 );
-                let mut b = Batch::from_initial_message(r, Some(2), None, m1);
+                let (c1, el1) = committable_and_pyany(m1);
+                let mut b = Batch::from_initial(r, Some(2), None, c1, el1);
                 assert!(!b.should_flush(), "one element, limit 2");
-                b.append(m2);
+                let (c2, el2) = committable_and_pyany(m2);
+                b.append(c2, el2);
                 assert!(b.should_flush(), "two elements, limit 2");
             });
         }
