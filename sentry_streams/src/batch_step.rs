@@ -175,8 +175,13 @@ pub struct BatchStep {
     max_batch_time: Option<Duration>,
     /// `None` until the first `PyAnyMessage` in a window; then the open batch.
     batch: Option<Batch>,
-    /// Watermarks received while the current batch window is open; taken when emitting after batch.
+    /// Watermarks received while the current batch window is open; moved to
+    /// [`Self::pending_watermarks`] when the batch is emitted successfully.
     watermark_buffer: Vec<Message<RoutedValue>>,
+    /// Watermarks (and the synthetic batch watermark) queued for the next step; appended on
+    /// batch flush, drained on each [`ProcessingStrategy::poll`] (same deque + re-queue pattern as
+    /// `PythonAdapter`'s transformed message queue).
+    pending_watermarks: VecDeque<Message<RoutedValue>>,
 
     message_carried_over: Option<Message<RoutedValue>>,
     pending_downstream: VecDeque<Message<RoutedValue>>,
@@ -197,6 +202,7 @@ impl BatchStep {
             max_batch_time,
             batch: None,
             watermark_buffer: Vec::new(),
+            pending_watermarks: VecDeque::new(),
             message_carried_over: None,
             pending_downstream: VecDeque::new(),
             commit_request_carried_over: None,
@@ -221,6 +227,23 @@ impl BatchStep {
         while let Some(msg) = self.pending_downstream.pop_front() {
             if !self.submit_with_poll(msg)? {
                 break;
+            }
+        }
+        Ok(())
+    }
+
+    fn drain_pending_watermarks(&mut self) -> Result<(), StrategyError> {
+        while let Some(msg) = self.pending_watermarks.pop_front() {
+            let c = self.next_step.poll()?;
+            self.commit_request_carried_over =
+                merge_commit_request(self.commit_request_carried_over.take(), c);
+            match self.next_step.submit(msg) {
+                Ok(()) => {}
+                Err(SubmitError::MessageRejected(MessageRejected { message })) => {
+                    self.pending_watermarks.push_front(message);
+                    break;
+                }
+                Err(SubmitError::InvalidMessage(e)) => return Err(e.into()),
             }
         }
         Ok(())
@@ -276,44 +299,31 @@ impl BatchStep {
                 return Err(e.into());
             }
             Ok(()) => {
-                self.emit_watermark_tail(wm_after_batch, committable_for_synthetic)?;
+                self.enqueue_watermark_tail(wm_after_batch, committable_for_synthetic);
             }
         }
         Ok(())
     }
 
-    fn emit_watermark_tail(
+    /// Pushes buffered route watermarks and the synthetic batch watermark into the pending queue
+    /// for delivery on subsequent poll cycles.
+    fn enqueue_watermark_tail(
         &mut self,
-        mut wm_after_batch: Vec<Message<RoutedValue>>,
-        committable_for_synthetic: BTreeMap<Partition, u64>,
-    ) -> Result<(), StrategyError> {
+        wm_after_batch: Vec<Message<RoutedValue>>,
+        committable: BTreeMap<Partition, u64>,
+    ) {
+        for m in wm_after_batch {
+            self.pending_watermarks.push_back(m);
+        }
         let ts = current_epoch();
         let wmk = Message::new_any_message(
             RoutedValue {
                 route: self.route.clone(),
-                payload: RoutedValuePayload::make_watermark_payload(
-                    committable_for_synthetic.clone(),
-                    ts,
-                ),
+                payload: RoutedValuePayload::make_watermark_payload(committable.clone(), ts),
             },
-            committable_for_synthetic,
+            committable,
         );
-        wm_after_batch.push(wmk);
-        for m in wm_after_batch {
-            let c = self.next_step.poll()?;
-            self.commit_request_carried_over =
-                merge_commit_request(self.commit_request_carried_over.take(), c);
-            match self.next_step.submit(m) {
-                Ok(()) => {}
-                Err(SubmitError::MessageRejected(_)) => {
-                    // TODO: preserve or retry watermarks when downstream applies backpressure; today
-                    // we drop the rest of the tail.
-                    break;
-                }
-                Err(SubmitError::InvalidMessage(e)) => return Err(e.into()),
-            }
-        }
-        Ok(())
+        self.pending_watermarks.push_back(wmk);
     }
 }
 
@@ -346,10 +356,12 @@ pub fn build_batch_step(
 impl ProcessingStrategy<RoutedValue> for BatchStep {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         self.drain_pending_downstream()?;
+        self.drain_pending_watermarks()?;
         self.retry_carried_batch()?;
         if self.message_carried_over.is_none() {
             self.try_emit_batch(false)?;
         }
+        self.drain_pending_watermarks()?;
         let c = self.next_step.poll()?;
         Ok(merge_commit_request(
             self.commit_request_carried_over.take(),
@@ -407,13 +419,16 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
                 break;
             }
             self.drain_pending_downstream()?;
+            self.drain_pending_watermarks()?;
             self.retry_carried_batch()?;
             if self.message_carried_over.is_none() {
                 self.try_emit_batch(true)?;
             }
+            self.drain_pending_watermarks()?;
             if self.message_carried_over.is_none()
                 && self.batch.as_ref().map_or(true, |b| b.is_empty())
                 && self.pending_downstream.is_empty()
+                && self.pending_watermarks.is_empty()
                 && self.watermark_buffer.is_empty()
             {
                 break;
