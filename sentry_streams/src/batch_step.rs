@@ -52,6 +52,8 @@ impl Batch {
         route: Route,
         max_batch_size: Option<usize>,
         max_batch_time: Option<Duration>,
+        // Keeps track of the highest offset for each partition. This represent the committable
+        // we will return when the batch is flushed.
         committable: BTreeMap<Partition, u64>,
         first_element: Py<PyAnyMessage>,
     ) -> Self {
@@ -72,7 +74,6 @@ impl Batch {
         }
     }
 
-    /// Merges this message’s `committable` into the running offset map and appends `content`.
     pub fn append(&mut self, committable: BTreeMap<Partition, u64>, content: Py<PyAnyMessage>) {
         for (p, o) in committable {
             self.batch_offsets
@@ -91,7 +92,6 @@ impl Batch {
         self.elements.len()
     }
 
-    /// Whether the current window is complete by size and/or time.
     pub fn should_flush(&self) -> bool {
         if self.is_empty() {
             return false;
@@ -113,8 +113,6 @@ impl Batch {
         self.batch_offsets.clone()
     }
 
-    /// GIL: build list payload from stored `Py<PyAnyMessage>` elements, wrap in a batched
-    /// [`Message`].
     pub fn flush(&self) -> Result<Message<RoutedValue>, StrategyError> {
         if self.elements.is_empty() {
             return Err(StrategyError::Other("Batch: empty window".into()));
@@ -163,15 +161,20 @@ pub struct BatchStep {
     batch: Option<Batch>,
     /// Watermarks received while the current batch window is open; on successful batch send they
     /// are appended to [`Self::outbound`].
+    ///
+    /// We need to hold on the watermarks we receive until the batch is flushed otherwise we
+    /// would indicate that messages have to be committed before they are sent through.
     watermark_buffer: Vec<Message<RoutedValue>>,
-    /// Batched follow-ups and downstream backpressure: anything not yet accepted by
-    /// `next_step` (watermarks, synthetic batch watermark, a failed batch flush, or any other
-    /// [`SubmitError::MessageRejected`]), drained on [`Self::drain_outbound`].
+    /// This is the queue of messages that are ready to be pushed through to the next step.
+    /// We have to keep it as part of the struct state because we are not guaranteed to be
+    /// able to push it through in one call to `poll`.  We may receive MessageRejected errors
+    /// on any of the messages we want to flush.
+    /// In those case we hold the pending messages and try again on the next call to `poll`.
     outbound: VecDeque<Message<RoutedValue>>,
     /// When true, a batched `Message` is waiting in [`Self::outbound`] and must be delivered
-    /// before this step accepts new streaming rows (same gating the old `message_carried_over`
-    /// provided); other work may still be in [`Self::outbound`].
-    stalled_batch: bool,
+    /// before this step accepts new messages.
+    /// This helps us capping the size of the pending queue during prolonged backpressure periods.
+    pending_batch: bool,
     commit_request_carried_over: Option<CommitRequest>,
 }
 
@@ -190,14 +193,17 @@ impl BatchStep {
             batch: None,
             watermark_buffer: Vec::new(),
             outbound: VecDeque::new(),
-            stalled_batch: false,
+            pending_batch: false,
             commit_request_carried_over: None,
         }
     }
 
-    /// [`ProcessingStrategy::poll`], then merge `CommitRequest`, then `submit` each queued message
-    /// until a [`SubmitError::MessageRejected`] re-queues the front and stops (same idea as
-    /// `PythonAdapter`’s transformed message drain).
+    /// Tries to drain the queue containing the pending messages.
+    /// At the first MessageRejected it stops and returns the error leaving the queue
+    /// intact for the following attempt.
+    ///
+    /// It calls `poll` on the next step to guarantee it has a chance to process the
+    /// on going work.
     fn drain_outbound(&mut self) -> Result<(), StrategyError> {
         while let Some(msg) = self.outbound.pop_front() {
             let c = self.next_step.poll()?;
@@ -205,8 +211,8 @@ impl BatchStep {
                 merge_commit_request(self.commit_request_carried_over.take(), c);
             match self.next_step.submit(msg) {
                 Ok(()) => {
-                    if self.stalled_batch {
-                        self.stalled_batch = false;
+                    if self.pending_batch {
+                        self.pending_batch = false;
                     }
                 }
                 Err(SubmitError::MessageRejected(MessageRejected { message })) => {
@@ -220,7 +226,7 @@ impl BatchStep {
     }
 
     fn try_emit_batch(&mut self, force: bool) -> Result<(), StrategyError> {
-        if self.stalled_batch {
+        if self.pending_batch {
             return Ok(());
         }
         if self.batch.as_ref().map_or(true, |b| b.is_empty()) {
@@ -234,17 +240,16 @@ impl BatchStep {
             .batch
             .as_ref()
             .ok_or_else(|| StrategyError::Other("BatchStep: emit without active batch".into()))?;
+
+        // We create a synthetic watermark to avoid waiting for the next batch to complete before
+        // allowing the consumer to commit.
         let committable_for_synthetic = b.current_offsets_snapshot();
         let batch_msg = b.flush()?;
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
-        // Order: batched `Message` first, then buffered route WMs, then the synthetic batch WM;
-        // [`drain_outbound`] performs all `poll`+`submit` (including [`SubmitError`]) like other
-        // outbound work. `stalled_batch` blocks new `PyAny` input until the batched `Message` is
-        // accepted, matching the old synchronous `submit` path.
         self.outbound.push_back(batch_msg);
-        self.stalled_batch = true;
+        self.pending_batch = true;
         self.enqueue_watermark_tail(wm_after_batch, committable_for_synthetic);
         Ok(())
     }
@@ -276,14 +281,13 @@ impl BatchStep {
     pub(crate) fn set_stalled_outbound_for_test(&mut self, message: Option<Message<RoutedValue>>) {
         if let Some(m) = message {
             self.outbound.push_front(m);
-            self.stalled_batch = true;
+            self.pending_batch = true;
         } else {
-            self.stalled_batch = false;
+            self.pending_batch = false;
         }
     }
 }
 
-/// Public constructor used by `operators::build`.
 pub fn build_batch_step(
     route: &Route,
     max_batch_size: Option<usize>,
@@ -314,7 +318,7 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
             return self.next_step.submit(message);
         }
 
-        if self.stalled_batch {
+        if self.pending_batch {
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
@@ -382,7 +386,7 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
             }
             self.try_emit_batch(false)?;
             self.drain_outbound()?;
-            if !self.stalled_batch
+            if !self.pending_batch
                 && self.batch.as_ref().map_or(true, |b| b.is_empty())
                 && self.outbound.is_empty()
                 && self.watermark_buffer.is_empty()
