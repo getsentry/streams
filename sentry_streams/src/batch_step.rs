@@ -300,10 +300,7 @@ pub fn build_batch_step(
 
 impl ProcessingStrategy<RoutedValue> for BatchStep {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        self.drain_outbound()?;
-        if !self.stalled_batch {
-            self.try_emit_batch(false)?;
-        }
+        self.try_emit_batch(false)?;
         self.drain_outbound()?;
         let c = self.next_step.poll()?;
         Ok(merge_commit_request(
@@ -313,14 +310,15 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        if self.stalled_batch {
-            return Err(SubmitError::MessageRejected(MessageRejected { message }));
-        }
-
         if self.route != message.payload().route {
             return self.next_step.submit(message);
         }
 
+        if self.stalled_batch {
+            return Err(SubmitError::MessageRejected(MessageRejected { message }));
+        }
+
+        // TODO: Support RawMessage as well.
         if let RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { .. }) =
             &message.payload().payload
         {
@@ -382,10 +380,7 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
             if deadline.as_ref().is_some_and(|d| d.has_elapsed()) {
                 break;
             }
-            self.drain_outbound()?;
-            if !self.stalled_batch {
-                self.try_emit_batch(true)?;
-            }
+            self.try_emit_batch(false)?;
             self.drain_outbound()?;
             if !self.stalled_batch
                 && self.batch.as_ref().map_or(true, |b| b.is_empty())
