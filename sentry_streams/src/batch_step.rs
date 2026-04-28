@@ -165,11 +165,13 @@ pub struct BatchStep {
     /// are appended to [`Self::outbound`].
     watermark_buffer: Vec<Message<RoutedValue>>,
     /// Batched follow-ups and downstream backpressure: anything not yet accepted by
-    /// `next_step` (watermarks, synthetic batch watermark, or other rejects), drained on
-    /// [`Self::drain_outbound`].
+    /// `next_step` (watermarks, synthetic batch watermark, a failed batch flush, or any other
+    /// [`SubmitError::MessageRejected`]), drained on [`Self::drain_outbound`].
     outbound: VecDeque<Message<RoutedValue>>,
-
-    message_carried_over: Option<Message<RoutedValue>>,
+    /// When true, a batched `Message` is waiting in [`Self::outbound`] and must be delivered
+    /// before this step accepts new streaming rows (same gating the old `message_carried_over`
+    /// provided); other work may still be in [`Self::outbound`].
+    stalled_batch: bool,
     commit_request_carried_over: Option<CommitRequest>,
 }
 
@@ -188,7 +190,7 @@ impl BatchStep {
             batch: None,
             watermark_buffer: Vec::new(),
             outbound: VecDeque::new(),
-            message_carried_over: None,
+            stalled_batch: false,
             commit_request_carried_over: None,
         }
     }
@@ -202,7 +204,11 @@ impl BatchStep {
             self.commit_request_carried_over =
                 merge_commit_request(self.commit_request_carried_over.take(), c);
             match self.next_step.submit(msg) {
-                Ok(()) => {}
+                Ok(()) => {
+                    if self.stalled_batch {
+                        self.stalled_batch = false;
+                    }
+                }
                 Err(SubmitError::MessageRejected(MessageRejected { message })) => {
                     self.outbound.push_front(message);
                     break;
@@ -213,24 +219,8 @@ impl BatchStep {
         Ok(())
     }
 
-    fn retry_carried_batch(&mut self) -> Result<(), StrategyError> {
-        if let Some(msg) = self.message_carried_over.take() {
-            let c = self.next_step.poll()?;
-            self.commit_request_carried_over =
-                merge_commit_request(self.commit_request_carried_over.take(), c);
-            match self.next_step.submit(msg) {
-                Ok(()) => {}
-                Err(SubmitError::MessageRejected(MessageRejected { message })) => {
-                    self.message_carried_over = Some(message);
-                }
-                Err(SubmitError::InvalidMessage(e)) => return Err(e.into()),
-            }
-        }
-        Ok(())
-    }
-
     fn try_emit_batch(&mut self, force: bool) -> Result<(), StrategyError> {
-        if self.message_carried_over.is_some() {
+        if self.stalled_batch {
             return Ok(());
         }
         if self.batch.as_ref().map_or(true, |b| b.is_empty()) {
@@ -255,7 +245,8 @@ impl BatchStep {
 
         match self.next_step.submit(batch_msg) {
             Err(SubmitError::MessageRejected(MessageRejected { message })) => {
-                self.message_carried_over = Some(message);
+                self.outbound.push_front(message);
+                self.stalled_batch = true;
                 self.watermark_buffer = wm_after_batch;
             }
             Err(SubmitError::InvalidMessage(e)) => {
@@ -291,12 +282,15 @@ impl BatchStep {
 
 #[cfg(test)]
 impl BatchStep {
-    /// Simulates downstream having rejected a batched message (backpressure).
-    pub(crate) fn set_message_carried_over_for_test(
-        &mut self,
-        message: Option<Message<RoutedValue>>,
-    ) {
-        self.message_carried_over = message;
+    /// Simulates a batched `Message` stuck behind downstream backpressure: same as a reject on
+    /// the batch flush, but with no prior [`try_emit_batch`].
+    pub(crate) fn set_stalled_outbound_for_test(&mut self, message: Option<Message<RoutedValue>>) {
+        if let Some(m) = message {
+            self.outbound.push_front(m);
+            self.stalled_batch = true;
+        } else {
+            self.stalled_batch = false;
+        }
     }
 }
 
@@ -318,8 +312,7 @@ pub fn build_batch_step(
 impl ProcessingStrategy<RoutedValue> for BatchStep {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         self.drain_outbound()?;
-        self.retry_carried_batch()?;
-        if self.message_carried_over.is_none() {
+        if !self.stalled_batch {
             self.try_emit_batch(false)?;
         }
         self.drain_outbound()?;
@@ -331,7 +324,7 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        if self.message_carried_over.is_some() {
+        if self.stalled_batch {
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
@@ -401,12 +394,11 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
                 break;
             }
             self.drain_outbound()?;
-            self.retry_carried_batch()?;
-            if self.message_carried_over.is_none() {
+            if !self.stalled_batch {
                 self.try_emit_batch(true)?;
             }
             self.drain_outbound()?;
-            if self.message_carried_over.is_none()
+            if !self.stalled_batch
                 && self.batch.as_ref().map_or(true, |b| b.is_empty())
                 && self.outbound.is_empty()
                 && self.watermark_buffer.is_empty()
@@ -690,7 +682,7 @@ mod tests {
         }
 
         #[test]
-        fn submit_rejects_while_message_carried_over() {
+        fn submit_rejects_while_batch_stalled_in_outbound() {
             let route = Route::new("s".into(), vec!["w".into()]);
             let (mut step, _out, _wms) = batch_step_with_fake(route.clone(), None, None);
             traced_with_gil!(|py| {
@@ -700,7 +692,7 @@ mod tests {
                     build_routed_value(py, p_carried, "s", vec!["w".into()]),
                     BTreeMap::new(),
                 );
-                step.set_message_carried_over_for_test(Some(carried));
+                step.set_stalled_outbound_for_test(Some(carried));
                 let m = Message::new_any_message(
                     build_routed_value(py, p_next, "s", vec!["w".into()]),
                     BTreeMap::new(),
