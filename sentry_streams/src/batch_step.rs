@@ -1,11 +1,13 @@
-//! Batches `PyAnyMessage` rows on a route, then [`BatchStep`] forwards one `PyAnyMessage` with a
+//! Batches `PyAnyMessage` elements on a route, then [`BatchStep`] forwards one `PyAnyMessage` with a
 //! list payload and manages watermarks and backpressure to the next Arroyo strategy.
 //!
 //! Only `PyAnyMessage` streaming input is supported; `RawMessage` is rejected with
 //! `SubmitError::InvalidMessage` when the input is a broker message.
+// TODO: Support `RawMessage` streaming input in addition to `PyAnyMessage` (list of bytes in the
+// batched `PyAnyMessage` payload).
 //!
-//! Python objects require the GIL to read. We keep `Py<PyAnyMessage>` per row and take the GIL
-//! only when materializing the batched message on flush, after [`Message::into_payload`].
+//! Python objects require the GIL to read. We keep `Py<PyAnyMessage>` per element and take the
+//! GIL only when materializing the batched message on flush, after [`Message::into_payload`].
 use crate::messages::{into_pyany, PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
 use crate::routes::{Route, RoutedValue};
 use crate::time_helpers::current_epoch;
@@ -32,57 +34,76 @@ fn invalid_message_submit_error(message: &Message<RoutedValue>) -> SubmitError<R
     }
 }
 
-// --- Batch: accumulate `Py<PyAnyMessage>`; GIL on flush when building the list payload ---
-
-/// Count- and/or time-based window of `PyAnyMessage` rows for one route. The first row is added
-/// via [`Batch::from_first_row`]; more rows with [`Batch::append_row`].
+/// Count- and/or time-based window of `PyAnyMessage` elements for one route. Start with
+/// [`Batch::from_initial_message`]; add more with [`Batch::append`].
 pub(crate) struct Batch {
     route: Route,
     max_batch_size: Option<usize>,
-    max_batch_time: Option<Duration>,
-    rows: Vec<Py<PyAnyMessage>>,
+    /// Set when the window is time-bounded; elapsed means flush by time.
     batch_deadline: Option<Deadline>,
+    elements: Vec<Py<PyAnyMessage>>,
     batch_offsets: BTreeMap<Partition, u64>,
 }
 
 impl Batch {
-    pub fn from_first_row(
+    /// First element in a window: applies this message’s committable, consumes it, and sets the
+    /// time-bounded deadline when `max_batch_time` is set.
+    pub fn from_initial_message(
         route: Route,
         max_batch_size: Option<usize>,
         max_batch_time: Option<Duration>,
-        first: Py<PyAnyMessage>,
-        initial_committable: BTreeMap<Partition, u64>,
+        message: Message<RoutedValue>,
     ) -> Self {
-        let deadline = max_batch_time.map(Deadline::new);
+        let mut batch_offsets: BTreeMap<Partition, u64> = BTreeMap::new();
+        for (p, o) in message.committable() {
+            batch_offsets
+                .entry(p)
+                .and_modify(|e| *e = (*e).max(o))
+                .or_insert(o);
+        }
+        let inner = message.into_payload();
+        let pysm = match inner.payload {
+            RoutedValuePayload::PyStreamingMessage(m) => m,
+            _ => unreachable!(),
+        };
+        let PyStreamingMessage::PyAnyMessage { content } = pysm else {
+            unreachable!();
+        };
+        let batch_deadline = max_batch_time.map(Deadline::new);
         Self {
             route,
             max_batch_size,
-            max_batch_time,
-            rows: vec![first],
-            batch_deadline: deadline,
-            batch_offsets: initial_committable,
+            batch_deadline,
+            elements: vec![content],
+            batch_offsets,
         }
     }
 
-    pub fn append_row(&mut self, row: Py<PyAnyMessage>) {
-        self.rows.push(row);
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.rows.is_empty()
-    }
-
-    fn len(&self) -> usize {
-        self.rows.len()
-    }
-
-    pub fn apply_committable_from(&mut self, message: &Message<RoutedValue>) {
+    /// Merges committable from the message, consumes it, and appends the `PyAnyMessage` element.
+    pub fn append(&mut self, message: Message<RoutedValue>) {
         for (p, o) in message.committable() {
             self.batch_offsets
                 .entry(p)
                 .and_modify(|e| *e = (*e).max(o))
                 .or_insert(o);
         }
+        let inner = message.into_payload();
+        let pysm = match inner.payload {
+            RoutedValuePayload::PyStreamingMessage(m) => m,
+            _ => unreachable!(),
+        };
+        let PyStreamingMessage::PyAnyMessage { content } = pysm else {
+            unreachable!();
+        };
+        self.elements.push(content);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.elements.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        self.elements.len()
     }
 
     /// Whether the current window is complete by size and/or time.
@@ -93,10 +114,12 @@ impl Batch {
         if self.max_batch_size.is_some_and(|m| self.len() >= m) {
             return true;
         }
-        if let (Some(_), Some(d)) = (&self.max_batch_time, &self.batch_deadline) {
-            if d.has_elapsed() {
-                return true;
-            }
+        if self
+            .batch_deadline
+            .as_ref()
+            .is_some_and(|d| d.has_elapsed())
+        {
+            return true;
         }
         false
     }
@@ -105,9 +128,9 @@ impl Batch {
         self.batch_offsets.clone()
     }
 
-    /// GIL: build list payload from stored `Py<PyAnyMessage>` rows, wrap in a batched `Message`.
+    /// GIL: build list payload from stored `Py<PyAnyMessage>` elements, wrap in a batched `Message`.
     pub fn build_stacked_message(&self) -> Result<Message<RoutedValue>, StrategyError> {
-        if self.rows.is_empty() {
+        if self.elements.is_empty() {
             return Err(StrategyError::Other("Batch: empty window".into()));
         }
         let route = self.route.clone();
@@ -118,9 +141,9 @@ impl Batch {
             .unwrap_or(0.0);
 
         let content = traced_with_gil!(|py| -> PyResult<Py<PyAnyMessage>> {
-            let first_schema = self.rows[0].bind(py).borrow().schema.clone();
+            let first_schema = self.elements[0].bind(py).borrow().schema.clone();
             let py_items: Vec<Py<PyAny>> = self
-                .rows
+                .elements
                 .iter()
                 .map(|pm| pm.bind(py).borrow().payload.clone_ref(py))
                 .collect();
@@ -143,8 +166,6 @@ impl Batch {
         Ok(Message::new_any_message(rv, committable))
     }
 }
-
-// --- BatchStep: Arroyo strategy — watermarks, backpressure, owns `Option<Batch>` ---
 
 pub struct BatchStep {
     next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
@@ -180,13 +201,6 @@ impl BatchStep {
             pending_downstream: VecDeque::new(),
             commit_request_carried_over: None,
         }
-    }
-
-    fn is_quiesced(&self) -> bool {
-        self.message_carried_over.is_none()
-            && self.batch.as_ref().map_or(true, |b| b.is_empty())
-            && self.pending_downstream.is_empty()
-            && self.watermark_buffer.is_empty()
     }
 
     fn submit_with_poll(&mut self, msg: Message<RoutedValue>) -> Result<bool, StrategyError> {
@@ -273,30 +287,44 @@ impl BatchStep {
         mut wm_after_batch: Vec<Message<RoutedValue>>,
         committable_for_synthetic: BTreeMap<Partition, u64>,
     ) -> Result<(), StrategyError> {
-        let wmk = self.make_synthetic_watermark(committable_for_synthetic);
+        let ts = current_epoch();
+        let wmk = Message::new_any_message(
+            RoutedValue {
+                route: self.route.clone(),
+                payload: RoutedValuePayload::make_watermark_payload(
+                    committable_for_synthetic.clone(),
+                    ts,
+                ),
+            },
+            committable_for_synthetic,
+        );
         wm_after_batch.push(wmk);
-        while !wm_after_batch.is_empty() {
-            let m = wm_after_batch.remove(0);
-            if !self.submit_with_poll(m)? {
-                for r in wm_after_batch.into_iter().rev() {
-                    self.pending_downstream.push_front(r);
+        for m in wm_after_batch {
+            let c = self.next_step.poll()?;
+            self.commit_request_carried_over =
+                merge_commit_request(self.commit_request_carried_over.take(), c);
+            match self.next_step.submit(m) {
+                Ok(()) => {}
+                Err(SubmitError::MessageRejected(_)) => {
+                    // TODO: preserve or retry watermarks when downstream applies backpressure; today
+                    // we drop the rest of the tail.
+                    break;
                 }
-                break;
+                Err(SubmitError::InvalidMessage(e)) => return Err(e.into()),
             }
         }
         Ok(())
     }
+}
 
-    fn make_synthetic_watermark(
-        &self,
-        committable: BTreeMap<Partition, u64>,
-    ) -> Message<RoutedValue> {
-        let ts = current_epoch();
-        let rv = RoutedValue {
-            route: self.route.clone(),
-            payload: RoutedValuePayload::make_watermark_payload(committable.clone(), ts),
-        };
-        Message::new_any_message(rv, committable)
+#[cfg(test)]
+impl BatchStep {
+    /// Simulates downstream having rejected a batched message (backpressure).
+    pub(crate) fn set_message_carried_over_for_test(
+        &mut self,
+        message: Option<Message<RoutedValue>>,
+    ) {
+        self.message_carried_over = message;
     }
 }
 
@@ -330,12 +358,19 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
+        if self.message_carried_over.is_some() {
+            return Err(SubmitError::MessageRejected(MessageRejected { message }));
+        }
+
         if self.route != message.payload().route {
             return self.next_step.submit(message);
         }
 
         match &message.payload().payload {
             RoutedValuePayload::WatermarkMessage(_) => {
+                if self.batch.as_ref().map_or(true, |b| b.is_empty()) {
+                    return self.next_step.submit(message);
+                }
                 self.watermark_buffer.push(message);
                 Ok(())
             }
@@ -345,36 +380,17 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
                 }
 
                 if self.batch.is_none() {
-                    let committable: BTreeMap<Partition, u64> = message.committable().collect();
-                    let inner = message.into_payload();
-                    let pysm = match inner.payload {
-                        RoutedValuePayload::PyStreamingMessage(m) => m,
-                        _ => unreachable!(),
-                    };
-                    let PyStreamingMessage::PyAnyMessage { content } = pysm else {
-                        unreachable!("RawMessage was rejected using &pysm before into_payload");
-                    };
-                    self.batch = Some(Batch::from_first_row(
+                    self.batch = Some(Batch::from_initial_message(
                         self.route.clone(),
                         self.max_batch_size,
                         self.max_batch_time,
-                        content,
-                        committable,
+                        message,
                     ));
                     return Ok(());
                 }
 
                 let b = self.batch.as_mut().expect("open batch");
-                b.apply_committable_from(&message);
-                let inner = message.into_payload();
-                let pysm = match inner.payload {
-                    RoutedValuePayload::PyStreamingMessage(m) => m,
-                    _ => unreachable!(),
-                };
-                let PyStreamingMessage::PyAnyMessage { content } = pysm else {
-                    unreachable!("RawMessage was rejected using &pysm before into_payload");
-                };
-                b.append_row(content);
+                b.append(message);
                 Ok(())
             }
         }
@@ -395,7 +411,11 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
             if self.message_carried_over.is_none() {
                 self.try_emit_batch(true)?;
             }
-            if self.is_quiesced() {
+            if self.message_carried_over.is_none()
+                && self.batch.as_ref().map_or(true, |b| b.is_empty())
+                && self.pending_downstream.is_empty()
+                && self.watermark_buffer.is_empty()
+            {
                 break;
             }
         }
@@ -410,10 +430,10 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
 #[cfg(test)]
 mod tests {
     mod batch {
-        //! [`Batch`] only: rows, committable merge, `should_flush`, and list materialization (GIL).
+        //! [`Batch`] in isolation: elements, committable, `should_flush`, list build (GIL).
 
         use crate::batch_step::Batch;
-        use crate::messages::{into_pyany, PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
+        use crate::messages::{PyStreamingMessage, RoutedValuePayload};
         use crate::routes::Route;
         use crate::testutils::build_routed_value;
         use crate::utils::traced_with_gil;
@@ -434,38 +454,20 @@ mod tests {
                 let r = route();
                 let p1 = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let p2 = 2i32.into_pyobject(py).unwrap().into_any().unbind();
-                let a1 = into_pyany(
-                    py,
-                    PyAnyMessage {
-                        payload: p1,
-                        headers: vec![],
-                        timestamp: 0.0,
-                        schema: None,
-                    },
-                )
-                .unwrap();
-                let a2 = into_pyany(
-                    py,
-                    PyAnyMessage {
-                        payload: p2,
-                        headers: vec![],
-                        timestamp: 0.0,
-                        schema: None,
-                    },
-                )
-                .unwrap();
                 let part = Partition::new(Topic::new("t"), 0);
-                let mut b = Batch::from_first_row(
-                    r.clone(),
-                    Some(2),
-                    None,
-                    a1,
+                let m1 = Message::new_any_message(
+                    build_routed_value(py, p1, "s", vec!["w".into()]),
                     BTreeMap::from([(part, 1u64)]),
                 );
-                b.append_row(a2);
+                let m2 = Message::new_any_message(
+                    build_routed_value(py, p2, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 2u64)]),
+                );
+                let mut b = Batch::from_initial_message(r.clone(), Some(2), None, m1);
+                b.append(m2);
                 let msg = b.build_stacked_message().expect("build");
                 assert!(
-                    msg.committable().any(|(p, o)| p == part && o == 1),
+                    msg.committable().any(|(p, o)| p == part && o == 2),
                     "committable should include merged batch offsets"
                 );
                 let RoutedValuePayload::PyStreamingMessage(pysm) = &msg.payload().payload else {
@@ -482,29 +484,25 @@ mod tests {
             });
         }
 
-        /// Uses [`build_routed_value`] to build a broker `Message` for [`Batch::apply_committable_from`].
         #[test]
-        fn apply_committable_merges_max_per_partition() {
+        fn append_merges_max_per_partition() {
             traced_with_gil!(|py| {
                 let r = route();
                 let p0 = 0i32.into_pyobject(py).unwrap().into_any().unbind();
-                let row = into_pyany(
-                    py,
-                    PyAnyMessage {
-                        payload: p0,
-                        headers: vec![],
-                        timestamp: 0.0,
-                        schema: None,
-                    },
-                )
-                .unwrap();
-                let part = Partition::new(Topic::new("t"), 0);
-                let mut b =
-                    Batch::from_first_row(r, None, None, row, BTreeMap::from([(part, 1u64)]));
                 let p_for_msg = 0i32.into_pyobject(py).unwrap().into_any().unbind();
-                let py_rv = build_routed_value(py, p_for_msg, "s", vec!["w".into()]);
-                let m = Message::new_broker_message(py_rv, part, 9, Utc::now());
-                b.apply_committable_from(&m);
+                let part = Partition::new(Topic::new("t"), 0);
+                let m1 = Message::new_any_message(
+                    build_routed_value(py, p0, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 1u64)]),
+                );
+                let m2 = Message::new_broker_message(
+                    build_routed_value(py, p_for_msg, "s", vec!["w".into()]),
+                    part,
+                    9,
+                    Utc::now(),
+                );
+                let mut b = Batch::from_initial_message(r, None, None, m1);
+                b.append(m2);
                 let snap = b.current_offsets_snapshot();
                 assert_eq!(snap.get(&part).copied(), Some(10u64));
             });
@@ -514,34 +512,27 @@ mod tests {
         fn should_flush_when_max_batch_size_reached() {
             traced_with_gil!(|py| {
                 let r = route();
-                let a1 = any_row(py, 1i32);
-                let a2 = any_row(py, 2i32);
+                let p1 = 1i32.into_pyobject(py).unwrap().into_any().unbind();
+                let p2 = 2i32.into_pyobject(py).unwrap().into_any().unbind();
                 let part = Partition::new(Topic::new("t"), 0);
-                let mut b =
-                    Batch::from_first_row(r, Some(2), None, a1, BTreeMap::from([(part, 0u64)]));
-                assert!(!b.should_flush(), "one row, limit 2");
-                b.append_row(a2);
-                assert!(b.should_flush(), "two rows, limit 2");
+                let m1 = Message::new_any_message(
+                    build_routed_value(py, p1, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 0u64)]),
+                );
+                let m2 = Message::new_any_message(
+                    build_routed_value(py, p2, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 1u64)]),
+                );
+                let mut b = Batch::from_initial_message(r, Some(2), None, m1);
+                assert!(!b.should_flush(), "one element, limit 2");
+                b.append(m2);
+                assert!(b.should_flush(), "two elements, limit 2");
             });
-        }
-
-        fn any_row(py: pyo3::Python<'_>, v: i32) -> pyo3::Py<PyAnyMessage> {
-            let p = v.into_pyobject(py).unwrap().into_any().unbind();
-            into_pyany(
-                py,
-                PyAnyMessage {
-                    payload: p,
-                    headers: vec![],
-                    timestamp: 0.0,
-                    schema: None,
-                },
-            )
-            .unwrap()
         }
     }
 
     mod step {
-        //! [`BatchStep`] as [`ProcessingStrategy`]: routing, raw rejection, handoff to the next step.
+        //! [`BatchStep`] as [`ProcessingStrategy`]: routing, raw rejection, backpressure, watermarks.
 
         use super::super::{BatchStep, Message};
         use crate::fake_strategy::FakeStrategy;
@@ -551,30 +542,36 @@ mod tests {
         use pyo3::prelude::*;
         use pyo3::IntoPyObject;
         use sentry_arroyo::processing::strategies::{
-            InvalidMessage, ProcessingStrategy, SubmitError,
+            InvalidMessage, MessageRejected, ProcessingStrategy, SubmitError,
         };
         use sentry_arroyo::types::{Partition, Topic};
         use std::collections::BTreeMap;
         use std::sync::{Arc, Mutex};
         use std::time::Duration;
 
+        use crate::messages::RoutedValuePayload;
         use crate::routes::Route;
 
         fn batch_step_with_fake(
             route: Route,
             max_n: Option<usize>,
             max_t: Option<Duration>,
-        ) -> (BatchStep, Arc<Mutex<Vec<Py<PyAny>>>>) {
+        ) -> (
+            BatchStep,
+            Arc<Mutex<Vec<Py<PyAny>>>>,
+            Arc<Mutex<Vec<crate::messages::Watermark>>>,
+        ) {
             let sub = Arc::new(Mutex::new(Vec::new()));
-            let next = FakeStrategy::new(sub.clone(), Arc::default(), false);
+            let wms = Arc::new(Mutex::new(Vec::new()));
+            let next = FakeStrategy::new(sub.clone(), wms.clone(), false);
             let step = BatchStep::new(route, max_n, max_t, Box::new(next));
-            (step, sub)
+            (step, sub, wms)
         }
 
         #[test]
         fn forwards_mismatched_route_to_next_strategy() {
             let step_route = Route::new("a".into(), vec![]);
-            let (mut step, captured) = batch_step_with_fake(step_route, None, None);
+            let (mut step, captured, _wms) = batch_step_with_fake(step_route, None, None);
             traced_with_gil!(|py| {
                 let p = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let rv = crate::testutils::build_routed_value(py, p, "b", vec![]);
@@ -587,7 +584,7 @@ mod tests {
         #[test]
         fn flushes_one_message_to_downstream_when_batch_full() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, out) = batch_step_with_fake(route, Some(2), None);
+            let (mut step, out, _wms) = batch_step_with_fake(route, Some(2), None);
             traced_with_gil!(|py| {
                 let p1 = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let p2 = 2i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -613,7 +610,7 @@ mod tests {
         #[test]
         fn submit_rejects_raw_message_after_pyany() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out) = batch_step_with_fake(route, Some(10), None);
+            let (mut step, _out, _wms) = batch_step_with_fake(route, Some(10), None);
             let part = Partition::new(Topic::new("topic"), 0);
             traced_with_gil!(|py| {
                 let p0 = 0i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -643,7 +640,7 @@ mod tests {
         #[test]
         fn submit_rejects_leading_raw_message() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out) = batch_step_with_fake(route, Some(10), None);
+            let (mut step, _out, _wms) = batch_step_with_fake(route, Some(10), None);
             let part = Partition::new(Topic::new("topic"), 0);
             traced_with_gil!(|py| {
                 let raw_m = Message::new_broker_message(
@@ -659,6 +656,44 @@ mod tests {
                     panic!("expected InvalidMessage");
                 };
                 assert_eq!(offset, 0);
+            });
+        }
+
+        #[test]
+        fn watermark_forwarded_immediately_when_batch_empty() {
+            let route = Route::new("s".into(), vec!["w".into()]);
+            let (mut step, _out, wms) = batch_step_with_fake(route.clone(), None, None);
+            let rv = crate::routes::RoutedValue {
+                route,
+                payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0),
+            };
+            let m = Message::new_any_message(rv, BTreeMap::new());
+            step.submit(m)
+                .expect("watermark should go to next step when no open batch");
+            assert_eq!(wms.lock().unwrap().len(), 1);
+        }
+
+        #[test]
+        fn submit_rejects_while_message_carried_over() {
+            let route = Route::new("s".into(), vec!["w".into()]);
+            let (mut step, _out, _wms) = batch_step_with_fake(route.clone(), None, None);
+            traced_with_gil!(|py| {
+                let p_carried = 1i32.into_pyobject(py).unwrap().into_any().unbind();
+                let p_next = 2i32.into_pyobject(py).unwrap().into_any().unbind();
+                let carried = Message::new_any_message(
+                    build_routed_value(py, p_carried, "s", vec!["w".into()]),
+                    BTreeMap::new(),
+                );
+                step.set_message_carried_over_for_test(Some(carried));
+                let m = Message::new_any_message(
+                    build_routed_value(py, p_next, "s", vec!["w".into()]),
+                    BTreeMap::new(),
+                );
+                let err = step.submit(m).expect_err("expected backpressure");
+                assert!(matches!(
+                    err,
+                    SubmitError::MessageRejected(MessageRejected { .. })
+                ));
             });
         }
     }
