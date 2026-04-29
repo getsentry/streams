@@ -371,7 +371,7 @@ class Metrics:
     """
 
     def __init__(self, backend: MetricsBackend) -> None:
-        self._backend = backend
+        self.__backend = backend
 
     def increment(
         self,
@@ -382,19 +382,19 @@ class Metrics:
         """
         Increments a counter metric by a given value.
         """
-        self._backend.increment(name.value, value, tags=tags)
+        self.__backend.increment(name.value, value, tags=tags)
 
     def gauge(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         """
         Sets a gauge metric to the given value.
         """
-        self._backend.gauge(name.value, value, tags=tags)
+        self.__backend.gauge(name.value, value, tags=tags)
 
     def timing(self, name: Metric, value: Union[int, float], tags: Optional[Tags] = None) -> None:
         """
         Records a timing metric.
         """
-        self._backend.timing(name.value, value, tags=tags)
+        self.__backend.timing(name.value, value, tags=tags)
 
 
 class ArroyoMetricsBackend:

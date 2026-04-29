@@ -19,7 +19,6 @@ from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MultiprocessingPool,
 )
 
-from sentry_streams.adapters.arroyo.fake_delegate import FakeOperatorDelegateFactory
 from sentry_streams.adapters.arroyo.multi_process_delegate import (
     MultiprocessDelegateFactory,
 )
@@ -66,6 +65,7 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_streams.rust_streams import (
     ArroyoConsumer,
+    DlqConfig,
     InitialOffset,
     PyKafkaConsumerConfig,
     PyKafkaProducerConfig,
@@ -181,6 +181,29 @@ def build_kafka_producer_config(
     )
 
 
+def build_dlq_config(
+    dlq_stream_name: str,
+    step_config: Mapping[str, Any],
+) -> DlqConfig:
+    """
+    Build the DLQ configuration from deployment config.
+    """
+    loaded_dlq = step_config["dlq"]
+    topic = loaded_dlq.get("topic", dlq_stream_name)
+    bootstrap_servers = loaded_dlq.get("bootstrap_servers")
+
+    if not bootstrap_servers:
+        raise ValueError("DLQ config requires 'bootstrap_servers' in deployment configuration")
+
+    return DlqConfig(
+        topic=topic,
+        producer_config=PyKafkaProducerConfig(
+            bootstrap_servers=bootstrap_servers,
+            override_params=loaded_dlq.get("override_params"),
+        ),
+    )
+
+
 def finalize_chain(
     chains: TransformChains,
     route: Route,
@@ -278,6 +301,10 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step.override_config(step_config)
         step.validate()
 
+        dlq_config = None
+        if step.dlq_stream_name is not None:
+            dlq_config = build_dlq_config(step.dlq_stream_name, step_config)
+
         assert isinstance(self.__write_healthcheck, bool)
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
@@ -288,6 +315,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             schema=schema_name,
             metric_config=build_py_metrics_config(self.__metrics_config),
             write_healthcheck=self.__write_healthcheck,
+            dlq_config=dlq_config,
         )
         return Route(source_name, [])
 
@@ -477,7 +505,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding reduce: {step.name} to pipeline")
 
         self.__consumers[stream.source].add_step(
-            RuntimeOperator.PythonAdapter(route, FakeOperatorDelegateFactory())
+            RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
         )
         return stream
 
