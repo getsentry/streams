@@ -114,9 +114,6 @@ impl Batch {
     }
 
     pub fn flush(&self) -> Result<Message<RoutedValue>, StrategyError> {
-        if self.elements.is_empty() {
-            return Err(StrategyError::Other("Batch: empty window".into()));
-        }
         let route = self.route.clone();
         let committable = self.batch_offsets.clone();
         let ts = SystemTime::now()
