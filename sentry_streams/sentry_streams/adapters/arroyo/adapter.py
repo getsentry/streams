@@ -28,12 +28,14 @@ from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps import (
     BroadcastStep,
+    ChainedMapStep,
     FilterStep,
     MapStep,
     ReduceStep,
     RouterStep,
     StreamSinkStep,
 )
+from sentry_streams.adapters.arroyo.steps_chain import TransformChains
 from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.config_types import (
     KafkaConsumerConfig,
@@ -101,7 +103,41 @@ def output_metrics(name: str, error: str | None, start_time: float) -> None:
         stats.step_error(name)
     stats.step_timing(name, time.time() - start_time)
 
+def finalize_chain(
+    chains: TransformChains,
+    route: Route,
+    metrics_config: MetricsConfig,
+) -> ChainedMapStep:
+    rust_route = Route(route.source, route.waypoints)
+    config, func = chains.finalize(route)
+    if config:
+        logger.info(
+            f"Finalizing chain for route {route} with multiprocessing: "
+            f"processes={config['processes']}, "
+            f"batch_size={config['batch_size']}, "
+            f"batch_time={config['batch_time']}"
+        )
 
+        #return RuntimeOperator.PythonAdapter(
+        #    rust_route,
+        #    MultiprocessDelegateFactory(
+        #        func,
+        #        config["batch_size"],
+        #        config["batch_time"],
+        #        MultiprocessingPool(
+        #            num_processes=config["processes"],
+        #            initializer=functools.partial(initializer, metrics_config),
+        #        ),
+        #        input_block_size=config.get("input_block_size"),
+        #        output_block_size=config.get("output_block_size"),
+        #        max_input_block_size=config.get("max_input_block_size"),
+        #        max_output_block_size=config.get("max_output_block_size"),
+        #    ),
+        #)
+        return ChainedMapStep(route=route, pipeline_steps=[])
+    else:
+        logger.info(f"Finalizing chain for route {route} without multiprocessing")
+        return ChainedMapStep(route=route, pipeline_steps=[])
 
 
 class StreamSources:
@@ -150,12 +186,12 @@ class StreamSources:
 
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
-                    
-                    default_config=source_config.get("additional_settings", {}),  # type: ignore
-                    bootstrap_servers=source_config.get("bootstrap_servers", ["localhost: 9092"]),
-                    auto_offset_reset=(source_config.get("auto_offset_reset", "latest")),
+                    default_config={},
+                    bootstrap_servers=bootstrap_servers,
+                    auto_offset_reset=auto_offset_reset,
                     group_id=group_id,
-                    override_params=source_config.get("override_params"),
+                    override_params=override_params,
+                    strict_offset_reset=strict_offset_reset,
                 )
             )
 

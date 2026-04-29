@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, TypeVar, Union
+from typing import Any, Callable, Generic, Sequence, TypeVar, Union
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies import CommitOffsets, Produce
@@ -117,6 +117,15 @@ class MapStep(ArroyoStep):
             next,
         )
 
+class ChainedMapStep(ArroyoStep):
+    """
+    Represents a Chained Map transformation in the streaming pipeline.
+    This translates to a RunTask step in arroyo where a function
+    is provided to transform the message payload into a different
+    one.
+    """
+    
+    pipeline_steps: Sequence[Map[Any, Any]]
 
 @dataclass
 class FilterStep(ArroyoStep):
