@@ -28,7 +28,8 @@ GCS_SINK_FOLDER = "items-span"
 gcs_processor = ItemsSpanProcessor()
 
 pipeline: Pipeline[dict[str, Any]] = (
-    streaming_source(name="kafka", stream_name=SBC_TOPIC).apply(
+    streaming_source(name="kafka", stream_name=SBC_TOPIC)
+    .apply(
         HeadersFilter(
             name="logs_filter",
             header_name="item_type",
