@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import (
     Any,
     Callable,
@@ -60,8 +61,47 @@ from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
+from sentry_streams.sentry_streams.metrics.metrics import MetricsConfig, configure_metrics
+from sentry_streams.sentry_streams.metrics.stats import get_stats
+from sentry_streams.sentry_streams.pipeline.message import Message
 
 logger = logging.getLogger(__name__)
+
+def initializer(metrics_config: MetricsConfig) -> None:
+    configure_metrics(metrics_config, force=True)
+
+def _metrics_wrapped_function(
+    step_name: str, application_function: Callable[[Message[Any]], Any], msg: Message[Any]
+) -> Any:
+    """
+    Module-level wrapper function for adding metrics to step functions.
+    This is defined at module level to be picklable for multiprocessing.
+    """
+    input_metrics(step_name)
+    has_error = None
+    start_time = time.time()
+    try:
+        result = application_function(msg)
+        return result
+    except Exception as e:
+        has_error = str(e.__class__.__name__)
+        raise e
+    finally:
+        output_metrics(step_name, has_error, start_time)
+
+
+def input_metrics(name: str) -> None:
+    stats = get_stats()
+    stats.step_exec(name)
+
+
+def output_metrics(name: str, error: str | None, start_time: float) -> None:
+    stats = get_stats()
+    if error:
+        stats.step_error(name)
+    stats.step_timing(name, time.time() - start_time)
+
+
 
 
 class StreamSources:
@@ -99,13 +139,24 @@ class StreamSources:
             source_config = self.config.get(source_name)
             assert source_config is not None, f"Config not provided for source {source_name}"
 
-            source_config = cast(KafkaConsumerConfig, source_config)
-            group_id = step.consumer_group or source_config.get(
-                "consumer_group", f"pipeline-{source_name}"
+            consumer_config = cast(KafkaConsumerConfig, source_config)
+            bootstrap_servers = consumer_config["bootstrap_servers"]
+            group_id = (
+                consumer_group_override or consumer_config.get("consumer_group") or f"pipeline-{source}"
             )
+            auto_offset_reset = consumer_config.get("auto_offset_reset", "latest")
+            strict_offset_reset = bool(consumer_config.get("strict_offset_reset", False))
+            override_params = consumer_config.get("override_params", {})
 
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
+                    bootstrap_servers=bootstrap_servers,
+                    group_id=group_id,
+                    auto_offset_reset=auto_offset_reset,
+                    strict_offset_reset=strict_offset_reset,
+                    max_poll_interval_ms=60000,
+                    override_params=override_params,
+                    
                     default_config=source_config.get("additional_settings", {}),  # type: ignore
                     bootstrap_servers=source_config.get("bootstrap_servers", ["localhost: 9092"]),
                     auto_offset_reset=(source_config.get("auto_offset_reset", "latest")),
