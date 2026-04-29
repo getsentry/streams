@@ -48,3 +48,4 @@ pyo3 = { version = "*", features = ["auto-initialize"] }
 [profile.release]
 debug = true
 strip = false
+lto = false
