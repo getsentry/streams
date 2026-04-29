@@ -21,7 +21,7 @@ use sentry_arroyo::processing::strategies::{
 use sentry_arroyo::types::{InnerMessage, Message, Partition};
 use sentry_arroyo::utils::timing::Deadline;
 use std::collections::{BTreeMap, VecDeque};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 fn invalid_message_submit_error(message: &Message<RoutedValue>) -> SubmitError<RoutedValue> {
     match &message.inner_message {
@@ -244,7 +244,9 @@ impl BatchStep {
         // We create a synthetic watermark to avoid waiting for the next batch to complete before
         // allowing the consumer to commit.
         let committable_for_synthetic = b.current_offsets_snapshot();
+        let flush_start = Instant::now();
         let batch_msg = b.flush()?;
+        tracing::info!("Batch::flush took {:?}", flush_start.elapsed());
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
