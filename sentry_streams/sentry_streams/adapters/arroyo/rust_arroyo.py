@@ -502,7 +502,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step.override_config(loaded_config)
         step.validate()
 
-        if not isinstance(step, Batch):
+        if isinstance(step, Batch):
             max_batch_time_ms: float | None
             if step.batch_timedelta is not None:
                 max_batch_time_ms = step.batch_timedelta.total_seconds() * 1000.0
