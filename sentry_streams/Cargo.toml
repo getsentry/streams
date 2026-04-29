@@ -45,7 +45,6 @@ pyo3 = { version = "*", features = ["auto-initialize"] }
 #
 # Later we can decide if we need to save storage. Snuba runs with less detailed
 # debuginfo.
-[profile.release]
-debug = true
-strip = false
-lto = false
+#[profile.release]
+#debug = true
+#strip = false
