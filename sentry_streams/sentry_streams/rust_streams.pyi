@@ -123,6 +123,13 @@ class RuntimeOperator:
     @classmethod
     def Broadcast(cls, route: Route, downstream_routes: Sequence[str]) -> Self: ...
     @classmethod
+    def Batch(
+        cls,
+        route: Route,
+        max_batch_size: int | None = None,
+        max_batch_time_ms: float | None = None,
+    ) -> Self: ...
+    @classmethod
     def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
 
 class ArroyoConsumer:
