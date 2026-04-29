@@ -42,7 +42,7 @@ pipeline: Pipeline[dict[str, Any]] = (
     .apply(Parser[TraceItem]("message_parser"))
     # .apply(Map(name="do_something", function=do_nothing))
     # .apply(Map(name="do_nothing_bytes", function=do_nothing_bytes))
-    .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
+    # .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
     # .apply(Batch(name="batched_messages", batch_size=100000))
     # .apply(Map(name="count_batch", function=count_batch))
     #.apply(
