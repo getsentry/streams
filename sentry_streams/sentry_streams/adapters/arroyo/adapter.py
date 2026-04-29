@@ -133,7 +133,7 @@ class StreamSources:
         step_config: Mapping[str, Any] = self.config.get(source_name, {})
         step.override_config(step_config)
         step.validate()
-
+        consumer_group_override = step.consumer_group
         if source_name not in self.__sources:
 
             source_config = self.config.get(source_name)
@@ -142,7 +142,7 @@ class StreamSources:
             consumer_config = cast(KafkaConsumerConfig, source_config)
             bootstrap_servers = consumer_config["bootstrap_servers"]
             group_id = (
-                consumer_group_override or consumer_config.get("consumer_group") or f"pipeline-{source}"
+                consumer_group_override or consumer_config.get("consumer_group") or f"pipeline-{source_name}"
             )
             auto_offset_reset = consumer_config.get("auto_offset_reset", "latest")
             strict_offset_reset = bool(consumer_config.get("strict_offset_reset", False))
@@ -150,12 +150,6 @@ class StreamSources:
 
             self.__sources[source_name] = KafkaConsumer(
                 build_kafka_consumer_configuration(
-                    bootstrap_servers=bootstrap_servers,
-                    group_id=group_id,
-                    auto_offset_reset=auto_offset_reset,
-                    strict_offset_reset=strict_offset_reset,
-                    max_poll_interval_ms=60000,
-                    override_params=override_params,
                     
                     default_config=source_config.get("additional_settings", {}),  # type: ignore
                     bootstrap_servers=source_config.get("bootstrap_servers", ["localhost: 9092"]),
