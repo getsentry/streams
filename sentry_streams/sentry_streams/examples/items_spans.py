@@ -38,10 +38,10 @@ pipeline: Pipeline[dict[str, Any]] = (
     )
     # .apply(BatchParser[TraceItem]("batch_parser"))
     # .apply(Map(name="processed_message", function=gcs_processor.process_batch_messages))
-    .apply(Parser[TraceItem]("message_parser"))
-    # .apply(Map(name="do_something", function=do_nothing))
+    # .apply(Parser[TraceItem]("message_parser"))
+    .apply(Map(name="do_something", function=do_nothing))
     # .apply(Map(name="processed_message", function=gcs_processor.process_stream_message))
-    .apply(Batch(name="batched_messages", batch_size=100000))
+    # .apply(Batch(name="batched_messages", batch_size=100000))
     #.apply(Map(name="count_batch", function=count_batch))
     # .apply(
     #    ParquetSerializer(
