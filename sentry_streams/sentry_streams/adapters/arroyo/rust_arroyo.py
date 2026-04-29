@@ -45,6 +45,7 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
+    Batch,
     Broadcast,
     ComplexStep,
     DevNullSink,
@@ -500,6 +501,23 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         loaded_config: Mapping[str, Any] = self.steps_config.get(name, {})
         step.override_config(loaded_config)
         step.validate()
+
+        if isinstance(step, Batch):
+            max_batch_time_ms: float | None
+            if step.batch_timedelta is not None:
+                max_batch_time_ms = step.batch_timedelta.total_seconds() * 1000.0
+            else:
+                max_batch_time_ms = None
+            logger.info(f"Adding batch (native): {step.name} to pipeline")
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.Batch(
+                    route=route,
+                    max_batch_size=step.batch_size,
+                    max_batch_time_ms=max_batch_time_ms,
+                )
+            )
+            return stream
+
         step = MetricsReportingReduce(step, name)
 
         logger.info(f"Adding reduce: {step.name} to pipeline")

@@ -1,3 +1,4 @@
+use crate::batch_step::build_batch_step;
 use crate::broadcaster::Broadcaster;
 use crate::header_filter_step::build_header_int_filter;
 use crate::kafka_config::PyKafkaProducerConfig;
@@ -13,6 +14,7 @@ use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
+use std::time::Duration;
 
 /// RuntimeOperator represent a translated step in the streaming pipeline the
 /// Arroyo Rust runtime know how to run.
@@ -89,6 +91,17 @@ pub enum RuntimeOperator {
         route: Route,
         routing_function: Py<PyAny>,
         downstream_routes: Py<PyAny>,
+    },
+    /// Batches `PyAnyMessage` inputs on the route (per-row `PyStreamingMessage::PyAnyMessage`);
+    /// `RawMessage` is rejected as invalid. Emits one `PyAnyMessage` with a list payload, then
+    /// buffered and synthetic watermarks.
+    #[pyo3(name = "Batch")]
+    Batch {
+        route: Route,
+        /// `None` means no size limit (time-only window).
+        max_batch_size: Option<usize>,
+        /// Wall-clock duration in milliseconds; `None` means no time limit (size-only batch).
+        max_batch_time_ms: Option<f64>,
     },
     /// Delegates messages processing to a Python operator that provides
     /// the same kind of interface as an Arroyo strategy. This is meant
@@ -182,6 +195,14 @@ pub fn build(
             let func_ref = traced_with_gil!(|py| { routing_function.clone_ref(py) });
 
             build_router(route, func_ref, next)
+        }
+        RuntimeOperator::Batch {
+            route,
+            max_batch_size,
+            max_batch_time_ms,
+        } => {
+            let max_t = max_batch_time_ms.map(|ms| Duration::from_secs_f64((ms / 1000.0).max(0.0)));
+            build_batch_step(route, *max_batch_size, max_t, next)
         }
         RuntimeOperator::PythonAdapter {
             route,
