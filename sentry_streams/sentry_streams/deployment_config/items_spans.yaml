@@ -22,7 +22,7 @@ pipeline:
         #do_nothing2:
         #  starts_segment: True
         batched_messages:
-          batch_size: 100000
+          batch_size: 1000000
           batch_timedelta:
             seconds: 10
         #message_parser:

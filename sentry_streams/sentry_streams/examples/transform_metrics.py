@@ -116,6 +116,9 @@ def do_nothing(msg: Message[bytes]) -> Any:
     cp = deepcopy(msg.payload)
     return {"size": len(cp), "payload": cp}
 
+def do_nothing_bytes(msg: Message[bytes]) -> bytes:
+    cp = deepcopy(msg.payload)
+    return cp
 
 def do_nothing_py(msg: Message[dict[str, Any]]) -> Any:
     cp = deepcopy(msg.payload["payload"])
