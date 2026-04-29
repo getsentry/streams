@@ -76,7 +76,7 @@ from sentry_streams.rust_streams import Route as RustRoute
 from sentry_streams.rust_streams import (
     RuntimeOperator,
 )
-from sentry_streams.sentry_streams.adapters.arroyo.fake_delegate import FakeOperatorDelegate, FakeOperatorDelegateFactory
+from sentry_streams.adapters.arroyo.fake_delegate import FakeOperatorDelegate, FakeOperatorDelegateFactory
 
 logger = logging.getLogger(__name__)
 
