@@ -76,7 +76,6 @@ from sentry_streams.rust_streams import Route as RustRoute
 from sentry_streams.rust_streams import (
     RuntimeOperator,
 )
-from sentry_streams.adapters.arroyo.fake_delegate import FakeOperatorDelegate, FakeOperatorDelegateFactory
 
 logger = logging.getLogger(__name__)
 
@@ -524,7 +523,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding reduce: {step.name} to pipeline")
 
         self.__consumers[stream.source].add_step(
-            RuntimeOperator.PythonAdapter(route, FakeOperatorDelegateFactory())
+            RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
         )
         return stream
 
