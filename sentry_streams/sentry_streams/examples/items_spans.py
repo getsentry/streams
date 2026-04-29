@@ -8,6 +8,7 @@ from sentry_streams.examples.transform_metrics import (
     count_batch,
     do_count,
     do_nothing,
+    do_nothing_bytes,
     do_nothing_py,
     do_something,
 )
