@@ -92,9 +92,10 @@ pub enum RuntimeOperator {
         routing_function: Py<PyAny>,
         downstream_routes: Py<PyAny>,
     },
-    /// Batches `PyAnyMessage` inputs on the route (per-row `PyStreamingMessage::PyAnyMessage`);
-    /// `RawMessage` is rejected as invalid. Emits one `PyAnyMessage` with a list payload, then
-    /// buffered and synthetic watermarks.
+    /// Batches streaming data on the route. The first row determines the window type:
+    /// `PyAnyMessage` rows are merged into one message with a list payload; `RawMessage` rows
+    /// are merged into one message with a length-prefixed combined payload. Mixing the two
+    /// after the first row is invalid. After each batched data message, synthetic watermarks run.
     #[pyo3(name = "Batch")]
     Batch {
         route: Route,
