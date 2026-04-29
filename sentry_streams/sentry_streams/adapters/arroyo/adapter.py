@@ -61,9 +61,9 @@ from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
-from sentry_streams.sentry_streams.metrics.metrics import MetricsConfig, configure_metrics
-from sentry_streams.sentry_streams.metrics.stats import get_stats
-from sentry_streams.sentry_streams.pipeline.message import Message
+from sentry_streams.metrics.metrics import MetricsConfig, configure_metrics
+from sentry_streams.metrics.stats import get_stats
+from sentry_streams.pipeline.message import Message
 
 logger = logging.getLogger(__name__)
 
