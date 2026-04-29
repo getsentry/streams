@@ -42,10 +42,13 @@ from sentry_streams.config_types import (
     KafkaProducerConfig,
     StepConfig,
 )
+from sentry_streams.metrics.metrics import MetricsConfig, configure_metrics
+from sentry_streams.metrics.stats import get_stats
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
 )
+from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
     Broadcast,
     ComplexStep,
@@ -63,14 +66,13 @@ from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
-from sentry_streams.metrics.metrics import MetricsConfig, configure_metrics
-from sentry_streams.metrics.stats import get_stats
-from sentry_streams.pipeline.message import Message
 
 logger = logging.getLogger(__name__)
 
+
 def initializer(metrics_config: MetricsConfig) -> None:
     configure_metrics(metrics_config, force=True)
+
 
 def _metrics_wrapped_function(
     step_name: str, application_function: Callable[[Message[Any]], Any], msg: Message[Any]
@@ -103,6 +105,7 @@ def output_metrics(name: str, error: str | None, start_time: float) -> None:
         stats.step_error(name)
     stats.step_timing(name, time.time() - start_time)
 
+
 def finalize_chain(
     chains: TransformChains,
     route: Route,
@@ -118,7 +121,7 @@ def finalize_chain(
             f"batch_time={config['batch_time']}"
         )
 
-        #return RuntimeOperator.PythonAdapter(
+        # return RuntimeOperator.PythonAdapter(
         #    rust_route,
         #    MultiprocessDelegateFactory(
         #        func,
@@ -133,7 +136,7 @@ def finalize_chain(
         #        max_input_block_size=config.get("max_input_block_size"),
         #        max_output_block_size=config.get("max_output_block_size"),
         #    ),
-        #)
+        # )
         return ChainedMapStep(route=route, pipeline_steps=[])
     else:
         logger.info(f"Finalizing chain for route {route} without multiprocessing")
@@ -178,7 +181,9 @@ class StreamSources:
             consumer_config = cast(KafkaConsumerConfig, source_config)
             bootstrap_servers = consumer_config["bootstrap_servers"]
             group_id = (
-                consumer_group_override or consumer_config.get("consumer_group") or f"pipeline-{source_name}"
+                consumer_group_override
+                or consumer_config.get("consumer_group")
+                or f"pipeline-{source_name}"
             )
             auto_offset_reset = consumer_config.get("auto_offset_reset", "latest")
             strict_offset_reset = bool(consumer_config.get("strict_offset_reset", False))

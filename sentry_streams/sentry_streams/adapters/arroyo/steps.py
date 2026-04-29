@@ -117,6 +117,7 @@ class MapStep(ArroyoStep):
             next,
         )
 
+
 class ChainedMapStep(ArroyoStep):
     """
     Represents a Chained Map transformation in the streaming pipeline.
@@ -124,8 +125,9 @@ class ChainedMapStep(ArroyoStep):
     is provided to transform the message payload into a different
     one.
     """
-    
+
     pipeline_steps: Sequence[Map[Any, Any]]
+
 
 @dataclass
 class FilterStep(ArroyoStep):
