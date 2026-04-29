@@ -1,3 +1,10 @@
+## 0.0.48
+
+### New Features ✨
+
+- (dlq) Add dlq support (no-op) by @victoria-yining-huang in [#277](https://github.com/getsentry/streams/pull/277)
+- (sentry-streams) Add native Rust batch step for PyAnyMessage by @fpacifici in [#307](https://github.com/getsentry/streams/pull/307)
+
 ## 0.0.47
 
 - Introduce lightweight stats by @fpacifici in [#305](https://github.com/getsentry/streams/pull/305)
