@@ -233,6 +233,7 @@ class StreamSource(Source[bytes]):
     stream_name: str
     header_filter: Optional[Tuple[str, bytes]] = None
     consumer_group: Optional[str] = None
+    dlq_stream_name: Optional[str] = None
     step_type: StepType = StepType.SOURCE
 
     def register(self, ctx: Pipeline[bytes], previous: Step) -> None:

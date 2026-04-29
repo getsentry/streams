@@ -57,6 +57,17 @@ class PyKafkaProducerConfig:
     @property
     def override_params(self) -> Mapping[str, str] | None: ...
 
+class DlqConfig:
+    def __init__(
+        self,
+        topic: str,
+        producer_config: PyKafkaProducerConfig,
+    ) -> None: ...
+    @property
+    def topic(self) -> str: ...
+    @property
+    def producer_config(self) -> PyKafkaProducerConfig: ...
+
 class PyMetricConfig:
     def __init__(
         self,
@@ -123,10 +134,13 @@ class ArroyoConsumer:
         schema: str | None,
         metric_config: PyMetricConfig | None = None,
         write_healthcheck: bool = False,
+        dlq_config: DlqConfig | None = None,
     ) -> None: ...
     def add_step(self, step: RuntimeOperator) -> None: ...
     def run(self) -> None: ...
     def shutdown(self) -> None: ...
+    @property
+    def dlq_config(self) -> DlqConfig | None: ...
 
 class PyAnyMessage:
     def __init__(

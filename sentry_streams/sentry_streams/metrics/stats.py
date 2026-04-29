@@ -7,7 +7,7 @@ from sentry_streams.metrics.metrics import Metric, get_raw_metrics
 FLUSH_TIME = 10
 
 
-class PipielineStats:
+class PipelineStats:
 
     def __init__(self, metrics: Metrics) -> None:
         self._metrics = metrics
@@ -28,6 +28,7 @@ class PipielineStats:
 
     def step_timing(self, step: str, value: float) -> None:
         if self._timing_buffer[step] < value:
+            # TODO: turn this into a moving average.
             self._timing_buffer[step] = value
         self._maybe_flush()
 
@@ -49,11 +50,14 @@ class PipielineStats:
             self._timing_buffer = defaultdict(float)
 
 
-_stats: PipielineStats | None = None
+_stats: PipelineStats | None = None
 
 
-def get_stats() -> PipielineStats:
+def get_stats() -> PipelineStats:
+    # TODO: ensure this is reconfigured if we reconfigure the metrics with the `configure_metrics` function.
+    # Today we do not allow the reconfiguration of metrics outside of tests. So not an issue, though
+    # it would be better to be robust to that change.
     global _stats
     if _stats is None:
-        _stats = PipielineStats(get_raw_metrics())
+        _stats = PipelineStats(get_raw_metrics())
     return _stats
