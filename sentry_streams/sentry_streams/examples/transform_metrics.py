@@ -141,7 +141,7 @@ def do_something(msg: Message[TraceItem]) -> Any:
     processed["organization_id"] = span.organization_id
     processed["project_id"] = span.project_id
     processed["trace_id"] = span.trace_id
-    processed["span_id"] = uuid_from_item_id(span.item_id)[16:]
+    # processed["span_id"] = uuid_from_item_id(span.item_id)[16:]
     processed["retention_days"] = span.retention_days
     return processed
 
