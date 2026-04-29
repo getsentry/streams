@@ -76,6 +76,7 @@ from sentry_streams.rust_streams import Route as RustRoute
 from sentry_streams.rust_streams import (
     RuntimeOperator,
 )
+from sentry_streams.sentry_streams.adapters.arroyo.fake_delegate import FakeOperatorDelegate, FakeOperatorDelegateFactory
 
 logger = logging.getLogger(__name__)
 
@@ -502,7 +503,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step.override_config(loaded_config)
         step.validate()
 
-        if isinstance(step, Batch):
+        if not isinstance(step, Batch):
             max_batch_time_ms: float | None
             if step.batch_timedelta is not None:
                 max_batch_time_ms = step.batch_timedelta.total_seconds() * 1000.0
@@ -523,7 +524,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         logger.info(f"Adding reduce: {step.name} to pipeline")
 
         self.__consumers[stream.source].add_step(
-            RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
+            RuntimeOperator.PythonAdapter(route, FakeOperatorDelegateFactory())
         )
         return stream
 
