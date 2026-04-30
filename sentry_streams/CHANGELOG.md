@@ -1,3 +1,13 @@
+## 0.0.49
+
+### Internal Changes 🔧
+
+- (deps) Bump tracing-subscriber from 0.3.19 to 0.3.20 in /sentry_streams by @dependabot in [#280](https://github.com/getsentry/streams/pull/280)
+
+### Other
+
+- Support RawMessages in the native batch step by @fpacifici in [#308](https://github.com/getsentry/streams/pull/308)
+
 ## 0.0.48
 
 ### New Features ✨
