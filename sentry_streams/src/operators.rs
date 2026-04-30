@@ -92,8 +92,8 @@ pub enum RuntimeOperator {
         routing_function: Py<PyAny>,
         downstream_routes: Py<PyAny>,
     },
-    /// Batches `PyAnyMessage` inputs on the route (per-row `PyStreamingMessage::PyAnyMessage`);
-    /// `RawMessage` is rejected as invalid. Emits one `PyAnyMessage` with a list payload, then
+    /// Batches streaming rows (`PyAnyMessage` and/or `RawMessage` in the same window). Emits one
+    /// `PyAnyMessage` with a `list` payload (each item is the row’s Python value or `bytes`), then
     /// buffered and synthetic watermarks.
     #[pyo3(name = "Batch")]
     Batch {

@@ -629,6 +629,10 @@ class Batch(
     batch_timedelta (time duration). If neither is specified, defaults
     to a 10-second time window.
 
+    The native Rust batch step batches ``PyAnyMessage`` and/or ``RawMessage`` rows; the emitted
+    message has a single ``PyAnyMessage`` with a ``list`` payload (mixed Python values and/or
+    ``bytes`` per element).
+
     Both batch_size and batch_timedelta can be overridden via the
     deployment config's steps_config section.
     """
