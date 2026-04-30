@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Rust applications &#8212; Sentry Streams 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=2709fde1"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Deploying on Kuberentes" href="deployment.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="rust-applications">
+<h1>Rust applications<a class="headerlink" href="#rust-applications" title="Link to this heading">¶</a></h1>
+<section id="hybrid-applications">
+<h2>Hybrid applications<a class="headerlink" href="#hybrid-applications" title="Link to this heading">¶</a></h2>
+<p>PR: <a class="reference external" href="https://github.com/getsentry/streams/pull/177">https://github.com/getsentry/streams/pull/177</a></p>
+<p><strong>User story:</strong> I want to rewrite a pipeline step in getsentry monolith
+in Rust.</p>
+<p>Currently Rust-ification within the monolith is being done by adding new
+pyo3-based Python dependencies to getsentry’s requirements. We’ll go the
+same path, users can define pipeline steps using pyo3, but using our
+helper functions/”framework.”</p>
+<p>Here is how a function definition works:</p>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// mypackage/src/lib.rs</span>
+<span class="n">sentry_streams</span><span class="p">::</span><span class="n">rust_function</span><span class="o">!</span><span class="p">(</span>
+<span class="w">    </span><span class="n">RustTransformMsg</span><span class="p">,</span>
+<span class="w">    </span><span class="n">IngestMetric</span><span class="p">,</span>
+<span class="w">    </span><span class="n">TransformedIngestMetric</span><span class="p">,</span>
+<span class="w">    </span><span class="o">|</span><span class="n">msg</span><span class="p">:</span><span class="w"> </span><span class="nc">Message</span><span class="o">&lt;</span><span class="n">IngestMetric</span><span class="o">&gt;|</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">TransformedIngestMetric</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">payload</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">msg</span><span class="p">.</span><span class="n">take</span><span class="p">();</span>
+<span class="w">        </span><span class="n">TransformedIngestMetric</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">metric_type</span><span class="p">:</span><span class="w"> </span><span class="nc">payload</span><span class="p">.</span><span class="n">metric_type</span><span class="p">,</span>
+<span class="w">            </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="nc">payload</span><span class="p">.</span><span class="n">name</span><span class="p">,</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="nc">payload</span><span class="p">.</span><span class="n">value</span><span class="p">,</span>
+<span class="w">            </span><span class="n">tags</span><span class="p">:</span><span class="w"> </span><span class="nc">payload</span><span class="p">.</span><span class="n">tags</span><span class="p">,</span>
+<span class="w">            </span><span class="n">timestamp</span><span class="p">:</span><span class="w"> </span><span class="nc">payload</span><span class="p">.</span><span class="n">timestamp</span><span class="p">,</span>
+<span class="w">            </span><span class="n">transformed</span><span class="p">:</span><span class="w"> </span><span class="nc">true</span><span class="p">,</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>This would be packaged up in a pyo3-based crate, and then can be
+referenced from the regular pipeline definition like this:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">Map</span><span class="p">(</span><span class="s2">&quot;transform&quot;</span><span class="p">,</span> <span class="n">function</span><span class="o">=</span><span class="n">my_package</span><span class="o">.</span><span class="n">RustTransformMsg</span><span class="p">()))</span>
+</pre></div>
+</div>
+<section id="message-payloads">
+<h3>Message payloads<a class="headerlink" href="#message-payloads" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">IngestMetric</span></code> and <code class="docutils literal notranslate"><span class="pre">TransformedIngestMetric</span></code> types have to be
+defined by the user in both Rust and Python.</p>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// mypackage/src/lib.rs</span>
+<span class="cp">#[derive(Serialize, Deserialize)</span>
+<span class="cp">struct IngestMetric { ... }</span>
+</pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">IngestMetric</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span> <span class="o">...</span>
+</pre></div>
+</div>
+<p>The user has to write their own Python <code class="docutils literal notranslate"><span class="pre">.pyi</span></code> stub file to declare
+that <code class="docutils literal notranslate"><span class="pre">RustTransformMsg</span></code> takes <code class="docutils literal notranslate"><span class="pre">IngestMetric</span></code> and returns
+<code class="docutils literal notranslate"><span class="pre">TransformedIngestMetric</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># mypackage/mypackage.pyi</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">RustTransformMsg</span><span class="p">(</span><span class="n">RustFunction</span><span class="p">[</span><span class="n">IngestMetric</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="n">Message</span><span class="p">[</span><span class="n">IngestMetric</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span> <span class="o">...</span>
+</pre></div>
+</div>
+<p>Then, the user has to define how conversion works between these types.
+They can implement this function manually, or use a builtin conversion
+method provided by us. We currently only provide one builtin conversion
+by round-tripping via JSON:</p>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// mypackage/src/lib.rs</span>
+<span class="n">sentry_streams</span><span class="p">::</span><span class="n">convert_via_json</span><span class="o">!</span><span class="p">(</span><span class="n">IngestMetric</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>…and the same procedure has to be repeated for the output type
+<code class="docutils literal notranslate"><span class="pre">TransformedIngestMetric</span></code>.</p>
+</section>
+<section id="what-happens-at-runtime">
+<h3>What happens at runtime<a class="headerlink" href="#what-happens-at-runtime" title="Link to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">rust_function</span></code> macro currently just generates a simple Python
+function for the given Rust function. The GIL <em>is</em> released while the
+user’s Rust code is running, but there is still some GIL overhead when
+entering and exiting the function.</p>
+<p>In the future we can transparently optimize this without users having to
+change their applications. For example, batching function calls to
+amortize GIL overhead. We would then only hold the GIL while entering
+and exiting the batch.</p>
+</section>
+<section id="what-we-want-to-improve-in-the-future">
+<h3>What we want to improve in the future<a class="headerlink" href="#what-we-want-to-improve-in-the-future" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>improve performance of calling convention/reduce overhead</p>
+<ul>
+<li><p>take inspiration from
+<a class="reference external" href="https://github.com/ealmloff/sledgehammer_bindgen">https://github.com/ealmloff/sledgehammer_bindgen</a></p></li>
+</ul>
+</li>
+<li><p>automatically generate type stubs for user’s Rust code — pyo3 does
+have something like that, but it doesn’t work perfectly (exposes
+internals of our Rust macro)</p></li>
+<li><p>improve ergonomics of message types and their conversion, add protobuf
+or msgpack as a way to roundtrip</p></li>
+<li><p>each team at sentry would have to maintain a new python package for
+their Rust functions, set up pyo3 and CI from scratch, etc. we can
+streamline this.</p>
+<ul>
+<li><p>we already have: <code class="docutils literal notranslate"><span class="pre">sentry_relay</span></code> (relay integration), <code class="docutils literal notranslate"><span class="pre">ophio</span></code>
+(grouping engine), <code class="docutils literal notranslate"><span class="pre">vroomrs</span></code> (profiles), <code class="docutils literal notranslate"><span class="pre">symbolic</span></code> (stacktrace
+processing)</p></li>
+<li><p>easiest: we provide a “monorepo” and “monopackage” where all rust
+functions for getsentry go. we maintain CI for this monorepo.</p></li>
+<li><p>medium: repository template</p></li>
+<li><p>also, ideally this is aligned with devinfra’s “golden path” for
+python devenv</p></li>
+<li><p>in practice some team will have to provide support for questions
+about pyo3, since its entire API surface is exposed to product teams
+(although we can templatize and abstract a lot)</p></li>
+</ul>
+</li>
+</ul>
+</section>
+</section>
+<section id="pure-rust-pipelines">
+<h2>Pure-Rust pipelines<a class="headerlink" href="#pure-rust-pipelines" title="Link to this heading">¶</a></h2>
+<p>A lot of the complexity mentioned above is only really necessary for
+when you want to mix Python and Rust code. For pure-Rust applications,
+we could do something entirely different:</p>
+<ul class="simple">
+<li><p>The runner does not have to be started from Python at all. If we
+started it from Rust, we would have a much easier time optimizing
+function calls.</p></li>
+<li><p>The pipeline definition does not have to be Python. We could have it
+be YAML or even Rust as well.</p></li>
+<li><p>Type stubs are not really necessary. We can easily validate that the
+types match during startup, or if the pipeline definition is in Rust,
+let the compiler do that job for us.</p></li>
+</ul>
+<p>Any of these will however split the ecosystem. I think we have plenty of
+ergonomic improvements we can make even for hybrid applications, that
+would benefit pure-Rust users as well. We should focus on those first.</p>
+</section>
+</section>
+<section id="meeting-notes-july-24-2025">
+<h1>Meeting notes July 24, 2025<a class="headerlink" href="#meeting-notes-july-24-2025" title="Link to this heading">¶</a></h1>
+<ul>
+<li><p>a better pure-rust story</p>
+<ul class="simple">
+<li><p>we have too much boilerplate, and now especially for pure rust apps</p></li>
+<li><p>build a rust runner, and try to get rid of as much pyo3 junk as
+possible</p>
+<ul>
+<li><p>reference: <a class="reference external" href="https://www.notion.so/The-rust-arroyo-runtime-2228b10e4b5d806dbe9ccd4e70c93aa2?pvs=21">The rust arroyo
+runtime</a></p></li>
+</ul>
+</li>
+<li><p>maybe hybrid will get better through this rearchitecture</p></li>
+<li><p>maybe denormalize Parse steps into Map (&#64;Filippo Pacifici)</p></li>
+</ul>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// mypackage/src/lib.rs as pyo3</span>
+<span class="k">use</span><span class="w"> </span><span class="n">sentry_streams</span><span class="p">;</span>
+
+<span class="n">sentry_streams</span><span class="p">::</span><span class="n">rust_function</span><span class="o">!</span><span class="p">(</span><span class="o">..</span><span class="p">.);</span>
+
+<span class="n">sentry_streams</span><span class="p">::</span><span class="n">main_function</span><span class="o">!</span><span class="p">();</span>
+
+<span class="c1">// or, in bin target:</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">use</span><span class="w"> </span><span class="n">sentry_streams</span><span class="p">::</span><span class="n">main</span><span class="p">;</span>
+</pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">mypackage</span><span class="o">.</span><span class="n">run_streams</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>concerns:</p>
+<ul class="simple">
+<li><p>user can freely downgrade/upgrade verison, since they “own” the
+runtime (as they are statically linking it)</p></li>
+<li><p>ability to opt out of message conversion trait requirements</p></li>
+</ul>
+</li>
+<li><p>message type conversion</p>
+<ul class="simple">
+<li><p>boilerplate is an issue</p>
+<ul>
+<li><p>integration with existing schema repos, or copy schema-to-type
+generation into streams for “inline schemas”</p></li>
+</ul>
+</li>
+<li><p>better performance</p></li>
+</ul>
+</li>
+<li><p>better runtime semantics for rust functions</p>
+<ul class="simple">
+<li><p>map chains, but in rust?</p></li>
+<li><p>no multiprocessing!</p></li>
+</ul>
+</li>
+</ul>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Sentry Streams</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="what_for.html">The rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_pipeline.html">Building a Pipeline</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configure_pipeline.html">Pipeline runtime configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configure_pipeline.html#distribution-and-parallelism">Distribution and parallelism</a></li>
+<li class="toctree-l1"><a class="reference internal" href="runtime/arroyo.html">Arroyo Runtime</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment.html">Deploying on Kuberentes</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Rust applications</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#hybrid-applications">Hybrid applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pure-rust-pipelines">Pure-Rust pipelines</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="#meeting-notes-july-24-2025">Meeting notes July 24, 2025</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="deployment.html" title="previous chapter">Deploying on Kuberentes</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, blank.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/rust.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
