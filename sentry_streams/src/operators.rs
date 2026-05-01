@@ -40,7 +40,11 @@ pub enum RuntimeOperator {
     /// This translates to a custom Arroyo strategy (Filter step) where a function
     /// is provided to transform the message payload into a bool.
     #[pyo3(name = "Filter")]
-    Filter { route: Route, function: Py<PyAny> },
+    Filter {
+        route: Route,
+        function: Py<PyAny>,
+        step_name: String,
+    },
 
     /// Filter by integer equality on a message header (Rust-only, no Python predicate).
     #[pyo3(name = "HeaderFilter")]
@@ -102,6 +106,7 @@ pub enum RuntimeOperator {
         max_batch_size: Option<usize>,
         /// Wall-clock duration in milliseconds; `None` means no time limit (size-only batch).
         max_batch_time_ms: Option<f64>,
+        step_name: String,
     },
     /// Delegates messages processing to a Python operator that provides
     /// the same kind of interface as an Arroyo strategy. This is meant
@@ -126,11 +131,15 @@ pub fn build(
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_map(route, func_ref, next)
         }
-        RuntimeOperator::Filter { function, route } => {
+        RuntimeOperator::Filter {
+            function,
+            route,
+            step_name,
+        } => {
             // All functions (Python and Rust) are called the same way now
             // Rust functions automatically release the GIL internally
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
-            build_filter(route, func_ref, next)
+            build_filter(route, func_ref, step_name.clone(), next)
         }
         RuntimeOperator::HeaderFilter {
             route,
@@ -200,9 +209,16 @@ pub fn build(
             route,
             max_batch_size,
             max_batch_time_ms,
+            step_name,
         } => {
             let max_t = max_batch_time_ms.map(|ms| Duration::from_secs_f64((ms / 1000.0).max(0.0)));
-            build_batch_step(route, *max_batch_size, max_t, next)
+            build_batch_step(
+                route,
+                *max_batch_size,
+                max_t,
+                step_name.clone(),
+                next,
+            )
         }
         RuntimeOperator::PythonAdapter {
             route,

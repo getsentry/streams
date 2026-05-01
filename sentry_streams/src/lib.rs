@@ -13,6 +13,7 @@ mod kafka_config;
 mod messages;
 mod metrics;
 mod metrics_config;
+mod pipeline_stats;
 mod mocks;
 mod operators;
 mod python_operator;

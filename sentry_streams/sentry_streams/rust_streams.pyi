@@ -89,7 +89,12 @@ class RuntimeOperator:
     @classmethod
     def Map(cls, route: Route, function: Callable[[Message[Any]], Any]) -> Self: ...
     @classmethod
-    def Filter(cls, route: Route, function: Callable[[Message[Any]], bool]) -> Self: ...
+    def Filter(
+        cls,
+        route: Route,
+        function: Callable[[Message[Any]], bool],
+        step_name: str,
+    ) -> Self: ...
     @classmethod
     def HeaderFilter(cls, route: Route, header_name: str, expected_value: int) -> Self: ...
     @classmethod
@@ -128,6 +133,7 @@ class RuntimeOperator:
         route: Route,
         max_batch_size: int | None = None,
         max_batch_time_ms: float | None = None,
+        step_name: str,
     ) -> Self: ...
     @classmethod
     def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
