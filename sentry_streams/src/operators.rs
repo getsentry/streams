@@ -50,6 +50,7 @@ pub enum RuntimeOperator {
     #[pyo3(name = "HeaderFilter")]
     HeaderFilter {
         route: Route,
+        step_name: String,
         header_name: String,
         expected_value: i64,
     },
@@ -143,9 +144,16 @@ pub fn build(
         }
         RuntimeOperator::HeaderFilter {
             route,
+            step_name,
             header_name,
             expected_value,
-        } => build_header_int_filter(route, header_name.clone(), *expected_value, next),
+        } => build_header_int_filter(
+            route,
+            header_name.clone(),
+            *expected_value,
+            step_name.clone(),
+            next,
+        ),
         RuntimeOperator::StreamSink {
             route,
             topic_name,

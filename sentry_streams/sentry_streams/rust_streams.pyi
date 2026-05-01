@@ -96,7 +96,13 @@ class RuntimeOperator:
         step_name: str,
     ) -> Self: ...
     @classmethod
-    def HeaderFilter(cls, route: Route, header_name: str, expected_value: int) -> Self: ...
+    def HeaderFilter(
+        cls,
+        route: Route,
+        step_name: str,
+        header_name: str,
+        expected_value: int,
+    ) -> Self: ...
     @classmethod
     def StreamSink(
         cls, route: Route, topic_name: str, kafka_config: PyKafkaProducerConfig

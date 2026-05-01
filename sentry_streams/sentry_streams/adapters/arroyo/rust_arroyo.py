@@ -457,6 +457,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.HeaderFilter(
                     route=route,
+                    step_name=step.name,
                     header_name=step.header_name,
                     expected_value=step.value,
                 )
@@ -464,12 +465,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             return stream
 
         elif isinstance(step, PredicateFilter):
-
-            def filter_msg(msg: Message[Any]) -> bool:
-                return step.resolved_function(msg)
-
             self.__consumers[stream.source].add_step(
-                RuntimeOperator.Filter(route, filter_msg, step.name)
+                RuntimeOperator.Filter(route, lambda msg: step.resolved_function(msg), step.name)
             )
             return stream
 

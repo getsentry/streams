@@ -1,6 +1,7 @@
 //! Filter messages by integer equality on a named header, without calling Python.
 use crate::messages::PyStreamingMessage;
 use crate::messages::RoutedValuePayload;
+use crate::pipeline_stats::get_stats;
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use sentry_arroyo::processing::strategies::{
@@ -59,6 +60,7 @@ fn streaming_message_headers(msg: &PyStreamingMessage) -> Vec<(String, Vec<u8>)>
 pub struct HeaderIntEqualityFilter {
     header_name: String,
     expected: i64,
+    step_name: String,
     next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     route: Route,
 }
@@ -67,12 +69,14 @@ impl HeaderIntEqualityFilter {
     pub fn new(
         header_name: String,
         expected: i64,
+        step_name: String,
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
         route: Route,
     ) -> Self {
         Self {
             header_name,
             expected,
+            step_name,
             next_step,
             route,
         }
@@ -85,22 +89,28 @@ impl ProcessingStrategy<RoutedValue> for HeaderIntEqualityFilter {
     }
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
-        if self.route != message.payload().route {
+        if self.route != message.payload().route || message.payload().payload.is_watermark_msg() {
             return self.next_step.submit(message);
         }
 
         let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) =
             message.payload().payload
         else {
-            // Watermarks and any other non-streaming payload: pass through (same as build_map in transformer.rs).
             return self.next_step.submit(message);
         };
 
+        let stats = get_stats();
+        stats.step_exec(&self.step_name);
         let headers = streaming_message_headers(py_streaming_msg);
-        match header_int_equality_decision(&headers, &self.header_name, self.expected) {
+        let decision = header_int_equality_decision(&headers, &self.header_name, self.expected);
+
+        match decision {
             Ok(true) => self.next_step.submit(message),
             Ok(false) => Ok(()),
-            Err(()) => Err(invalid_message_submit_error(&message)),
+            Err(()) => {
+                stats.step_error(&self.step_name);
+                Err(invalid_message_submit_error(&message))
+            }
         }
     }
 
@@ -117,11 +127,13 @@ pub fn build_header_int_filter(
     route: &Route,
     header_name: String,
     expected: i64,
+    step_name: String,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     Box::new(HeaderIntEqualityFilter::new(
         header_name,
         expected,
+        step_name,
         next,
         route.clone(),
     ))
@@ -217,6 +229,7 @@ mod tests {
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 "pid".to_string(),
                 42,
+                "test_step".to_string(),
                 Box::new(next_step),
             );
 
@@ -272,6 +285,7 @@ mod tests {
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 "pid".to_string(),
                 42,
+                "test_step".to_string(),
                 Box::new(next_step),
             );
 
@@ -303,6 +317,7 @@ mod tests {
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 "pid".to_string(),
                 42,
+                "test_step".to_string(),
                 Box::new(FakeStrategy::new(Arc::default(), Arc::default(), false)),
             );
 
@@ -339,6 +354,7 @@ mod tests {
                 &Route::new("s".to_string(), vec!["w".to_string()]),
                 "k".to_string(),
                 -1,
+                "test_step".to_string(),
                 Box::new(next_step),
             );
 
@@ -368,6 +384,7 @@ mod tests {
             &Route::new("source".to_string(), vec![]),
             "h".to_string(),
             1,
+            "test_step".to_string(),
             Box::new(FakeStrategy::new(Arc::default(), submitted_wm_clone, false)),
         );
 
@@ -391,6 +408,7 @@ mod tests {
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 "x".to_string(),
                 1,
+                "test_step".to_string(),
                 Box::new(FakeStrategy::new(submitted, Arc::default(), false)),
             );
 
