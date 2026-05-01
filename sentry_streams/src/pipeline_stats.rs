@@ -1,133 +1,161 @@
 //! Buffered pipeline step metrics (same semantics as `sentry_streams.metrics.stats`).
 //! Records via the `metrics` crate only — no Arroyo types.
+//!
+//! State is **thread-local**: each OS thread has its own buffers. The consumer
+//! `submit` path is expected to call into this from one thread per pipeline; do
+//! not rely on cross-thread aggregation here.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const METRIC_INPUT_MESSAGES: &str = "streams.pipeline.input.messages";
 const METRIC_ERRORS: &str = "streams.pipeline.errors";
 const METRIC_DURATION: &str = "streams.pipeline.duration";
 
-struct Inner {
+thread_local! {
+    static PIPELINE_STATS: RefCell<PipelineStatsState> = RefCell::new(PipelineStatsState::new());
+}
+
+/// Per-thread pipeline stats buffers and flush timer.
+struct PipelineStatsState {
     exec_buffer: HashMap<String, u64>,
     error_buffer: HashMap<String, u64>,
     timing_buffer: HashMap<String, f64>,
     last_flush: Instant,
+    flush_interval: Duration,
 }
 
-impl Inner {
+impl PipelineStatsState {
     fn new() -> Self {
+        Self::with_flush_interval(Duration::from_secs(10))
+    }
+
+    fn with_flush_interval(flush_interval: Duration) -> Self {
         Self {
             exec_buffer: HashMap::new(),
             error_buffer: HashMap::new(),
             timing_buffer: HashMap::new(),
             last_flush: Instant::now(),
-        }
-    }
-}
-
-/// Aggregates per-step exec / error / timing and flushes periodically to DogStatsD via `metrics`.
-pub struct PipelineStats {
-    inner: Mutex<Inner>,
-    flush_interval: Duration,
-}
-
-impl PipelineStats {
-    fn with_flush_interval(flush_interval: Duration) -> Self {
-        Self {
-            inner: Mutex::new(Inner::new()),
             flush_interval,
         }
     }
 
-    /// Production flush interval (10 seconds), matching Python `FLUSH_TIME`.
-    pub fn new() -> Self {
-        Self::with_flush_interval(Duration::from_secs(10))
-    }
-
-    fn flush_emit_locked(inner: &mut Inner) {
-        for (step, value) in inner.exec_buffer.drain() {
+    fn flush_emit(&mut self) {
+        for (step, value) in self.exec_buffer.drain() {
             let labels = vec![("step".to_string(), step)];
             metrics::counter!(METRIC_INPUT_MESSAGES, &labels).increment(value);
         }
-        for (step, value) in inner.error_buffer.drain() {
+        for (step, value) in self.error_buffer.drain() {
             let labels = vec![("step".to_string(), step)];
             metrics::counter!(METRIC_ERRORS, &labels).increment(value);
         }
-        for (step, fvalue) in inner.timing_buffer.drain() {
+        for (step, fvalue) in self.timing_buffer.drain() {
             let labels = vec![("step".to_string(), step)];
             metrics::histogram!(METRIC_DURATION, &labels).record(fvalue);
         }
-        inner.last_flush = Instant::now();
+        self.last_flush = Instant::now();
     }
 
-    fn maybe_flush(&self) {
-        let mut inner = self.inner.lock().unwrap();
-        if inner.last_flush.elapsed() >= self.flush_interval {
-            Self::flush_emit_locked(&mut inner);
+    fn maybe_flush(&mut self) {
+        if self.last_flush.elapsed() >= self.flush_interval {
+            self.flush_emit();
         }
     }
 
-    pub fn step_exec(&self, step: &str) {
-        let mut inner = self.inner.lock().unwrap();
-        *inner.exec_buffer.entry(step.to_string()).or_insert(0) += 1;
-        drop(inner);
+    fn step_exec(&mut self, step: &str) {
+        *self.exec_buffer.entry(step.to_string()).or_insert(0) += 1;
         self.maybe_flush();
     }
 
-    pub fn step_error(&self, step: &str) {
-        let mut inner = self.inner.lock().unwrap();
-        *inner.error_buffer.entry(step.to_string()).or_insert(0) += 1;
-        drop(inner);
+    fn step_error(&mut self, step: &str) {
+        *self.error_buffer.entry(step.to_string()).or_insert(0) += 1;
         self.maybe_flush();
     }
 
-    pub fn step_timing(&self, step: &str, value_secs: f64) {
-        let mut inner = self.inner.lock().unwrap();
-        let entry = inner.timing_buffer.entry(step.to_string()).or_insert(0.0);
+    fn step_timing(&mut self, step: &str, value_secs: f64) {
+        let entry = self.timing_buffer.entry(step.to_string()).or_insert(0.0);
         if *entry < value_secs {
             *entry = value_secs;
         }
-        drop(inner);
         self.maybe_flush();
     }
 
     #[cfg(test)]
-    fn with_flush_interval_for_test(flush_interval: Duration) -> Self {
-        Self::with_flush_interval(flush_interval)
-    }
-
-    /// Emit and clear buffers ignoring the throttle (for unit tests).
-    #[cfg(test)]
-    pub(crate) fn flush_emit_for_test(&self) {
-        let mut inner = self.inner.lock().unwrap();
-        Self::flush_emit_locked(&mut inner);
+    fn exec_count(&self, step: &str) -> u64 {
+        self.exec_buffer.get(step).copied().unwrap_or(0)
     }
 
     #[cfg(test)]
-    pub(crate) fn exec_count(&self, step: &str) -> u64 {
-        self.inner
-            .lock()
-            .unwrap()
-            .exec_buffer
-            .get(step)
-            .copied()
-            .unwrap_or(0)
+    fn flush_emit_for_test(&mut self) {
+        self.flush_emit();
     }
 }
 
-static GLOBAL_STATS: OnceLock<PipelineStats> = OnceLock::new();
+/// Handle to this thread's [`PipelineStatsState`]; cheap to copy (zero-sized).
+#[derive(Clone, Copy)]
+pub struct PipelineStats;
 
-pub fn get_stats() -> &'static PipelineStats {
-    GLOBAL_STATS.get_or_init(PipelineStats::new)
+impl PipelineStats {
+    pub fn step_exec(self, step: &str) {
+        PIPELINE_STATS.with(|cell| {
+            let mut s = cell.borrow_mut();
+            s.step_exec(step);
+        });
+    }
+
+    pub fn step_error(self, step: &str) {
+        PIPELINE_STATS.with(|cell| {
+            let mut s = cell.borrow_mut();
+            s.step_error(step);
+        });
+    }
+
+    pub fn step_timing(self, step: &str, value_secs: f64) {
+        PIPELINE_STATS.with(|cell| {
+            let mut s = cell.borrow_mut();
+            s.step_timing(step, value_secs);
+        });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn flush_emit_for_test(self) {
+        PIPELINE_STATS.with(|cell| {
+            let mut s = cell.borrow_mut();
+            s.flush_emit_for_test();
+        });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn exec_count(self, step: &str) -> u64 {
+        PIPELINE_STATS.with(|cell| {
+            let s = cell.borrow();
+            s.exec_count(step)
+        })
+    }
+}
+
+pub fn get_stats() -> PipelineStats {
+    PipelineStats
+}
+
+#[cfg(test)]
+pub(crate) fn configure_pipeline_stats_for_test(flush_interval: Duration) {
+    PIPELINE_STATS.with(|cell| {
+        *cell.borrow_mut() = PipelineStatsState::with_flush_interval(flush_interval);
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn reset_pipeline_stats_for_test() {
+    configure_pipeline_stats_for_test(Duration::from_secs(10));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use metrics::{Key, KeyName, Metadata, Recorder, SharedString, Unit};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     #[derive(Default)]
     struct CaptureRecorder {
@@ -206,24 +234,52 @@ mod tests {
         key.labels().any(|l| l.key() == "step" && l.value() == step)
     }
 
+    fn prepare_pipeline_stats_for_test(flush_interval: Duration) {
+        reset_pipeline_stats_for_test();
+        configure_pipeline_stats_for_test(flush_interval);
+    }
+
+    /// Reset pipeline stats, apply flush interval, and wire a [`CaptureRecorder`] for `metrics` locals.
+    struct CaptureTestContext {
+        counters: Arc<Mutex<Vec<(Key, u64)>>>,
+        histograms: Arc<Mutex<Vec<(Key, f64)>>>,
+        recorder: Arc<CaptureRecorder>,
+    }
+
+    impl CaptureTestContext {
+        fn new(flush_interval: Duration) -> Self {
+            prepare_pipeline_stats_for_test(flush_interval);
+            let counters = Arc::new(Mutex::new(Vec::new()));
+            let histograms = Arc::new(Mutex::new(Vec::new()));
+            let recorder = Arc::new(CaptureRecorder {
+                counters: Arc::clone(&counters),
+                histograms: Arc::clone(&histograms),
+            });
+            Self {
+                counters,
+                histograms,
+                recorder,
+            }
+        }
+
+        fn install_metrics_recorder(&self) -> metrics::LocalRecorderGuard<'_> {
+            metrics::set_default_local_recorder(self.recorder.as_ref())
+        }
+    }
+
     #[test]
     fn flush_emits_aggregated_counters_and_max_timing() {
-        let counters = Arc::new(Mutex::new(Vec::new()));
-        let histograms = Arc::new(Mutex::new(Vec::new()));
-        let rec = Arc::new(CaptureRecorder {
-            counters: Arc::clone(&counters),
-            histograms: Arc::clone(&histograms),
-        });
-        let stats = PipelineStats::with_flush_interval_for_test(Duration::from_secs(3600));
+        let ctx = CaptureTestContext::new(Duration::from_secs(3600));
+        let stats = get_stats();
         stats.step_exec("in_step");
         stats.step_exec("in_step");
         stats.step_error("err_step");
         stats.step_timing("timer_step", 0.1);
         stats.step_timing("timer_step", 0.05);
-        let _guard = metrics::set_default_local_recorder(rec.as_ref());
+        let _guard = ctx.install_metrics_recorder();
         stats.flush_emit_for_test();
 
-        let c = counters.lock().unwrap();
+        let c = ctx.counters.lock().unwrap();
         let input: u64 = c
             .iter()
             .filter(|(k, _)| {
@@ -240,7 +296,7 @@ mod tests {
             .sum();
         assert_eq!(errs, 1);
 
-        let h = histograms.lock().unwrap();
+        let h = ctx.histograms.lock().unwrap();
         let dur: Vec<f64> = h
             .iter()
             .filter(|(k, _)| key_name(k) == METRIC_DURATION && labels_include_step(k, "timer_step"))
@@ -251,25 +307,21 @@ mod tests {
 
     #[test]
     fn no_auto_flush_before_interval() {
-        let stats = PipelineStats::with_flush_interval_for_test(Duration::from_secs(3600));
+        prepare_pipeline_stats_for_test(Duration::from_secs(3600));
+        let stats = get_stats();
         stats.step_exec("a");
         assert_eq!(stats.exec_count("a"), 1);
     }
 
     #[test]
     fn flush_clears_buffers() {
-        let counters = Arc::new(Mutex::new(Vec::new()));
-        let histograms = Arc::new(Mutex::new(Vec::new()));
-        let rec = Arc::new(CaptureRecorder {
-            counters: Arc::clone(&counters),
-            histograms: Arc::clone(&histograms),
-        });
-        let stats = PipelineStats::with_flush_interval_for_test(Duration::from_secs(3600));
+        let ctx = CaptureTestContext::new(Duration::from_secs(3600));
+        let stats = get_stats();
         stats.step_exec("s");
-        let _guard = metrics::set_default_local_recorder(rec.as_ref());
+        let _guard = ctx.install_metrics_recorder();
         stats.flush_emit_for_test();
         assert_eq!(
-            counters
+            ctx.counters
                 .lock()
                 .unwrap()
                 .iter()
@@ -277,10 +329,10 @@ mod tests {
                 .count(),
             1
         );
-        counters.lock().unwrap().clear();
+        ctx.counters.lock().unwrap().clear();
         stats.step_exec("s");
         stats.flush_emit_for_test();
-        let c = counters.lock().unwrap();
+        let c = ctx.counters.lock().unwrap();
         let sum: u64 = c
             .iter()
             .filter(|(k, _)| key_name(k) == METRIC_INPUT_MESSAGES && labels_include_step(k, "s"))
@@ -291,20 +343,15 @@ mod tests {
 
     #[test]
     fn multiple_steps_one_flush() {
-        let counters = Arc::new(Mutex::new(Vec::new()));
-        let histograms = Arc::new(Mutex::new(Vec::new()));
-        let rec = Arc::new(CaptureRecorder {
-            counters: Arc::clone(&counters),
-            histograms: Arc::clone(&histograms),
-        });
-        let stats = PipelineStats::with_flush_interval_for_test(Duration::from_secs(3600));
+        let ctx = CaptureTestContext::new(Duration::from_secs(3600));
+        let stats = get_stats();
         stats.step_exec("step_1");
         stats.step_exec("step_1");
         stats.step_exec("step_2");
-        let _guard = metrics::set_default_local_recorder(rec.as_ref());
+        let _guard = ctx.install_metrics_recorder();
         stats.flush_emit_for_test();
 
-        let c = counters.lock().unwrap();
+        let c = ctx.counters.lock().unwrap();
         let n1: u64 = c
             .iter()
             .filter(|(k, _)| {
@@ -325,21 +372,16 @@ mod tests {
 
     #[test]
     fn throttle_flushes_after_interval() {
-        let counters = Arc::new(Mutex::new(Vec::new()));
-        let histograms = Arc::new(Mutex::new(Vec::new()));
-        let rec = Arc::new(CaptureRecorder {
-            counters: Arc::clone(&counters),
-            histograms: Arc::clone(&histograms),
-        });
-        let stats = PipelineStats::with_flush_interval_for_test(Duration::from_millis(50));
-        let _guard = metrics::set_default_local_recorder(rec.as_ref());
+        let ctx = CaptureTestContext::new(Duration::from_millis(50));
+        let stats = get_stats();
+        let _guard = ctx.install_metrics_recorder();
         stats.step_exec("throttle_step");
-        assert!(counters.lock().unwrap().is_empty());
+        assert!(ctx.counters.lock().unwrap().is_empty());
 
         std::thread::sleep(Duration::from_millis(120));
         stats.step_exec("throttle_step");
 
-        let c = counters.lock().unwrap();
+        let c = ctx.counters.lock().unwrap();
         let sum: u64 = c
             .iter()
             .filter(|(k, _)| {
