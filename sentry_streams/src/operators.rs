@@ -102,11 +102,11 @@ pub enum RuntimeOperator {
     #[pyo3(name = "Batch")]
     Batch {
         route: Route,
+        step_name: String,
         /// `None` means no size limit (time-only window).
         max_batch_size: Option<usize>,
         /// Wall-clock duration in milliseconds; `None` means no time limit (size-only batch).
         max_batch_time_ms: Option<f64>,
-        step_name: String,
     },
     /// Delegates messages processing to a Python operator that provides
     /// the same kind of interface as an Arroyo strategy. This is meant
@@ -207,18 +207,12 @@ pub fn build(
         }
         RuntimeOperator::Batch {
             route,
+            step_name,
             max_batch_size,
             max_batch_time_ms,
-            step_name,
         } => {
             let max_t = max_batch_time_ms.map(|ms| Duration::from_secs_f64((ms / 1000.0).max(0.0)));
-            build_batch_step(
-                route,
-                *max_batch_size,
-                max_t,
-                step_name.clone(),
-                next,
-            )
+            build_batch_step(route, *max_batch_size, max_t, step_name.clone(), next)
         }
         RuntimeOperator::PythonAdapter {
             route,

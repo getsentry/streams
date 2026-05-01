@@ -504,9 +504,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.Batch(
                     route=route,
+                    step_name=step.name,
                     max_batch_size=step.batch_size,
                     max_batch_time_ms=max_batch_time_ms,
-                    step_name=step.name,
                 )
             )
             return stream

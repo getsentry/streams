@@ -260,10 +260,7 @@ impl BatchStep {
         let committable_for_synthetic = b.current_offsets_snapshot();
         let flush_start = Instant::now();
         let batch_msg = b.flush()?;
-        get_stats().step_timing(
-            &self.step_name,
-            flush_start.elapsed().as_secs_f64(),
-        );
+        get_stats().step_timing(&self.step_name, flush_start.elapsed().as_secs_f64());
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 

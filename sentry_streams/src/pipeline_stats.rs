@@ -115,7 +115,6 @@ impl PipelineStats {
             .copied()
             .unwrap_or(0)
     }
-
 }
 
 static GLOBAL_STATS: OnceLock<PipelineStats> = OnceLock::new();
@@ -137,11 +136,18 @@ mod tests {
     }
 
     impl Recorder for CaptureRecorder {
-        fn describe_counter(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
+        fn describe_counter(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {
+        }
 
         fn describe_gauge(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
 
-        fn describe_histogram(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
+        fn describe_histogram(
+            &self,
+            _key: KeyName,
+            _unit: Option<Unit>,
+            _description: SharedString,
+        ) {
+        }
 
         fn register_counter(&self, key: &Key, _metadata: &Metadata<'_>) -> metrics::Counter {
             metrics::Counter::from_arc(Arc::new(CaptureCounter {
@@ -169,7 +175,10 @@ mod tests {
 
     impl metrics::CounterFn for CaptureCounter {
         fn increment(&self, value: u64) {
-            self.counters.lock().unwrap().push((self.key.clone(), value));
+            self.counters
+                .lock()
+                .unwrap()
+                .push((self.key.clone(), value));
         }
 
         fn absolute(&self, _value: u64) {}
@@ -182,7 +191,10 @@ mod tests {
 
     impl metrics::HistogramFn for CaptureHistogram {
         fn record(&self, value: f64) {
-            self.histograms.lock().unwrap().push((self.key.clone(), value));
+            self.histograms
+                .lock()
+                .unwrap()
+                .push((self.key.clone(), value));
         }
     }
 
@@ -214,7 +226,9 @@ mod tests {
         let c = counters.lock().unwrap();
         let input: u64 = c
             .iter()
-            .filter(|(k, _)| key_name(k) == METRIC_INPUT_MESSAGES && labels_include_step(k, "in_step"))
+            .filter(|(k, _)| {
+                key_name(k) == METRIC_INPUT_MESSAGES && labels_include_step(k, "in_step")
+            })
             .map(|(_, v)| *v)
             .sum();
         assert_eq!(input, 2);
@@ -293,12 +307,16 @@ mod tests {
         let c = counters.lock().unwrap();
         let n1: u64 = c
             .iter()
-            .filter(|(k, _)| key_name(k) == METRIC_INPUT_MESSAGES && labels_include_step(k, "step_1"))
+            .filter(|(k, _)| {
+                key_name(k) == METRIC_INPUT_MESSAGES && labels_include_step(k, "step_1")
+            })
             .map(|(_, v)| *v)
             .sum();
         let n2: u64 = c
             .iter()
-            .filter(|(k, _)| key_name(k) == METRIC_INPUT_MESSAGES && labels_include_step(k, "step_2"))
+            .filter(|(k, _)| {
+                key_name(k) == METRIC_INPUT_MESSAGES && labels_include_step(k, "step_2")
+            })
             .map(|(_, v)| *v)
             .sum();
         assert_eq!(n1, 2);

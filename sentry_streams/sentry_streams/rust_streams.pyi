@@ -131,9 +131,9 @@ class RuntimeOperator:
     def Batch(
         cls,
         route: Route,
+        step_name: str,
         max_batch_size: int | None = None,
         max_batch_time_ms: float | None = None,
-        step_name: str,
     ) -> Self: ...
     @classmethod
     def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
