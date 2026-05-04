@@ -1,3 +1,13 @@
+## 0.0.50
+
+### New Features ✨
+
+- (rust_streams) PipelineStats and Batch/Filter metrics by @fpacifici in [#309](https://github.com/getsentry/streams/pull/309)
+
+### Internal Changes 🔧
+
+- (deps) Bump rustls-webpki from 0.103.10 to 0.103.13 in /sentry_streams/tests/rust_test_functions by @dependabot in [#306](https://github.com/getsentry/streams/pull/306)
+
 ## 0.0.49
 
 ### Internal Changes 🔧
