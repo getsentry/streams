@@ -59,10 +59,11 @@ pub fn build_map(
 pub fn build_filter(
     route: &Route,
     callable: Py<PyAny>,
+    step_name: String,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     let copied_route = route.clone();
-    Box::new(Filter::new(callable, next, copied_route))
+    Box::new(Filter::new(callable, next, copied_route, step_name))
 }
 
 #[cfg(test)]

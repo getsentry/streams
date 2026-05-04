@@ -40,12 +40,17 @@ pub enum RuntimeOperator {
     /// This translates to a custom Arroyo strategy (Filter step) where a function
     /// is provided to transform the message payload into a bool.
     #[pyo3(name = "Filter")]
-    Filter { route: Route, function: Py<PyAny> },
+    Filter {
+        route: Route,
+        function: Py<PyAny>,
+        step_name: String,
+    },
 
     /// Filter by integer equality on a message header (Rust-only, no Python predicate).
     #[pyo3(name = "HeaderFilter")]
     HeaderFilter {
         route: Route,
+        step_name: String,
         header_name: String,
         expected_value: i64,
     },
@@ -98,6 +103,7 @@ pub enum RuntimeOperator {
     #[pyo3(name = "Batch")]
     Batch {
         route: Route,
+        step_name: String,
         /// `None` means no size limit (time-only window).
         max_batch_size: Option<usize>,
         /// Wall-clock duration in milliseconds; `None` means no time limit (size-only batch).
@@ -126,17 +132,28 @@ pub fn build(
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
             build_map(route, func_ref, next)
         }
-        RuntimeOperator::Filter { function, route } => {
+        RuntimeOperator::Filter {
+            function,
+            route,
+            step_name,
+        } => {
             // All functions (Python and Rust) are called the same way now
             // Rust functions automatically release the GIL internally
             let func_ref = traced_with_gil!(|py| function.clone_ref(py));
-            build_filter(route, func_ref, next)
+            build_filter(route, func_ref, step_name.clone(), next)
         }
         RuntimeOperator::HeaderFilter {
             route,
+            step_name,
             header_name,
             expected_value,
-        } => build_header_int_filter(route, header_name.clone(), *expected_value, next),
+        } => build_header_int_filter(
+            route,
+            header_name.clone(),
+            *expected_value,
+            step_name.clone(),
+            next,
+        ),
         RuntimeOperator::StreamSink {
             route,
             topic_name,
@@ -198,11 +215,12 @@ pub fn build(
         }
         RuntimeOperator::Batch {
             route,
+            step_name,
             max_batch_size,
             max_batch_time_ms,
         } => {
             let max_t = max_batch_time_ms.map(|ms| Duration::from_secs_f64((ms / 1000.0).max(0.0)));
-            build_batch_step(route, *max_batch_size, max_t, next)
+            build_batch_step(route, *max_batch_size, max_t, step_name.clone(), next)
         }
         RuntimeOperator::PythonAdapter {
             route,

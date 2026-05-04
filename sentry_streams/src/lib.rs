@@ -15,6 +15,7 @@ mod metrics;
 mod metrics_config;
 mod mocks;
 mod operators;
+mod pipeline_stats;
 mod python_operator;
 mod routers;
 mod routes;

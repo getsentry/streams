@@ -1,5 +1,6 @@
 use crate::callers::{try_apply_py, ApplyError};
 use crate::messages::RoutedValuePayload;
+use crate::pipeline_stats::get_stats;
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
 use pyo3::{Py, PyAny};
@@ -7,12 +8,13 @@ use sentry_arroyo::processing::strategies::{
     CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
 };
 use sentry_arroyo::types::{InnerMessage, Message};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct Filter {
     pub callable: Py<PyAny>,
     pub next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     pub route: Route,
+    pub step_name: String,
 }
 
 impl Filter {
@@ -26,11 +28,13 @@ impl Filter {
         callable: Py<PyAny>,
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
         route: Route,
+        step_name: String,
     ) -> Self {
         Self {
             callable,
             next_step,
             route,
+            step_name,
         }
     }
 }
@@ -52,6 +56,9 @@ impl ProcessingStrategy<RoutedValue> for Filter {
             unreachable!("Watermark message trying to be passed to filter function.")
         };
 
+        let stats = get_stats();
+        stats.step_exec(&self.step_name);
+        let start = Instant::now();
         let res = traced_with_gil!(|py| {
             try_apply_py(
                 py,
@@ -60,13 +67,24 @@ impl ProcessingStrategy<RoutedValue> for Filter {
             )
             .and_then(|py_res| py_res.is_truthy(py).map_err(|_| ApplyError::ApplyFailed))
         });
+        let elapsed = start.elapsed().as_secs_f64();
 
         match (res, &message.inner_message) {
-            (Ok(true), _) => self.next_step.submit(message),
-            (Ok(false), _) => Ok(()),
+            (Ok(true), _) => {
+                stats.step_timing(&self.step_name, elapsed);
+                self.next_step.submit(message)
+            }
+            (Ok(false), _) => {
+                stats.step_timing(&self.step_name, elapsed);
+                Ok(())
+            }
             (Err(ApplyError::ApplyFailed), _) => panic!("Python filter function raised exception that is not sentry_streams.pipeline.exception.InvalidMessageError"),
             (Err(ApplyError::InvalidMessage), InnerMessage::AnyMessage(..)) => panic!("Got exception while processing AnyMessage, Arroyo cannot handle error on AnyMessage"),
-            (Err(ApplyError::InvalidMessage), InnerMessage::BrokerMessage(broker_message)) => Err(SubmitError::InvalidMessage(broker_message.into())),
+            (Err(ApplyError::InvalidMessage), InnerMessage::BrokerMessage(broker_message)) => {
+                stats.step_error(&self.step_name);
+                stats.step_timing(&self.step_name, elapsed);
+                Err(SubmitError::InvalidMessage(broker_message.into()))
+            }
         }
     }
 
@@ -118,6 +136,7 @@ mod tests {
             build_filter(
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 callable,
+                "test_step".to_string(),
                 Box::new(next_step),
             )
         })
@@ -222,6 +241,7 @@ mod tests {
             let mut strategy = build_filter(
                 &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
                 callable,
+                "test_step".to_string(),
                 Box::new(next_step),
             );
 

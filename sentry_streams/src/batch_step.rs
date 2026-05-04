@@ -6,6 +6,7 @@
 //!
 //! The GIL is taken only to build the list on flush (after [`Message::into_payload`] in submit).
 use crate::messages::{into_pyany, PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
+use crate::pipeline_stats::get_stats;
 use crate::routes::{Route, RoutedValue};
 use crate::time_helpers::current_epoch;
 use crate::utils::traced_with_gil;
@@ -18,7 +19,7 @@ use sentry_arroyo::processing::strategies::{
 use sentry_arroyo::types::{Message, Partition};
 use sentry_arroyo::utils::timing::Deadline;
 use std::collections::{BTreeMap, VecDeque};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 fn first_element_schema(py: Python<'_>, first: &PyStreamingMessage) -> Option<String> {
     match first {
@@ -165,6 +166,7 @@ pub struct BatchStep {
     next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
 
     route: Route,
+    step_name: String,
     max_batch_size: Option<usize>,
     max_batch_time: Option<Duration>,
     /// `None` until the first streaming message in a window.
@@ -193,11 +195,13 @@ impl BatchStep {
         route: Route,
         max_batch_size: Option<usize>,
         max_batch_time: Option<Duration>,
+        step_name: String,
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     ) -> Self {
         Self {
             next_step,
             route,
+            step_name,
             max_batch_size,
             max_batch_time,
             batch: None,
@@ -254,7 +258,9 @@ impl BatchStep {
         // We create a synthetic watermark to avoid waiting for the next batch to complete before
         // allowing the consumer to commit.
         let committable_for_synthetic = b.current_offsets_snapshot();
+        let flush_start = Instant::now();
         let batch_msg = b.flush()?;
+        get_stats().step_timing(&self.step_name, flush_start.elapsed().as_secs_f64());
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
@@ -302,12 +308,14 @@ pub fn build_batch_step(
     route: &Route,
     max_batch_size: Option<usize>,
     max_batch_time: Option<Duration>,
+    step_name: String,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     Box::new(BatchStep::new(
         route.clone(),
         max_batch_size,
         max_batch_time,
+        step_name,
         next,
     ))
 }
@@ -369,6 +377,7 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
                         .expect("open batch")
                         .append(committable, pysm);
                 }
+                get_stats().step_exec(&self.step_name);
                 Ok(())
             }
         }
@@ -604,7 +613,13 @@ mod tests {
             let sub = Arc::new(Mutex::new(Vec::new()));
             let wms = Arc::new(Mutex::new(Vec::new()));
             let next = FakeStrategy::new(sub.clone(), wms.clone(), false);
-            let step = BatchStep::new(route, max_n, max_t, Box::new(next));
+            let step = BatchStep::new(
+                route,
+                max_n,
+                max_t,
+                "test_batch".to_string(),
+                Box::new(next),
+            );
             (step, sub, wms)
         }
 

@@ -457,6 +457,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.HeaderFilter(
                     route=route,
+                    step_name=step.name,
                     header_name=step.header_name,
                     expected_value=step.value,
                 )
@@ -464,21 +465,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             return stream
 
         elif isinstance(step, PredicateFilter):
-
-            def filter_msg(msg: Message[Any]) -> bool:
-                input_metrics(step.name)
-                has_error = None
-                start_time = time.time()
-                try:
-                    result = step.resolved_function(msg)
-                    return result
-                except Exception as e:
-                    has_error = str(e.__class__.__name__)
-                    raise e
-                finally:
-                    output_metrics(step.name, has_error, start_time)
-
-            self.__consumers[stream.source].add_step(RuntimeOperator.Filter(route, filter_msg))
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.Filter(route, lambda msg: step.resolved_function(msg), step.name)
+            )
             return stream
 
         else:
@@ -512,6 +501,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.Batch(
                     route=route,
+                    step_name=step.name,
                     max_batch_size=step.batch_size,
                     max_batch_time_ms=max_batch_time_ms,
                 )
