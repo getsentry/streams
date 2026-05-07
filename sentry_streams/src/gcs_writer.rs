@@ -21,6 +21,8 @@ use gcp_auth::{provider, TokenProvider};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
+const METRIC_GCS_WRITE_BYTES: &str = "streams.pipeline.gcs.write.bytes";
+
 pub struct GCSWriter {
     client: Client,
     bucket: String,
@@ -102,6 +104,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         let pybytes_ms = pybytes_start.elapsed().as_millis();
 
         let bytes_len = bytes.len();
+        let route_source = self.route.source.clone();
 
         let auth_provider_cell = self.auth_provider.clone();
 
@@ -176,6 +179,8 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     token_ms,
                     request_ms
                 );
+                let gcs_labels = vec![("source".to_string(), route_source.clone())];
+                metrics::gauge!(METRIC_GCS_WRITE_BYTES, &gcs_labels).set(bytes_len as f64);
                 Ok(message)
             }
         })

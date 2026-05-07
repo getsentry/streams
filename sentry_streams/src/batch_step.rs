@@ -21,6 +21,10 @@ use sentry_arroyo::utils::timing::Deadline;
 use std::collections::{BTreeMap, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+const METRIC_BATCH_FLUSH_ELEMENTS: &str = "streams.pipeline.batch.flush.elements";
+const METRIC_BATCH_FLUSH_OPEN_DURATION_SECS: &str =
+    "streams.pipeline.batch.flush.open_duration_secs";
+
 fn first_element_schema(py: Python<'_>, first: &PyStreamingMessage) -> Option<String> {
     match first {
         PyStreamingMessage::PyAnyMessage { content } => content.bind(py).borrow().schema.clone(),
@@ -54,6 +58,8 @@ pub(crate) struct Batch {
     max_batch_size: Option<usize>,
     /// Set when the window is time-bounded; elapsed means flush by time.
     batch_deadline: Option<Deadline>,
+    /// Wall time when the first element opened this batch window.
+    created_at: Instant,
     elements: Vec<PyStreamingMessage>,
     batch_offsets: BTreeMap<Partition, u64>,
 }
@@ -82,6 +88,7 @@ impl Batch {
             route,
             max_batch_size,
             batch_deadline,
+            created_at: Instant::now(),
             elements: vec![first],
             batch_offsets,
         }
@@ -258,9 +265,15 @@ impl BatchStep {
         // We create a synthetic watermark to avoid waiting for the next batch to complete before
         // allowing the consumer to commit.
         let committable_for_synthetic = b.current_offsets_snapshot();
+        let batch_elements = b.len() as f64;
+        let batch_open_secs = b.created_at.elapsed().as_secs_f64();
         let flush_start = Instant::now();
         let batch_msg = b.flush()?;
         get_stats().step_timing(&self.step_name, flush_start.elapsed().as_secs_f64());
+        let step_labels = vec![("step".to_string(), self.step_name.clone())];
+        metrics::histogram!(METRIC_BATCH_FLUSH_ELEMENTS, &step_labels).record(batch_elements);
+        metrics::histogram!(METRIC_BATCH_FLUSH_OPEN_DURATION_SECS, &step_labels)
+            .record(batch_open_secs);
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
