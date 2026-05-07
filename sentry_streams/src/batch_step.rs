@@ -5,10 +5,7 @@
 //! element. Watermark handling and backpressure are unchanged.
 //!
 //! The GIL is taken only to build the list on flush (after [`Message::into_payload`] in submit).
-use crate::messages::{
-    into_pyany, streaming_payload_timestamp_floor_secs, PyAnyMessage, PyStreamingMessage,
-    RoutedValuePayload,
-};
+use crate::messages::{into_pyany, PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
 use crate::pipeline_stats::get_stats;
 use crate::routes::{Route, RoutedValue};
 use crate::time_helpers::current_epoch;
@@ -129,15 +126,23 @@ impl Batch {
         self.batch_offsets.clone()
     }
 
-    /// Minimum of per-row logical timestamps (epoch seconds, floor), for synthetic watermarks.
-    pub fn oldest_message_time_secs(&self) -> Option<u64> {
+    /// Minimum of per-row logical timestamps (epoch seconds, sub-second precision), for synthetic
+    /// watermarks.
+    pub fn oldest_message_time_secs(&self) -> Option<f64> {
         if self.elements.is_empty() {
             return None;
         }
         traced_with_gil!(|py| {
-            let mut min_t: Option<u64> = None;
+            let mut min_t: Option<f64> = None;
             for el in &self.elements {
-                let t = streaming_payload_timestamp_floor_secs(py, el);
+                let t = match el {
+                    PyStreamingMessage::PyAnyMessage { content } => {
+                        content.bind(py).borrow().timestamp
+                    }
+                    PyStreamingMessage::RawMessage { content } => {
+                        content.bind(py).borrow().timestamp
+                    }
+                };
                 min_t = Some(min_t.map_or(t, |m| m.min(t)));
             }
             min_t
@@ -297,7 +302,7 @@ impl BatchStep {
         &mut self,
         wm_after_batch: Vec<Message<RoutedValue>>,
         committable: BTreeMap<Partition, u64>,
-        message_time: Option<u64>,
+        message_time: Option<f64>,
     ) {
         for m in wm_after_batch {
             self.outbound.push_back(m);
@@ -786,7 +791,7 @@ mod tests {
             });
             let w = wms.lock().unwrap();
             assert_eq!(w.len(), 1);
-            assert_eq!(w[0].message_time, Some(5000));
+            assert_eq!(w[0].message_time, Some(5000.25));
         }
 
         #[test]

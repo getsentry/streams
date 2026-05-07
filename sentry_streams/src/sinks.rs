@@ -43,7 +43,7 @@ struct SerializableWatermark {
     committable: HashMap<String, Vec<HashMap<String, u64>>>,
     timestamp: u64,
     #[serde(default)]
-    message_time: Option<u64>,
+    message_time: Option<f64>,
 }
 
 impl From<Watermark> for SerializableWatermark {

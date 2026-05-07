@@ -1,5 +1,6 @@
-use crate::messages::{data_message_time_secs_from_routed, RoutedValuePayload};
+use crate::messages::{PyStreamingMessage, RoutedValuePayload};
 use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
 use sentry_arroyo::processing::strategies::{
     CommitRequest, InvalidMessage, ProcessingStrategy, StrategyError, SubmitError,
 };
@@ -25,8 +26,9 @@ pub struct WatermarkEmitter {
     pub period: u64,
     pub watermark_committable: BTreeMap<Partition, u64>,
     last_sent_timestamp: u64,
-    /// Latest data message time (epoch seconds) since the last emitted watermark.
-    last_data_message_time: Option<u64>,
+    /// Latest data message time (epoch seconds, sub-second precision) since the last emitted
+    /// watermark.
+    last_data_message_time: Option<f64>,
 }
 
 impl WatermarkEmitter {
@@ -103,8 +105,12 @@ impl ProcessingStrategy<RoutedValue> for WatermarkEmitter {
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
         self.merge_watermark_committable(&message);
-        if let Some(t) = data_message_time_secs_from_routed(&message) {
-            self.last_data_message_time = Some(t);
+        if let RoutedValuePayload::PyStreamingMessage(ref sm) = &message.payload().payload {
+            let ts = traced_with_gil!(|py| match sm {
+                PyStreamingMessage::PyAnyMessage { content } => content.bind(py).borrow().timestamp,
+                PyStreamingMessage::RawMessage { content } => content.bind(py).borrow().timestamp,
+            });
+            self.last_data_message_time = Some(ts);
         }
         self.next_step.submit(message)
     }
@@ -198,7 +204,7 @@ mod tests {
                 vec![Watermark::with_message_time(
                     expected_committable,
                     20,
-                    Some(0),
+                    Some(0.0),
                 )],
                 submitted_watermarks_clone.lock().unwrap().deref(),
             );

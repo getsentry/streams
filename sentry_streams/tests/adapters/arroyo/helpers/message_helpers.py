@@ -108,7 +108,7 @@ def build_py_msg(
 def build_watermark(
     committable: Committable,
     timestamp: int,
-    message_time: int | None = None,
+    message_time: float | None = None,
 ) -> Tuple[PipelineMessage, Committable]:
     return (
         PyWatermark(
