@@ -21,9 +21,8 @@ use sentry_arroyo::utils::timing::Deadline;
 use std::collections::{BTreeMap, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const METRIC_BATCH_FLUSH_ELEMENTS: &str = "streams.pipeline.batch.flush.elements";
-const METRIC_BATCH_FLUSH_OPEN_DURATION_SECS: &str =
-    "streams.pipeline.batch.flush.open_duration_secs";
+const METRIC_BATCH_SIZE: &str = "streams.pipeline.batch.size";
+const METRIC_BATCH_TIME_MS: &str = "streams.pipeline.batch.time_ms";
 
 fn first_element_schema(py: Python<'_>, first: &PyStreamingMessage) -> Option<String> {
     match first {
@@ -266,14 +265,13 @@ impl BatchStep {
         // allowing the consumer to commit.
         let committable_for_synthetic = b.current_offsets_snapshot();
         let batch_elements = b.len() as f64;
-        let batch_open_secs = b.created_at.elapsed().as_secs_f64();
+        let batch_open_ms = b.created_at.elapsed().as_millis() as f64;
         let flush_start = Instant::now();
         let batch_msg = b.flush()?;
         get_stats().step_timing(&self.step_name, flush_start.elapsed().as_secs_f64());
         let step_labels = vec![("step".to_string(), self.step_name.clone())];
-        metrics::histogram!(METRIC_BATCH_FLUSH_ELEMENTS, &step_labels).record(batch_elements);
-        metrics::histogram!(METRIC_BATCH_FLUSH_OPEN_DURATION_SECS, &step_labels)
-            .record(batch_open_secs);
+        metrics::histogram!(METRIC_BATCH_SIZE, &step_labels).record(batch_elements);
+        metrics::histogram!(METRIC_BATCH_TIME_MS, &step_labels).record(batch_open_ms);
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
