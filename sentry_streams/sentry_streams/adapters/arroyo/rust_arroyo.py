@@ -81,7 +81,13 @@ logger = logging.getLogger(__name__)
 
 
 def build_py_metrics_config(cfg: MetricsConfig) -> PyMetricConfig | None:
-    """Build Rust-side DogStatsD config from the same metrics dict used by configure_metrics."""
+    """Build Rust-side DogStatsD config from the same metrics dict used by configure_metrics.
+
+    When this is installed, the consumer also emits
+    ``streams.pipeline.consumer.watermark_commit_latency`` (histogram, seconds): wall time from
+    optional watermark ``message_time`` (epoch seconds of the last or oldest batched data row) to
+    the commit decision; 0 is recorded when ``message_time`` is absent.
+    """
     if cfg["type"] != "datadog":
         return None
     return PyMetricConfig(

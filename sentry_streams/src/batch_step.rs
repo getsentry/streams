@@ -5,7 +5,10 @@
 //! element. Watermark handling and backpressure are unchanged.
 //!
 //! The GIL is taken only to build the list on flush (after [`Message::into_payload`] in submit).
-use crate::messages::{into_pyany, PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
+use crate::messages::{
+    into_pyany, streaming_payload_timestamp_floor_secs, PyAnyMessage, PyStreamingMessage,
+    RoutedValuePayload,
+};
 use crate::pipeline_stats::get_stats;
 use crate::routes::{Route, RoutedValue};
 use crate::time_helpers::current_epoch;
@@ -124,6 +127,21 @@ impl Batch {
 
     pub fn current_offsets_snapshot(&self) -> BTreeMap<Partition, u64> {
         self.batch_offsets.clone()
+    }
+
+    /// Minimum of per-row logical timestamps (epoch seconds, floor), for synthetic watermarks.
+    pub fn oldest_message_time_secs(&self) -> Option<u64> {
+        if self.elements.is_empty() {
+            return None;
+        }
+        traced_with_gil!(|py| {
+            let mut min_t: Option<u64> = None;
+            for el in &self.elements {
+                let t = streaming_payload_timestamp_floor_secs(py, el);
+                min_t = Some(min_t.map_or(t, |m| m.min(t)));
+            }
+            min_t
+        })
     }
 
     pub fn flush(&self) -> Result<Message<RoutedValue>, StrategyError> {
@@ -258,6 +276,7 @@ impl BatchStep {
         // We create a synthetic watermark to avoid waiting for the next batch to complete before
         // allowing the consumer to commit.
         let committable_for_synthetic = b.current_offsets_snapshot();
+        let batch_message_time = b.oldest_message_time_secs();
         let flush_start = Instant::now();
         let batch_msg = b.flush()?;
         get_stats().step_timing(&self.step_name, flush_start.elapsed().as_secs_f64());
@@ -266,7 +285,7 @@ impl BatchStep {
 
         self.outbound.push_back(batch_msg);
         self.pending_batch = true;
-        self.enqueue_watermark_tail(wm_after_batch, committable_for_synthetic);
+        self.enqueue_watermark_tail(wm_after_batch, committable_for_synthetic, batch_message_time);
         Ok(())
     }
 
@@ -274,6 +293,7 @@ impl BatchStep {
         &mut self,
         wm_after_batch: Vec<Message<RoutedValue>>,
         committable: BTreeMap<Partition, u64>,
+        message_time: Option<u64>,
     ) {
         for m in wm_after_batch {
             self.outbound.push_back(m);
@@ -282,7 +302,11 @@ impl BatchStep {
         let wmk = Message::new_any_message(
             RoutedValue {
                 route: self.route.clone(),
-                payload: RoutedValuePayload::make_watermark_payload(committable.clone(), ts),
+                payload: RoutedValuePayload::make_watermark_payload(
+                    committable.clone(),
+                    ts,
+                    message_time,
+                ),
             },
             committable,
         );
@@ -584,7 +608,9 @@ mod tests {
 
         use super::super::{BatchStep, Message};
         use crate::fake_strategy::FakeStrategy;
-        use crate::testutils::{build_raw_routed_value, build_routed_value};
+        use crate::testutils::{
+            build_raw_routed_value, build_routed_value, build_routed_value_with_timestamp,
+        };
         use crate::utils::traced_with_gil;
         use chrono::Utc;
         use pyo3::prelude::*;
@@ -727,12 +753,36 @@ mod tests {
             let (mut step, _out, wms) = batch_step_with_fake(route.clone(), None, None);
             let rv = crate::routes::RoutedValue {
                 route,
-                payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0),
+                payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0, None),
             };
             let m = Message::new_any_message(rv, BTreeMap::new());
             step.submit(m)
                 .expect("watermark should go to next step when no open batch");
             assert_eq!(wms.lock().unwrap().len(), 1);
+        }
+
+        #[test]
+        fn synthetic_watermark_uses_oldest_row_timestamp() {
+            let route = Route::new("s".into(), vec!["w".into()]);
+            let (mut step, _out, wms) = batch_step_with_fake(route, Some(2), None);
+            traced_with_gil!(|py| {
+                let p1 = 1i32.into_pyobject(py).unwrap().into_any().unbind();
+                let p2 = 2i32.into_pyobject(py).unwrap().into_any().unbind();
+                let m1 = Message::new_any_message(
+                    build_routed_value_with_timestamp(py, p1, "s", vec!["w".into()], 5000.25),
+                    BTreeMap::new(),
+                );
+                let m2 = Message::new_any_message(
+                    build_routed_value_with_timestamp(py, p2, "s", vec!["w".into()], 9000.9),
+                    BTreeMap::new(),
+                );
+                step.submit(m1).unwrap();
+                step.submit(m2).unwrap();
+                step.poll().unwrap();
+            });
+            let w = wms.lock().unwrap();
+            assert_eq!(w.len(), 1);
+            assert_eq!(w[0].message_time, Some(5000));
         }
 
         #[test]

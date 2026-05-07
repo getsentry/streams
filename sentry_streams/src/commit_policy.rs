@@ -8,6 +8,10 @@ use sentry_arroyo::types::{Message, Partition};
 
 use crate::messages::{RoutedValuePayload, WatermarkMessage};
 use crate::routes::RoutedValue;
+use crate::time_helpers::current_epoch;
+
+/// Histogram: seconds from watermark `message_time` (or 0 if absent) to commit decision.
+const METRIC_WATERMARK_COMMIT_LATENCY: &str = "streams.pipeline.consumer.watermark_commit_latency";
 
 /// Records the committable of a received Watermark and records how many times that watermark has been seen.
 #[derive(Clone, Debug)]
@@ -15,6 +19,7 @@ struct WatermarkTracker {
     num_watermarks: u64,
     committable: HashMap<Partition, u64>,
     time_added: Instant,
+    message_time: Option<u64>,
 }
 
 /// WatermarkCommitOffsets is a commit policy that only commits once it receives a copy of a Watermark
@@ -59,6 +64,14 @@ impl WatermarkCommitOffsets {
                 };
                 commit_request =
                     merge_commit_request(Some(commit_request), Some(current_request)).unwrap();
+
+                let now = current_epoch();
+                let secs = watermark
+                    .message_time
+                    .map(|t| now.saturating_sub(t) as f64)
+                    .unwrap_or(0.0);
+                metrics::histogram!(METRIC_WATERMARK_COMMIT_LATENCY).record(secs);
+
                 to_remove.push(ts.clone());
             // Clean up any hanging watermarks which still haven't gotten all their copies in 5 min
             // from when the first copy was seen
@@ -94,7 +107,8 @@ impl ProcessingStrategy<RoutedValue> for WatermarkCommitOffsets {
                         WatermarkTracker {
                             num_watermarks: tracker.num_watermarks + 1,
                             committable: tracker.committable.clone(),
-                            time_added: tracker.time_added.clone(),
+                            time_added: tracker.time_added,
+                            message_time: tracker.message_time,
                         },
                     );
                 }
@@ -109,6 +123,7 @@ impl ProcessingStrategy<RoutedValue> for WatermarkCommitOffsets {
                             num_watermarks: 1,
                             committable: committable,
                             time_added: Instant::now(),
+                            message_time: watermark.message_time,
                         },
                     );
                 }

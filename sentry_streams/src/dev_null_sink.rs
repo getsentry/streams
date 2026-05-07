@@ -234,7 +234,11 @@ mod tests {
         let watermark_msg = sentry_arroyo::types::Message::new_any_message(
             crate::routes::RoutedValue {
                 route: Route::new("source".to_string(), vec!["wp1".to_string()]),
-                payload: RoutedValuePayload::make_watermark_payload(watermark_payload.clone(), 0),
+                payload: RoutedValuePayload::make_watermark_payload(
+                    watermark_payload.clone(),
+                    0,
+                    None,
+                ),
             },
             BTreeMap::new(),
         );

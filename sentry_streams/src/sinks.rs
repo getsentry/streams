@@ -42,6 +42,8 @@ use std::time::Duration;
 struct SerializableWatermark {
     committable: HashMap<String, Vec<HashMap<String, u64>>>,
     timestamp: u64,
+    #[serde(default)]
+    message_time: Option<u64>,
 }
 
 impl From<Watermark> for SerializableWatermark {
@@ -66,6 +68,7 @@ impl From<Watermark> for SerializableWatermark {
         SerializableWatermark {
             committable,
             timestamp: value.timestamp,
+            message_time: value.message_time,
         }
     }
 }
@@ -84,6 +87,7 @@ impl From<SerializableWatermark> for Watermark {
         Watermark {
             committable,
             timestamp: value.timestamp,
+            message_time: value.message_time,
         }
     }
 }
@@ -373,7 +377,7 @@ mod tests {
 
         let watermark_val = RoutedValue {
             route: Route::new(String::from("source"), vec![]),
-            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0),
+            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0, None),
         };
         let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
         let watermark_res = sink.submit(watermark_msg);
