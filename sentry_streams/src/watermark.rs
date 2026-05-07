@@ -195,7 +195,11 @@ mod tests {
             set_timestamp(20);
             let _ = watermark.poll();
             assert_watermarks_match(
-                vec![Watermark::with_message_time(expected_committable, 20, Some(0))],
+                vec![Watermark::with_message_time(
+                    expected_committable,
+                    20,
+                    Some(0),
+                )],
                 submitted_watermarks_clone.lock().unwrap().deref(),
             );
             set_timestamp(0);

@@ -285,7 +285,11 @@ impl BatchStep {
 
         self.outbound.push_back(batch_msg);
         self.pending_batch = true;
-        self.enqueue_watermark_tail(wm_after_batch, committable_for_synthetic, batch_message_time);
+        self.enqueue_watermark_tail(
+            wm_after_batch,
+            committable_for_synthetic,
+            batch_message_time,
+        );
         Ok(())
     }
 
