@@ -251,7 +251,7 @@ def _build_merged_pipeline_deployment(
     Assembles a k8s deployment by layering these structures on top of the base deployment
     manifest:
     1. deployment_template: provided by the user
-    2. the steraming platform specific additions (including the container)
+    2. the streaming platform specific additions (including the container)
     3. emergency_patch: if provided, it overrides all other layers
     """
 
@@ -412,7 +412,9 @@ class PipelineStep(ExternalMacro):
         Returns:
             Dictionary with 'deployment' and 'configmap' keys. When canary
             splitting is active (``with_canary`` and ``replicas`` > 1), also
-            includes ``canary_deployment``.
+            includes ``canary_deployment``. In that case the main deployment's
+            pods use ``env: primary`` and the canary uses ``env: canary`` so
+            selector ``matchLabels`` do not overlap.
         """
 
         ctx = parse_context(context)
@@ -508,7 +510,7 @@ class PipelineStep(ExternalMacro):
                 emergency_patch=emergency_patch,
                 deployment_name=main_deployment_name,
                 replica_count=replicas - 1,
-                step_labels=labels,
+                step_labels={**labels, "env": "primary"},
                 container=container,
                 volumes=volumes,
             )

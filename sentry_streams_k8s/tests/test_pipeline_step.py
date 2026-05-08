@@ -518,7 +518,7 @@ def _minimal_pipeline_context(**overrides: Any) -> dict[str, Any]:
 
 
 def test_run_with_canary_emits_main_and_canary_deployments() -> None:
-    """When with_canary is True and replicas > 1, main has replicas-1 and canary has env=canary."""
+    """When with_canary is True and replicas > 1, main has env=primary and canary env=canary."""
     result = PipelineStep().run(
         _minimal_pipeline_context(with_canary=True, replicas=3),
     )
@@ -529,7 +529,9 @@ def test_run_with_canary_emits_main_and_canary_deployments() -> None:
     assert canary["spec"]["replicas"] == 1
     assert main["metadata"]["name"] == "my-service-pipeline-profiles-0"
     assert canary["metadata"]["name"] == "my-service-pipeline-profiles-0-canary"
-    assert "env" not in main["spec"]["selector"]["matchLabels"]
+    assert main["spec"]["selector"]["matchLabels"]["env"] == "primary"
+    assert main["metadata"]["labels"]["env"] == "primary"
+    assert main["spec"]["template"]["metadata"]["labels"]["env"] == "primary"
     assert canary["spec"]["selector"]["matchLabels"]["env"] == "canary"
     assert canary["metadata"]["labels"]["env"] == "canary"
     assert canary["spec"]["template"]["metadata"]["labels"]["env"] == "canary"
