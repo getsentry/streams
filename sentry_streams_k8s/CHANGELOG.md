@@ -1,3 +1,9 @@
+## 0.0.7
+
+### New Features ✨
+
+- (k8s) Add optional canary Deployment to PipelineStep by @fpacifici in [#313](https://github.com/getsentry/streams/pull/313)
+
 ## 0.0.6
 
 ### New Features ✨
