@@ -390,7 +390,7 @@ mod tests {
 
         let watermark_val = RoutedValue {
             route: Route::new(String::from("source"), vec![]),
-            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0),
+            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0, None),
         };
         let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
         assert!(strategy.submit(watermark_msg).is_ok());

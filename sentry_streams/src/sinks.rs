@@ -42,6 +42,8 @@ use std::time::Duration;
 struct SerializableWatermark {
     committable: HashMap<String, Vec<HashMap<String, u64>>>,
     timestamp: u64,
+    #[serde(default, alias = "message_time")]
+    last_message_time: Option<f64>,
 }
 
 impl From<Watermark> for SerializableWatermark {
@@ -66,6 +68,7 @@ impl From<Watermark> for SerializableWatermark {
         SerializableWatermark {
             committable,
             timestamp: value.timestamp,
+            last_message_time: value.last_message_time,
         }
     }
 }
@@ -84,6 +87,7 @@ impl From<SerializableWatermark> for Watermark {
         Watermark {
             committable,
             timestamp: value.timestamp,
+            last_message_time: value.last_message_time,
         }
     }
 }
@@ -302,6 +306,28 @@ mod tests {
     }
 
     #[test]
+    fn deserializes_legacy_message_time_json_field() {
+        let json = br#"{"committable":{},"timestamp":0,"message_time":42.5}"#;
+        let sw: SerializableWatermark = serde_json::from_slice(json).unwrap();
+        assert_eq!(sw.last_message_time, Some(42.5));
+    }
+
+    #[test]
+    fn serializes_last_message_time_json_field() {
+        let w = Watermark::with_last_message_time(BTreeMap::new(), 1, Some(3.0));
+        let sw: SerializableWatermark = w.into();
+        let s = serde_json::to_string(&sw).unwrap();
+        assert!(
+            s.contains("last_message_time"),
+            "expected new key in JSON: {s}"
+        );
+        assert!(
+            !s.contains("\"message_time\""),
+            "legacy key should not appear as its own field: {s}"
+        );
+    }
+
+    #[test]
     fn test_kafka_payload() {
         crate::testutils::initialize_python();
         traced_with_gil!(|py| {
@@ -373,7 +399,7 @@ mod tests {
 
         let watermark_val = RoutedValue {
             route: Route::new(String::from("source"), vec![]),
-            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0),
+            payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0, None),
         };
         let watermark_msg = Message::new_any_message(watermark_val, BTreeMap::new());
         let watermark_res = sink.submit(watermark_msg);

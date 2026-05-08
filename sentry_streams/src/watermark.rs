@@ -1,5 +1,6 @@
-use crate::messages::RoutedValuePayload;
+use crate::messages::{PyStreamingMessage, RoutedValuePayload};
 use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
 use sentry_arroyo::processing::strategies::{
     CommitRequest, InvalidMessage, ProcessingStrategy, StrategyError, SubmitError,
 };
@@ -25,6 +26,7 @@ pub struct WatermarkEmitter {
     pub period: u64,
     pub watermark_committable: BTreeMap<Partition, u64>,
     last_sent_timestamp: u64,
+    last_data_message_time: Option<f64>,
 }
 
 impl WatermarkEmitter {
@@ -41,6 +43,7 @@ impl WatermarkEmitter {
             period,
             watermark_committable: empty_committable,
             last_sent_timestamp: current_timestamp,
+            last_data_message_time: None,
         }
     }
 
@@ -50,11 +53,13 @@ impl WatermarkEmitter {
 
     fn send_watermark_msg(&mut self) -> Result<(), InvalidMessage> {
         let timestamp = current_epoch();
+        let last_message_time = self.last_data_message_time;
         let watermark_msg = RoutedValue {
             route: self.route.clone(),
             payload: RoutedValuePayload::make_watermark_payload(
                 self.watermark_committable.clone(),
                 timestamp,
+                last_message_time,
             ),
         };
         let result = self.next_step.submit(Message::new_any_message(
@@ -65,6 +70,7 @@ impl WatermarkEmitter {
             Ok(..) => {
                 self.last_sent_timestamp = timestamp;
                 self.watermark_committable = BTreeMap::new();
+                self.last_data_message_time = None;
                 Ok(())
             }
             Err(err) => match err {
@@ -97,6 +103,13 @@ impl ProcessingStrategy<RoutedValue> for WatermarkEmitter {
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
         self.merge_watermark_committable(&message);
+        if let RoutedValuePayload::PyStreamingMessage(ref sm) = &message.payload().payload {
+            let ts = traced_with_gil!(|py| match sm {
+                PyStreamingMessage::PyAnyMessage { content } => content.bind(py).borrow().timestamp,
+                PyStreamingMessage::RawMessage { content } => content.bind(py).borrow().timestamp,
+            });
+            self.last_data_message_time = Some(ts);
+        }
         self.next_step.submit(message)
     }
 
@@ -186,7 +199,11 @@ mod tests {
             set_timestamp(20);
             let _ = watermark.poll();
             assert_watermarks_match(
-                vec![Watermark::new(expected_committable, 0)],
+                vec![Watermark::with_last_message_time(
+                    expected_committable,
+                    20,
+                    Some(0.0),
+                )],
                 submitted_watermarks_clone.lock().unwrap().deref(),
             );
             set_timestamp(0);

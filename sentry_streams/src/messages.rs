@@ -119,9 +119,11 @@ impl Clone for WatermarkMessage {
                 traced_with_gil!(|py| {
                     let committable = py_watermark.committable.clone_ref(py);
                     let timestamp = py_watermark.timestamp.clone_ref(py);
+                    let last_message_time = py_watermark.last_message_time;
                     WatermarkMessage::PyWatermark(PyWatermark {
                         committable,
                         timestamp,
+                        last_message_time,
                     })
                 })
             }
@@ -134,6 +136,10 @@ impl Clone for WatermarkMessage {
 pub struct Watermark {
     pub committable: BTreeMap<Partition, u64>,
     pub timestamp: u64,
+    /// Unix epoch seconds (with sub-second precision) from the newest data message since the
+    /// previous watermark, or the oldest message in a batch for synthetic batch watermarks.
+    /// `None` if no such message.
+    pub last_message_time: Option<f64>,
 }
 
 impl Watermark {
@@ -141,6 +147,19 @@ impl Watermark {
         Self {
             committable,
             timestamp,
+            last_message_time: None,
+        }
+    }
+
+    pub fn with_last_message_time(
+        committable: BTreeMap<Partition, u64>,
+        timestamp: u64,
+        last_message_time: Option<f64>,
+    ) -> Self {
+        Self {
+            committable,
+            timestamp,
+            last_message_time,
         }
     }
 }
@@ -154,15 +173,23 @@ pub struct PyWatermark {
     pub committable: Py<PyDict>,
     #[pyo3(get)]
     pub timestamp: Py<PyInt>,
+    #[pyo3(get)]
+    pub last_message_time: Option<f64>,
 }
 
 #[pymethods]
 impl PyWatermark {
     #[new]
-    pub fn new(committable: Py<PyDict>, timestamp: Py<PyInt>) -> PyResult<Self> {
+    #[pyo3(signature = (committable, timestamp, last_message_time=None))]
+    pub fn new(
+        committable: Py<PyDict>,
+        timestamp: Py<PyInt>,
+        last_message_time: Option<f64>,
+    ) -> PyResult<Self> {
         Ok(Self {
             committable,
             timestamp,
+            last_message_time,
         })
     }
 }
@@ -388,11 +415,14 @@ impl RoutedValuePayload {
         }
     }
 
-    pub fn make_watermark_payload(committable: BTreeMap<Partition, u64>, timestamp: u64) -> Self {
-        RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(Watermark::new(
-            committable,
-            timestamp,
-        )))
+    pub fn make_watermark_payload(
+        committable: BTreeMap<Partition, u64>,
+        timestamp: u64,
+        last_message_time: Option<f64>,
+    ) -> Self {
+        RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(
+            Watermark::with_last_message_time(committable, timestamp, last_message_time),
+        ))
     }
 }
 
@@ -416,6 +446,7 @@ impl From<&WatermarkMessage> for Py<PyAny> {
                 WatermarkMessage::Watermark(watermark) => PyWatermark::new(
                     convert_committable_to_py(py, watermark.committable.clone()).unwrap(),
                     make_py_int(py, watermark.timestamp),
+                    watermark.last_message_time,
                 )
                 .unwrap()
                 .into_py_any(py)
@@ -423,6 +454,7 @@ impl From<&WatermarkMessage> for Py<PyAny> {
                 WatermarkMessage::PyWatermark(watermark) => PyWatermark::new(
                     watermark.committable.clone_ref(py),
                     watermark.timestamp.clone_ref(py),
+                    watermark.last_message_time,
                 )
                 .unwrap()
                 .into_py_any(py)
@@ -500,10 +532,11 @@ impl TryFrom<Py<PyAny>> for WatermarkMessage {
                     Err(e) => return Err(pyo3::exceptions::PyTypeError::new_err(e.to_string())),
                 };
 
-                Ok(WatermarkMessage::Watermark(Watermark::new(
-                    committable,
-                    timestamp,
-                )))
+                let last_message_time = py_watermark.borrow().last_message_time;
+
+                Ok(WatermarkMessage::Watermark(
+                    Watermark::with_last_message_time(committable, timestamp, last_message_time),
+                ))
             } else {
                 Err(pyo3::exceptions::PyTypeError::new_err(format!(
                     "Message type is invalid: expected PyWatermark, got {}",
@@ -709,7 +742,8 @@ mod tests {
 
             // Create PyAnyMessage
             let msg =
-                PyWatermark::new(committable.unbind().clone_ref(py), make_py_int(py, 0)).unwrap();
+                PyWatermark::new(committable.unbind().clone_ref(py), make_py_int(py, 0), None)
+                    .unwrap();
 
             // Check payload
             let payload_val: BTreeMap<(String, u64), u64> =
@@ -723,7 +757,7 @@ mod tests {
 
     #[test]
     fn test_is_watermark_message() {
-        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0);
+        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0, None);
         assert!(wmsg.is_watermark_msg());
     }
 
@@ -756,7 +790,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_unwrap_payload_watermark_msg() {
-        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0);
+        let wmsg = RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0, None);
         wmsg.unwrap_payload();
     }
 }

@@ -52,6 +52,17 @@ pub fn build_routed_value(
     source: &str,
     waypoints: Vec<String>,
 ) -> RoutedValue {
+    build_routed_value_with_timestamp(py, msg_payload, source, waypoints, 0.0)
+}
+
+#[cfg(test)]
+pub fn build_routed_value_with_timestamp(
+    py: Python<'_>,
+    msg_payload: Py<PyAny>,
+    source: &str,
+    waypoints: Vec<String>,
+    timestamp: f64,
+) -> RoutedValue {
     let route = Route::new(source.to_string(), waypoints);
     let payload = PyStreamingMessage::PyAnyMessage {
         content: into_pyany(
@@ -59,7 +70,7 @@ pub fn build_routed_value(
             PyAnyMessage {
                 payload: msg_payload,
                 headers: vec![],
-                timestamp: 0.0,
+                timestamp,
                 schema: None,
             },
         )
