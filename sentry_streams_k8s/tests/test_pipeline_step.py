@@ -85,6 +85,11 @@ def test_parse_context() -> None:
     assert parsed_context["segment_id"] == 0
     assert parsed_context["log_level"] == "INFO"
     assert parsed_context["replicas"] == 2
+    assert parsed_context.get("with_canary") is False
+
+    context["with_canary"] = True
+    assert parse_context(context)["with_canary"] is True
+    del context["with_canary"]
 
     context["deployment_template"] = yaml.dump(context["deployment_template"])
     context["container_template"] = yaml.dump(context["container_template"])
@@ -111,6 +116,7 @@ def test_parse_context() -> None:
     }
     assert parsed_context["log_level"] == "DEBUG"
     assert parsed_context["replicas"] == 2
+    assert parsed_context.get("with_canary") is False
 
 
 def test_build_container() -> None:
@@ -426,6 +432,7 @@ def test_run_generates_complete_manifests() -> None:
     # Validate return structure
     assert "deployment" in result
     assert "configmap" in result
+    assert "canary_deployment" not in result
     assert isinstance(result["deployment"], dict)
     assert isinstance(result["configmap"], dict)
 
@@ -476,6 +483,73 @@ def test_run_generates_complete_manifests() -> None:
     config_yaml = configmap["data"]["pipeline_config.yaml"]
     parsed_config = yaml.safe_load(config_yaml)
     assert parsed_config == context["pipeline_config"]
+
+
+def _minimal_pipeline_context(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {},
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": "sbc.profiles",
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+        "replicas": 3,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_run_with_canary_emits_main_and_canary_deployments() -> None:
+    """When with_canary is True and replicas > 1, main has env=primary and canary env=canary."""
+    result = PipelineStep().run(
+        _minimal_pipeline_context(with_canary=True, replicas=3),
+    )
+    assert "canary_deployment" in result
+    main = result["deployment"]
+    canary = result["canary_deployment"]
+    assert main["spec"]["replicas"] == 2
+    assert canary["spec"]["replicas"] == 1
+    assert main["metadata"]["name"] == "my-service-pipeline-profiles-0"
+    assert canary["metadata"]["name"] == "my-service-pipeline-profiles-0-canary"
+    assert main["spec"]["selector"]["matchLabels"]["env"] == "primary"
+    assert main["metadata"]["labels"]["env"] == "primary"
+    assert main["spec"]["template"]["metadata"]["labels"]["env"] == "primary"
+    assert canary["spec"]["selector"]["matchLabels"]["env"] == "canary"
+    assert canary["metadata"]["labels"]["env"] == "canary"
+    assert canary["spec"]["template"]["metadata"]["labels"]["env"] == "canary"
+    cm_name = "my-service-pipeline-profiles"
+    for dep in (main, canary):
+        vols = dep["spec"]["template"]["spec"]["volumes"]
+        pc = next(v for v in vols if v["name"] == "pipeline-config")
+        assert pc["configMap"]["name"] == cm_name
+    assert result["configmap"]["metadata"]["name"] == cm_name
+
+
+def test_run_with_canary_single_replica_skips_canary_deployment() -> None:
+    """with_canary with replicas=1 yields a single deployment with full replica count."""
+    result = PipelineStep().run(
+        _minimal_pipeline_context(with_canary=True, replicas=1),
+    )
+    assert "canary_deployment" not in result
+    assert result["deployment"]["spec"]["replicas"] == 1
 
 
 def test_run_includes_liveness_probe_when_enabled() -> None:

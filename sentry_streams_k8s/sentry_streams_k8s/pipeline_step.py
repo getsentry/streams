@@ -232,7 +232,64 @@ def parse_context(context: dict[str, Any]) -> PipelineStepContext:
         "emergency_patch": emergency_patch_parsed,
         "enable_liveness_probe": context.get("enable_liveness_probe", True),
         "container_name": context.get("container_name", "pipeline-consumer"),
+        "with_canary": bool(context.get("with_canary", False)),
     }
+
+
+def _build_merged_pipeline_deployment(
+    *,
+    base_deployment: dict[str, Any],
+    deployment_template: dict[str, Any],
+    emergency_patch: dict[str, Any],
+    deployment_name: str,
+    replica_count: int,
+    step_labels: dict[str, Any],
+    container: dict[str, Any],
+    volumes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    Assembles a k8s deployment by layering these structures on top of the base deployment
+    manifest:
+    1. deployment_template: provided by the user
+    2. the streaming platform specific additions (including the container)
+    3. emergency_patch: if provided, it overrides all other layers
+    """
+
+    pipeline_additions: dict[str, Any] = {
+        "metadata": {
+            "name": deployment_name,
+            "labels": step_labels,
+        },
+        "spec": {
+            "replicas": replica_count,
+            "selector": {
+                "matchLabels": step_labels,
+            },
+            "template": {
+                "metadata": {
+                    "labels": step_labels,
+                },
+                "spec": {
+                    "containers": [container],
+                    "volumes": volumes,
+                },
+            },
+        },
+    }
+    try:
+        deepmerge(deployment_template, pipeline_additions, fail_on_scalar_overwrite=True)
+    except ScalarOverwriteError as e:
+        raise ScalarOverwriteError(
+            f"{e}\n\n"
+            f"This field is automatically set by PipelineStep and conflicts with your deployment_template. "
+            f"Note: Lists and dicts can be provided (they get merged), but scalar values cannot be overridden."
+        ) from e
+
+    deployment = deepmerge(base_deployment, deployment_template)
+    deployment = deepmerge(deployment, pipeline_additions)
+    if emergency_patch:
+        deployment = deepmerge(deployment, emergency_patch)
+    return deployment
 
 
 class PipelineStepContext(TypedDict):
@@ -253,6 +310,7 @@ class PipelineStepContext(TypedDict):
     emergency_patch: NotRequired[dict[str, Any]]
     enable_liveness_probe: NotRequired[bool]
     container_name: NotRequired[str]
+    with_canary: NotRequired[bool]
 
 
 class PipelineStep(ExternalMacro):
@@ -297,6 +355,7 @@ class PipelineStep(ExternalMacro):
                 "cpu_per_process": 1000,
                 "memory_per_process": 512,
                 "replicas": 3,
+                "with_canary": True,
             }
         )
     }}
@@ -351,7 +410,11 @@ class PipelineStep(ExternalMacro):
         2. Merge pipeline-specific configuration onto the result
 
         Returns:
-            Dictionary with 'deployment' and 'configmap' keys
+            Dictionary with 'deployment' and 'configmap' keys. When canary
+            splitting is active (``with_canary`` and ``replicas`` > 1), also
+            includes ``canary_deployment``. In that case the main deployment's
+            pods use ``env: primary`` and the canary uses ``env: canary`` so
+            selector ``matchLabels`` do not overlap.
         """
 
         ctx = parse_context(context)
@@ -432,48 +495,46 @@ class PipelineStep(ExternalMacro):
                 }
             )
 
-        pipeline_additions = {
-            "metadata": {
-                "name": make_k8s_name(f"{service_name}-pipeline-{pipeline_name}-{segment_id}"),
-                "labels": labels,
-            },
-            "spec": {
-                "replicas": replicas,
-                "selector": {
-                    "matchLabels": labels,
-                },
-                "template": {
-                    "metadata": {
-                        "labels": labels,
-                    },
-                    "spec": {
-                        "containers": [container],
-                        "volumes": volumes,
-                    },
-                },
-            },
-        }
+        add_canary = ctx.get("with_canary", False) and replicas > 1
+        main_deployment_name = make_k8s_name(
+            f"{service_name}-pipeline-{pipeline_name}-{segment_id}"
+        )
+        canary_deployment_name = make_k8s_name(
+            f"{service_name}-pipeline-{pipeline_name}-{segment_id}-canary"
+        )
 
-        # Check for scalar conflicts between user template and pipeline additions
-        # This ensures pipeline additions don't override user-provided values
-        # while still allowing both to override base template defaults
-        try:
-            # Perform a test merge to detect conflicts
-            deepmerge(deployment_template, pipeline_additions, fail_on_scalar_overwrite=True)
-        except ScalarOverwriteError as e:
-            raise ScalarOverwriteError(
-                f"{e}\n\n"
-                f"This field is automatically set by PipelineStep and conflicts with your deployment_template. "
-                f"Note: Lists and dicts can be provided (they get merged), but scalar values cannot be overridden."
-            ) from e
-
-        # No conflicts found, proceed with merging
-        # Both user template and pipeline additions can override base template
-        deployment = deepmerge(base_deployment, deployment_template)
-        deployment = deepmerge(deployment, pipeline_additions)
-
-        if emergency_patch:
-            deployment = deepmerge(deployment, emergency_patch)
+        if add_canary:
+            deployment = _build_merged_pipeline_deployment(
+                base_deployment=base_deployment,
+                deployment_template=deployment_template,
+                emergency_patch=emergency_patch,
+                deployment_name=main_deployment_name,
+                replica_count=replicas - 1,
+                step_labels={**labels, "env": "primary"},
+                container=container,
+                volumes=volumes,
+            )
+            canary_deployment = _build_merged_pipeline_deployment(
+                base_deployment=base_deployment,
+                deployment_template=deployment_template,
+                emergency_patch=emergency_patch,
+                deployment_name=canary_deployment_name,
+                replica_count=1,
+                step_labels={**labels, "env": "canary"},
+                container=container,
+                volumes=volumes,
+            )
+        else:
+            deployment = _build_merged_pipeline_deployment(
+                base_deployment=base_deployment,
+                deployment_template=deployment_template,
+                emergency_patch=emergency_patch,
+                deployment_name=main_deployment_name,
+                replica_count=replicas,
+                step_labels={**labels, "env": "primary"},
+                container=container,
+                volumes=volumes,
+            )
 
         configmap = {
             "apiVersion": "v1",
@@ -491,7 +552,10 @@ class PipelineStep(ExternalMacro):
             metadata = cast(dict[str, Any], configmap["metadata"])
             metadata["namespace"] = deployment["metadata"]["namespace"]
 
-        return {
+        result: dict[str, Any] = {
             "deployment": deployment,
             "configmap": configmap,
         }
+        if add_canary:
+            result["canary_deployment"] = canary_deployment
+        return result
