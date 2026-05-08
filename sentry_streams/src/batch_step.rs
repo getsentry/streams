@@ -128,7 +128,7 @@ impl Batch {
 
     /// Minimum of per-row logical timestamps (epoch seconds, sub-second precision), for synthetic
     /// watermarks.
-    pub fn oldest_message_time_secs(&self) -> Option<f64> {
+    pub fn oldest_message_time(&self) -> Option<f64> {
         if self.elements.is_empty() {
             return None;
         }
@@ -281,7 +281,7 @@ impl BatchStep {
         // We create a synthetic watermark to avoid waiting for the next batch to complete before
         // allowing the consumer to commit.
         let committable_for_synthetic = b.current_offsets_snapshot();
-        let batch_message_time = b.oldest_message_time_secs();
+        let batch_message_time = b.oldest_message_time();
         let flush_start = Instant::now();
         let batch_msg = b.flush()?;
         get_stats().step_timing(&self.step_name, flush_start.elapsed().as_secs_f64());

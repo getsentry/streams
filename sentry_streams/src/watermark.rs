@@ -26,8 +26,6 @@ pub struct WatermarkEmitter {
     pub period: u64,
     pub watermark_committable: BTreeMap<Partition, u64>,
     last_sent_timestamp: u64,
-    /// Latest data message time (epoch seconds, sub-second precision) since the last emitted
-    /// watermark.
     last_data_message_time: Option<f64>,
 }
 
