@@ -247,6 +247,14 @@ def _build_merged_pipeline_deployment(
     container: dict[str, Any],
     volumes: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """
+    Assembles a k8s deployment by layering these structures on top of the base deployment
+    manifest:
+    1. deployment_template: provided by the user
+    2. the steraming platform specific additions (including the container)
+    3. emergency_patch: if provided, it overrides all other layers
+    """
+
     pipeline_additions: dict[str, Any] = {
         "metadata": {
             "name": deployment_name,
@@ -485,7 +493,7 @@ class PipelineStep(ExternalMacro):
                 }
             )
 
-        effective_canary = ctx.get("with_canary", False) and replicas > 1
+        add_canary = ctx.get("with_canary", False) and replicas > 1
         main_deployment_name = make_k8s_name(
             f"{service_name}-pipeline-{pipeline_name}-{segment_id}"
         )
@@ -493,7 +501,7 @@ class PipelineStep(ExternalMacro):
             f"{service_name}-pipeline-{pipeline_name}-{segment_id}-canary"
         )
 
-        if effective_canary:
+        if add_canary:
             deployment = _build_merged_pipeline_deployment(
                 base_deployment=base_deployment,
                 deployment_template=deployment_template,
@@ -546,6 +554,6 @@ class PipelineStep(ExternalMacro):
             "deployment": deployment,
             "configmap": configmap,
         }
-        if effective_canary:
+        if add_canary:
             result["canary_deployment"] = canary_deployment
         return result
