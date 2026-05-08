@@ -531,7 +531,7 @@ class PipelineStep(ExternalMacro):
                 emergency_patch=emergency_patch,
                 deployment_name=main_deployment_name,
                 replica_count=replicas,
-                step_labels=labels,
+                step_labels={**labels, "env": "primary"},
                 container=container,
                 volumes=volumes,
             )
