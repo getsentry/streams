@@ -1,3 +1,16 @@
+## 0.0.51
+
+### New Features ✨
+
+#### Streams
+
+- Consumer watermark commit latency metric by @fpacifici in [#314](https://github.com/getsentry/streams/pull/314)
+- Add batch flush and GCS write pipeline metrics by @fpacifici in [#312](https://github.com/getsentry/streams/pull/312)
+
+#### Other
+
+- (watermarks) Add test for watermarks passing thru PythonAdapter by @bmckerry in [#310](https://github.com/getsentry/streams/pull/310)
+
 ## 0.0.50
 
 ### New Features ✨
