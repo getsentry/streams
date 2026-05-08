@@ -21,6 +21,9 @@ use sentry_arroyo::utils::timing::Deadline;
 use std::collections::{BTreeMap, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+const METRIC_BATCH_SIZE: &str = "streams.pipeline.batch.size";
+const METRIC_BATCH_TIME_MS: &str = "streams.pipeline.batch.time_ms";
+
 fn first_element_schema(py: Python<'_>, first: &PyStreamingMessage) -> Option<String> {
     match first {
         PyStreamingMessage::PyAnyMessage { content } => content.bind(py).borrow().schema.clone(),
@@ -54,6 +57,8 @@ pub(crate) struct Batch {
     max_batch_size: Option<usize>,
     /// Set when the window is time-bounded; elapsed means flush by time.
     batch_deadline: Option<Deadline>,
+    /// Wall time when the first element opened this batch window.
+    created_at: Instant,
     elements: Vec<PyStreamingMessage>,
     batch_offsets: BTreeMap<Partition, u64>,
 }
@@ -82,6 +87,7 @@ impl Batch {
             route,
             max_batch_size,
             batch_deadline,
+            created_at: Instant::now(),
             elements: vec![first],
             batch_offsets,
         }
@@ -282,9 +288,14 @@ impl BatchStep {
         // allowing the consumer to commit.
         let committable_for_synthetic = b.current_offsets_snapshot();
         let batch_message_time = b.oldest_message_time();
+        let batch_elements = b.len() as f64;
+        let batch_open_ms = b.created_at.elapsed().as_millis() as f64;
         let flush_start = Instant::now();
         let batch_msg = b.flush()?;
         get_stats().step_timing(&self.step_name, flush_start.elapsed().as_secs_f64());
+        let step_labels = vec![("step".to_string(), self.step_name.clone())];
+        metrics::histogram!(METRIC_BATCH_SIZE, &step_labels).record(batch_elements);
+        metrics::histogram!(METRIC_BATCH_TIME_MS, &step_labels).record(batch_open_ms);
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
