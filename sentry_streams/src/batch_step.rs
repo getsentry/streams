@@ -134,7 +134,9 @@ impl Batch {
 
     /// Minimum of per-row logical timestamps (epoch seconds, sub-second precision), for synthetic
     /// watermarks.
-    pub fn oldest_message_time(&self) -> Option<f64> {
+    /// Minimum of per-row logical timestamps (epoch seconds, sub-second precision) in this batch;
+    /// used as `last_message_time` on synthetic watermarks after flush.
+    pub fn oldest_batch_row_timestamp(&self) -> Option<f64> {
         if self.elements.is_empty() {
             return None;
         }
@@ -287,7 +289,7 @@ impl BatchStep {
         // We create a synthetic watermark to avoid waiting for the next batch to complete before
         // allowing the consumer to commit.
         let committable_for_synthetic = b.current_offsets_snapshot();
-        let batch_message_time = b.oldest_message_time();
+        let batch_last_message_time = b.oldest_batch_row_timestamp();
         let batch_elements = b.len() as f64;
         let batch_open_ms = b.created_at.elapsed().as_millis() as f64;
         let flush_start = Instant::now();
@@ -304,7 +306,7 @@ impl BatchStep {
         self.enqueue_watermark_tail(
             wm_after_batch,
             committable_for_synthetic,
-            batch_message_time,
+            batch_last_message_time,
         );
         Ok(())
     }
@@ -313,7 +315,7 @@ impl BatchStep {
         &mut self,
         wm_after_batch: Vec<Message<RoutedValue>>,
         committable: BTreeMap<Partition, u64>,
-        message_time: Option<f64>,
+        last_message_time: Option<f64>,
     ) {
         for m in wm_after_batch {
             self.outbound.push_back(m);
@@ -325,7 +327,7 @@ impl BatchStep {
                 payload: RoutedValuePayload::make_watermark_payload(
                     committable.clone(),
                     ts,
-                    message_time,
+                    last_message_time,
                 ),
             },
             committable,
@@ -802,7 +804,7 @@ mod tests {
             });
             let w = wms.lock().unwrap();
             assert_eq!(w.len(), 1);
-            assert_eq!(w[0].message_time, Some(5000.25));
+            assert_eq!(w[0].last_message_time, Some(5000.25));
         }
 
         #[test]

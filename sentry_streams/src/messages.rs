@@ -119,11 +119,11 @@ impl Clone for WatermarkMessage {
                 traced_with_gil!(|py| {
                     let committable = py_watermark.committable.clone_ref(py);
                     let timestamp = py_watermark.timestamp.clone_ref(py);
-                    let message_time = py_watermark.message_time;
+                    let last_message_time = py_watermark.last_message_time;
                     WatermarkMessage::PyWatermark(PyWatermark {
                         committable,
                         timestamp,
-                        message_time,
+                        last_message_time,
                     })
                 })
             }
@@ -139,7 +139,7 @@ pub struct Watermark {
     /// Unix epoch seconds (with sub-second precision) from the newest data message since the
     /// previous watermark, or the oldest message in a batch for synthetic batch watermarks.
     /// `None` if no such message.
-    pub message_time: Option<f64>,
+    pub last_message_time: Option<f64>,
 }
 
 impl Watermark {
@@ -147,19 +147,19 @@ impl Watermark {
         Self {
             committable,
             timestamp,
-            message_time: None,
+            last_message_time: None,
         }
     }
 
-    pub fn with_message_time(
+    pub fn with_last_message_time(
         committable: BTreeMap<Partition, u64>,
         timestamp: u64,
-        message_time: Option<f64>,
+        last_message_time: Option<f64>,
     ) -> Self {
         Self {
             committable,
             timestamp,
-            message_time,
+            last_message_time,
         }
     }
 }
@@ -174,22 +174,22 @@ pub struct PyWatermark {
     #[pyo3(get)]
     pub timestamp: Py<PyInt>,
     #[pyo3(get)]
-    pub message_time: Option<f64>,
+    pub last_message_time: Option<f64>,
 }
 
 #[pymethods]
 impl PyWatermark {
     #[new]
-    #[pyo3(signature = (committable, timestamp, message_time=None))]
+    #[pyo3(signature = (committable, timestamp, last_message_time=None))]
     pub fn new(
         committable: Py<PyDict>,
         timestamp: Py<PyInt>,
-        message_time: Option<f64>,
+        last_message_time: Option<f64>,
     ) -> PyResult<Self> {
         Ok(Self {
             committable,
             timestamp,
-            message_time,
+            last_message_time,
         })
     }
 }
@@ -418,10 +418,10 @@ impl RoutedValuePayload {
     pub fn make_watermark_payload(
         committable: BTreeMap<Partition, u64>,
         timestamp: u64,
-        message_time: Option<f64>,
+        last_message_time: Option<f64>,
     ) -> Self {
         RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(
-            Watermark::with_message_time(committable, timestamp, message_time),
+            Watermark::with_last_message_time(committable, timestamp, last_message_time),
         ))
     }
 }
@@ -446,7 +446,7 @@ impl From<&WatermarkMessage> for Py<PyAny> {
                 WatermarkMessage::Watermark(watermark) => PyWatermark::new(
                     convert_committable_to_py(py, watermark.committable.clone()).unwrap(),
                     make_py_int(py, watermark.timestamp),
-                    watermark.message_time,
+                    watermark.last_message_time,
                 )
                 .unwrap()
                 .into_py_any(py)
@@ -454,7 +454,7 @@ impl From<&WatermarkMessage> for Py<PyAny> {
                 WatermarkMessage::PyWatermark(watermark) => PyWatermark::new(
                     watermark.committable.clone_ref(py),
                     watermark.timestamp.clone_ref(py),
-                    watermark.message_time,
+                    watermark.last_message_time,
                 )
                 .unwrap()
                 .into_py_any(py)
@@ -532,13 +532,11 @@ impl TryFrom<Py<PyAny>> for WatermarkMessage {
                     Err(e) => return Err(pyo3::exceptions::PyTypeError::new_err(e.to_string())),
                 };
 
-                let message_time = py_watermark.borrow().message_time;
+                let last_message_time = py_watermark.borrow().last_message_time;
 
-                Ok(WatermarkMessage::Watermark(Watermark::with_message_time(
-                    committable,
-                    timestamp,
-                    message_time,
-                )))
+                Ok(WatermarkMessage::Watermark(
+                    Watermark::with_last_message_time(committable, timestamp, last_message_time),
+                ))
             } else {
                 Err(pyo3::exceptions::PyTypeError::new_err(format!(
                     "Message type is invalid: expected PyWatermark, got {}",

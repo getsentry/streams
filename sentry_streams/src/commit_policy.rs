@@ -13,7 +13,7 @@ use crate::routes::RoutedValue;
 #[cfg(not(test))]
 use crate::time_helpers::current_epoch;
 
-/// Histogram: seconds from watermark `message_time` (or 0 if absent) to commit decision.
+/// Histogram: seconds from watermark `last_message_time` (or 0 if absent) to commit decision.
 const METRIC_WATERMARK_COMMIT_LATENCY: &str = "streams.pipeline.consumer.watermark_commit_latency";
 
 /// Records the committable of a received Watermark and records how many times that watermark has been seen.
@@ -22,7 +22,7 @@ struct WatermarkTracker {
     num_watermarks: u64,
     committable: HashMap<Partition, u64>,
     time_added: Instant,
-    message_time: Option<f64>,
+    last_message_time: Option<f64>,
 }
 
 /// WatermarkCommitOffsets is a commit policy that only commits once it receives a copy of a Watermark
@@ -60,10 +60,10 @@ impl WatermarkCommitOffsets {
         };
         let mut to_remove = vec![];
         let mut commit_request = empty_commit_request.clone();
-        // Track the oldest (minimum) message_time across all watermarks that contribute
+        // Track the oldest (minimum) last_message_time across all watermarks that contribute
         // to the merged commit, so we record latency once per commit() based on the
         // watermark furthest behind.
-        let mut oldest_message_time: Option<f64> = None;
+        let mut oldest_last_message_time: Option<f64> = None;
         for (ts, watermark) in self.watermarks.iter() {
             if watermark.num_watermarks == self.num_branches {
                 let current_request = CommitRequest {
@@ -72,8 +72,8 @@ impl WatermarkCommitOffsets {
                 commit_request =
                     merge_commit_request(Some(commit_request), Some(current_request)).unwrap();
 
-                if let Some(t) = watermark.message_time {
-                    oldest_message_time = Some(match oldest_message_time {
+                if let Some(t) = watermark.last_message_time {
+                    oldest_last_message_time = Some(match oldest_last_message_time {
                         Some(prev) => prev.min(t),
                         None => t,
                     });
@@ -91,7 +91,7 @@ impl WatermarkCommitOffsets {
         }
 
         if commit_request != empty_commit_request {
-            let secs = oldest_message_time
+            let secs = oldest_last_message_time
                 .map(|t| ((current_epoch() as f64) - t).max(0.0))
                 .unwrap_or(0.0);
             metrics::histogram!(METRIC_WATERMARK_COMMIT_LATENCY).record(secs);
@@ -119,7 +119,7 @@ impl ProcessingStrategy<RoutedValue> for WatermarkCommitOffsets {
                             num_watermarks: tracker.num_watermarks + 1,
                             committable: tracker.committable.clone(),
                             time_added: tracker.time_added,
-                            message_time: tracker.message_time,
+                            last_message_time: tracker.last_message_time,
                         },
                     );
                 }
@@ -134,7 +134,7 @@ impl ProcessingStrategy<RoutedValue> for WatermarkCommitOffsets {
                             num_watermarks: 1,
                             committable: committable,
                             time_added: Instant::now(),
-                            message_time: watermark.message_time,
+                            last_message_time: watermark.last_message_time,
                         },
                     );
                 }
@@ -208,7 +208,7 @@ mod tests {
         set_timestamp(100);
         let mut commit_step = WatermarkCommitOffsets::new(2);
 
-        let watermark = Watermark::with_message_time(make_committable(3, 0), 0, Some(80.0));
+        let watermark = Watermark::with_last_message_time(make_committable(3, 0), 0, Some(80.0));
         let mut messages = vec![];
         for waypoint in ["route1", "route2"] {
             messages.push(Message::new_any_message(
@@ -237,7 +237,7 @@ mod tests {
         }
 
         // Second watermark actually returns CommitRequest on poll() and records the latency
-        // metric once based on the (only) tracker's message_time.
+        // metric once based on the (only) tracker's last_message_time.
         let _ = commit_step.submit(messages[1].clone());
         assert_eq!(commit_step.watermarks[&ts].num_watermarks, 2);
 
@@ -264,7 +264,7 @@ mod tests {
         assert_eq!(
             recorded,
             vec![20.0],
-            "expected exactly one latency sample of (current_epoch - message_time)"
+            "expected exactly one latency sample of (current_epoch - last_message_time)"
         );
 
         set_timestamp(0);

@@ -53,13 +53,13 @@ impl WatermarkEmitter {
 
     fn send_watermark_msg(&mut self) -> Result<(), InvalidMessage> {
         let timestamp = current_epoch();
-        let message_time = self.last_data_message_time;
+        let last_message_time = self.last_data_message_time;
         let watermark_msg = RoutedValue {
             route: self.route.clone(),
             payload: RoutedValuePayload::make_watermark_payload(
                 self.watermark_committable.clone(),
                 timestamp,
-                message_time,
+                last_message_time,
             ),
         };
         let result = self.next_step.submit(Message::new_any_message(
@@ -199,7 +199,7 @@ mod tests {
             set_timestamp(20);
             let _ = watermark.poll();
             assert_watermarks_match(
-                vec![Watermark::with_message_time(
+                vec![Watermark::with_last_message_time(
                     expected_committable,
                     20,
                     Some(0.0),

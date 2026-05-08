@@ -139,6 +139,6 @@ pub fn assert_watermarks_match(expected_messages: Vec<Watermark>, actual_message
     for (actual, expected) in actual_messages.iter().zip(expected_messages.iter()) {
         assert_eq!(actual.committable, expected.committable);
         assert_eq!(actual.timestamp, expected.timestamp);
-        assert_eq!(actual.message_time, expected.message_time);
+        assert_eq!(actual.last_message_time, expected.last_message_time);
     }
 }
