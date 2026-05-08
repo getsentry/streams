@@ -132,8 +132,6 @@ impl Batch {
         self.batch_offsets.clone()
     }
 
-    /// Minimum of per-row logical timestamps (epoch seconds, sub-second precision), for synthetic
-    /// watermarks.
     /// Minimum of per-row logical timestamps (epoch seconds, sub-second precision) in this batch;
     /// used as `last_message_time` on synthetic watermarks after flush.
     pub fn oldest_batch_row_timestamp(&self) -> Option<f64> {
