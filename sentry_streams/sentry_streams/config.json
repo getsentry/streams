@@ -32,6 +32,9 @@
                             "properties": {
                                 "write_healthcheck": {
                                     "type": "boolean"
+                                },
+                                "sentry_sdk_config": {
+                                    "$ref": "#/definitions/StreamingPlatformConfig"
                                 }
                             }
                         }

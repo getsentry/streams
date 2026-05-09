@@ -247,6 +247,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         steps_config: Mapping[str, StepConfig],
         metrics_config: MetricsConfig,
         write_healthcheck: bool = False,
+        sentry_sdk_config: dict[str, Any] = {},
     ) -> None:
         super().__init__()
         self.steps_config = steps_config
@@ -254,6 +255,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self.__write_healthcheck = write_healthcheck
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
+        self.__sentry_dsn = sentry_sdk_config.get("dsn") or None
 
     @classmethod
     def build(  # type: ignore[override]
@@ -265,8 +267,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         adapter_config = config.get("adapter_config") or {}
         arroyo_config = adapter_config.get("arroyo") or {}
         write_healthcheck = bool(arroyo_config.get("write_healthcheck", False))
-
-        return cls(steps_config, metrics_config, write_healthcheck)
+        sentry_sdk_config = arroyo_config.get("sentry_sdk_config") or {}
+        return cls(steps_config, metrics_config, write_healthcheck, sentry_sdk_config)
 
     def __close_chain(self, stream: Route) -> None:
         if self.__chains.exists(stream):
@@ -317,6 +319,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             metric_config=build_py_metrics_config(self.__metrics_config),
             write_healthcheck=self.__write_healthcheck,
             dlq_config=dlq_config,
+            sentry_dsn=self.__sentry_dsn,
         )
         return Route(source_name, [])
 
