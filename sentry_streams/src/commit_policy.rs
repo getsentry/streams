@@ -14,7 +14,7 @@ use crate::routes::RoutedValue;
 use crate::time_helpers::current_epoch;
 
 /// Histogram: seconds from watermark `last_message_time` (or 0 if absent) to commit decision.
-const METRIC_WATERMARK_COMMIT_LATENCY: &str = "streams.pipeline.consumer.watermark_commit_latency";
+const METRIC_CONSUMER_LATENCY_SEC: &str = "streams.pipeline.consumer.latency_sec";
 
 /// Records the committable of a received Watermark and records how many times that watermark has been seen.
 #[derive(Clone, Debug)]
@@ -39,13 +39,17 @@ struct WatermarkTracker {
 pub struct WatermarkCommitOffsets {
     pub num_branches: u64,
     watermarks: HashMap<u64, WatermarkTracker>,
+    consumer_group: String,
+    topic: String,
 }
 
 impl WatermarkCommitOffsets {
-    pub fn new(num_branches: u64) -> Self {
+    pub fn new(num_branches: u64, consumer_group: String, topic: String) -> Self {
         WatermarkCommitOffsets {
             watermarks: Default::default(),
             num_branches,
+            consumer_group,
+            topic,
         }
     }
 
@@ -94,7 +98,11 @@ impl WatermarkCommitOffsets {
             let secs = oldest_last_message_time
                 .map(|t| ((current_epoch() as f64) - t).max(0.0))
                 .unwrap_or(0.0);
-            metrics::histogram!(METRIC_WATERMARK_COMMIT_LATENCY).record(secs);
+            let labels = vec![
+                ("consumer_group".to_string(), self.consumer_group.clone()),
+                ("topic".to_string(), self.topic.clone()),
+            ];
+            metrics::histogram!(METRIC_CONSUMER_LATENCY_SEC, &labels).record(secs);
             Some(commit_request)
         } else {
             None
@@ -206,7 +214,7 @@ mod tests {
     fn test_commit_offsets() {
         // Pin current_epoch so the latency metric is deterministic.
         set_timestamp(100);
-        let mut commit_step = WatermarkCommitOffsets::new(2);
+        let mut commit_step = WatermarkCommitOffsets::new(2, "cg".to_string(), "topic".to_string());
 
         let watermark = Watermark::with_last_message_time(make_committable(3, 0), 0, Some(80.0));
         let mut messages = vec![];
@@ -258,7 +266,7 @@ mod tests {
             .lock()
             .unwrap()
             .iter()
-            .filter(|(k, _)| k.name() == METRIC_WATERMARK_COMMIT_LATENCY)
+            .filter(|(k, _)| k.name() == METRIC_CONSUMER_LATENCY_SEC)
             .map(|(_, v)| *v)
             .collect();
         assert_eq!(
