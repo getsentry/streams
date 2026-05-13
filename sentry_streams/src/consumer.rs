@@ -257,7 +257,7 @@ fn to_routed_value(
     };
     // Convert message.timestamp() (Option<i64>) to UTC timestamp as float (seconds since epoch)
     let timestamp = match message.timestamp() {
-        Some(ts) => ts.timestamp_millis() as f64 / 1_000_000_000.0,
+        Some(ts) => ts.timestamp_millis() as f64 / 1000.0,
         None => 0.0, // Default to 0 if no timestamp is available
     };
     let raw_message = RawMessage {
