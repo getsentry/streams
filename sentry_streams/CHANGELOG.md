@@ -1,3 +1,13 @@
+## 0.0.52
+
+### Bug Fixes 🐛
+
+- (streams) Correct Kafka timestamp scale for watermark commit latency by @fpacifici in [#320](https://github.com/getsentry/streams/pull/320)
+
+### Other
+
+- release: 0.0.51 by @fpacifici in [513bcfa1](https://github.com/getsentry/streams/commit/513bcfa1e0bffb1142920abbb428694a2492734f)
+
 ## 0.0.51
 
 ### New Features ✨
