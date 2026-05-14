@@ -94,6 +94,12 @@ impl PyKafkaConsumerConfig {
     }
 }
 
+impl PyKafkaConsumerConfig {
+    pub fn group_id(&self) -> &str {
+        &self.group_id
+    }
+}
+
 impl From<PyKafkaConsumerConfig> for KafkaConfig {
     fn from(py_config: PyKafkaConsumerConfig) -> Self {
         KafkaConfig::new_consumer_config(

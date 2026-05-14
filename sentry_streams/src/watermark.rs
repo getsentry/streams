@@ -228,7 +228,11 @@ mod tests {
             let mut watermark_step = build_chain(
                 "source",
                 &[map_step],
-                Box::new(WatermarkCommitOffsets::new(1)),
+                Box::new(WatermarkCommitOffsets::new(
+                    1,
+                    "test_group".to_string(),
+                    "test_topic".to_string(),
+                )),
                 &ConcurrencyConfig::new(1),
                 &None,
                 false,
@@ -310,7 +314,11 @@ class PassthroughDelegateFactory:
             let mut watermark_step = build_chain(
                 "source",
                 &[python_adapter_step],
-                Box::new(WatermarkCommitOffsets::new(1)),
+                Box::new(WatermarkCommitOffsets::new(
+                    1,
+                    "test_group".to_string(),
+                    "test_topic".to_string(),
+                )),
                 &ConcurrencyConfig::new(1),
                 &None,
                 false,

@@ -153,6 +153,8 @@ impl ArroyoConsumer {
             self.concurrency_config.clone(),
             self.schema.clone(),
             self.write_healthcheck,
+            self.topic.clone(),
+            self.consumer_config.group_id().to_string(),
         );
         let config = self.consumer_config.clone().into();
 
@@ -328,6 +330,8 @@ struct ArroyoStreamingFactory {
     concurrency_config: Arc<ConcurrencyConfig>,
     schema: Option<String>,
     write_healthcheck: bool,
+    topic: String,
+    consumer_group: String,
 }
 
 impl ArroyoStreamingFactory {
@@ -338,6 +342,8 @@ impl ArroyoStreamingFactory {
         concurrency_config: Arc<ConcurrencyConfig>,
         schema: Option<String>,
         write_healthcheck: bool,
+        topic: String,
+        consumer_group: String,
     ) -> Self {
         let steps_copy = traced_with_gil!(|py| {
             steps
@@ -352,6 +358,8 @@ impl ArroyoStreamingFactory {
             concurrency_config,
             schema,
             write_healthcheck,
+            topic,
+            consumer_group,
         }
     }
 }
@@ -363,7 +371,11 @@ impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
             &self.steps,
             // TODO: once Broadcast/Router work properly, count how many total downstream
             // branches a pipeline has and pass that value to the Watermark
-            Box::new(WatermarkCommitOffsets::new(1)),
+            Box::new(WatermarkCommitOffsets::new(
+                1,
+                self.consumer_group.clone(),
+                self.topic.clone(),
+            )),
             &self.concurrency_config,
             &self.schema,
             self.write_healthcheck,
