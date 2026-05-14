@@ -1,3 +1,14 @@
+## 0.0.54
+
+### Internal Changes 🔧
+
+- (deps) Bump urllib3 from 2.6.3 to 2.7.0 in /sentry_streams by @dependabot in [#319](https://github.com/getsentry/streams/pull/319)
+
+### Other
+
+- Tag consumer latency metric and rename to latency_sec by @fpacifici in [#322](https://github.com/getsentry/streams/pull/322)
+- Upgrade arroyo and pyo3 by @fpacifici in [#321](https://github.com/getsentry/streams/pull/321)
+
 ## 0.0.52
 
 ### Bug Fixes 🐛
