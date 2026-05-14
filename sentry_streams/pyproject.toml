@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "sentry-streams"
-version = "0.0.52"
+version = "0.0.54"
 description = "The python Sentry Streaming API"
 readme = "README.md"
 
