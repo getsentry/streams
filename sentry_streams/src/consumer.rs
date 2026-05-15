@@ -102,12 +102,16 @@ pub struct ArroyoConsumer {
     /// Otherwise, invalid messages will cause the consumer to stop processing.
     #[pyo3(get)]
     dlq_config: Option<DlqConfig>,
+
+    /// The Sentry DSN to use for error reporting. When `None`, Sentry is not initialized.
+    #[pyo3(get)]
+    sentry_dsn: Option<String>,
 }
 
 #[pymethods]
 impl ArroyoConsumer {
     #[new]
-    #[pyo3(signature = (source, kafka_config, topic, schema, metric_config=None, write_healthcheck=false, dlq_config=None))]
+    #[pyo3(signature = (source, kafka_config, topic, schema, metric_config=None, write_healthcheck=false, dlq_config=None, sentry_dsn=None))]
     fn new(
         source: String,
         kafka_config: PyKafkaConsumerConfig,
@@ -116,6 +120,7 @@ impl ArroyoConsumer {
         metric_config: Option<PyMetricConfig>,
         write_healthcheck: bool,
         dlq_config: Option<DlqConfig>,
+        sentry_dsn: Option<String>,
     ) -> Self {
         ArroyoConsumer {
             consumer_config: kafka_config,
@@ -128,6 +133,7 @@ impl ArroyoConsumer {
             metric_config,
             write_healthcheck,
             dlq_config,
+            sentry_dsn,
         }
     }
 
@@ -146,6 +152,16 @@ impl ArroyoConsumer {
         println!("Running Arroyo Consumer...");
 
         configure_metrics(self.metric_config.clone());
+
+        let _sentry_guard = self.sentry_dsn.as_ref().map(|dsn| {
+            sentry::init((
+                dsn.as_str(),
+                sentry::ClientOptions {
+                    release: sentry::release_name!(),
+                    ..Default::default()
+                },
+            ))
+        });
 
         let factory = ArroyoStreamingFactory::new(
             self.source.clone(),
@@ -174,6 +190,7 @@ impl ArroyoConsumer {
 
         if let Err(e) = processor.run() {
             tracing::error!("StreamProcessor error: {:?}", e);
+            sentry::capture_error(&e);
         }
     }
 
