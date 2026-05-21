@@ -8,6 +8,7 @@ from sentry_streams_k8s.merge import ScalarOverwriteError
 from sentry_streams_k8s.pipeline_step import (
     PipelineStep,
     build_container,
+    compute_config_version,
     load_base_template,
     make_k8s_name,
     parse_context,
@@ -446,6 +447,9 @@ def test_run_generates_complete_manifests() -> None:
     assert (
         deployment["spec"]["template"]["metadata"]["annotations"]["sidecar.istio.io/inject"]
         == "false"
+    )
+    assert deployment["spec"]["template"]["metadata"]["annotations"]["configVersion"] == (
+        compute_config_version(context["pipeline_config"])
     )
 
     selector = deployment["spec"]["selector"]
