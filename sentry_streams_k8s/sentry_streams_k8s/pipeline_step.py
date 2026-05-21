@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from importlib.resources import files
@@ -80,6 +81,11 @@ def get_multiprocess_config(pipeline_config: dict[str, Any]) -> tuple[int | None
                 break  # Found parallelism in this segment, move to next segment
 
     return process_count, segments_with_parallelism
+
+
+def compute_config_version(pipeline_config: dict[str, Any]) -> str:
+    """MD5 hash of pipeline_config serialized as JSON (matches ConfigMap encoding)."""
+    return hashlib.md5(json.dumps(pipeline_config).encode()).hexdigest()
 
 
 def build_container(
@@ -246,6 +252,7 @@ def _build_merged_pipeline_deployment(
     step_labels: dict[str, Any],
     container: dict[str, Any],
     volumes: list[dict[str, Any]],
+    config_version: str,
 ) -> dict[str, Any]:
     """
     Assembles a k8s deployment by layering these structures on top of the base deployment
@@ -268,6 +275,9 @@ def _build_merged_pipeline_deployment(
             "template": {
                 "metadata": {
                     "labels": step_labels,
+                    "annotations": {
+                        "configVersion": config_version,
+                    },
                 },
                 "spec": {
                     "containers": [container],
@@ -495,6 +505,8 @@ class PipelineStep(ExternalMacro):
                 }
             )
 
+        config_version = compute_config_version(pipeline_config)
+
         add_canary = ctx.get("with_canary", False) and replicas > 1
         main_deployment_name = make_k8s_name(
             f"{service_name}-pipeline-{pipeline_name}-{segment_id}"
@@ -513,6 +525,7 @@ class PipelineStep(ExternalMacro):
                 step_labels={**labels, "env": "primary"},
                 container=container,
                 volumes=volumes,
+                config_version=config_version,
             )
             canary_deployment = _build_merged_pipeline_deployment(
                 base_deployment=base_deployment,
@@ -523,6 +536,7 @@ class PipelineStep(ExternalMacro):
                 step_labels={**labels, "env": "canary"},
                 container=container,
                 volumes=volumes,
+                config_version=config_version,
             )
         else:
             deployment = _build_merged_pipeline_deployment(
@@ -534,6 +548,7 @@ class PipelineStep(ExternalMacro):
                 step_labels={**labels, "env": "primary"},
                 container=container,
                 volumes=volumes,
+                config_version=config_version,
             )
 
         configmap = {
