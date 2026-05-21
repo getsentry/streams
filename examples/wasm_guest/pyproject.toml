@@ -1,0 +1,11 @@
+[project]
+name = "sentry-streams-wasm-guest"
+version = "0.1.0"
+description = "Example componentize-py guest for sentry_streams WasmProcessor"
+requires-python = ">=3.11"
+dependencies = [
+    "componentize-py>=0.23.0",
+]
+
+[tool.uv]
+dev-dependencies = []

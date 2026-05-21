@@ -1,0 +1,36 @@
+package sentry-streams:processor;
+
+interface log {
+    debug: func(message: string);
+    info: func(message: string);
+    warn: func(message: string);
+    error: func(message: string);
+}
+
+interface processor {
+    record message {
+        headers: list<tuple<string, list<u8>>>,
+        timestamp: f64,
+        payload: list<u8>,
+    }
+
+    record watermark {
+        committable: list<tuple<tuple<string, u64>, u64>>,
+        timestamp: f64,
+        last-message-time: f64,
+    }
+
+    variant output {
+        msg(message),
+        wm(watermark),
+    }
+
+    submit: func(msg: message);
+    submit-watermark: func(wm: watermark);
+    poll: func() -> option<list<output>>;
+}
+
+world plugin {
+    import log;
+    export processor;
+}

@@ -1,0 +1,18 @@
+env: {}
+
+pipeline:
+  adapter_config:
+    arroyo:
+      write_healthcheck: true
+  segments:
+    - steps_config:
+        myinput:
+          starts_segment: true
+          bootstrap_servers: ["127.0.0.1:9092"]
+          topic: ingest-events
+          consumer_group: wasm-processor-example
+        wasm:
+          module_path: examples/wasm_guest/dist/plugin.wasm
+        mysink:
+          bootstrap_servers: ["127.0.0.1:9092"]
+          topic: processed-events

@@ -24,6 +24,7 @@ mod store_sinks;
 mod time_helpers;
 mod transformer;
 mod utils;
+mod wasm_processor;
 mod watermark;
 
 #[doc(hidden)]
