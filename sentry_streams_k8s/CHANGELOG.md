@@ -1,3 +1,16 @@
+## 0.0.8
+
+### New Features ✨
+
+- (k8s) Add configVersion annotation to pipeline deployments by @fpacifici in [#326](https://github.com/getsentry/streams/pull/326)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump urllib3 from 2.6.3 to 2.7.0 in /sentry_streams_k8s by @dependabot in [#318](https://github.com/getsentry/streams/pull/318)
+- Bump idna from 3.11 to 3.15 in /sentry_streams_k8s by @dependabot in [#324](https://github.com/getsentry/streams/pull/324)
+
 ## 0.0.7
 
 ### New Features ✨
