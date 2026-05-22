@@ -9,10 +9,8 @@ pipeline:
         myinput:
           starts_segment: true
           bootstrap_servers: ["127.0.0.1:9092"]
-          topic: ingest-events
-          consumer_group: wasm-processor-example
         wasm:
-          module_path: examples/wasm_guest/dist/plugin.wasm
+          module_path: /Users/filippopacifici/code/streams/examples/wasm_guest/dist/plugin.wasm
         mysink:
           bootstrap_servers: ["127.0.0.1:9092"]
-          topic: processed-events
+          topic: processed-profiles
