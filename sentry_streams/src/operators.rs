@@ -3,6 +3,7 @@ use crate::broadcaster::Broadcaster;
 use crate::header_filter_step::build_header_int_filter;
 use crate::kafka_config::PyKafkaProducerConfig;
 use crate::python_operator::PythonAdapter;
+use crate::wasm_processor::WasmProcessor as WasmProcessorStrategy;
 use crate::routers::build_router;
 use crate::routes::{Route, RoutedValue};
 use crate::sinks::StreamSink;
@@ -117,6 +118,12 @@ pub enum RuntimeOperator {
         route: Route,
         delegate_factory: Py<PyAny>,
     },
+    /// Delegates message processing to a WASM component loaded from ``module_path``.
+    #[pyo3(name = "WasmProcessor")]
+    WasmProcessor {
+        route: Route,
+        module_path: String,
+    },
 }
 
 pub fn build(
@@ -229,6 +236,14 @@ pub fn build(
             let factory = traced_with_gil!(|py| { delegate_factory.clone_ref(py) });
             Box::new(PythonAdapter::new(route.clone(), factory, next))
         }
+        RuntimeOperator::WasmProcessor {
+            route,
+            module_path,
+        } => Box::new(WasmProcessorStrategy::new(
+            route.clone(),
+            module_path.clone(),
+            next,
+        )),
         RuntimeOperator::Broadcast {
             route,
             downstream_routes,

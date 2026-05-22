@@ -62,6 +62,7 @@ from sentry_streams.pipeline.pipeline import (
     Source,
     StreamSink,
     StreamSource,
+    WasmProcessor,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_streams.rust_streams import (
@@ -386,6 +387,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         """
         Builds a map operator for the platform the adapter supports.
         """
+        if isinstance(step, WasmProcessor):
+            return self._wasm_processor(step, stream)
+
         assert (
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a map"
@@ -438,6 +442,23 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         """
         logger.info(f"Adding flatMap: {step.name} to pipeline")
         raise NotImplementedError
+
+    def _wasm_processor(self, step: WasmProcessor, stream: Route) -> Route:
+        self.__close_chain(stream)
+        assert (
+            stream.source in self.__consumers
+        ), f"Stream starting at source {stream.source} not found when adding WasmProcessor"
+
+        step_config: Mapping[str, Any] = self.steps_config.get(step.name, {})
+        step.override_config(step_config)
+        step.validate()
+
+        route = RustRoute(stream.source, stream.waypoints)
+        logger.info(f"Adding WasmProcessor: {step.name} to pipeline (module={step.module_path})")
+        self.__consumers[stream.source].add_step(
+            RuntimeOperator.WasmProcessor(route, step.module_path)
+        )
+        return stream
 
     def filter(self, step: Filter[Any], stream: Route) -> Route:
         """
