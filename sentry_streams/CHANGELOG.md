@@ -1,3 +1,7 @@
+## 0.0.57
+
+- Add a few metrics on main thread contention points by @fpacifici in [#328](https://github.com/getsentry/streams/pull/328)
+
 ## 0.0.55
 
 - Add sentry SDK to the rust arroyo adapter by @fpacifici in [#316](https://github.com/getsentry/streams/pull/316)
