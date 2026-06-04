@@ -1,3 +1,7 @@
+## 0.0.58
+
+- No documented changes.
+
 ## 0.0.55
 
 - Add sentry SDK to the rust arroyo adapter by @fpacifici in [#316](https://github.com/getsentry/streams/pull/316)
