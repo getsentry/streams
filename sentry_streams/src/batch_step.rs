@@ -23,6 +23,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const METRIC_BATCH_SIZE: &str = "streams.pipeline.batch.size";
 const METRIC_BATCH_TIME_MS: &str = "streams.pipeline.batch.time_ms";
+const METRIC_BATCH_SUBMIT_DURATION_MS: &str = "streams.pipeline.batch.submit_duration_ms";
 
 fn first_element_schema(py: Python<'_>, first: &PyStreamingMessage) -> Option<String> {
     match first {
@@ -217,6 +218,7 @@ pub struct BatchStep {
     /// This helps us capping the size of the pending queue during prolonged backpressure periods.
     pending_batch: bool,
     commit_request_carried_over: Option<CommitRequest>,
+    step_labels: Vec<(String, String)>,
 }
 
 impl BatchStep {
@@ -227,6 +229,7 @@ impl BatchStep {
         step_name: String,
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     ) -> Self {
+        let step_labels = vec![("step".to_string(), step_name.clone())];
         Self {
             next_step,
             route,
@@ -238,6 +241,7 @@ impl BatchStep {
             outbound: VecDeque::new(),
             pending_batch: false,
             commit_request_carried_over: None,
+            step_labels,
         }
     }
 
@@ -249,10 +253,28 @@ impl BatchStep {
     /// on going work.
     fn drain_outbound(&mut self) -> Result<(), StrategyError> {
         while let Some(msg) = self.outbound.pop_front() {
+            let outbound_len = self.outbound.len();
             let c = self.next_step.poll()?;
             self.commit_request_carried_over =
                 merge_commit_request(self.commit_request_carried_over.take(), c);
-            match self.next_step.submit(msg) {
+            let submit_start = Instant::now();
+            let submit_result = self.next_step.submit(msg);
+            let submit_duration_ms = submit_start.elapsed().as_secs_f64() * 1000.0;
+            metrics::gauge!(METRIC_BATCH_SUBMIT_DURATION_MS, &self.step_labels)
+                .set(submit_duration_ms);
+            let submit_outcome = match &submit_result {
+                Ok(()) => "ok",
+                Err(SubmitError::MessageRejected(_)) => "message_rejected",
+                Err(SubmitError::InvalidMessage(_)) => "invalid_message",
+            };
+            log::debug!(
+                "BatchStep drain submit. step: {:?}, duration_ms: {:?}, outbound_len: {:?}, outcome: {:?}",
+                self.step_name,
+                submit_duration_ms,
+                outbound_len,
+                submit_outcome
+            );
+            match submit_result {
                 Ok(()) => {
                     if self.pending_batch {
                         self.pending_batch = false;
@@ -293,9 +315,15 @@ impl BatchStep {
         let flush_start = Instant::now();
         let batch_msg = b.flush()?;
         get_stats().step_timing(&self.step_name, flush_start.elapsed().as_secs_f64());
-        let step_labels = vec![("step".to_string(), self.step_name.clone())];
-        metrics::histogram!(METRIC_BATCH_SIZE, &step_labels).record(batch_elements);
-        metrics::histogram!(METRIC_BATCH_TIME_MS, &step_labels).record(batch_open_ms);
+        metrics::histogram!(METRIC_BATCH_SIZE, &self.step_labels).record(batch_elements);
+        metrics::histogram!(METRIC_BATCH_TIME_MS, &self.step_labels).record(batch_open_ms);
+        log::info!(
+            "Batch flushed. step: {:?}, batch_elements: {:?}, batch_open_ms: {:?} created_at: {:?}",
+            self.step_name,
+            batch_elements,
+            batch_open_ms,
+            b.created_at
+        );
         self.batch = None;
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
