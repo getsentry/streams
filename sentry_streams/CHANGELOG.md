@@ -1,3 +1,7 @@
+## 0.0.59
+
+- Make binary smaller by @fpacifici in [#329](https://github.com/getsentry/streams/pull/329)
+
 ## 0.0.55
 
 - Add sentry SDK to the rust arroyo adapter by @fpacifici in [#316](https://github.com/getsentry/streams/pull/316)
