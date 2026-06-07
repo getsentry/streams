@@ -29,6 +29,49 @@ const METRIC_PYTHON_ADAPTER_NEXT_STEP_SUBMIT_DURATION_MS: &str =
 import_exception!(arroyo.processing.strategies, MessageRejected);
 import_exception!(arroyo.dlq, InvalidMessage);
 
+/// How often the per-submit debug logs may be written. These fire on every
+/// message (and on every retry under backpressure), so they are debounced.
+const SUBMIT_LOG_DEBOUNCE_INTERVAL: Duration = Duration::from_secs(5);
+
+/// A `log::debug!` line emitted at most once per `interval`, hiding the
+/// debouncing from the call site.
+///
+/// The message is built lazily (only when the line is actually written, so the
+/// format cost is paid once per `interval` rather than on every call) and the
+/// number of occurrences suppressed since the last emission is appended
+/// automatically.
+struct DebouncedLogger {
+    interval: Duration,
+    count: u64,
+    last_emitted: Option<Instant>,
+}
+
+impl DebouncedLogger {
+    fn new(interval: Duration) -> Self {
+        Self {
+            interval,
+            count: 0,
+            last_emitted: None,
+        }
+    }
+
+    /// Records one occurrence and writes the message if the debounce window has
+    /// elapsed. `message` is only invoked when the line is emitted.
+    fn debug<F: FnOnce() -> String>(&mut self, message: F) {
+        let now = Instant::now();
+        self.count += 1;
+        let due = self
+            .last_emitted
+            .map_or(true, |t| now.duration_since(t) >= self.interval);
+        if !due {
+            return;
+        }
+        log::debug!("{} occurrences: {:?}", message(), self.count);
+        self.count = 0;
+        self.last_emitted = Some(now);
+    }
+}
+
 /// PythonAdapter is an Arroyo processing strategy that delegates the
 /// processing of messages to a Python class that extends the
 /// `RustOperatorDelegate` class.
@@ -48,6 +91,11 @@ pub struct PythonAdapter {
     next_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
     commit_request_carried_over: Option<CommitRequest>,
     step_labels: Vec<(String, String)>,
+    /// Debounces the per-submit log in [`submit`](Self::submit).
+    submit_logger: DebouncedLogger,
+    /// Debounces the per-submit log when forwarding to the next step in
+    /// [`poll`](Self::poll).
+    next_step_submit_logger: DebouncedLogger,
 }
 
 impl PythonAdapter {
@@ -67,6 +115,8 @@ impl PythonAdapter {
                 transformed_messages: VecDeque::new(),
                 commit_request_carried_over: None,
                 step_labels,
+                submit_logger: DebouncedLogger::new(SUBMIT_LOG_DEBOUNCE_INTERVAL),
+                next_step_submit_logger: DebouncedLogger::new(SUBMIT_LOG_DEBOUNCE_INTERVAL),
             }
         })
     }
@@ -156,20 +206,34 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
             let submit_duration_ms = submit_start.elapsed().as_secs_f64() * 1000.0;
             metrics::gauge!(METRIC_PYTHON_ADAPTER_SUBMIT_DURATION_MS, &self.step_labels)
                 .set(submit_duration_ms);
-            log::debug!(
-                "PythonAdapter submit. duration_ms: {:?}",
-                submit_duration_ms
-            );
 
             let Err(py_err) = res else {
+                log::debug!(
+                    "PythonAdapter submit. duration_ms: {:?}, outcome: {:?}",
+                    submit_duration_ms,
+                    "ok"
+                );
                 return Ok(());
             };
 
             if py_err.is_instance(py, &py.get_type::<MessageRejected>()) {
+                // MessageRejected is retried in a tight backpressure loop, so this
+                // path is the only one worth debouncing.
+                self.submit_logger.debug(|| {
+                    format!(
+                        "PythonAdapter submit. duration_ms: {:?}, outcome: {:?}",
+                        submit_duration_ms, "message_rejected"
+                    )
+                });
                 Err(SubmitError::MessageRejected(
                     sentry_arroyo::processing::strategies::MessageRejected { message },
                 ))
             } else if py_err.is_instance(py, &py.get_type::<InvalidMessage>()) {
+                log::debug!(
+                    "PythonAdapter submit. duration_ms: {:?}, outcome: {:?}",
+                    submit_duration_ms,
+                    "invalid_message"
+                );
                 let val = py_err.value(py);
                 let offset: u64 = val
                     .getattr("offset")
@@ -242,17 +306,31 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                         &self.step_labels
                     )
                     .set(submit_duration_ms);
-                    let submit_outcome = match &submit_result {
-                        Ok(()) => "ok",
-                        Err(SubmitError::MessageRejected(_)) => "message_rejected",
-                        Err(SubmitError::InvalidMessage(_)) => "invalid_message",
-                    };
-                    log::debug!(
-                        "PythonAdapter next_step submit. duration_ms: {:?}, pending_len: {:?}, outcome: {:?}",
-                        submit_duration_ms,
-                        pending_len,
-                        submit_outcome
-                    );
+                    match &submit_result {
+                        // MessageRejected is retried in a tight backpressure loop, so this
+                        // path is the only one worth debouncing.
+                        Err(SubmitError::MessageRejected(_)) => {
+                            self.next_step_submit_logger.debug(|| {
+                                format!(
+                                    "PythonAdapter next_step submit. duration_ms: {:?}, pending_len: {:?}, outcome: {:?}",
+                                    submit_duration_ms, pending_len, "message_rejected"
+                                )
+                            });
+                        }
+                        other => {
+                            let submit_outcome = match other {
+                                Ok(()) => "ok",
+                                Err(SubmitError::InvalidMessage(_)) => "invalid_message",
+                                Err(SubmitError::MessageRejected(_)) => unreachable!(),
+                            };
+                            log::debug!(
+                                "PythonAdapter next_step submit. duration_ms: {:?}, pending_len: {:?}, outcome: {:?}",
+                                submit_duration_ms,
+                                pending_len,
+                                submit_outcome
+                            );
+                        }
+                    }
                     match submit_result {
                         Err(SubmitError::MessageRejected(
                             sentry_arroyo::processing::strategies::MessageRejected {
