@@ -9,9 +9,9 @@ use crate::utils::traced_with_gil;
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::Python;
 use pyo3::{import_exception, prelude::*};
-use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::processing::strategies::SubmitError;
 use sentry_arroyo::processing::strategies::{merge_commit_request, CommitRequest, StrategyError};
+use sentry_arroyo::processing::strategies::{InvalidMessageReason, ProcessingStrategy};
 use sentry_arroyo::types::{Message, Partition, Topic};
 use sentry_arroyo::utils::timing::Deadline;
 use std::collections::VecDeque;
@@ -248,6 +248,7 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
                         offset,
                         partition: convert_partition(partition)
                             .expect("Unable to convert partition from InvalidMessage into sentry_arroyo::types::Partition"),
+                        reason: InvalidMessageReason::Invalid,
                     },
                 ))
             } else {
@@ -540,7 +541,8 @@ class RustOperatorDelegateFactory:
                 Err(SubmitError::InvalidMessage(
                     sentry_arroyo::processing::strategies::InvalidMessage {
                         partition: Partition { .. },
-                        offset: 42
+                        offset: 42,
+                        ..
                     }
                 ))
             ));
@@ -648,7 +650,8 @@ class RustOperatorDelegateFactory:
                 Err(StrategyError::InvalidMessage(
                     sentry_arroyo::processing::strategies::InvalidMessage {
                         partition: Partition { .. },
-                        offset: 0
+                        offset: 0,
+                        ..
                     }
                 ))
             ));
