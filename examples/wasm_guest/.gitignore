@@ -1,0 +1,7 @@
+.venv/
+dist/
+src/wit_world/
+src/componentize_py_*/
+src/poll_loop.py
+src/componentize_py_types.py
+src/componentize_py_runtime.pyi

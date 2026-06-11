@@ -424,6 +424,27 @@ TransformStep = FunctionTransform
 
 
 @dataclass
+class WasmProcessor(Transform[bytes, bytes]):
+    """
+    A transform step that delegates message processing to a WASM component
+    loaded from ``module_path``. Input and output are raw bytes messages.
+
+    Only supported by the Rust ``rust_arroyo`` adapter.
+    """
+
+    module_path: str
+    step_type: StepType = StepType.MAP
+
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
+        if loaded_config.get("module_path"):
+            self.module_path = str(loaded_config["module_path"])
+
+    def validate(self) -> None:
+        if not self.module_path:
+            raise ValueError("WasmProcessor.module_path must be non-empty")
+
+
+@dataclass
 class Map(FunctionTransform[TIn, TOut], Generic[TIn, TOut]):
     """
     A simple 1:1 Map, taking a single input to single output.

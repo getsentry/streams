@@ -1,0 +1,16 @@
+env: {}
+
+pipeline:
+  adapter_config:
+    arroyo:
+      write_healthcheck: true
+  segments:
+    - steps_config:
+        myinput:
+          starts_segment: true
+          bootstrap_servers: ["127.0.0.1:9092"]
+        wasm:
+          module_path: /Users/filippopacifici/code/streams/examples/wasm_guest/dist/plugin.wasm
+        mysink:
+          bootstrap_servers: ["127.0.0.1:9092"]
+          topic: processed-profiles

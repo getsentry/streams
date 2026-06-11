@@ -31,6 +31,7 @@ from sentry_streams.pipeline.pipeline import (
     Source,
     Step,
     StepType,
+    WasmProcessor,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
 
@@ -173,6 +174,7 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
     def translate_step(
         self, step: Step, stream: Optional[StreamT] = None
     ) -> Mapping[str, Union[StreamT, StreamSinkT]]:
+
         step_name = step.name
         if isinstance(step, ComplexStep):
             overrides = self.adapter.complex_step_override()
@@ -183,7 +185,6 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
 
         assert hasattr(step, "step_type")
         step_type = step.step_type
-
         if step_type is StepType.SOURCE:
             assert isinstance(step, Source)
             return {step_name: self.adapter.source(step)}
@@ -193,7 +194,8 @@ class RuntimeTranslator(Generic[StreamT, StreamSinkT]):
             return {step_name: self.adapter.sink(step, stream)}
 
         elif step_type is StepType.MAP:
-            assert isinstance(step, Map) and stream is not None
+            # TODO: This is bad. Do not merge with this.
+            assert isinstance(step, (Map, WasmProcessor)) and stream is not None
             return {step_name: self.adapter.map(step, stream)}
 
         elif step_type is StepType.FLAT_MAP:

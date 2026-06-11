@@ -11,6 +11,7 @@ from sentry_streams.pipeline.pipeline import (
     Reducer,
     Serializer,
     StreamSink,
+    WasmProcessor,
     branch,
     streaming_source,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "Reducer",
     "Serializer",
     "StreamSink",
+    "WasmProcessor",
     "branch",
     "streaming_source",
 ]
