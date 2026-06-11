@@ -4,8 +4,8 @@ use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
 
 use sentry_arroyo::processing::strategies::{
-    merge_commit_request, CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy,
-    StrategyError, SubmitError,
+    merge_commit_request, CommitRequest, InvalidMessage, InvalidMessageReason, MessageRejected,
+    ProcessingStrategy, StrategyError, SubmitError,
 };
 use sentry_arroyo::types::{AnyMessage, BrokerMessage, InnerMessage, Message, Partition, Topic};
 use std::collections::HashMap;
@@ -61,6 +61,7 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                             topic: Topic::new("test"),
                             index: 0,
                         },
+                        reason: InvalidMessageReason::Invalid,
                     }))
                 }
             }
