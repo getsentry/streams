@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from sentry_kafka_schemas.schema_types.snuba_spans_v1 import SpanEvent
+from sentry_kafka_schemas.schema_types.ingest_spans_v1 import SpanEvent
 
 from sentry_streams.examples.span_helpers import SpansBuffer, build_segment_json
 from sentry_streams.pipeline import Map, Parser, Reducer, StreamSink, streaming_source
