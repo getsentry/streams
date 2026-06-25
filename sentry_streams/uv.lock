@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 
 [[package]]
@@ -853,7 +853,7 @@ wheels = [
 
 [[package]]
 name = "sentry-kafka-schemas"
-version = "1.3.14"
+version = "2.1.38"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastjsonschema" },
@@ -863,23 +863,23 @@ dependencies = [
     { name = "sentry-protos" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/27/7150a3c17ffbfa821f240f5cd0415e3844bdbc0f79d072bd2968e203c0ee/sentry-kafka-schemas-1.3.14.tar.gz", hash = "sha256:8e3ef25e313a7af1cdd3e88234a3892e02192762a86ca1e56bc0c86d4fae6460", size = 146229, upload-time = "2025-07-03T14:22:23.996Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/7e/7d0f45d8f825d98ed49751c35813220c64def71a7c52c6401d85623b6427/sentry_kafka_schemas-2.1.38.tar.gz", hash = "sha256:33e6aafcc89e3b76dd980d52bb314884a71477b726c0a29cd0ce6c6567861d5e", size = 159218, upload-time = "2026-06-25T18:46:15.082Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/01/cb71aa5fb23be5b2589fe1da07331380194fc1f6c0921da008e10cdab237/sentry_kafka_schemas-1.3.14-py2.py3-none-any.whl", hash = "sha256:e757a1767c9333f8841f5e733996de0f9251e13a48be160ac1ca597118fce61e", size = 282000, upload-time = "2025-07-03T14:22:22.271Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/9b/8fe454c5c984f77ce4b7cd59febd647722ad227a8ea9acf76ddd4459183e/sentry_kafka_schemas-2.1.38-py2.py3-none-any.whl", hash = "sha256:af1e09ba14fa0333933c30c01b71fb423bce4713d845567ab334840e7ef28aae", size = 299770, upload-time = "2026-06-25T18:46:13.445Z" },
 ]
 
 [[package]]
 name = "sentry-protos"
-version = "0.3.1"
+version = "0.34.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "grpc-stubs" },
     { name = "grpcio" },
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/da/86/532f9664566ec0b1eadec207a7dd1e3357cd28449db88f9fec70c3bb9f77/sentry_protos-0.3.1.tar.gz", hash = "sha256:c9433534dc2e81213a089a19f33bd337914aa078bb7b9b22e580537e68ee928f", size = 123196, upload-time = "2025-07-02T16:57:12.374Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/0b/e532ce227695afdba48f3a185e2ca27a3116d0090c5bc4e81f4bcbb6a7af/sentry_protos-0.34.1.tar.gz", hash = "sha256:d0c92add7d38da3cee9b6c178a158990e51d7f30da0607789637b93b9d0f948b", size = 153472, upload-time = "2026-06-25T17:04:57.279Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/c7/edca2b9964cd47329388f76887b2531aebe799cdc7fba5ff8fd16e1c6dac/sentry_protos-0.3.1-py3-none-any.whl", hash = "sha256:b2fd8d4e274ae213d5581ef9fd1efcf13249a12ad9b2e3acc5009026b1f1d33d", size = 196295, upload-time = "2025-07-02T16:57:11.41Z" },
+    { url = "https://files.pythonhosted.org/packages/31/79/0867a80449d0635e716734d734f9b055c670bbc4e1f1474ecf59e6926721/sentry_protos-0.34.1-py3-none-any.whl", hash = "sha256:f9f471047cb81e0ae6b5931c5929ef134c809d2372e95280a08a5e4d315d551b", size = 404507, upload-time = "2026-06-25T17:04:55.895Z" },
 ]
 
 [[package]]
@@ -897,7 +897,7 @@ wheels = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.55"
+version = "0.0.59"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -938,7 +938,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "sentry-arroyo", specifier = ">=2.39.2" },
-    { name = "sentry-kafka-schemas", specifier = ">=1.2.0" },
+    { name = "sentry-kafka-schemas", specifier = ">=2.1.38" },
 ]
 
 [package.metadata.requires-dev]
