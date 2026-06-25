@@ -1,3 +1,9 @@
+## 0.0.60
+
+### Internal Changes 🔧
+
+- (streams) Debounce noisy MessageRejected backpressure logs by @fpacifici in [#330](https://github.com/getsentry/streams/pull/330)
+
 ## 0.0.59
 
 - Make binary smaller by @fpacifici in [#329](https://github.com/getsentry/streams/pull/329)
