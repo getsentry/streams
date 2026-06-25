@@ -1,3 +1,16 @@
+## 0.0.61
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump msgpack from 1.1.1 to 1.2.1 in /sentry_streams by @dependabot in [#334](https://github.com/getsentry/streams/pull/334)
+- Bump sentry_arroyo to 2.40.0 by @lcian in [#331](https://github.com/getsentry/streams/pull/331)
+
+### Other
+
+- Bump kafka schemas by @fpacifici in [#337](https://github.com/getsentry/streams/pull/337)
+
 ## 0.0.60
 
 ### Internal Changes 🔧
