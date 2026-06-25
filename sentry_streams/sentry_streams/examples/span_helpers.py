@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from typing import Self
 
-from sentry_kafka_schemas.schema_types.snuba_spans_v1 import SpanEvent
+from sentry_kafka_schemas.schema_types.ingest_spans_v1 import SpanEvent
 
 from sentry_streams.pipeline.function_template import (
     Accumulator,
@@ -41,7 +41,9 @@ class SpansBuffer(Accumulator[Message[SpanEvent], Segment]):
 
     def add(self, value: Message[SpanEvent]) -> Self:
         self.spans_list.append(value.payload)
-        self.total_duration += value.payload["duration_ms"]
+        span = value.payload
+        duration_ms = int((span["end_timestamp"] - span["start_timestamp"]) * 1000)
+        self.total_duration += duration_ms
 
         return self
 

@@ -187,8 +187,7 @@ class DatadogMetricsBackend(MetricsBackend):
             namespace=METRICS_PREFIX.strip("."),
             constant_tags=[],
         )
-        # Ignore mypy: this method is untyped but is part of the public API.
-        self.datadog_client.enable_background_sender(  # type: ignore[no-untyped-call]
+        self.datadog_client.enable_background_sender(
             sender_queue_size=udp_queue_size if udp_queue_size is not None else SENDER_QUEUE_SIZE,
             sender_queue_timeout=SENDER_QUEUE_TIMEOUT,
         )
