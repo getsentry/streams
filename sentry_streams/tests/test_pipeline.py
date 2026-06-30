@@ -348,7 +348,11 @@ def test_gcssink_instantiation() -> None:
 
     route = Route(source="test-source", waypoints=["step1", "step2"])
     RuntimeOperator.GCSSink(
-        route=route, bucket="my-bucket", object_generator=generate_file_name, thread_count=1
+        route=route,
+        bucket="my-bucket",
+        object_generator=generate_file_name,
+        thread_count=1,
+        step_name="my-gcs-sink",
     )
 
 

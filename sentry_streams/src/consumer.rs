@@ -30,6 +30,7 @@ use sentry_arroyo::processing::strategies::ProcessingStrategyFactory;
 use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Default path for the healthcheck file touched when write_healthcheck is enabled.
@@ -92,6 +93,10 @@ pub struct ArroyoConsumer {
     // This is a requirement of Arroyo Rust.
     concurrency_config: Arc<ConcurrencyConfig>,
 
+    /// Per-step concurrency configs for operators that use thread pools (e.g. GCSSink).
+    /// Each entry must live for the lifetime of the entire consumer.
+    step_concurrency_configs: HashMap<String, Arc<ConcurrencyConfig>>,
+
     metric_config: Option<PyMetricConfig>,
 
     /// When true, wrap the strategy chain with HealthCheck to touch a file on poll for liveness.
@@ -130,11 +135,22 @@ impl ArroyoConsumer {
             steps: Vec::new(),
             handle: None,
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
+            step_concurrency_configs: HashMap::new(),
             metric_config,
             write_healthcheck,
             dlq_config,
             sentry_dsn,
         }
+    }
+
+    /// Register a thread pool for a pipeline step that runs work in threads
+    /// (e.g. GCSSink). Must be called before `run()` for each such step.
+    fn add_threadpool(&mut self, step_name: String, thread_count: usize) {
+        if self.step_concurrency_configs.contains_key(&step_name) {
+            panic!("duplicate ConcurrencyConfig registration for step '{step_name}'");
+        }
+        self.step_concurrency_configs
+            .insert(step_name, Arc::new(ConcurrencyConfig::new(thread_count)));
     }
 
     /// Add a step to the Consumer pipeline at the end of it.
@@ -167,6 +183,7 @@ impl ArroyoConsumer {
             self.source.clone(),
             &self.steps,
             self.concurrency_config.clone(),
+            self.step_concurrency_configs.clone(),
             self.schema.clone(),
             self.write_healthcheck,
             self.topic.clone(),
@@ -308,13 +325,20 @@ pub fn build_chain(
     source: &str,
     steps: &[Py<RuntimeOperator>],
     ending_strategy: Box<dyn ProcessingStrategy<RoutedValue>>,
-    concurrency_config: &ConcurrencyConfig,
+    default_concurrency_config: &ConcurrencyConfig,
+    step_concurrency_configs: &HashMap<String, Arc<ConcurrencyConfig>>,
     schema: &Option<String>,
     write_healthcheck: bool,
 ) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
     let mut next = ending_strategy;
     for step in steps.iter().rev() {
-        next = build(step, next, Box::new(Noop {}), concurrency_config);
+        next = build(
+            step,
+            next,
+            Box::new(Noop {}),
+            default_concurrency_config,
+            step_concurrency_configs,
+        );
     }
     let watermark_step = Box::new(WatermarkEmitter::new(
         next,
@@ -345,6 +369,7 @@ struct ArroyoStreamingFactory {
     source: String,
     steps: Vec<Py<RuntimeOperator>>,
     concurrency_config: Arc<ConcurrencyConfig>,
+    step_concurrency_configs: HashMap<String, Arc<ConcurrencyConfig>>,
     schema: Option<String>,
     write_healthcheck: bool,
     topic: String,
@@ -357,6 +382,7 @@ impl ArroyoStreamingFactory {
         source: String,
         steps: &[Py<RuntimeOperator>],
         concurrency_config: Arc<ConcurrencyConfig>,
+        step_concurrency_configs: HashMap<String, Arc<ConcurrencyConfig>>,
         schema: Option<String>,
         write_healthcheck: bool,
         topic: String,
@@ -373,6 +399,7 @@ impl ArroyoStreamingFactory {
             source,
             steps: steps_copy,
             concurrency_config,
+            step_concurrency_configs,
             schema,
             write_healthcheck,
             topic,
@@ -394,6 +421,7 @@ impl ProcessingStrategyFactory<KafkaPayload> for ArroyoStreamingFactory {
                 self.topic.clone(),
             )),
             &self.concurrency_config,
+            &self.step_concurrency_configs,
             &self.schema,
             self.write_healthcheck,
         )
@@ -412,6 +440,7 @@ mod tests {
     use pyo3::types::PyBytes;
     use pyo3::IntoPyObjectExt;
     use std::collections::BTreeMap;
+    use std::collections::HashMap;
     use std::ops::Deref;
     use std::path::Path;
     use std::sync::{Arc, Mutex};
@@ -496,11 +525,13 @@ mod tests {
             let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
 
             let concurrency_config = ConcurrencyConfig::new(1);
+            let step_concurrency_configs = HashMap::new();
             let mut chain = build_chain(
                 "source",
                 &steps,
                 Box::new(next_step),
                 &concurrency_config,
+                &step_concurrency_configs,
                 &Some("schema".to_string()),
                 true,
             );
@@ -531,6 +562,70 @@ mod tests {
             );
             let _ = std::fs::remove_file(healthcheck_path);
         })
+    }
+
+    #[test]
+    fn test_gcssink_build_chain_uses_step_concurrency() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let object_generator = make_lambda(py, c_str!("lambda: 'file.txt'"));
+            let gcs_step = Py::new(
+                py,
+                RuntimeOperator::GCSSink {
+                    route: Route::new("source".to_string(), vec![]),
+                    bucket: "bucket".to_string(),
+                    object_generator,
+                    thread_count: 4,
+                    step_name: "my-gcs-sink".to_string(),
+                },
+            )
+            .unwrap();
+
+            let step_concurrency_configs = HashMap::from([(
+                "my-gcs-sink".to_string(),
+                Arc::new(ConcurrencyConfig::new(4)),
+            )]);
+
+            let submitted_messages = Arc::new(Mutex::new(Vec::new()));
+            let submitted_watermarks = Arc::new(Mutex::new(Vec::new()));
+            let next_step = FakeStrategy::new(submitted_messages, submitted_watermarks, false);
+
+            let default_concurrency = ConcurrencyConfig::new(1);
+            let mut chain = build_chain(
+                "source",
+                &[gcs_step],
+                Box::new(next_step),
+                &default_concurrency,
+                &step_concurrency_configs,
+                &None,
+                false,
+            );
+
+            // Building the chain succeeds when the step config is registered.
+            let _ = chain.poll();
+        })
+    }
+
+    #[test]
+    fn test_add_threadpool_registers_concurrency() {
+        let mut step_concurrency_configs = HashMap::new();
+        let step_name = "my-gcs-sink".to_string();
+        let thread_count = 4usize;
+
+        assert!(!step_concurrency_configs.contains_key(&step_name));
+        step_concurrency_configs.insert(
+            step_name.clone(),
+            Arc::new(ConcurrencyConfig::new(thread_count)),
+        );
+
+        assert_eq!(step_concurrency_configs.len(), 1);
+        assert_eq!(
+            step_concurrency_configs
+                .get("my-gcs-sink")
+                .unwrap()
+                .concurrency,
+            4
+        );
     }
 
     #[test]
