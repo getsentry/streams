@@ -1,3 +1,9 @@
+## 0.0.62
+
+### Bug Fixes 🐛
+
+- (rust_arroyo) Honor GCSSink thread_count via per-step thread pools by @fpacifici in [#338](https://github.com/getsentry/streams/pull/338)
+
 ## 0.0.61
 
 ### Internal Changes 🔧
