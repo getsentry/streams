@@ -225,6 +225,7 @@ mod tests {
                 },
             )
             .unwrap();
+            let step_concurrency_configs = HashMap::new();
             let mut watermark_step = build_chain(
                 "source",
                 &[map_step],
@@ -234,6 +235,7 @@ mod tests {
                     "test_topic".to_string(),
                 )),
                 &ConcurrencyConfig::new(1),
+                &step_concurrency_configs,
                 &None,
                 false,
             );
@@ -311,6 +313,7 @@ class PassthroughDelegateFactory:
             )
             .unwrap();
 
+            let step_concurrency_configs = HashMap::new();
             let mut watermark_step = build_chain(
                 "source",
                 &[python_adapter_step],
@@ -320,6 +323,7 @@ class PassthroughDelegateFactory:
                     "test_topic".to_string(),
                 )),
                 &ConcurrencyConfig::new(1),
+                &step_concurrency_configs,
                 &None,
                 false,
             );

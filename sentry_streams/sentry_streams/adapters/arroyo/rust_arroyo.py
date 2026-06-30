@@ -352,8 +352,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                     output_metrics(step.name, None, start_time)
 
             logger.info(f"Adding GCS sink: {step.name} to pipeline")
-            self.__consumers[stream.source].add_step(
-                RuntimeOperator.GCSSink(route, step.bucket, wrapped_generator, step.thread_count)
+            consumer = self.__consumers[stream.source]
+            consumer.add_threadpool(step.name, step.thread_count)
+            consumer.add_step(
+                RuntimeOperator.GCSSink(
+                    route, step.bucket, wrapped_generator, step.thread_count, step.name
+                )
             )
 
         elif isinstance(step, DevNullSink):
