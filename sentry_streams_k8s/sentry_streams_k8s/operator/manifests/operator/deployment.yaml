@@ -1,0 +1,34 @@
+# The operator itself. Runs the `streams-k8s-operator` console script
+# (sentry_streams_k8s.operator.operator:main -> kopf.run). Single replica: kopf
+# peering is disabled (standalone=True) so a second replica would
+# double-reconcile rather than stand by.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streams-k8s-operator
+  namespace: sentry-streams
+spec:
+  selector:
+    matchLabels:
+      app: streams-k8s-operator
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: streams-k8s-operator
+    spec:
+      serviceAccountName: streams-k8s-operator
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: operator
+          image: __OPERATOR_IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["streams-k8s-operator"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 256Mi

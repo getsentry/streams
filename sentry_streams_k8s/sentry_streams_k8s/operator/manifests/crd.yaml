@@ -1,0 +1,125 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: streamingconsumers.streams.sentry.io
+spec:
+  group: streams.sentry.io
+  scope: Namespaced
+  names:
+    kind: StreamingConsumer
+    plural: streamingconsumers
+    singular: streamingconsumer
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Pipeline
+          type: string
+          jsonPath: .spec.pipeline_name
+        - name: Replicas
+          type: integer
+          jsonPath: .spec.replicas
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [resources, kafka, steps]
+              properties:
+                image:
+                  type: string
+                service_name:
+                  type: string
+                pipeline_name:
+                  type: string
+                sentry_region:
+                  type: string
+
+                application_dsn:
+                  type: string
+                arroyo_dsn:
+                  type: string
+
+                kafka:
+                  type: object
+                  required: [consumer_group, bootstrap_servers]
+                  properties:
+                    consumer_group:
+                      type: string
+                    bootstrap_servers:
+                      type: array
+                      items:
+                        type: string
+                    topic:
+                      type: string
+                    auto_offset_reset:
+                      type: string
+                      default: latest
+                    override_params:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+
+                steps:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+
+                app_feature:
+                  type: string
+                component:
+                  type: string
+
+                replicas:
+                  type: integer
+                  default: 1
+                  minimum: 0
+
+                resources:
+                  type: object
+                  required: [cpu_per_process, memory_per_process]
+                  properties:
+                    cpu_per_process:
+                      type: integer
+                    memory_per_process:
+                      type: integer
+
+                segment_id:
+                  type: integer
+                  default: 0
+                log_level:
+                  type: string
+                  enum: [DEBUG, INFO, WARNING, ERROR]
+                  default: INFO
+                enable_liveness_probe:
+                  type: boolean
+                  default: true
+                with_canary:
+                  type: boolean
+                  default: false
+                service_account:
+                  type: string
+                node_selector:
+                  type: object
+                  additionalProperties:
+                    type: string
+
+                enable_kafka_auth:
+                  type: boolean
+                kafka_sasl_username:
+                  type: string
+                kafka_sasl_secret_name:
+                  type: string
+
+                emergency_patch:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true

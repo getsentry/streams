@@ -16,11 +16,16 @@ classifiers = [
 ]
 dependencies = [
     "jsonschema>=4.23.0",
+    "kopf>=1.37",
+    "kubernetes>=29",
     "requests>=2.32.3",
     "sentry-infra-tools>=1.24.0",
     "sentry-streams>=0.0.40",
     "pyyaml>=6.0.2",
 ]
+
+[project.scripts]
+streams-k8s-operator = "sentry_streams_k8s.operator.operator:main"
 
 [dependency-groups]
 dev = [
