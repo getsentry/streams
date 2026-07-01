@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -1223,7 +1223,7 @@ wheels = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.60"
+version = "0.0.62"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
