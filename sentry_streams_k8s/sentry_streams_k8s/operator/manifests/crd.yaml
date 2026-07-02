@@ -1,0 +1,96 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: streamingconsumers.streams.sentry.io
+spec:
+  group: streams.sentry.io
+  scope: Namespaced
+  names:
+    kind: StreamingConsumer
+    plural: streamingconsumers
+    singular: streamingconsumer
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Pipeline
+          type: string
+          jsonPath: .spec.pipeline_name
+        - name: Replicas
+          type: integer
+          jsonPath: .spec.replicas
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required:
+                - service_name
+                - pipeline_module
+                - image_name
+                - cpu_per_process
+                - memory_per_process
+                - deployment_template
+                - container_template
+                - pipeline_config
+              properties:
+                service_name:
+                  type: string
+                pipeline_name:
+                  type: string
+                pipeline_module:
+                  type: string
+                image_name:
+                  type: string
+
+                replicas:
+                  type: integer
+                  default: 1
+                  minimum: 0
+                with_canary:
+                  type: boolean
+                  default: false
+
+                cpu_per_process:
+                  type: integer
+                memory_per_process:
+                  type: integer
+
+                segment_id:
+                  type: integer
+                  default: 0
+                log_level:
+                  type: string
+                  enum: [DEBUG, INFO, WARNING, ERROR]
+                  default: INFO
+                enable_liveness_probe:
+                  type: boolean
+                  default: true
+                container_name:
+                  type: string
+                  default: pipeline-consumer
+
+                deployment_template:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                container_template:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                pipeline_config:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+
+                emergency_patch:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
