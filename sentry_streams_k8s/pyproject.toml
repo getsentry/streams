@@ -49,7 +49,11 @@ dev = [
 where = ["."]
 
 [tool.setuptools.package-data]
-sentry_streams_k8s = ["py.typed", "templates/deployment.yaml", "templates/container.yaml"]
+sentry_streams_k8s = [
+    "py.typed",
+    "templates/deployment.yaml",
+    "templates/container.yaml",
+]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
