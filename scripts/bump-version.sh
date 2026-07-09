@@ -14,3 +14,8 @@ function replace() {
 }
 
 replace '^\s*version\s*=\s*"[0-9.]+"' "version = \"$NEW_VERSION\"" pyproject.toml
+
+if [ -f chart/streaming-operator/Chart.yaml ]; then
+    replace '^version: [0-9.]+' "version: $NEW_VERSION" chart/streaming-operator/Chart.yaml
+    replace '^appVersion: "[0-9.]+"' "appVersion: \"$NEW_VERSION\"" chart/streaming-operator/Chart.yaml
+fi
