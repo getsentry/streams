@@ -8,9 +8,9 @@ import pytest
 import yaml
 
 from sentry_streams_k8s.consumer_builder import compute_config_version
-from sentry_streams_k8s.operator.streaming_consumer import (
+from sentry_streams_k8s.operator.streaming_pipeline import (
     REQUIRED_FIELDS,
-    StreamingConsumerSpec,
+    StreamingPipelineSpec,
     from_crd_spec,
     render,
     validate,
@@ -85,7 +85,7 @@ def container_template() -> dict[str, Any]:
     }
 
 
-def consumer_spec(**overrides: Any) -> StreamingConsumerSpec:
+def consumer_spec(**overrides: Any) -> StreamingPipelineSpec:
     spec: dict[str, Any] = {
         "service_name": "my-service",
         "pipeline_name": "my-pipeline",
@@ -198,9 +198,7 @@ def test_crd_required_fields_match_operator_validation() -> None:
     crd = yaml.safe_load(CRD_PATH.read_text())
     version = crd["spec"]["versions"][0]
     crd_required = version["schema"]["openAPIV3Schema"]["properties"]["spec"]["required"]
-    # pipeline_name is required by the operator but defaulted from metadata.name,
-    # so the CRD does not require it.
-    assert set(crd_required) == set(REQUIRED_FIELDS) - {"pipeline_name"}
+    assert set(crd_required) == set(REQUIRED_FIELDS)
 
 
 def test_library_ships_only_the_crd() -> None:

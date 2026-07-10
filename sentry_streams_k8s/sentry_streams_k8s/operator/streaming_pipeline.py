@@ -5,7 +5,7 @@ from typing import Any, Mapping, NotRequired, TypedDict
 from sentry_streams_k8s.consumer_builder import ConsumerBuilder, ConsumerSpec
 
 
-class StreamingConsumerSpec(TypedDict):
+class StreamingPipelineSpec(TypedDict):
     service_name: str
     pipeline_name: str
     pipeline_module: str
@@ -37,22 +37,22 @@ REQUIRED_FIELDS = (
 )
 
 
-def from_crd_spec(crd_spec: Mapping[str, Any], *, name: str | None = None) -> StreamingConsumerSpec:
+def from_crd_spec(crd_spec: Mapping[str, Any], *, name: str | None = None) -> StreamingPipelineSpec:
     spec: dict[str, Any] = dict(crd_spec)
     if "pipeline_name" not in spec and name is not None:
         spec["pipeline_name"] = name
     return spec  # type: ignore[return-value]
 
 
-def validate(spec: StreamingConsumerSpec) -> None:
+def validate(spec: StreamingPipelineSpec) -> None:
     missing = [f for f in REQUIRED_FIELDS if f not in spec]
     if missing:
         raise ValueError(
-            f"StreamingConsumer is missing required field(s): {', '.join(sorted(missing))}."
+            f"StreamingPipeline is missing required field(s): {', '.join(sorted(missing))}."
         )
 
 
-def to_consumer_spec(spec: StreamingConsumerSpec) -> ConsumerSpec:
+def to_consumer_spec(spec: StreamingPipelineSpec) -> ConsumerSpec:
     return ConsumerSpec(
         service_name=spec["service_name"],
         pipeline_name=spec["pipeline_name"],
@@ -70,7 +70,7 @@ def to_consumer_spec(spec: StreamingConsumerSpec) -> ConsumerSpec:
     )
 
 
-def render(spec: StreamingConsumerSpec) -> dict[str, Any]:
+def render(spec: StreamingPipelineSpec) -> dict[str, Any]:
     builder = ConsumerBuilder(spec["deployment_template"], spec["container_template"])
     consumer = to_consumer_spec(spec)
     builder.validate(consumer, spec["pipeline_config"])

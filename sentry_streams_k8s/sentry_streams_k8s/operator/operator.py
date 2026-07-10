@@ -7,7 +7,7 @@ import kopf
 from kubernetes import client, dynamic
 
 from sentry_streams_k8s.consumer_builder import compute_config_version, make_k8s_name
-from sentry_streams_k8s.operator.streaming_consumer import (
+from sentry_streams_k8s.operator.streaming_pipeline import (
     from_crd_spec,
     render,
     validate,
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 GROUP = "streams.sentry.io"
 VERSION = "v1alpha1"
-PLURAL = "streamingconsumers"
+PLURAL = "streamingpipelines"
 FIELD_MANAGER = "streaming-operator"
 
 
@@ -80,7 +80,7 @@ def reconcile(
         result = render(consumer)
     except Exception as e:
         patch.status["conditions"] = [_condition("Rendered", False, type(e).__name__, str(e))]
-        raise kopf.PermanentError(f"StreamingConsumer {namespace}/{name} failed to render: {e}")
+        raise kopf.PermanentError(f"StreamingPipeline {namespace}/{name} failed to render: {e}")
 
     manifests = [result["configmap"], result["deployment"]]
     if "canary_deployment" in result:

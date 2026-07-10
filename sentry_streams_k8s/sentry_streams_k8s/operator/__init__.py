@@ -1,12 +1,12 @@
-from sentry_streams_k8s.operator.streaming_consumer import (
-    StreamingConsumerSpec,
+from sentry_streams_k8s.operator.streaming_pipeline import (
+    StreamingPipelineSpec,
     from_crd_spec,
     render,
     validate,
 )
 
 __all__ = [
-    "StreamingConsumerSpec",
+    "StreamingPipelineSpec",
     "from_crd_spec",
     "render",
     "validate",
