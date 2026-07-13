@@ -18,11 +18,11 @@ rules:
     resources: [streamingpipelines/status]
     verbs: [get, patch]
   - apiGroups: [""]
-    resources: [configmaps]
-    verbs: [get, list, watch, create, patch]
+    resources: [configmaps, events, pods]
+    verbs: [get, list, watch]
   - apiGroups: [apps]
     resources: [deployments]
-    verbs: [get, list, watch, create, patch, delete]
+    verbs: [get, list, watch]
   - apiGroups: [""]
     resources: [events]
     verbs: [create, patch]
@@ -36,6 +36,37 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
+  name: {{ include "streaming-operator.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "streaming-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "streaming-operator.fullname" . }}
+  namespace: streaming-pipelines
+  labels:
+    {{- include "streaming-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps, pods]
+    verbs: [create, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [create, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "streaming-operator.fullname" . }}
+  namespace: streaming-pipelines
+  labels:
+    {{- include "streaming-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
   name: {{ include "streaming-operator.fullname" . }}
 subjects:
   - kind: ServiceAccount
