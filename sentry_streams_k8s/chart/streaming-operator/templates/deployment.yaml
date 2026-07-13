@@ -1,6 +1,3 @@
-{{- if gt (int .Values.replicaCount) 1 }}
-{{- fail "streaming-operator supports a single replica only: kopf runs standalone without leader election, two replicas would double-reconcile" }}
-{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,7 +6,7 @@ metadata:
   labels:
     {{- include "streaming-operator.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: 1
   strategy:
     type: Recreate
   selector:
