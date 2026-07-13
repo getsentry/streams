@@ -5,8 +5,9 @@ from typing import Any
 
 import kopf
 from kubernetes import client, dynamic
+from kubernetes.client.exceptions import ApiException
 
-from sentry_streams_k8s.consumer_builder import compute_config_version, make_k8s_name
+from sentry_streams_k8s.consumer_builder import compute_config_version
 from sentry_streams_k8s.operator.streaming_pipeline import (
     from_crd_spec,
     render,
@@ -19,37 +20,103 @@ GROUP = "streams.sentry.io"
 VERSION = "v1alpha1"
 PLURAL = "streamingpipelines"
 FIELD_MANAGER = "streaming-operator"
+WORKLOAD_NAMESPACE = "streaming-pipelines"
+OWNER_UID_LABEL = "streams.sentry.io/owner-uid"
+OWNER_NAME_ANNOTATION = "streams.sentry.io/owner-name"
+OWNER_NAMESPACE_ANNOTATION = "streams.sentry.io/owner-namespace"
 
 
-def _apply(dyn: dynamic.DynamicClient, manifest: dict[str, Any], namespace: str) -> None:
+def _prepare_manifest(
+    manifest: dict[str, Any],
+    *,
+    owner_uid: str,
+    owner_name: str,
+    owner_namespace: str,
+) -> None:
+    metadata = manifest.setdefault("metadata", {})
+    metadata["namespace"] = WORKLOAD_NAMESPACE
+    metadata["labels"] = {
+        **metadata.get("labels", {}),
+        OWNER_UID_LABEL: owner_uid,
+    }
+    metadata["annotations"] = {
+        **metadata.get("annotations", {}),
+        OWNER_NAME_ANNOTATION: owner_name,
+        OWNER_NAMESPACE_ANNOTATION: owner_namespace,
+    }
+
+
+def _apply(
+    dyn: dynamic.DynamicClient,
+    manifest: dict[str, Any],
+    *,
+    owner_uid: str,
+) -> None:
     resource = dyn.resources.get(api_version=manifest["apiVersion"], kind=manifest["kind"])
+    name = manifest["metadata"]["name"]
+    try:
+        existing = resource.get(name=name, namespace=WORKLOAD_NAMESPACE)
+    except ApiException as e:
+        if e.status != 404:
+            raise
+    else:
+        labels = existing.metadata.labels or {}
+        existing_owner_uid = labels.get(OWNER_UID_LABEL)
+        if existing_owner_uid != owner_uid:
+            raise kopf.PermanentError(
+                f"{manifest['kind']} {WORKLOAD_NAMESPACE}/{name} is already present and is not "
+                "managed by this StreamingPipeline."
+            )
+
     dyn.server_side_apply(
         resource,
         body=manifest,
-        namespace=namespace,
-        field_manager=FIELD_MANAGER,
-        force_conflicts=True,
+        namespace=WORKLOAD_NAMESPACE,
+        field_manager=f"{FIELD_MANAGER}-{owner_uid}",
     )
 
 
-def _prune_stale_deployments(
+def _prune_stale_resources(
     *,
-    namespace: str,
     owner_uid: str,
-    service_name: str,
-    pipeline_name: str,
-    desired_names: set[str],
+    desired_deployments: set[str],
+    desired_configmaps: set[str],
 ) -> None:
+    selector = f"{OWNER_UID_LABEL}={owner_uid}"
+
     apps = client.AppsV1Api()
-    selector = f"service={make_k8s_name(service_name)},pipeline={make_k8s_name(pipeline_name)}"
-    existing = apps.list_namespaced_deployment(namespace=namespace, label_selector=selector)
-    for item in existing.items:
-        owner_refs = item.metadata.owner_references or []
-        if not any(ref.uid == owner_uid for ref in owner_refs):
-            continue
-        if item.metadata.name not in desired_names:
-            logger.info("Pruning stale deployment %s/%s", namespace, item.metadata.name)
-            apps.delete_namespaced_deployment(name=item.metadata.name, namespace=namespace)
+    deployments = apps.list_namespaced_deployment(
+        namespace=WORKLOAD_NAMESPACE,
+        label_selector=selector,
+    )
+    for deployment in deployments.items:
+        if deployment.metadata.name not in desired_deployments:
+            logger.info(
+                "Pruning stale deployment %s/%s",
+                WORKLOAD_NAMESPACE,
+                deployment.metadata.name,
+            )
+            apps.delete_namespaced_deployment(
+                name=deployment.metadata.name,
+                namespace=WORKLOAD_NAMESPACE,
+            )
+
+    core = client.CoreV1Api()
+    configmaps = core.list_namespaced_config_map(
+        namespace=WORKLOAD_NAMESPACE,
+        label_selector=selector,
+    )
+    for configmap in configmaps.items:
+        if configmap.metadata.name not in desired_configmaps:
+            logger.info(
+                "Pruning stale configmap %s/%s",
+                WORKLOAD_NAMESPACE,
+                configmap.metadata.name,
+            )
+            core.delete_namespaced_config_map(
+                name=configmap.metadata.name,
+                namespace=WORKLOAD_NAMESPACE,
+            )
 
 
 def _condition(type_: str, status: bool, reason: str, message: str = "") -> dict[str, Any]:
@@ -88,15 +155,26 @@ def reconcile(
 
     dyn = dynamic.DynamicClient(client.ApiClient())
     for manifest in manifests:
-        kopf.adopt(manifest)
-        _apply(dyn, manifest, namespace)
+        _prepare_manifest(
+            manifest,
+            owner_uid=uid,
+            owner_name=name,
+            owner_namespace=namespace,
+        )
+        _apply(dyn, manifest, owner_uid=uid)
 
-    _prune_stale_deployments(
-        namespace=namespace,
+    _prune_stale_resources(
         owner_uid=uid,
-        service_name=consumer["service_name"],
-        pipeline_name=consumer["pipeline_name"],
-        desired_names={m["metadata"]["name"] for m in manifests if m["kind"] == "Deployment"},
+        desired_deployments={
+            manifest["metadata"]["name"]
+            for manifest in manifests
+            if manifest["kind"] == "Deployment"
+        },
+        desired_configmaps={
+            manifest["metadata"]["name"]
+            for manifest in manifests
+            if manifest["kind"] == "ConfigMap"
+        },
     )
 
     replicas = consumer.get("replicas", 1)
@@ -107,6 +185,16 @@ def reconcile(
     ]
     patch.status["config_version"] = compute_config_version(consumer["pipeline_config"])
     patch.status["replicas"] = {"primary": replicas - canary, "canary": canary}
+    patch.status["workload_namespace"] = WORKLOAD_NAMESPACE
+
+
+@kopf.on.delete(GROUP, VERSION, PLURAL)
+def cleanup(uid: str, **_: Any) -> None:
+    _prune_stale_resources(
+        owner_uid=uid,
+        desired_deployments=set(),
+        desired_configmaps=set(),
+    )
 
 
 def main() -> None:

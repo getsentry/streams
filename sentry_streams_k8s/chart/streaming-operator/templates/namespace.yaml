@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: streaming-pipelines
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "streaming-operator.labels" . | nindent 4 }}
