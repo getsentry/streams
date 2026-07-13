@@ -1,6 +1,3 @@
-# version and appVersion are kept equal to the sentry-streams-k8s python
-# package version by scripts/bump-version.sh. do not manually bump them.
-
 apiVersion: v2
 name: streaming-operator
 type: application

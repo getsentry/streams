@@ -20,7 +20,7 @@ CRD_PATH = (
     pathlib.Path(__file__).resolve().parents[1]
     / "chart"
     / "streaming-operator"
-    / "templates"
+    / "crds"
     / "crd.yaml"
 )
 
