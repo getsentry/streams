@@ -1,0 +1,39 @@
+name: Build & Push Streaming Operator Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - sentry_streams_k8s/**
+      - .github/workflows/build-operator.yaml
+
+jobs:
+  build-and-push:
+    name: Build and push image to ${{ matrix.registry }} Google Artifact Registry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      matrix:
+        include:
+          - registry: single-region
+            image: us-central1-docker.pkg.dev/sentryio/streaming-operator/image
+          - registry: multi-region
+            image: us-docker.pkg.dev/sentryio/streaming-operator-mr/image
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: getsentry/action-build-and-push-images@4852d671d747d7c0268b2a3fc429fee9d4a16f78
+        with:
+          image_name: 'streaming-operator'
+          platforms: linux/amd64
+          dockerfile_path: './sentry_streams_k8s/Dockerfile'
+          build_context: './sentry_streams_k8s'
+          ghcr: false
+          tag_nightly: false
+          google_ar: true
+          google_ar_image_name: ${{ matrix.image }}
+          google_workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
+          google_service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
