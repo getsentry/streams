@@ -42,39 +42,37 @@ jobs:
     name: Publish Helm chart
     needs: build-and-push
     runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
     permissions:
-      contents: read
-      id-token: write
+      contents: write
     env:
       CHART_DIR: sentry_streams_k8s/chart/streaming-operator
-      CHART_OCI_REPO: oci://us-central1-docker.pkg.dev/sentryio/streaming-operator
       CHART_VERSION: 0.0.0-${{ github.sha }}
       IMAGE_TAG: ${{ github.sha }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
-          service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
+          fetch-depth: 0
 
-      - name: Lint chart
+      - name: Prepare and lint chart
         run: |
+          sed -i "s/^version:.*/version: ${CHART_VERSION}/" "${CHART_DIR}/Chart.yaml"
+          sed -i "s/^appVersion:.*/appVersion: \"${IMAGE_TAG}\"/" "${CHART_DIR}/Chart.yaml"
           helm lint "${CHART_DIR}"
-          helm template streaming-operator "${CHART_DIR}" \
-            --set-string image.tag="${IMAGE_TAG}" > /dev/null
+          helm template streaming-operator "${CHART_DIR}" > /dev/null
 
-      - name: Push chart
+      - name: Configure Git
         run: |
-          gcloud auth print-access-token \
-            | helm registry login us-central1-docker.pkg.dev \
-                --username oauth2accesstoken \
-                --password-stdin
-          helm package "${CHART_DIR}" \
-            --destination /tmp/chart-dist \
-            --version "${CHART_VERSION}" \
-            --app-version "${IMAGE_TAG}"
-          helm push \
-            "/tmp/chart-dist/streaming-operator-${CHART_VERSION}.tgz" \
-            "${CHART_OCI_REPO}"
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Release chart
+        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
+        with:
+          charts_dir: sentry_streams_k8s/chart
+          skip_existing: true
+          mark_as_latest: false
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
