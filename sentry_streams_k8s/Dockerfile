@@ -21,10 +21,9 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir uv
 
 # Install Python dependencies declared in pyproject.toml, including the
-# operator extra (kopf, kubernetes) and the macro extra (libsentrykube),
-# which sentry_streams_k8s imports at package import time
+# operator extra (kopf and kubernetes).
 COPY pyproject.toml pyproject.toml
-RUN uv pip install --system -r pyproject.toml --extra operator --extra macro
+RUN uv pip install --system -r pyproject.toml --extra operator
 
 # Copy application source (owned by non-root user)
 COPY --chown=streaming-operator:streaming-operator README.md README.md

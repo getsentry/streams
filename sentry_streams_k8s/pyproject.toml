@@ -47,6 +47,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["sentry_streams_k8s*"]
 
 [tool.setuptools.package-data]
 sentry_streams_k8s = ["py.typed", "templates/deployment.yaml", "templates/container.yaml"]
