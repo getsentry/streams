@@ -24,3 +24,7 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- define "streaming-operator.serviceAccountName" -}}
 {{- default (include "streaming-operator.fullname" .) .Values.serviceAccount.name -}}
 {{- end -}}
+
+{{- define "streaming-operator.workloadNamespace" -}}
+{{- required "workloadNamespace must be set" .Values.workloadNamespace -}}
+{{- end -}}

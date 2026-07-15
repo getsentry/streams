@@ -10,11 +10,12 @@ from sentry_streams_k8s.operator.operator import (
     OWNER_NAME_ANNOTATION,
     OWNER_NAMESPACE_ANNOTATION,
     OWNER_UID_LABEL,
-    WORKLOAD_NAMESPACE,
     _apply,
     _prepare_manifest,
     _prune_stale_resources,
 )
+
+WORKLOAD_NAMESPACE = "test-streaming-pipelines"
 
 
 def test_prepare_manifest_routes_workload_and_records_source_cr() -> None:
@@ -31,6 +32,7 @@ def test_prepare_manifest_routes_workload_and_records_source_cr() -> None:
 
     _prepare_manifest(
         manifest,
+        workload_namespace=WORKLOAD_NAMESPACE,
         owner_uid="owner-uid",
         owner_name="pipeline-cr",
         owner_namespace="default",
@@ -65,7 +67,12 @@ def test_apply_rejects_resource_owned_by_another_cr() -> None:
     }
 
     with pytest.raises(kopf.PermanentError, match="not managed by this StreamingPipeline"):
-        _apply(dyn, manifest, owner_uid="owner-uid")
+        _apply(
+            dyn,
+            manifest,
+            workload_namespace=WORKLOAD_NAMESPACE,
+            owner_uid="owner-uid",
+        )
 
     dyn.server_side_apply.assert_not_called()
 
@@ -83,7 +90,12 @@ def test_apply_uses_workload_namespace_and_per_cr_field_manager() -> None:
         "metadata": {"name": "pipeline", "namespace": WORKLOAD_NAMESPACE},
     }
 
-    _apply(dyn, manifest, owner_uid="owner-uid")
+    _apply(
+        dyn,
+        manifest,
+        workload_namespace=WORKLOAD_NAMESPACE,
+        owner_uid="owner-uid",
+    )
 
     resource.get.assert_called_once_with(name="pipeline", namespace=WORKLOAD_NAMESPACE)
     dyn.server_side_apply.assert_called_once_with(
@@ -112,6 +124,7 @@ def test_prune_removes_only_stale_resources(
     ]
 
     _prune_stale_resources(
+        workload_namespace=WORKLOAD_NAMESPACE,
         owner_uid="owner-uid",
         desired_deployments={"desired-deployment"},
         desired_configmaps={"desired-configmap"},

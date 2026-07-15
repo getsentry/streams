@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: streaming-pipelines
+  name: {{ include "streaming-operator.workloadNamespace" . }}
   annotations:
     helm.sh/resource-policy: keep
   labels:

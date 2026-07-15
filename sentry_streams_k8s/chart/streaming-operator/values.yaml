@@ -2,6 +2,8 @@
 # - serviceAccount.name defaults to the chart's full name when left empty.
 # - image.tag defaults to the chart's appVersion when left empty.
 
+workloadNamespace: ""
+
 image:
   repository: us-central1-docker.pkg.dev/sentryio/streaming-operator/image
   tag: ""

@@ -60,8 +60,9 @@ jobs:
         run: |
           sed -i "s/^version:.*/version: ${CHART_VERSION}/" "${CHART_DIR}/Chart.yaml"
           sed -i "s/^appVersion:.*/appVersion: \"${IMAGE_TAG}\"/" "${CHART_DIR}/Chart.yaml"
-          helm lint "${CHART_DIR}"
-          helm template streaming-operator "${CHART_DIR}" > /dev/null
+          helm lint "${CHART_DIR}" --set workloadNamespace=streaming-pipelines
+          helm template streaming-operator "${CHART_DIR}" \
+            --set workloadNamespace=streaming-pipelines > /dev/null
 
       - name: Configure Git
         run: |
