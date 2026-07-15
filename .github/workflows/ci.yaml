@@ -37,8 +37,10 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
       - name: Lint and render chart
         run: |
-          helm lint sentry_streams_k8s/chart/streaming-operator
-          helm template streaming-operator sentry_streams_k8s/chart/streaming-operator > /dev/null
+          helm lint sentry_streams_k8s/chart/streaming-operator \
+            --set workloadNamespace=streaming-pipelines
+          helm template streaming-operator sentry_streams_k8s/chart/streaming-operator \
+            --set workloadNamespace=streaming-pipelines > /dev/null
 
   integration-tests:
     name: "Run integration tests"

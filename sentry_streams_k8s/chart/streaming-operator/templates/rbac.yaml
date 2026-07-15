@@ -40,7 +40,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ include "streaming-operator.fullname" . }}
-  namespace: streaming-pipelines
+  namespace: {{ include "streaming-operator.workloadNamespace" . }}
   labels:
     {{- include "streaming-operator.labels" . | nindent 4 }}
 rules:
@@ -55,7 +55,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ include "streaming-operator.fullname" . }}
-  namespace: streaming-pipelines
+  namespace: {{ include "streaming-operator.workloadNamespace" . }}
   labels:
     {{- include "streaming-operator.labels" . | nindent 4 }}
 roleRef:
