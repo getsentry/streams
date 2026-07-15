@@ -77,7 +77,7 @@ def test_apply_rejects_resource_owned_by_another_cr() -> None:
     dyn.server_side_apply.assert_not_called()
 
 
-def test_apply_uses_workload_namespace_and_per_cr_field_manager() -> None:
+def test_apply_uses_workload_namespace_and_stable_field_manager() -> None:
     resource = MagicMock()
     resource.get.return_value = SimpleNamespace(
         metadata=SimpleNamespace(labels={OWNER_UID_LABEL: "owner-uid"})
@@ -102,7 +102,8 @@ def test_apply_uses_workload_namespace_and_per_cr_field_manager() -> None:
         resource,
         body=manifest,
         namespace=WORKLOAD_NAMESPACE,
-        field_manager="streaming-operator-owner-uid",
+        field_manager="streaming-operator",
+        force_conflicts=True,
     )
 
 
