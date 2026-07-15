@@ -82,7 +82,8 @@ def _apply(
         resource,
         body=manifest,
         namespace=workload_namespace,
-        field_manager=f"{FIELD_MANAGER}-{owner_uid}",
+        field_manager=FIELD_MANAGER,
+        force_conflicts=True,
     )
 
 
