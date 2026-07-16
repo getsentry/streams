@@ -1,0 +1,32 @@
+# - labels is for things like Sentry COGS tags (service, app_feature, component).
+# - serviceAccount.name defaults to the chart's full name when left empty.
+# - image.tag defaults to the chart's appVersion when left empty.
+
+workloadNamespace: ""
+
+image:
+  repository: us-central1-docker.pkg.dev/sentryio/streaming-operator/image
+  tag: ""
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 256Mi
+
+env: []
+
+labels: {}
+
+podLabels: {}
+podAnnotations: {}
+
+serviceAccount:
+  name: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""

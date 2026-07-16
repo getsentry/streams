@@ -1,4 +1,4 @@
-name: Build & Push Streaming Operator Image
+name: Publish Streaming Operator
 
 on:
   push:
@@ -37,3 +37,43 @@ jobs:
           google_ar_image_name: ${{ matrix.image }}
           google_workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
           google_service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
+
+  publish-chart:
+    name: Publish Helm chart
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      CHART_DIR: sentry_streams_k8s/chart/streaming-operator
+      CHART_VERSION: 0.0.0-${{ github.sha }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+
+      - name: Prepare and lint chart
+        run: |
+          sed -i "s/^version:.*/version: ${CHART_VERSION}/" "${CHART_DIR}/Chart.yaml"
+          sed -i "s/^appVersion:.*/appVersion: \"${IMAGE_TAG}\"/" "${CHART_DIR}/Chart.yaml"
+          helm lint "${CHART_DIR}" --set workloadNamespace=streaming-pipelines
+          helm template streaming-operator "${CHART_DIR}" \
+            --set workloadNamespace=streaming-pipelines > /dev/null
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Release chart
+        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
+        with:
+          charts_dir: sentry_streams_k8s/chart
+          skip_existing: true
+          mark_as_latest: false
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}

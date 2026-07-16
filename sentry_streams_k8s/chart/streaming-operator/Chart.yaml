@@ -1,0 +1,8 @@
+apiVersion: v2
+name: streaming-operator
+type: application
+kubeVersion: ">=1.23.0-0"
+version: 0.0.0
+appVersion: "latest"
+sources:
+  - https://github.com/getsentry/streams/tree/main/sentry_streams_k8s

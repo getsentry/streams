@@ -18,9 +18,9 @@ from sentry_streams_k8s.operator.streaming_pipeline import (
 
 CRD_PATH = (
     pathlib.Path(__file__).resolve().parents[1]
-    / "sentry_streams_k8s"
-    / "operator"
-    / "manifests"
+    / "chart"
+    / "streaming-operator"
+    / "crds"
     / "crd.yaml"
 )
 
@@ -199,10 +199,3 @@ def test_crd_required_fields_match_operator_validation() -> None:
     version = crd["spec"]["versions"][0]
     crd_required = version["schema"]["openAPIV3Schema"]["properties"]["spec"]["required"]
     assert set(crd_required) == set(REQUIRED_FIELDS)
-
-
-def test_library_ships_only_the_crd() -> None:
-    """Operator deployment manifests (namespace, RBAC, Deployment, ...) are
-    cluster-specific and belong to the deployment repo, not the library."""
-    manifests_dir = CRD_PATH.parent
-    assert [p.name for p in sorted(manifests_dir.iterdir())] == ["crd.yaml"]
