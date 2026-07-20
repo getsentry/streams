@@ -382,14 +382,18 @@ def reconcile_pipeline(
     workload_namespace: str,
     logger: Logger,
     patch: kopf.Patch | None = None,
+    status: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    status_patch = status if status is not None else patch.status if patch is not None else None
     consumer = from_crd_spec(dict(spec), name=name)
     try:
         validate(consumer)
         result = render(consumer)
     except Exception as e:
-        if patch is not None:
-            patch.status["conditions"] = [_condition("Rendered", False, type(e).__name__, str(e))]
+        if status_patch is not None:
+            status_patch["conditions"] = [
+                _condition("Rendered", False, type(e).__name__, str(e))
+            ]
         raise kopf.PermanentError(f"StreamingPipeline {namespace}/{name} failed to render: {e}")
 
     dyn = dynamic.DynamicClient(client.ApiClient())
@@ -440,7 +444,7 @@ def reconcile_pipeline(
         logger=logger,
     )
 
-    if patch is not None:
+    if status_patch is not None:
         conditions = [
             _condition("Rendered", True, "Rendered"),
             _condition("Applied", True, "Applied"),
@@ -455,9 +459,9 @@ def reconcile_pipeline(
                 f"Pod {error['name']} is permanently unhealthy: {error['reason']}. "
                 "Update the StreamingPipeline spec.",
             )
-        patch.status["conditions"] = conditions
-        patch.status["config_version"] = compute_config_version(consumer["pipeline_config"])
-        patch.status["pods"] = pod_result
-        patch.status["workload_namespace"] = workload_namespace
+        status_patch["conditions"] = conditions
+        status_patch["config_version"] = compute_config_version(consumer["pipeline_config"])
+        status_patch["pods"] = pod_result
+        status_patch["workload_namespace"] = workload_namespace
 
     return pod_result

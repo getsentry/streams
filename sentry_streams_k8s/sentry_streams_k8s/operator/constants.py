@@ -55,8 +55,13 @@ PERMANENT_WAITING_REASONS = frozenset({"InvalidImageName"})
 POD_WAITING_GRACE_SECONDS = 300
 POD_TERMINATING_GRACE_SECONDS = 600
 
-# How often the timer re-runs a full reconcile as a safety net behind the watch:
+# How often the daemon re-runs a full reconcile as a safety net behind the watch:
 
 HEALTH_SCAN_INTERVAL_SECONDS = 60
+
+# Bound full reconciliations across pipelines so changes 
+# to many CRs cannot overload Kubernetes API requests:
+
+MAX_CONCURRENT_RECONCILES = 4
 
 Logger = Any

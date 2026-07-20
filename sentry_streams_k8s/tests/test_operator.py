@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import ANY, MagicMock, patch
 
 import kopf
@@ -12,6 +14,7 @@ from sentry_streams_k8s.operator.constants import (
     OWNER_UID_LABEL,
 )
 from sentry_streams_k8s.operator.operator import (
+    ReconcileScheduler,
     cleanup,
     handle_pipeline_pod_event,
 )
@@ -215,7 +218,7 @@ def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
         return canary_result
 
     reconcile_pods.side_effect = allocate_generation
-    patch = SimpleNamespace(status={})
+    status: dict[str, Any] = {}
     logger = MagicMock()
     result = reconcile_pipeline(
         spec={"pipeline_config": {}, "replicas": 1, "with_canary": True},
@@ -224,7 +227,7 @@ def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
         uid="uid",
         workload_namespace=WORKLOAD_NAMESPACE,
         logger=logger,
-        patch=patch,
+        status=status,
     )
 
     assert result == {
@@ -276,13 +279,13 @@ def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
         },
         logger=logger,
     )
-    assert patch.status["conditions"][-1] == {
+    assert status["conditions"][-1] == {
         "type": "Applied",
         "status": "True",
         "reason": "Applied",
         "message": "",
     }
-    assert patch.status["pods"] == result
+    assert status["pods"] == result
 
 
 def test_do_reconcile_does_not_save_unchanged_ledger_and_reports_permanent_pod_error(
@@ -351,72 +354,83 @@ def test_do_reconcile_does_not_save_unchanged_ledger_and_reports_permanent_pod_e
     assert patch.status["conditions"][-1]["reason"] == "PermanentPodFailure"
 
 
-def test_pod_event_recovers_fatal_pod_and_ignores_healthy_updates(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    reconcile = MagicMock()
-    owner = {"metadata": {"uid": "uid"}, "spec": {"pipeline_config": {}}}
-    monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
-    monkeypatch.setattr("sentry_streams_k8s.operator.operator._fetch_owner", lambda *_: owner)
-    monkeypatch.setattr("sentry_streams_k8s.operator.operator.reconcile_pipeline", reconcile)
+def test_pod_event_coalesces_reconcile_requests_and_ignores_healthy_updates() -> None:
+    scheduler = ReconcileScheduler()
+    event = scheduler.register("uid")
+    memo = SimpleNamespace(reconcile_scheduler=scheduler)
 
-    handle_pipeline_pod_event(
-        type="MODIFIED",
-        body={"metadata": {"name": "consumer-0-0"}, "status": {"phase": "Running"}},
-        meta={},
-        annotations={OWNER_NAME_ANNOTATION: "pipeline", OWNER_NAMESPACE_ANNOTATION: "source"},
-        name="consumer-0-0",
-        namespace=WORKLOAD_NAMESPACE,
-        logger=MagicMock(),
+    asyncio.run(
+        handle_pipeline_pod_event(
+            type="MODIFIED",
+            body={"metadata": {"name": "consumer-0-0"}, "status": {"phase": "Running"}},
+            meta={},
+            labels={OWNER_UID_LABEL: "uid"},
+            name="consumer-0-0",
+            namespace=WORKLOAD_NAMESPACE,
+            memo=memo,
+            logger=MagicMock(),
+        )
     )
-    reconcile.assert_not_called()
+    assert not event.is_set()
 
-    handle_pipeline_pod_event(
-        type="DELETED",
-        body={},
-        meta={},
-        annotations={OWNER_NAME_ANNOTATION: "pipeline", OWNER_NAMESPACE_ANNOTATION: "source"},
-        name="consumer-0-0",
-        namespace=WORKLOAD_NAMESPACE,
-        logger=MagicMock(),
+    asyncio.run(
+        handle_pipeline_pod_event(
+            type="DELETED",
+            body={},
+            meta={},
+            labels={OWNER_UID_LABEL: "uid"},
+            name="consumer-0-0",
+            namespace=WORKLOAD_NAMESPACE,
+            memo=memo,
+            logger=MagicMock(),
+        )
     )
-    reconcile.assert_called_once_with(
-        spec={"pipeline_config": {}},
-        name="pipeline",
-        namespace="source",
-        uid="uid",
-        workload_namespace=WORKLOAD_NAMESPACE,
-        logger=ANY,
+    asyncio.run(
+        handle_pipeline_pod_event(
+            type="DELETED",
+            body={},
+            meta={},
+            labels={OWNER_UID_LABEL: "uid"},
+            name="consumer-1-0",
+            namespace=WORKLOAD_NAMESPACE,
+            memo=memo,
+            logger=MagicMock(),
+        )
     )
+    assert event.is_set()
 
 
-def test_pod_event_does_not_recover_missing_or_deleting_owner(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    reconcile = MagicMock()
-    monkeypatch.setattr("sentry_streams_k8s.operator.operator.reconcile_pipeline", reconcile)
-    monkeypatch.setattr("sentry_streams_k8s.operator.operator._fetch_owner", lambda *_: None)
+def test_pod_event_ignores_missing_or_inactive_owner() -> None:
+    scheduler = ReconcileScheduler()
+    event = scheduler.register("active-uid")
+    memo = SimpleNamespace(reconcile_scheduler=scheduler)
     logger = MagicMock()
 
-    handle_pipeline_pod_event(
-        type="DELETED",
-        body={},
-        meta={},
-        annotations={},
-        name="consumer-0-0",
-        namespace=WORKLOAD_NAMESPACE,
-        logger=logger,
+    asyncio.run(
+        handle_pipeline_pod_event(
+            type="DELETED",
+            body={},
+            meta={},
+            labels={},
+            name="consumer-0-0",
+            namespace=WORKLOAD_NAMESPACE,
+            memo=memo,
+            logger=logger,
+        )
     )
-    handle_pipeline_pod_event(
-        type="DELETED",
-        body={},
-        meta={},
-        annotations={OWNER_NAME_ANNOTATION: "pipeline", OWNER_NAMESPACE_ANNOTATION: "source"},
-        name="consumer-0-0",
-        namespace=WORKLOAD_NAMESPACE,
-        logger=logger,
+    asyncio.run(
+        handle_pipeline_pod_event(
+            type="DELETED",
+            body={},
+            meta={},
+            labels={OWNER_UID_LABEL: "deleted-uid"},
+            name="consumer-0-0",
+            namespace=WORKLOAD_NAMESPACE,
+            memo=memo,
+            logger=logger,
+        )
     )
-    reconcile.assert_not_called()
+    assert not event.is_set()
 
 
 def test_cleanup_deletes_owned_pods_and_prunes_resources(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -427,8 +441,11 @@ def test_cleanup_deletes_owned_pods_and_prunes_resources(monkeypatch: pytest.Mon
     monkeypatch.setattr("sentry_streams_k8s.operator.operator.dynamic.DynamicClient", lambda _: dyn)
     monkeypatch.setattr("sentry_streams_k8s.operator.operator.delete_owned_pods", delete_pods)
     monkeypatch.setattr("sentry_streams_k8s.operator.operator.prune_stale_configmaps", prune)
+    scheduler = ReconcileScheduler()
+    scheduler.register("uid")
+    memo = SimpleNamespace(reconcile_scheduler=scheduler)
 
-    cleanup(uid="uid", logger=MagicMock())
+    asyncio.run(cleanup(uid="uid", memo=memo, logger=MagicMock()))
 
     delete_pods.assert_called_once_with(dyn, WORKLOAD_NAMESPACE, "uid", ANY)
     prune.assert_called_once_with(
