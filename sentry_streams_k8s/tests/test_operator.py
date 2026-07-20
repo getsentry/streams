@@ -1,18 +1,25 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import kopf
 import pytest
 
-from sentry_streams_k8s.operator.operator import (
+from sentry_streams_k8s.operator.constants import (
     OWNER_NAME_ANNOTATION,
     OWNER_NAMESPACE_ANNOTATION,
     OWNER_UID_LABEL,
+)
+from sentry_streams_k8s.operator.operator import (
+    cleanup,
+    handle_pipeline_pod_event,
+)
+from sentry_streams_k8s.operator.reconcile import (
     _apply,
     _prepare_manifest,
-    _prune_stale_resources,
+    prune_stale_configmaps,
+    reconcile_pipeline,
 )
 
 WORKLOAD_NAMESPACE = "test-streaming-pipelines"
@@ -107,35 +114,326 @@ def test_apply_uses_workload_namespace_and_stable_field_manager() -> None:
     )
 
 
-@patch("sentry_streams_k8s.operator.operator.client.CoreV1Api")
-@patch("sentry_streams_k8s.operator.operator.client.AppsV1Api")
-def test_prune_removes_only_stale_resources(
-    apps_api: MagicMock,
-    core_api: MagicMock,
-) -> None:
-    apps = apps_api.return_value
-    apps.list_namespaced_deployment.return_value.items = [
-        SimpleNamespace(metadata=SimpleNamespace(name="desired-deployment")),
-        SimpleNamespace(metadata=SimpleNamespace(name="stale-deployment")),
-    ]
+@patch("sentry_streams_k8s.operator.reconcile.client.CoreV1Api")
+def test_prune_removes_only_stale_configmaps(core_api: MagicMock) -> None:
     core = core_api.return_value
     core.list_namespaced_config_map.return_value.items = [
         SimpleNamespace(metadata=SimpleNamespace(name="desired-configmap")),
         SimpleNamespace(metadata=SimpleNamespace(name="stale-configmap")),
     ]
 
-    _prune_stale_resources(
+    prune_stale_configmaps(
         workload_namespace=WORKLOAD_NAMESPACE,
         owner_uid="owner-uid",
-        desired_deployments={"desired-deployment"},
         desired_configmaps={"desired-configmap"},
+        logger=MagicMock(),
     )
 
-    apps.delete_namespaced_deployment.assert_called_once_with(
-        name="stale-deployment",
-        namespace=WORKLOAD_NAMESPACE,
-    )
     core.delete_namespaced_config_map.assert_called_once_with(
         name="stale-configmap",
         namespace=WORKLOAD_NAMESPACE,
+    )
+
+
+def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dyn = MagicMock()
+    configmap = {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "pipeline-config"}}
+    primary_deployment = {
+        "metadata": {"name": "consumer"},
+        "spec": {
+            "replicas": 2,
+            "template": {"metadata": {"labels": {"env": "primary"}}, "spec": {"containers": []}},
+        },
+    }
+    canary_deployment = {
+        "metadata": {"name": "consumer-canary"},
+        "spec": {
+            "replicas": 1,
+            "template": {"metadata": {"labels": {"env": "canary"}}, "spec": {"containers": []}},
+        },
+    }
+    primary_result = {
+        "childPods": ["consumer-0-2"],
+        "desiredReplicas": 2,
+        "readyReplicas": 1,
+        "unhealthyPods": [],
+        "permanentErrors": [],
+    }
+    canary_result = {
+        "childPods": ["consumer-canary-0-5"],
+        "desiredReplicas": 1,
+        "readyReplicas": 0,
+        "unhealthyPods": [],
+        "permanentErrors": [],
+    }
+    apply = MagicMock()
+    reconcile_pods = MagicMock()
+    save = MagicMock()
+    delete_obsolete = MagicMock()
+    prune = MagicMock()
+    monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.from_crd_spec", lambda spec, name: spec
+    )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.validate", lambda _consumer: None)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.render",
+        lambda _consumer: {
+            "configmap": configmap,
+            "deployment": primary_deployment,
+            "canary_deployment": canary_deployment,
+        },
+    )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.dynamic.DynamicClient", lambda _: dyn)
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile._apply", apply)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.load_generations",
+        lambda _dyn, _namespace, name: {0: 4} if "canary" in name else {0: 1},
+    )
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.reconcile_pipeline_pods", reconcile_pods
+    )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.save_generations", save)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.delete_obsolete_pod_sets",
+        delete_obsolete,
+    )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.prune_stale_configmaps", prune)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.compute_config_version", lambda _: "version"
+    )
+
+    def allocate_generation(
+        *, generations: dict[int, int], workload_set: str, **_: object
+    ) -> dict[str, object]:
+        if workload_set == "primary":
+            generations[0] = 2
+            return primary_result
+        generations[0] = 5
+        return canary_result
+
+    reconcile_pods.side_effect = allocate_generation
+    patch = SimpleNamespace(status={})
+    logger = MagicMock()
+    result = reconcile_pipeline(
+        spec={"pipeline_config": {}, "replicas": 1, "with_canary": True},
+        name="pipeline",
+        namespace="source",
+        uid="uid",
+        workload_namespace=WORKLOAD_NAMESPACE,
+        logger=logger,
+        patch=patch,
+    )
+
+    assert result == {
+        "childPods": ["consumer-0-2", "consumer-canary-0-5"],
+        "desiredReplicas": 3,
+        "readyReplicas": 1,
+        "unhealthyPods": [],
+        "permanentErrors": [],
+        "sets": {
+            "primary": primary_result,
+            "canary": canary_result,
+        },
+    }
+    apply.assert_called_once_with(
+        dyn,
+        configmap,
+        workload_namespace=WORKLOAD_NAMESPACE,
+        owner_uid="uid",
+    )
+    assert [call.kwargs["workload_set"] for call in reconcile_pods.call_args_list] == [
+        "primary",
+        "canary",
+    ]
+    assert [call.kwargs["replicas"] for call in reconcile_pods.call_args_list] == [2, 1]
+    assert [call.kwargs["base_name"] for call in reconcile_pods.call_args_list] == [
+        "consumer",
+        "consumer-canary",
+    ]
+    assert save.call_count == 2
+    assert [call.args[2] for call in save.call_args_list] == [
+        "consumer-generations",
+        "consumer-canary-generations",
+    ]
+    assert [call.kwargs["generations"] for call in save.call_args_list] == [{0: 2}, {0: 5}]
+    delete_obsolete.assert_called_once_with(
+        dyn,
+        WORKLOAD_NAMESPACE,
+        "uid",
+        {"primary", "canary"},
+        ANY,
+    )
+    prune.assert_called_once_with(
+        workload_namespace=WORKLOAD_NAMESPACE,
+        owner_uid="uid",
+        desired_configmaps={
+            "pipeline-config",
+            "consumer-generations",
+            "consumer-canary-generations",
+        },
+        logger=logger,
+    )
+    assert patch.status["conditions"][-1] == {
+        "type": "Applied",
+        "status": "True",
+        "reason": "Applied",
+        "message": "",
+    }
+    assert patch.status["pods"] == result
+
+
+def test_do_reconcile_does_not_save_unchanged_ledger_and_reports_permanent_pod_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dyn = MagicMock()
+    result = {
+        "childPods": ["consumer-0-1"],
+        "desiredReplicas": 1,
+        "readyReplicas": 0,
+        "unhealthyPods": [],
+        "permanentErrors": [{"name": "consumer-0-1", "reason": "InvalidImageName"}],
+    }
+    save = MagicMock()
+    monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.from_crd_spec", lambda spec, name: spec
+    )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.validate", lambda _consumer: None)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.render",
+        lambda _: {
+            "configmap": {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "config"}},
+            "deployment": {
+                "metadata": {"name": "consumer"},
+                "spec": {
+                    "replicas": 1,
+                    "template": {"metadata": {}, "spec": {"containers": []}},
+                },
+            },
+        },
+    )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.dynamic.DynamicClient", lambda _: dyn)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile._apply", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.load_generations", lambda *_: {0: 1})
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.reconcile_pipeline_pods", lambda **_: result
+    )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.save_generations", save)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.delete_obsolete_pod_sets",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.prune_stale_configmaps", lambda **_: None
+    )
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.compute_config_version", lambda _: "version"
+    )
+    patch = SimpleNamespace(status={})
+
+    reconcile_pipeline(
+        spec={"pipeline_config": {}},
+        name="pipeline",
+        namespace="source",
+        uid="uid",
+        workload_namespace=WORKLOAD_NAMESPACE,
+        logger=MagicMock(),
+        patch=patch,
+    )
+
+    save.assert_not_called()
+    assert patch.status["conditions"][-1]["status"] == "False"
+    assert patch.status["conditions"][-1]["reason"] == "PermanentPodFailure"
+
+
+def test_pod_event_recovers_fatal_pod_and_ignores_healthy_updates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reconcile = MagicMock()
+    owner = {"metadata": {"uid": "uid"}, "spec": {"pipeline_config": {}}}
+    monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
+    monkeypatch.setattr("sentry_streams_k8s.operator.operator._fetch_owner", lambda *_: owner)
+    monkeypatch.setattr("sentry_streams_k8s.operator.operator.reconcile_pipeline", reconcile)
+
+    handle_pipeline_pod_event(
+        type="MODIFIED",
+        body={"metadata": {"name": "consumer-0-0"}, "status": {"phase": "Running"}},
+        meta={},
+        annotations={OWNER_NAME_ANNOTATION: "pipeline", OWNER_NAMESPACE_ANNOTATION: "source"},
+        name="consumer-0-0",
+        namespace=WORKLOAD_NAMESPACE,
+        logger=MagicMock(),
+    )
+    reconcile.assert_not_called()
+
+    handle_pipeline_pod_event(
+        type="DELETED",
+        body={},
+        meta={},
+        annotations={OWNER_NAME_ANNOTATION: "pipeline", OWNER_NAMESPACE_ANNOTATION: "source"},
+        name="consumer-0-0",
+        namespace=WORKLOAD_NAMESPACE,
+        logger=MagicMock(),
+    )
+    reconcile.assert_called_once_with(
+        spec={"pipeline_config": {}},
+        name="pipeline",
+        namespace="source",
+        uid="uid",
+        workload_namespace=WORKLOAD_NAMESPACE,
+        logger=ANY,
+    )
+
+
+def test_pod_event_does_not_recover_missing_or_deleting_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reconcile = MagicMock()
+    monkeypatch.setattr("sentry_streams_k8s.operator.operator.reconcile_pipeline", reconcile)
+    monkeypatch.setattr("sentry_streams_k8s.operator.operator._fetch_owner", lambda *_: None)
+    logger = MagicMock()
+
+    handle_pipeline_pod_event(
+        type="DELETED",
+        body={},
+        meta={},
+        annotations={},
+        name="consumer-0-0",
+        namespace=WORKLOAD_NAMESPACE,
+        logger=logger,
+    )
+    handle_pipeline_pod_event(
+        type="DELETED",
+        body={},
+        meta={},
+        annotations={OWNER_NAME_ANNOTATION: "pipeline", OWNER_NAMESPACE_ANNOTATION: "source"},
+        name="consumer-0-0",
+        namespace=WORKLOAD_NAMESPACE,
+        logger=logger,
+    )
+    reconcile.assert_not_called()
+
+
+def test_cleanup_deletes_owned_pods_and_prunes_resources(monkeypatch: pytest.MonkeyPatch) -> None:
+    dyn = MagicMock()
+    delete_pods = MagicMock()
+    prune = MagicMock()
+    monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
+    monkeypatch.setattr("sentry_streams_k8s.operator.operator.dynamic.DynamicClient", lambda _: dyn)
+    monkeypatch.setattr("sentry_streams_k8s.operator.operator.delete_owned_pods", delete_pods)
+    monkeypatch.setattr("sentry_streams_k8s.operator.operator.prune_stale_configmaps", prune)
+
+    cleanup(uid="uid", logger=MagicMock())
+
+    delete_pods.assert_called_once_with(dyn, WORKLOAD_NAMESPACE, "uid", ANY)
+    prune.assert_called_once_with(
+        workload_namespace=WORKLOAD_NAMESPACE,
+        owner_uid="uid",
+        desired_configmaps=set(),
+        logger=ANY,
     )
