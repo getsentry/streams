@@ -25,6 +25,7 @@ from sentry_streams_k8s.operator.pod_resources import (
     pod_workload_set,
 )
 from sentry_streams_k8s.operator.reconcile import (
+    _combine_pod_results,
     _reconcile_pod_set,
     delete_obsolete_pod_sets,
     reconcile_pipeline_pods,
@@ -225,6 +226,24 @@ def test_reconcile_raises_when_generation_exceeds_cap(
     current = _pod(0, MAX_GENERATION, phase="Failed")
     with pytest.raises(kopf.PermanentError, match="exceeds"):
         _reconcile(monkeypatch, [current], generations={0: MAX_GENERATION})
+
+
+def _set_result(*child_pods: str) -> dict[str, Any]:
+    return {
+        "childPods": list(child_pods),
+        "desiredReplicas": len(child_pods),
+        "readyReplicas": len(child_pods),
+        "unhealthyPods": [],
+        "permanentErrors": [],
+    }
+
+
+def test_combine_pod_results_nulls_out_absent_sets() -> None:
+    combined = _combine_pod_results({PRIMARY_WORKLOAD_SET: _set_result("consumer-0-0")})
+    assert combined["sets"] == {
+        PRIMARY_WORKLOAD_SET: _set_result("consumer-0-0"),
+        CANARY_WORKLOAD_SET: None,
+    }
 
 
 def _deployment(name: str, replicas: int) -> dict[str, Any]:

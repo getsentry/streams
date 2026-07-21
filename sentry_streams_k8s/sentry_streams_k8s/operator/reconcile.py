@@ -10,6 +10,7 @@ from kubernetes.client.exceptions import ApiException
 
 from sentry_streams_k8s.consumer_builder import compute_config_version
 from sentry_streams_k8s.operator.constants import (
+    ALL_WORKLOAD_SETS,
     CANARY_WORKLOAD_SET,
     FIELD_MANAGER,
     MAX_BASE_NAME_LENGTH,
@@ -385,7 +386,9 @@ def _combine_pod_results(results: dict[str, dict[str, Any]]) -> dict[str, Any]:
         "readyReplicas": sum(result["readyReplicas"] for result in results.values()),
         "unhealthyPods": unhealthy_pods,
         "permanentErrors": permanent_errors,
-        "sets": results,
+        # Status is updated as a JSON merge patch, so a set that is not included keeps its old
+        # value. Explicity include all sets and null out the removed ones to clear them:
+        "sets": {workload_set: results.get(workload_set) for workload_set in ALL_WORKLOAD_SETS},
     }
 
 

@@ -30,6 +30,8 @@ WORKLOAD_SET_LABEL = "streams.sentry.io/workload-set"
 PRIMARY_WORKLOAD_SET = "primary"
 CANARY_WORKLOAD_SET = "canary"
 
+ALL_WORKLOAD_SETS = (PRIMARY_WORKLOAD_SET, CANARY_WORKLOAD_SET)
+
 # The ordinal is the stable replica number. The generation increments each time a replica's
 # Pod is replaced so the new Pod's name never collides with a still-terminating old one:
 
