@@ -36,6 +36,16 @@ CANARY_WORKLOAD_SET = "canary"
 ORDINAL_LABEL = "streams.sentry.io/ordinal"
 GENERATION_LABEL = "streams.sentry.io/generation"
 
+# Pod names are cannot exceed 63 characters, so we reserve space for the
+# largest possible replicas + generation and give the rest to the base name:
+
+MAX_POD_NAME_LENGTH = 63
+
+MAX_REPLICAS = 999
+MAX_GENERATION = 9999
+
+MAX_BASE_NAME_LENGTH = MAX_POD_NAME_LENGTH - len(f"-{MAX_REPLICAS}-{MAX_GENERATION}")
+
 # Hash of the desired Pod state. Used to detect config/spec changes:
 
 SPEC_HASH_ANNOTATION = "streams.sentry.io/spec-hash"
@@ -59,7 +69,7 @@ POD_TERMINATING_GRACE_SECONDS = 600
 
 HEALTH_SCAN_INTERVAL_SECONDS = 60
 
-# Bound full reconciliations across pipelines so changes 
+# Bound full reconciliations across pipelines so changes
 # to many CRs cannot overload Kubernetes API requests:
 
 MAX_CONCURRENT_RECONCILES = 4

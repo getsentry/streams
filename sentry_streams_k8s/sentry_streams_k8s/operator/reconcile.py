@@ -12,6 +12,9 @@ from sentry_streams_k8s.consumer_builder import compute_config_version
 from sentry_streams_k8s.operator.constants import (
     CANARY_WORKLOAD_SET,
     FIELD_MANAGER,
+    MAX_BASE_NAME_LENGTH,
+    MAX_GENERATION,
+    MAX_REPLICAS,
     OWNER_NAME_ANNOTATION,
     OWNER_NAMESPACE_ANNOTATION,
     OWNER_UID_LABEL,
@@ -181,6 +184,11 @@ def _allocate_generation(
 ) -> int:
     live_max = max((pod_generation(pod) for pod in pods), default=-1)
     generation = max(generations.get(ordinal, -1), live_max) + 1
+
+    if generation > MAX_GENERATION:
+        # TODO: We should see if it is safe to wrap back to generation 0 at this point.
+        raise kopf.PermanentError(f"Replica {ordinal} exceeds {MAX_GENERATION} generations.")
+
     generations[ordinal] = generation
     return generation
 
@@ -314,12 +322,20 @@ def _reconcile_pod_set(
     logger: Logger,
 ) -> tuple[dict[str, Any], str]:
     base_name = deployment["metadata"]["name"]
+
+    if len(base_name) > MAX_BASE_NAME_LENGTH:
+        raise kopf.PermanentError(
+            f"{workload_set} name cannot exceed {MAX_BASE_NAME_LENGTH} characters."
+        )
+
     template_metadata, template_spec = pod_template_from_deployment(deployment)
     replicas = deployment["spec"].get("replicas", 0)
+
     if type(replicas) is not int or replicas < 0:
-        raise kopf.PermanentError(
-            f"Rendered {workload_set} replica count must be a non-negative integer."
-        )
+        raise kopf.PermanentError(f"{workload_set} replica count must be a non-negative integer.")
+
+    if replicas > MAX_REPLICAS:
+        raise kopf.PermanentError(f"{workload_set} replica count cannot exceed {MAX_REPLICAS}.")
 
     ledger_name = ledger_configmap_name(base_name)
     generations = load_generations(dyn, workload_namespace, ledger_name)
@@ -391,9 +407,7 @@ def reconcile_pipeline(
         result = render(consumer)
     except Exception as e:
         if status_patch is not None:
-            status_patch["conditions"] = [
-                _condition("Rendered", False, type(e).__name__, str(e))
-            ]
+            status_patch["conditions"] = [_condition("Rendered", False, type(e).__name__, str(e))]
         raise kopf.PermanentError(f"StreamingPipeline {namespace}/{name} failed to render: {e}")
 
     dyn = dynamic.DynamicClient(client.ApiClient())

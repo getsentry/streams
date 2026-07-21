@@ -4,11 +4,15 @@ import copy
 from typing import Any
 from unittest.mock import MagicMock
 
+import kopf
 import pytest
 
 from sentry_streams_k8s.operator.constants import (
     CANARY_WORKLOAD_SET,
     GENERATION_LABEL,
+    MAX_BASE_NAME_LENGTH,
+    MAX_GENERATION,
+    MAX_REPLICAS,
     ORDINAL_LABEL,
     PRIMARY_WORKLOAD_SET,
     SPEC_HASH_ANNOTATION,
@@ -21,6 +25,7 @@ from sentry_streams_k8s.operator.pod_resources import (
     pod_workload_set,
 )
 from sentry_streams_k8s.operator.reconcile import (
+    _reconcile_pod_set,
     delete_obsolete_pod_sets,
     reconcile_pipeline_pods,
 )
@@ -214,6 +219,55 @@ def test_reconcile_replaces_failed_pod_with_next_generation(
     ]
 
 
+def test_reconcile_raises_when_generation_exceeds_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = _pod(0, MAX_GENERATION, phase="Failed")
+    with pytest.raises(kopf.PermanentError, match="exceeds"):
+        _reconcile(monkeypatch, [current], generations={0: MAX_GENERATION})
+
+
+def _deployment(name: str, replicas: int) -> dict[str, Any]:
+    metadata, spec = _template()
+    return {
+        "metadata": {"name": name},
+        "spec": {
+            "replicas": replicas,
+            "template": {"metadata": metadata, "spec": spec},
+        },
+    }
+
+
+def test_reconcile_pod_set_rejects_replicas_over_cap() -> None:
+    deployment = _deployment("consumer", MAX_REPLICAS + 1)
+    with pytest.raises(kopf.PermanentError, match="replica count cannot exceed"):
+        _reconcile_pod_set(
+            dyn=MagicMock(),
+            deployment=deployment,
+            workload_set=PRIMARY_WORKLOAD_SET,
+            workload_namespace=NAMESPACE,
+            owner_uid=OWNER_UID,
+            owner_name="pipeline",
+            owner_namespace="source",
+            logger=MagicMock(),
+        )
+
+
+def test_reconcile_pod_set_rejects_base_name_over_limit() -> None:
+    deployment = _deployment("c" * (MAX_BASE_NAME_LENGTH + 1), 1)
+    with pytest.raises(kopf.PermanentError, match="name cannot exceed"):
+        _reconcile_pod_set(
+            dyn=MagicMock(),
+            deployment=deployment,
+            workload_set=PRIMARY_WORKLOAD_SET,
+            workload_namespace=NAMESPACE,
+            owner_uid=OWNER_UID,
+            owner_name="pipeline",
+            owner_namespace="source",
+            logger=MagicMock(),
+        )
+
+
 def test_reconcile_replaces_outdated_pod_and_prunes_duplicates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -334,7 +388,9 @@ def test_delete_obsolete_pod_sets_removes_canary_when_disabled(
 def test_delete_owned_pods_skips_pods_already_terminating(monkeypatch: pytest.MonkeyPatch) -> None:
     pods = [_pod(0, 0), _pod(1, 0, deletion_timestamp="2026-07-16T00:00:00Z")]
     deleted: list[str] = []
-    monkeypatch.setattr("sentry_streams_k8s.operator.pod_resources.list_owned_pods", lambda *_: pods)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.pod_resources.list_owned_pods", lambda *_: pods
+    )
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.pod_resources.delete_pod",
         lambda _dyn, name, _namespace: deleted.append(name),
