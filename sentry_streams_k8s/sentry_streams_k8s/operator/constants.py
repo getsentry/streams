@@ -52,6 +52,11 @@ MAX_BASE_NAME_LENGTH = MAX_POD_NAME_LENGTH - len(f"-{MAX_REPLICAS}-{MAX_GENERATI
 
 SPEC_HASH_ANNOTATION = "streams.sentry.io/spec-hash"
 
+# Environment variable passed to each consumer Pod giving it a stable identity
+# (group.instance.id). Replacement Pods rejoin as the same static member.
+
+GROUP_INSTANCE_ID_ENV = "STREAMS_KAFKA_GROUP_INSTANCE_ID"
+
 # Waiting states that may recover when the operator creates a new Pod:
 
 UNHEALTHY_WAITING_REASONS = frozenset({"ErrImagePull", "ImagePullBackOff"})

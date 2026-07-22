@@ -12,6 +12,7 @@ from kubernetes.client import V1Pod, V1PodList
 from sentry_streams_k8s.operator.constants import (
     FIELD_MANAGER,
     GENERATION_LABEL,
+    GROUP_INSTANCE_ID_ENV,
     MANAGED_BY_LABEL,
     ORDINAL_LABEL,
     OWNER_NAME_ANNOTATION,
@@ -69,7 +70,11 @@ def pod_name(pod: V1Pod) -> str:
 
 
 def consumer_pod_name(base_name: str, ordinal: int, generation: int) -> str:
-    return f"{base_name}-{ordinal}-{generation}"
+    return f"{group_instance_id(base_name, ordinal)}-{generation}"
+
+
+def group_instance_id(base_name: str, ordinal: int) -> str:
+    return f"{base_name}-{ordinal}"
 
 
 def pod_ordinal(pod: V1Pod) -> int | None:
@@ -147,6 +152,15 @@ def build_pipeline_pod(
     # The operator replaces unhealthy Pods rather than letting k8s restart them:
 
     pod_spec["restartPolicy"] = "Never"
+
+    # Give the replica a stable Kafka identity so replacement
+    # Pods rejoin without triggering a rebalance:
+
+    for container in pod_spec.get("containers", []) or []:
+        env = container.setdefault("env", [])
+        if any(item.get("name") == GROUP_INSTANCE_ID_ENV for item in env):
+            continue
+        env.append({"name": GROUP_INSTANCE_ID_ENV, "value": group_instance_id(base_name, ordinal)})
 
     # Pods can live in a different namespace from their StreamingPipeline, so they
     # cannot use owner references. The operator finds them by owner label instead.

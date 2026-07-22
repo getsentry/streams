@@ -12,6 +12,7 @@ from kubernetes.client import V1Pod
 from sentry_streams_k8s.operator.constants import (
     CANARY_WORKLOAD_SET,
     GENERATION_LABEL,
+    GROUP_INSTANCE_ID_ENV,
     MAX_BASE_NAME_LENGTH,
     MAX_GENERATION,
     MAX_REPLICAS,
@@ -23,6 +24,7 @@ from sentry_streams_k8s.operator.constants import (
 from sentry_streams_k8s.operator.pod_resources import (
     build_pipeline_pod,
     delete_owned_pods,
+    group_instance_id,
     list_owned_pods,
     pod_workload_set,
 )
@@ -37,6 +39,12 @@ from sentry_streams_k8s.operator.reconcile import (
     reconcile_pipeline_pods,
 )
 from tests.k8s_fixtures import make_condition, make_pod
+
+
+def _container_env(pod: dict[str, Any], container_index: int = 0) -> dict[str, str]:
+    env = pod["spec"]["containers"][container_index].get("env", [])
+    return {item["name"]: item["value"] for item in env}
+
 
 NAMESPACE = "workloads"
 OWNER_UID = "owner-uid"
@@ -168,6 +176,64 @@ def test_build_pipeline_pod_stamps_identity_without_mutating_template() -> None:
     assert pod["metadata"]["annotations"][SPEC_HASH_ANNOTATION]
     assert pod["spec"]["restartPolicy"] == "Never"
     assert "restartPolicy" not in spec
+
+
+def test_group_instance_id_is_stable_across_generations() -> None:
+    assert group_instance_id("consumer", 2) == "consumer-2"
+    assert group_instance_id("consumer-canary", 2) == "consumer-canary-2"
+
+
+def test_build_pipeline_pod_injects_generation_stable_instance_id() -> None:
+    metadata, spec = _template()
+
+    def _build(generation: int) -> dict[str, Any]:
+        return build_pipeline_pod(
+            base_name="consumer",
+            template_metadata=metadata,
+            template_spec=spec,
+            ordinal=2,
+            generation=generation,
+            owner_uid=OWNER_UID,
+            owner_name="pipeline",
+            owner_namespace="source",
+            workload_set=PRIMARY_WORKLOAD_SET,
+        )
+
+    gen4 = _build(4)
+    gen7 = _build(7)
+
+    assert _container_env(gen4)[GROUP_INSTANCE_ID_ENV] == "consumer-2"
+    assert _container_env(gen7)[GROUP_INSTANCE_ID_ENV] == "consumer-2"
+
+    assert (
+        gen4["metadata"]["annotations"][SPEC_HASH_ANNOTATION]
+        == gen7["metadata"]["annotations"][SPEC_HASH_ANNOTATION]
+    )
+
+
+def test_build_pipeline_pod_respects_explicit_instance_id_env() -> None:
+    metadata, _ = _template()
+    spec = {
+        "containers": [
+            {
+                "name": "consumer",
+                "image": "example/consumer:v1",
+                "env": [{"name": GROUP_INSTANCE_ID_ENV, "value": "explicit"}],
+            }
+        ]
+    }
+    pod = build_pipeline_pod(
+        base_name="consumer",
+        template_metadata=metadata,
+        template_spec=spec,
+        ordinal=2,
+        generation=0,
+        owner_uid=OWNER_UID,
+        owner_name="pipeline",
+        owner_namespace="source",
+        workload_set=PRIMARY_WORKLOAD_SET,
+    )
+    assert _container_env(pod)[GROUP_INSTANCE_ID_ENV] == "explicit"
 
 
 def test_list_owned_pods_selects_owner_and_workload_set() -> None:

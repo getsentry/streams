@@ -8,7 +8,7 @@ from sentry_streams.adapters.arroyo.rust_arroyo import (
     build_kafka_producer_config,
 )
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
-from sentry_streams.config_types import StepConfig
+from sentry_streams.config_types import KafkaConsumerConfig, StepConfig
 from sentry_streams.pipeline.pipeline import Pipeline
 from sentry_streams.runner import iterate_edges
 from sentry_streams.rust_streams import InitialOffset
@@ -46,6 +46,7 @@ def test_rust_arroyo_adapter(
     [
         pytest.param(
             {
+                "starts_segment": None,
                 "bootstrap_servers": ["localhost:9092"],
                 "auto_offset_reset": "earliest",
             },
@@ -59,6 +60,7 @@ def test_rust_arroyo_adapter(
         ),
         pytest.param(
             {
+                "starts_segment": None,
                 "bootstrap_servers": ["localhost:9092"],
                 "auto_offset_reset": "latest",
                 "consumer_group": "my-group",
@@ -75,6 +77,7 @@ def test_rust_arroyo_adapter(
         ),
         pytest.param(
             {
+                "starts_segment": None,
                 "bootstrap_servers": ["broker1:9092", "broker2:9092"],
                 "auto_offset_reset": "earliest",
                 "consumer_group": "config-group",
@@ -94,7 +97,7 @@ def test_rust_arroyo_adapter(
     ],
 )
 def test_build_kafka_consumer_config(
-    source_config: StepConfig,
+    source_config: KafkaConsumerConfig,
     consumer_group_override: str | None,
     expected_bootstrap_servers: Sequence[str],
     expected_group_id: str,
@@ -157,3 +160,54 @@ def test_build_kafka_producer_config(
     assert result is not None
     assert list(result.bootstrap_servers) == expected_bootstrap_servers
     assert result.override_params == expected_override_params
+
+
+def test_build_kafka_consumer_config_injects_static_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("STREAMS_KAFKA_GROUP_INSTANCE_ID", "consumer-2")
+    result = build_kafka_consumer_config(
+        source="test_source",
+        source_config={
+            "starts_segment": None,
+            "bootstrap_servers": ["localhost:9092"],
+            "auto_offset_reset": "earliest",
+        },
+    )
+    assert result.override_params is not None
+    assert result.override_params["group.instance.id"] == "consumer-2"
+
+
+def test_build_kafka_consumer_config_respects_explicit_instance_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("STREAMS_KAFKA_GROUP_INSTANCE_ID", "consumer-2")
+    result = build_kafka_consumer_config(
+        source="test_source",
+        source_config={
+            "starts_segment": None,
+            "bootstrap_servers": ["localhost:9092"],
+            "auto_offset_reset": "earliest",
+            "override_params": {
+                "group.instance.id": "explicit",
+                "session.timeout.ms": "10000",
+            },
+        },
+    )
+    assert result.override_params is not None
+    assert result.override_params["group.instance.id"] == "explicit"
+
+
+def test_build_kafka_consumer_config_no_static_membership_without_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("STREAMS_KAFKA_GROUP_INSTANCE_ID", raising=False)
+    result = build_kafka_consumer_config(
+        source="test_source",
+        source_config={
+            "starts_segment": None,
+            "bootstrap_servers": ["localhost:9092"],
+            "auto_offset_reset": "earliest",
+        },
+    )
+    assert result.override_params == {}
