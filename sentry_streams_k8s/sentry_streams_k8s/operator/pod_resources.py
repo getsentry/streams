@@ -22,6 +22,7 @@ from sentry_streams_k8s.operator.constants import (
     Logger,
 )
 from sentry_streams_k8s.operator.pod_health import (
+    PodHealth,
     is_deleting,
     pod_labels,
     pod_metadata,
@@ -106,8 +107,8 @@ def pod_workload_set(pod: Mapping[str, Any]) -> str | None:
     return pod_labels(pod).get(WORKLOAD_SET_LABEL)
 
 
-def pod_keep_key(pod: Mapping[str, Any], health: Mapping[str, Any]) -> tuple[bool, int, str]:
-    return (cast(bool, health["ready"]), pod_generation(pod), pod_name(pod))
+def pod_keep_key(pod: Mapping[str, Any], health: PodHealth) -> tuple[bool, int, str]:
+    return (health.ready, pod_generation(pod), pod_name(pod))
 
 
 def pod_template_from_deployment(

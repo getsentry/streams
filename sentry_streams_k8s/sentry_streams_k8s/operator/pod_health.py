@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
 
@@ -125,6 +126,16 @@ def _waiting_grace_elapsed(pod: Mapping[str, Any], now: datetime) -> bool:
     return age is not None and age >= POD_WAITING_GRACE_SECONDS
 
 
+@dataclass(frozen=True)
+class PodHealth:
+    name: str
+    ready: bool = False
+    reason: str | None = None
+    delete: bool = False
+    force: bool = False
+    permanent: bool = False
+
+
 def _verdict(
     pod_name: str,
     *,
@@ -133,17 +144,15 @@ def _verdict(
     delete: bool = False,
     force: bool = False,
     permanent: bool = False,
-) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "name": pod_name,
-        "ready": ready,
-        "reason": reason,
-        "delete": delete,
-        "force": force,
-    }
-    if permanent:
-        result["permanent"] = True
-    return result
+) -> PodHealth:
+    return PodHealth(
+        name=pod_name,
+        ready=ready,
+        reason=reason,
+        delete=delete,
+        force=force,
+        permanent=permanent,
+    )
 
 
 def _container_statuses_verdict(
@@ -153,7 +162,7 @@ def _container_statuses_verdict(
     now: datetime,
     *,
     reason_prefix: str = "",
-) -> dict[str, Any] | None:
+) -> PodHealth | None:
     permanent_waiting = _first_permanent_waiting(statuses)
     if permanent_waiting is not None:
         return _verdict(
@@ -181,18 +190,8 @@ def _container_statuses_verdict(
     return None
 
 
-def pod_health(pod: Mapping[str, Any], now: datetime) -> dict[str, Any]:
-    """
-    Classify a Pod into a verdict dict.
-
-    Returns keys:
-      name   - the Pod name
-      ready  - True only when Running + Ready condition True
-      reason - short unhealthy reason, or None when healthy
-      delete - whether the reconciler should delete this Pod now
-      force  - whether that deletion should be forced (gracePeriod 0)
-      permanent - True when recovery requires a StreamingPipeline spec update
-    """
+def pod_health(pod: Mapping[str, Any], now: datetime) -> PodHealth:
+    """Classify a Pod into a PodHealth verdict."""
 
     metadata = pod_metadata(pod)
     status = pod_status(pod)
@@ -243,17 +242,17 @@ def pod_health(pod: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     return _verdict(pod_name, ready=pod_is_ready(pod))
 
 
-def pod_status_entry(pod: Mapping[str, Any], health: Mapping[str, Any]) -> dict[str, Any]:
+def pod_status_entry(pod: Mapping[str, Any], health: PodHealth) -> dict[str, Any]:
     labels = pod_labels(pod)
     entry: dict[str, Any] = {
-        "name": health["name"],
-        "ready": health["ready"],
+        "name": health.name,
+        "ready": health.ready,
         "phase": pod_status(pod).get("phase", "Unknown"),
     }
     if labels.get(ORDINAL_LABEL) is not None:
         entry["ordinal"] = labels[ORDINAL_LABEL]
-    if health.get("reason") is not None:
-        entry["reason"] = health["reason"]
-    if health.get("permanent"):
+    if health.reason is not None:
+        entry["reason"] = health.reason
+    if health.permanent:
         entry["permanent"] = True
     return entry

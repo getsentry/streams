@@ -232,7 +232,7 @@ async def handle_pipeline_pod_event(
 
     if type == "MODIFIED" and meta.get("deletionTimestamp") is None:
         health = pod_health(dict(body), datetime.now(timezone.utc))
-        if not health["delete"]:
+        if not health.delete:
             return
 
     owner_uid = labels.get(OWNER_UID_LABEL)

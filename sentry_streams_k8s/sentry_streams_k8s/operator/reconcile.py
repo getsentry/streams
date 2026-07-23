@@ -23,6 +23,7 @@ from sentry_streams_k8s.operator.constants import (
     Logger,
 )
 from sentry_streams_k8s.operator.pod_health import (
+    PodHealth,
     is_deleting,
     pod_health,
     pod_spec_changed,
@@ -165,14 +166,14 @@ def _delete_current_pod(
     pod: Mapping[str, Any],
     namespace: str,
     logger: Logger,
-    health: Mapping[str, Any],
+    health: PodHealth,
     reason: str,
 ) -> None:
     name = pod_name(pod)
-    if is_deleting(pod) and not cast(bool, health["delete"]):
+    if is_deleting(pod) and not health.delete:
         logger.info("pipeline Pod %s/%s is already deleting reason=%s", namespace, name, reason)
         return
-    delete_pod(dyn, name, namespace, force=cast(bool, health["force"]))
+    delete_pod(dyn, name, namespace, force=health.force)
     logger.info("deleted pipeline Pod %s/%s reason=%s", namespace, name, reason)
 
 
@@ -238,7 +239,7 @@ def reconcile_pipeline_pods(
     now = datetime.now(timezone.utc)
 
     pods_by_ordinal: dict[int, list[dict[str, Any]]] = {}
-    health_by_name: dict[str, dict[str, Any]] = {}
+    health_by_name: dict[str, PodHealth] = {}
     pod_statuses: list[dict[str, Any]] = []
     active_pod_names: list[str] = []
 
@@ -275,7 +276,7 @@ def reconcile_pipeline_pods(
             if (
                 not is_deleting(pod)
                 and not pod_spec_changed(pod, desired_template)
-                and not cast(bool, health_by_name[pod_name(pod)]["delete"])
+                and not health_by_name[pod_name(pod)].delete
             )
         ]
 
@@ -302,9 +303,9 @@ def reconcile_pipeline_pods(
             health = health_by_name[pod_name(pod)]
             if pod_spec_changed(pod, desired_template):
                 _delete_current_pod(dyn, pod, workload_namespace, logger, health, "Outdated")
-            elif cast(bool, health["delete"]):
+            elif health.delete:
                 _delete_current_pod(
-                    dyn, pod, workload_namespace, logger, health, cast(str, health["reason"])
+                    dyn, pod, workload_namespace, logger, health, cast(str, health.reason)
                 )
             elif pod in candidates:
                 _delete_current_pod(dyn, pod, workload_namespace, logger, health, "Duplicate")
@@ -315,7 +316,7 @@ def reconcile_pipeline_pods(
         if any(
             not is_deleting(pod)
             and pod_name(pod) in active_pod_names
-            and cast(bool, health_by_name[pod_name(pod)]["ready"])
+            and health_by_name[pod_name(pod)].ready
             for pod in pods
         )
     }

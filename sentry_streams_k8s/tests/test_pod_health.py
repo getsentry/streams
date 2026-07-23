@@ -7,6 +7,7 @@ import pytest
 
 from sentry_streams_k8s.operator.constants import ORDINAL_LABEL, SPEC_HASH_ANNOTATION
 from sentry_streams_k8s.operator.pod_health import (
+    PodHealth,
     pod_health,
     pod_spec_changed,
     pod_status_entry,
@@ -24,16 +25,8 @@ def _image_pull_pod(
         "phase": "Pending",
         "containerStatuses": [
             {
-                "state": {
-                    "waiting": {
-                        "reason": reason
-                    }
-                },
-                "lastState": {
-                    "terminated": {
-                        "finishedAt": (now - timedelta(hours=1)).isoformat()
-                    }
-                },
+                "state": {"waiting": {"reason": reason}},
+                "lastState": {"terminated": {"finishedAt": (now - timedelta(hours=1)).isoformat()}},
             }
         ],
     }
@@ -56,8 +49,8 @@ def test_image_pull_wait_uses_pod_start_time_for_grace() -> None:
 
     pod = _image_pull_pod(now=now, start_time=start_time, creation_time=creation_time)
 
-    assert pod_health(pod, now)["reason"] == "ImagePullBackOff"
-    assert pod_health(pod, now)["delete"] is False
+    assert pod_health(pod, now).reason == "ImagePullBackOff"
+    assert pod_health(pod, now).delete is False
 
 
 def test_image_pull_wait_is_deleted_after_start_time_grace() -> None:
@@ -68,7 +61,7 @@ def test_image_pull_wait_is_deleted_after_start_time_grace() -> None:
 
     pod = _image_pull_pod(now=now, start_time=start_time, creation_time=creation_time)
 
-    assert pod_health(pod, now)["delete"] is True
+    assert pod_health(pod, now).delete is True
 
 
 def test_image_pull_wait_uses_creation_time_when_not_started() -> None:
@@ -78,7 +71,7 @@ def test_image_pull_wait_uses_creation_time_when_not_started() -> None:
 
     pod = _image_pull_pod(now=now, start_time=None, creation_time=creation_time)
 
-    assert pod_health(pod, now)["delete"] is True
+    assert pod_health(pod, now).delete is True
 
 
 def test_invalid_image_name_is_a_non_replacing_permanent_error() -> None:
@@ -92,9 +85,9 @@ def test_invalid_image_name_is_a_non_replacing_permanent_error() -> None:
 
     health = pod_health(pod, now)
 
-    assert health["reason"] == "InvalidImageName"
-    assert health["delete"] is False
-    assert health["permanent"] is True
+    assert health.reason == "InvalidImageName"
+    assert health.delete is False
+    assert health.permanent is True
 
 
 def test_crash_loop_backoff_is_not_a_waiting_replacement_reason() -> None:
@@ -108,8 +101,8 @@ def test_crash_loop_backoff_is_not_a_waiting_replacement_reason() -> None:
 
     health = pod_health(pod, now)
 
-    assert health["reason"] is None
-    assert health["delete"] is False
+    assert health.reason is None
+    assert health.delete is False
 
 
 @pytest.mark.parametrize(
@@ -123,12 +116,15 @@ def test_crash_loop_backoff_is_not_a_waiting_replacement_reason() -> None:
 def test_pod_health_only_marks_running_ready_pods_ready(
     phase: str, conditions: list[dict[str, str]], expected: bool
 ) -> None:
-    pod = {"metadata": {"name": "consumer-0-0"}, "status": {"phase": phase, "conditions": conditions}}
+    pod = {
+        "metadata": {"name": "consumer-0-0"},
+        "status": {"phase": phase, "conditions": conditions},
+    }
 
     health = pod_health(pod, datetime(2026, 7, 15, tzinfo=timezone.utc))
 
-    assert health["ready"] is expected
-    assert health["delete"] is False
+    assert health.ready is expected
+    assert health.delete is False
 
 
 @pytest.mark.parametrize(
@@ -139,7 +135,9 @@ def test_pod_health_only_marks_running_ready_pods_ready(
         (
             {
                 "phase": "Running",
-                "containerStatuses": [{"state": {"terminated": {"exitCode": 137, "reason": "OOMKilled"}}}],
+                "containerStatuses": [
+                    {"state": {"terminated": {"exitCode": 137, "reason": "OOMKilled"}}}
+                ],
             },
             "OOMKilled",
         ),
@@ -164,9 +162,9 @@ def test_pod_health_replaces_terminal_failures(status: dict[str, Any], reason: s
         datetime(2026, 7, 15, tzinfo=timezone.utc),
     )
 
-    assert health["reason"] == reason
-    assert health["delete"] is True
-    assert health["force"] is False
+    assert health.reason == reason
+    assert health.delete is True
+    assert health.force is False
 
 
 @pytest.mark.parametrize("statuses_key", ["containerStatuses", "initContainerStatuses"])
@@ -182,8 +180,8 @@ def test_completed_container_does_not_fail_pod(statuses_key: str) -> None:
         datetime(2026, 7, 15, tzinfo=timezone.utc),
     )
 
-    assert health["reason"] is None
-    assert health["delete"] is False
+    assert health.reason is None
+    assert health.delete is False
 
 
 @pytest.mark.parametrize(
@@ -209,11 +207,8 @@ def test_pod_health_classifies_init_and_permanent_waiting_reasons(
         now,
     )
 
-    assert health["reason"] == expected_reason
-    if permanent:
-        assert health["permanent"] is True
-    else:
-        assert "permanent" not in health
+    assert health.reason == expected_reason
+    assert health.permanent is permanent
 
 
 @pytest.mark.parametrize(
@@ -237,9 +232,9 @@ def test_pod_health_force_deletes_only_stuck_terminating_pods(
         now,
     )
 
-    assert health["reason"] == reason
-    assert health["delete"] is delete
-    assert health["force"] is force
+    assert health.reason == reason
+    assert health.delete is delete
+    assert health.force is force
 
 
 def test_pod_spec_and_status_helpers() -> None:
@@ -254,7 +249,7 @@ def test_pod_spec_and_status_helpers() -> None:
     desired = {
         "metadata": {"annotations": {SPEC_HASH_ANNOTATION: "new"}},
     }
-    health = {"name": "consumer-0-0", "ready": False, "reason": "ImagePullBackOff"}
+    health = PodHealth(name="consumer-0-0", ready=False, reason="ImagePullBackOff")
 
     assert pod_spec_changed(current, desired) is True
     assert pod_status_entry(current, health) == {
