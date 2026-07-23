@@ -138,7 +138,7 @@ def test_prune_removes_only_stale_configmaps(core_api: MagicMock) -> None:
     )
 
 
-def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
+def test_do_reconcile_applies_config_reconciles_pods_and_reports_generations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dyn = MagicMock()
@@ -173,7 +173,6 @@ def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
     }
     apply = MagicMock()
     reconcile_pods = MagicMock()
-    save = MagicMock()
     delete_obsolete = MagicMock()
     prune = MagicMock()
     monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
@@ -189,16 +188,13 @@ def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
             "canary_deployment": canary_deployment,
         },
     )
-    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.dynamic.DynamicClient", lambda _: dyn)
-    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile._apply", apply)
     monkeypatch.setattr(
-        "sentry_streams_k8s.operator.reconcile.load_generations",
-        lambda _dyn, _namespace, name: {0: 4} if "canary" in name else {0: 1},
+        "sentry_streams_k8s.operator.reconcile.dynamic.DynamicClient", lambda _: dyn
     )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile._apply", apply)
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.reconcile_pipeline_pods", reconcile_pods
     )
-    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.save_generations", save)
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.delete_obsolete_pod_sets",
         delete_obsolete,
@@ -228,6 +224,7 @@ def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
         workload_namespace=WORKLOAD_NAMESPACE,
         logger=logger,
         status=status,
+        previous_generations={"primary": {"0": 1}, "canary": {"0": 4}},
     )
 
     assert result == {
@@ -256,12 +253,6 @@ def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
         "consumer",
         "consumer-canary",
     ]
-    assert save.call_count == 2
-    assert [call.args[2] for call in save.call_args_list] == [
-        "consumer-generations",
-        "consumer-canary-generations",
-    ]
-    assert [call.kwargs["generations"] for call in save.call_args_list] == [{0: 2}, {0: 5}]
     delete_obsolete.assert_called_once_with(
         dyn,
         WORKLOAD_NAMESPACE,
@@ -272,11 +263,7 @@ def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
     prune.assert_called_once_with(
         workload_namespace=WORKLOAD_NAMESPACE,
         owner_uid="uid",
-        desired_configmaps={
-            "pipeline-config",
-            "consumer-generations",
-            "consumer-canary-generations",
-        },
+        desired_configmaps={"pipeline-config"},
         logger=logger,
     )
     assert status["conditions"][-1] == {
@@ -286,9 +273,10 @@ def test_do_reconcile_applies_config_reconciles_pods_and_saves_changed_ledger(
         "message": "",
     }
     assert status["pods"] == result
+    assert status["generations"] == {"primary": {"0": 2}, "canary": {"0": 5}}
 
 
-def test_do_reconcile_does_not_save_unchanged_ledger_and_reports_permanent_pod_error(
+def test_do_reconcile_preserves_unchanged_ledger_and_reports_permanent_pod_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dyn = MagicMock()
@@ -299,7 +287,6 @@ def test_do_reconcile_does_not_save_unchanged_ledger_and_reports_permanent_pod_e
         "unhealthyPods": [],
         "permanentErrors": [{"name": "consumer-0-1", "reason": "InvalidImageName"}],
     }
-    save = MagicMock()
     monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.from_crd_spec", lambda spec, name: spec
@@ -318,15 +305,15 @@ def test_do_reconcile_does_not_save_unchanged_ledger_and_reports_permanent_pod_e
             },
         },
     )
-    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.dynamic.DynamicClient", lambda _: dyn)
+    monkeypatch.setattr(
+        "sentry_streams_k8s.operator.reconcile.dynamic.DynamicClient", lambda _: dyn
+    )
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile._apply", lambda *_args, **_kwargs: None
     )
-    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.load_generations", lambda *_: {0: 1})
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.reconcile_pipeline_pods", lambda **_: result
     )
-    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.save_generations", save)
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.delete_obsolete_pod_sets",
         lambda *_args, **_kwargs: None,
@@ -347,11 +334,12 @@ def test_do_reconcile_does_not_save_unchanged_ledger_and_reports_permanent_pod_e
         workload_namespace=WORKLOAD_NAMESPACE,
         logger=MagicMock(),
         patch=patch,
+        previous_generations={"primary": {"0": 1}},
     )
 
-    save.assert_not_called()
     assert patch.status["conditions"][-1]["status"] == "False"
     assert patch.status["conditions"][-1]["reason"] == "PermanentPodFailure"
+    assert patch.status["generations"] == {"primary": {"0": 1}, "canary": None}
 
 
 def test_pod_event_coalesces_reconcile_requests_and_ignores_healthy_updates() -> None:

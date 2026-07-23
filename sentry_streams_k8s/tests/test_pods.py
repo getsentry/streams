@@ -26,7 +26,9 @@ from sentry_streams_k8s.operator.pod_resources import (
 )
 from sentry_streams_k8s.operator.reconcile import (
     _combine_pod_results,
+    _parse_generations,
     _reconcile_pod_set,
+    _serialize_generations,
     delete_obsolete_pod_sets,
     reconcile_pipeline_pods,
 )
@@ -269,6 +271,7 @@ def test_reconcile_pod_set_rejects_replicas_over_cap() -> None:
             owner_name="pipeline",
             owner_namespace="source",
             logger=MagicMock(),
+            previous_generations={},
         )
 
 
@@ -284,6 +287,7 @@ def test_reconcile_pod_set_rejects_base_name_over_limit() -> None:
             owner_name="pipeline",
             owner_namespace="source",
             logger=MagicMock(),
+            previous_generations={},
         )
 
 
@@ -418,3 +422,21 @@ def test_delete_owned_pods_skips_pods_already_terminating(monkeypatch: pytest.Mo
     delete_owned_pods(MagicMock(), NAMESPACE, OWNER_UID, MagicMock())
 
     assert deleted == ["consumer-0-0"]
+
+
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        ({"0": 3, "2": 5}, {0: 3, 2: 5}),
+        (None, {}),
+        ({}, {}),
+    ],
+)
+def test_parse_generations_converts_string_ordinals_and_handles_no_ledger_yet(
+    data: object, expected: dict[int, int]
+) -> None:
+    assert _parse_generations(data) == expected
+
+
+def test_serialize_generations_sorts_ordinals_and_stringifies_keys() -> None:
+    assert _serialize_generations({2: 4, 0: 3}) == {"0": 3, "2": 4}

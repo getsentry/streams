@@ -22,11 +22,6 @@ from sentry_streams_k8s.operator.constants import (
     PRIMARY_WORKLOAD_SET,
     Logger,
 )
-from sentry_streams_k8s.operator.generations import (
-    ledger_configmap_name,
-    load_generations,
-    save_generations,
-)
 from sentry_streams_k8s.operator.pod_health import (
     is_deleting,
     pod_health,
@@ -50,6 +45,30 @@ from sentry_streams_k8s.operator.streaming_pipeline import (
     render,
     validate,
 )
+
+
+def _parse_generations(data: Any) -> dict[int, int]:
+    """
+    Returns a dict mapping ordinal -> highest generation.
+    Empty when there is no ledger yet (e.g. first reconcile).
+    """
+
+    if not data:
+        return {}
+
+    return {int(key): value for key, value in data.items()}
+
+
+def _serialize_generations(generations: dict[int, int]) -> dict[str, int]:
+    """
+    Pods for a replica are named {name}-{ordinal}-{generation}. The generation
+    increments every time the operator replaces a Pod, so a newly created Pod
+    never shares a name with the old one that is still terminating. This is what
+    lets us recreate instantly instead of waiting for the old Pod to be deleted.
+    We save the highest generation per ordinal in the CR's status.generations.
+    """
+
+    return {str(ordinal): generation for ordinal, generation in sorted(generations.items())}
 
 
 def _prepare_manifest(
@@ -321,7 +340,8 @@ def _reconcile_pod_set(
     owner_name: str,
     owner_namespace: str,
     logger: Logger,
-) -> tuple[dict[str, Any], str]:
+    previous_generations: dict[int, int],
+) -> tuple[dict[str, Any], dict[int, int]]:
     base_name = deployment["metadata"]["name"]
 
     if len(base_name) > MAX_BASE_NAME_LENGTH:
@@ -338,9 +358,7 @@ def _reconcile_pod_set(
     if replicas > MAX_REPLICAS:
         raise kopf.PermanentError(f"{workload_set} replica count cannot exceed {MAX_REPLICAS}.")
 
-    ledger_name = ledger_configmap_name(base_name)
-    generations = load_generations(dyn, workload_namespace, ledger_name)
-    generations_before = dict(generations)
+    generations = dict(previous_generations)
     pod_result = reconcile_pipeline_pods(
         dyn=dyn,
         workload_namespace=workload_namespace,
@@ -355,17 +373,7 @@ def _reconcile_pod_set(
         logger=logger,
         workload_set=workload_set,
     )
-    if generations != generations_before:
-        save_generations(
-            dyn,
-            workload_namespace,
-            ledger_name,
-            owner_uid=owner_uid,
-            owner_name=owner_name,
-            owner_namespace=owner_namespace,
-            generations=generations,
-        )
-    return pod_result, ledger_name
+    return pod_result, generations
 
 
 def _combine_pod_results(results: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -402,8 +410,10 @@ def reconcile_pipeline(
     logger: Logger,
     patch: kopf.Patch | None = None,
     status: dict[str, Any] | None = None,
+    previous_generations: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     status_patch = status if status is not None else patch.status if patch is not None else None
+    previous_generations = previous_generations if isinstance(previous_generations, Mapping) else {}
     consumer = from_crd_spec(dict(spec), name=name)
     try:
         validate(consumer)
@@ -430,9 +440,9 @@ def reconcile_pipeline(
         rendered_sets[CANARY_WORKLOAD_SET] = result["canary_deployment"]
 
     pod_set_results: dict[str, dict[str, Any]] = {}
-    ledger_names: set[str] = set()
+    generations_by_set: dict[str, dict[int, int]] = {}
     for workload_set, deployment in rendered_sets.items():
-        set_result, ledger_name = _reconcile_pod_set(
+        set_result, generations = _reconcile_pod_set(
             dyn=dyn,
             deployment=deployment,
             workload_set=workload_set,
@@ -441,11 +451,12 @@ def reconcile_pipeline(
             owner_name=name,
             owner_namespace=namespace,
             logger=logger,
+            previous_generations=_parse_generations(previous_generations.get(workload_set)),
         )
         pod_set_results[workload_set] = set_result
-        ledger_names.add(ledger_name)
+        generations_by_set[workload_set] = generations
 
-    # Remove Pods and generation ledgers left behind by a removed canary set:
+    # Remove Pods left behind by a removed canary set:
     delete_obsolete_pod_sets(
         dyn,
         workload_namespace,
@@ -457,7 +468,7 @@ def reconcile_pipeline(
     prune_stale_configmaps(
         workload_namespace=workload_namespace,
         owner_uid=uid,
-        desired_configmaps={configmap["metadata"]["name"], *ledger_names},
+        desired_configmaps={configmap["metadata"]["name"]},
         logger=logger,
     )
 
@@ -480,5 +491,13 @@ def reconcile_pipeline(
         status_patch["config_version"] = compute_config_version(consumer["pipeline_config"])
         status_patch["pods"] = pod_result
         status_patch["workload_namespace"] = workload_namespace
+        status_patch["generations"] = {
+            workload_set: (
+                _serialize_generations(generations_by_set[workload_set])
+                if workload_set in generations_by_set
+                else None
+            )
+            for workload_set in ALL_WORKLOAD_SETS
+        }
 
     return pod_result

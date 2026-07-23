@@ -4,10 +4,11 @@ import asyncio
 import copy
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 import kopf
 from kubernetes import client, dynamic
+from kubernetes.client.exceptions import ApiException
 
 from sentry_streams_k8s.operator.constants import (
     FIELD_MANAGER,
@@ -90,6 +91,23 @@ def _patch_pipeline_status(name: str, namespace: str, status: dict[str, Any]) ->
     )
 
 
+def _get_pipeline_status(name: str, namespace: str) -> dict[str, Any]:
+    api = client.CustomObjectsApi()
+    try:
+        obj = api.get_namespaced_custom_object(
+            group=GROUP,
+            version=VERSION,
+            namespace=namespace,
+            plural=PLURAL,
+            name=name,
+        )
+    except ApiException as e:
+        if e.status == 404:
+            return {}
+        raise
+    return cast(dict[str, Any], obj.get("status") or {})
+
+
 @kopf.on.update(GROUP, VERSION, PLURAL)
 async def request_pipeline_reconcile(
     uid: str,
@@ -135,6 +153,7 @@ async def _reconcile_once(
                 if stopped:
                     return None
                 try:
+                    previous_status = await asyncio.to_thread(_get_pipeline_status, name, namespace)
                     await asyncio.to_thread(
                         reconcile_pipeline,
                         spec=copy.deepcopy(dict(spec)),
@@ -144,12 +163,11 @@ async def _reconcile_once(
                         workload_namespace=_workload_namespace(),
                         logger=logger,
                         status=status,
+                        previous_generations=previous_status.get("generations"),
                     )
                 except kopf.PermanentError as e:
                     if status:
-                        await asyncio.to_thread(
-                            _patch_pipeline_status, name, namespace, status
-                        )
+                        await asyncio.to_thread(_patch_pipeline_status, name, namespace, status)
                     logger.error("%s", e)
                     return None
                 if status:
