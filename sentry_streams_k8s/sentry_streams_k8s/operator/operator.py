@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import os
+from collections.abc import Mapping
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, cast
 
 import kopf
-from kubernetes import client, dynamic
+from kubernetes import client
+from kubernetes.client import V1Pod
 from kubernetes.client.exceptions import ApiException
 
 from sentry_streams_k8s.operator.constants import (
@@ -25,6 +29,7 @@ from sentry_streams_k8s.operator.constants import (
 from sentry_streams_k8s.operator.pod_health import pod_health
 from sentry_streams_k8s.operator.pod_resources import delete_owned_pods
 from sentry_streams_k8s.operator.reconcile import (
+    PipelineStatusPatch,
     prune_stale_configmaps,
     reconcile_pipeline,
 )
@@ -79,7 +84,14 @@ def _workload_namespace() -> str:
     return namespace
 
 
-def _patch_pipeline_status(name: str, namespace: str, status: dict[str, Any]) -> None:
+def _deserialize_pod(body: kopf.Body) -> V1Pod:
+    # kopf provides the event's raw JSON body so we need to deserialize.
+    # Use a simple namespace since ApiClient expects a RESTResponse:
+    json_response = SimpleNamespace(data=json.dumps(dict(body)))
+    return cast(V1Pod, client.ApiClient().deserialize(json_response, "V1Pod"))
+
+
+def _patch_pipeline_status(name: str, namespace: str, status: PipelineStatusPatch) -> None:
     api = client.CustomObjectsApi()
     api.patch_namespaced_custom_object_status(
         group=GROUP,
@@ -91,7 +103,7 @@ def _patch_pipeline_status(name: str, namespace: str, status: dict[str, Any]) ->
     )
 
 
-def _get_pipeline_status(name: str, namespace: str) -> dict[str, Any]:
+def _get_pipeline_status(name: str, namespace: str) -> Mapping[str, object]:
     api = client.CustomObjectsApi()
     try:
         obj = api.get_namespaced_custom_object(
@@ -105,7 +117,9 @@ def _get_pipeline_status(name: str, namespace: str) -> dict[str, Any]:
         if e.status == 404:
             return {}
         raise
-    return cast(dict[str, Any], obj.get("status") or {})
+    obj = cast(Mapping[str, object], obj)
+    status = obj.get("status")
+    return cast(Mapping[str, object], status) if isinstance(status, Mapping) else {}
 
 
 @kopf.on.update(GROUP, VERSION, PLURAL)
@@ -133,7 +147,10 @@ async def _wait_for_reconcile(
     for task in pending:
         task.cancel()
     if pending:
-        await asyncio.gather(*pending, return_exceptions=True)
+        await asyncio.gather(
+            *cast(tuple[asyncio.Future[Any], ...], tuple(pending)),
+            return_exceptions=True,
+        )
 
 
 async def _reconcile_once(
@@ -146,7 +163,7 @@ async def _reconcile_once(
     scheduler: ReconcileScheduler,
     stopped: kopf.DaemonStopped,
 ) -> float | None:
-    status: dict[str, Any] = {}
+    status: PipelineStatusPatch = {}
     try:
         async with scheduler.limit:
             async with scheduler.lock(uid):
@@ -230,8 +247,8 @@ async def handle_pipeline_pod_event(
     if type not in {"DELETED", "MODIFIED"}:
         return
 
-    if type == "MODIFIED" and meta.get("deletionTimestamp") is None:
-        health = pod_health(dict(body), datetime.now(timezone.utc))
+    if type == "MODIFIED" and meta.deletion_timestamp is None:
+        health = pod_health(_deserialize_pod(body), datetime.now(timezone.utc))
         if not health.delete:
             return
 
@@ -254,8 +271,8 @@ async def cleanup(uid: str, memo: kopf.Memo, logger: Logger, **_: Any) -> None:
     async with scheduler.limit:
         async with scheduler.lock(uid):
             workload_namespace = _workload_namespace()
-            dyn = dynamic.DynamicClient(client.ApiClient())
-            await asyncio.to_thread(delete_owned_pods, dyn, workload_namespace, uid, logger)
+            core = client.CoreV1Api()
+            await asyncio.to_thread(delete_owned_pods, core, workload_namespace, uid, logger)
             await asyncio.to_thread(
                 prune_stale_configmaps,
                 workload_namespace=workload_namespace,

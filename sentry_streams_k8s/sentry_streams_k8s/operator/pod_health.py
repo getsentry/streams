@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, cast
+from datetime import datetime, timezone
+
+from kubernetes.client import V1ContainerStatus, V1Pod
 
 from sentry_streams_k8s.operator.constants import (
     PERMANENT_WAITING_REASONS,
@@ -12,90 +12,70 @@ from sentry_streams_k8s.operator.constants import (
     SPEC_HASH_ANNOTATION,
     UNHEALTHY_WAITING_REASONS,
 )
+from sentry_streams_k8s.operator.pod_types import PodManifest
 
 
-def pod_metadata(resource: Mapping[str, Any]) -> Mapping[str, Any]:
-    return cast(Mapping[str, Any], resource.get("metadata", {}))
+def is_deleting(pod: V1Pod) -> bool:
+    metadata = pod.metadata
+    return metadata is not None and metadata.deletion_timestamp is not None
 
 
-def pod_labels(resource: Mapping[str, Any]) -> Mapping[str, str]:
-    return cast(Mapping[str, str], pod_metadata(resource).get("labels", {}) or {})
-
-
-def pod_annotations(resource: Mapping[str, Any]) -> Mapping[str, str]:
-    return cast(Mapping[str, str], pod_metadata(resource).get("annotations", {}) or {})
-
-
-def pod_status(resource: Mapping[str, Any]) -> Mapping[str, Any]:
-    return cast(Mapping[str, Any], resource.get("status", {}) or {})
-
-
-def is_deleting(resource: Mapping[str, Any]) -> bool:
-    return pod_metadata(resource).get("deletionTimestamp") is not None
-
-
-def parse_k8s_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def age_seconds(value: object, now: datetime) -> float | None:
-    timestamp = parse_k8s_timestamp(value)
+def age_seconds(timestamp: datetime | None, now: datetime) -> float | None:
     if timestamp is None:
         return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
     return (now - timestamp).total_seconds()
 
 
-def pod_is_ready(pod: Mapping[str, Any]) -> bool:
-    status = pod_status(pod)
-    conditions = cast(list[Mapping[str, Any]], status.get("conditions", []) or [])
-    return status.get("phase") == "Running" and any(
-        condition.get("type") == "Ready" and condition.get("status") == "True"
-        for condition in conditions
+def pod_is_ready(pod: V1Pod) -> bool:
+    status = pod.status
+    if status is None:
+        return False
+    conditions = status.conditions or []
+    return status.phase == "Running" and any(
+        condition.type == "Ready" and condition.status == "True" for condition in conditions
     )
 
 
-def pod_spec_changed(current: Mapping[str, Any], desired: Mapping[str, Any]) -> bool:
-    current_hash = pod_annotations(current).get(SPEC_HASH_ANNOTATION)
-    desired_hash = pod_annotations(desired).get(SPEC_HASH_ANNOTATION)
+def pod_spec_changed(current: V1Pod, desired: PodManifest) -> bool:
+    metadata = current.metadata
+    current_hash = ((metadata.annotations or {}) if metadata else {}).get(SPEC_HASH_ANNOTATION)
+    desired_annotations = desired["metadata"].get("annotations") or {}
+    desired_hash = desired_annotations.get(SPEC_HASH_ANNOTATION)
     return desired_hash is not None and current_hash != desired_hash
 
 
-def _container_waiting_reason(status: Mapping[str, Any]) -> str | None:
-    state = cast(Mapping[str, Any], status.get("state", {}) or {})
-    waiting = cast(Mapping[str, Any], state.get("waiting", {}) or {})
-    reason = waiting.get("reason")
-    return reason if isinstance(reason, str) else None
+def _container_waiting_reason(status: V1ContainerStatus) -> str | None:
+    waiting = status.state.waiting if status.state else None
+    return waiting.reason if waiting else None
 
 
-def _first_waiting_reason(statuses: object, reasons: frozenset[str]) -> str | None:
-    for status in cast(list[Mapping[str, Any]], statuses or []):
+def _first_waiting_reason(
+    statuses: list[V1ContainerStatus] | None, reasons: frozenset[str]
+) -> str | None:
+    for status in statuses or []:
         reason = _container_waiting_reason(status)
         if reason in reasons:
             return reason
     return None
 
 
-def _first_unhealthy_waiting(statuses: object) -> str | None:
+def _first_unhealthy_waiting(statuses: list[V1ContainerStatus] | None) -> str | None:
     return _first_waiting_reason(statuses, UNHEALTHY_WAITING_REASONS)
 
 
-def _first_permanent_waiting(statuses: object) -> str | None:
+def _first_permanent_waiting(statuses: list[V1ContainerStatus] | None) -> str | None:
     return _first_waiting_reason(statuses, PERMANENT_WAITING_REASONS)
 
 
-def _container_failed_terminated_reason(status: Mapping[str, Any]) -> str | None:
-    state = cast(Mapping[str, Any], status.get("state", {}) or {})
-    terminated = cast(Mapping[str, Any], state.get("terminated", {}) or {})
-    if not terminated:
+def _container_failed_terminated_reason(status: V1ContainerStatus) -> str | None:
+    terminated = status.state.terminated if status.state else None
+    if terminated is None:
         return None
 
-    exit_code = terminated.get("exitCode")
-    reason = terminated.get("reason")
+    exit_code = terminated.exit_code
+    reason = terminated.reason
 
     if exit_code == 0 or reason == "Completed":
         return None
@@ -109,19 +89,22 @@ def _container_failed_terminated_reason(status: Mapping[str, Any]) -> str | None
     return "Terminated"
 
 
-def _first_failed_terminated_reason(statuses: object) -> str | None:
-    for status in cast(list[Mapping[str, Any]], statuses or []):
+def _first_failed_terminated_reason(statuses: list[V1ContainerStatus] | None) -> str | None:
+    for status in statuses or []:
         reason = _container_failed_terminated_reason(status)
         if reason is not None:
             return reason
     return None
 
 
-def _waiting_grace_elapsed(pod: Mapping[str, Any], now: datetime) -> bool:
-    status = pod_status(pod)
-    age = age_seconds(status.get("startTime"), now)
+def _waiting_grace_elapsed(pod: V1Pod, now: datetime) -> bool:
+    metadata = pod.metadata
+    status = pod.status
+    if metadata is None or status is None:
+        return False
+    age = age_seconds(status.start_time, now)
     if age is None:
-        age = age_seconds(pod_metadata(pod).get("creationTimestamp"), now)
+        age = age_seconds(metadata.creation_timestamp, now)
     return age is not None and age >= POD_WAITING_GRACE_SECONDS
 
 
@@ -159,8 +142,8 @@ def _verdict(
 
 def _container_statuses_verdict(
     pod_name: str,
-    statuses: object,
-    pod: Mapping[str, Any],
+    statuses: list[V1ContainerStatus] | None,
+    pod: V1Pod,
     now: datetime,
     *,
     reason_prefix: str = "",
@@ -195,18 +178,16 @@ def _container_statuses_verdict(
     return None
 
 
-def pod_health(pod: Mapping[str, Any], now: datetime) -> PodHealth:
+def pod_health(pod: V1Pod, now: datetime) -> PodHealth:
     """Classify a Pod into a PodHealth verdict."""
 
-    metadata = pod_metadata(pod)
-    status = pod_status(pod)
-
-    pod_name = cast(str, metadata.get("name", ""))
+    metadata = pod.metadata
+    pod_name = metadata.name if metadata and metadata.name else ""
 
     # If the pod is terminating, let it finish terminating by itself.
     # Only force-delete it if it has been stuck terminating for too long.
 
-    terminating_age = age_seconds(metadata.get("deletionTimestamp"), now)
+    terminating_age = age_seconds(metadata.deletion_timestamp if metadata else None, now)
 
     if terminating_age is not None:
         stuck = terminating_age >= POD_TERMINATING_GRACE_SECONDS
@@ -219,9 +200,13 @@ def pod_health(pod: Mapping[str, Any], now: datetime) -> PodHealth:
             force=stuck,
         )
 
+    status = pod.status
+    if status is None:
+        return _verdict(pod_name)
+
     init_verdict = _container_statuses_verdict(
         pod_name,
-        status.get("initContainerStatuses"),
+        status.init_container_statuses,
         pod,
         now,
         reason_prefix="InitContainer",
@@ -229,14 +214,14 @@ def pod_health(pod: Mapping[str, Any], now: datetime) -> PodHealth:
     if init_verdict is not None:
         return init_verdict
 
-    phase = status.get("phase")
+    phase = status.phase
 
     if phase == "Succeeded":
         return _verdict(pod_name, reason="Succeeded", delete=True)
 
     app_verdict = _container_statuses_verdict(
         pod_name,
-        status.get("containerStatuses"),
+        status.container_statuses,
         pod,
         now,
     )
@@ -244,10 +229,7 @@ def pod_health(pod: Mapping[str, Any], now: datetime) -> PodHealth:
         return app_verdict
 
     if phase == "Failed":
-        status_reason = status.get("reason")
-        status_reason_str = status_reason if isinstance(status_reason, str) else None
-        phase_str = phase if isinstance(phase, str) else None
-        reason = status_reason_str or phase_str or "Terminated"
+        reason = status.reason or phase or "Terminated"
         return _verdict(pod_name, reason=reason, unhealthy=True, delete=True)
 
     return _verdict(pod_name, ready=pod_is_ready(pod))

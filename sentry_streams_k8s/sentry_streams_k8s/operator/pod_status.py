@@ -6,12 +6,23 @@ verdict with Pod metadata fields into the StreamingPipeline CR's status.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import NotRequired, TypedDict
+
+from kubernetes.client import V1Pod
 
 from sentry_streams_k8s.operator.constants import ORDINAL_LABEL
-from sentry_streams_k8s.operator.pod_health import PodHealth, pod_labels, pod_status
+from sentry_streams_k8s.operator.pod_health import PodHealth
+
+
+class PodStatusEntry(TypedDict):
+    name: str
+    ready: bool
+    phase: str
+    ordinal: NotRequired[str]
+    reason: NotRequired[str]
+    permanent: NotRequired[bool]
+    workloadSet: NotRequired[str]
 
 
 @dataclass(frozen=True)
@@ -28,8 +39,8 @@ class ReportedPodStatus:
     def is_unhealthy(self) -> bool:
         return self.unhealthy
 
-    def to_status_dict(self) -> dict[str, Any]:
-        entry: dict[str, Any] = {
+    def to_status_dict(self) -> PodStatusEntry:
+        entry: PodStatusEntry = {
             "name": self.name,
             "ready": self.ready,
             "phase": self.phase,
@@ -43,13 +54,15 @@ class ReportedPodStatus:
         return entry
 
 
-def reported_pod_status(pod: Mapping[str, Any], health: PodHealth) -> ReportedPodStatus:
-    labels = pod_labels(pod)
-    phase = pod_status(pod).get("phase", "Unknown")
+def reported_pod_status(pod: V1Pod, health: PodHealth) -> ReportedPodStatus:
+    metadata = pod.metadata
+    status = pod.status
+    labels = metadata.labels if metadata and metadata.labels else {}
+    phase = status.phase if status and status.phase else "Unknown"
     return ReportedPodStatus(
         name=health.name,
         ready=health.ready,
-        phase=phase if isinstance(phase, str) else "Unknown",
+        phase=phase,
         unhealthy=health.unhealthy,
         ordinal=labels.get(ORDINAL_LABEL),
         reason=health.reason,

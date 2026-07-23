@@ -19,7 +19,7 @@ from sentry_streams_k8s.operator.operator import (
     handle_pipeline_pod_event,
 )
 from sentry_streams_k8s.operator.reconcile import (
-    _apply,
+    _apply_configmap,
     _prepare_manifest,
     prune_stale_configmaps,
     reconcile_pipeline,
@@ -63,13 +63,11 @@ def test_prepare_manifest_routes_workload_and_records_source_cr() -> None:
     }
 
 
-def test_apply_rejects_resource_owned_by_another_cr() -> None:
-    resource = MagicMock()
-    resource.get.return_value = SimpleNamespace(
+def test_apply_configmap_rejects_resource_owned_by_another_cr() -> None:
+    core = MagicMock()
+    core.read_namespaced_config_map.return_value = SimpleNamespace(
         metadata=SimpleNamespace(labels={OWNER_UID_LABEL: "another-owner"})
     )
-    dyn = MagicMock()
-    dyn.resources.get.return_value = resource
     manifest = {
         "apiVersion": "v1",
         "kind": "ConfigMap",
@@ -77,43 +75,44 @@ def test_apply_rejects_resource_owned_by_another_cr() -> None:
     }
 
     with pytest.raises(kopf.PermanentError, match="not managed by this StreamingPipeline"):
-        _apply(
-            dyn,
+        _apply_configmap(
+            core,
             manifest,
             workload_namespace=WORKLOAD_NAMESPACE,
             owner_uid="owner-uid",
         )
 
-    dyn.server_side_apply.assert_not_called()
+    core.patch_namespaced_config_map.assert_not_called()
 
 
-def test_apply_uses_workload_namespace_and_stable_field_manager() -> None:
-    resource = MagicMock()
-    resource.get.return_value = SimpleNamespace(
+def test_apply_configmap_uses_workload_namespace_and_stable_field_manager() -> None:
+    core = MagicMock()
+    core.read_namespaced_config_map.return_value = SimpleNamespace(
         metadata=SimpleNamespace(labels={OWNER_UID_LABEL: "owner-uid"})
     )
-    dyn = MagicMock()
-    dyn.resources.get.return_value = resource
     manifest = {
         "apiVersion": "v1",
         "kind": "ConfigMap",
         "metadata": {"name": "pipeline", "namespace": WORKLOAD_NAMESPACE},
     }
 
-    _apply(
-        dyn,
+    _apply_configmap(
+        core,
         manifest,
         workload_namespace=WORKLOAD_NAMESPACE,
         owner_uid="owner-uid",
     )
 
-    resource.get.assert_called_once_with(name="pipeline", namespace=WORKLOAD_NAMESPACE)
-    dyn.server_side_apply.assert_called_once_with(
-        resource,
-        body=manifest,
+    core.read_namespaced_config_map.assert_called_once_with(
+        name="pipeline", namespace=WORKLOAD_NAMESPACE
+    )
+    core.patch_namespaced_config_map.assert_called_once_with(
+        name="pipeline",
         namespace=WORKLOAD_NAMESPACE,
+        body=manifest,
         field_manager="streaming-operator",
-        force_conflicts=True,
+        force=True,
+        _content_type="application/apply-patch+yaml",
     )
 
 
@@ -141,7 +140,7 @@ def test_prune_removes_only_stale_configmaps(core_api: MagicMock) -> None:
 def test_do_reconcile_applies_config_reconciles_pods_and_reports_generations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dyn = MagicMock()
+    core = MagicMock()
     configmap = {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "pipeline-config"}}
     primary_deployment = {
         "metadata": {"name": "consumer"},
@@ -188,10 +187,8 @@ def test_do_reconcile_applies_config_reconciles_pods_and_reports_generations(
             "canary_deployment": canary_deployment,
         },
     )
-    monkeypatch.setattr(
-        "sentry_streams_k8s.operator.reconcile.dynamic.DynamicClient", lambda _: dyn
-    )
-    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile._apply", apply)
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.client.CoreV1Api", lambda: core)
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile._apply_configmap", apply)
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.reconcile_pipeline_pods", reconcile_pods
     )
@@ -239,7 +236,7 @@ def test_do_reconcile_applies_config_reconciles_pods_and_reports_generations(
         },
     }
     apply.assert_called_once_with(
-        dyn,
+        core,
         configmap,
         workload_namespace=WORKLOAD_NAMESPACE,
         owner_uid="uid",
@@ -254,7 +251,7 @@ def test_do_reconcile_applies_config_reconciles_pods_and_reports_generations(
         "consumer-canary",
     ]
     delete_obsolete.assert_called_once_with(
-        dyn,
+        core,
         WORKLOAD_NAMESPACE,
         "uid",
         {"primary", "canary"},
@@ -279,13 +276,21 @@ def test_do_reconcile_applies_config_reconciles_pods_and_reports_generations(
 def test_do_reconcile_preserves_unchanged_ledger_and_reports_permanent_pod_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dyn = MagicMock()
+    core = MagicMock()
     result = {
         "childPods": ["consumer-0-1"],
         "desiredReplicas": 1,
         "readyReplicas": 0,
         "unhealthyPods": [],
-        "permanentErrors": [{"name": "consumer-0-1", "reason": "InvalidImageName"}],
+        "permanentErrors": [
+            {
+                "name": "consumer-0-1",
+                "ready": False,
+                "phase": "Pending",
+                "reason": "InvalidImageName",
+                "permanent": True,
+            }
+        ],
     }
     monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
     monkeypatch.setattr(
@@ -305,11 +310,9 @@ def test_do_reconcile_preserves_unchanged_ledger_and_reports_permanent_pod_error
             },
         },
     )
+    monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.client.CoreV1Api", lambda: core)
     monkeypatch.setattr(
-        "sentry_streams_k8s.operator.reconcile.dynamic.DynamicClient", lambda _: dyn
-    )
-    monkeypatch.setattr(
-        "sentry_streams_k8s.operator.reconcile._apply", lambda *_args, **_kwargs: None
+        "sentry_streams_k8s.operator.reconcile._apply_configmap", lambda *_args, **_kwargs: None
     )
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.reconcile_pipeline_pods", lambda **_: result
@@ -351,7 +354,7 @@ def test_pod_event_coalesces_reconcile_requests_and_ignores_healthy_updates() ->
         handle_pipeline_pod_event(
             type="MODIFIED",
             body={"metadata": {"name": "consumer-0-0"}, "status": {"phase": "Running"}},
-            meta={},
+            meta=kopf.Meta({}),
             labels={OWNER_UID_LABEL: "uid"},
             name="consumer-0-0",
             namespace=WORKLOAD_NAMESPACE,
@@ -365,7 +368,7 @@ def test_pod_event_coalesces_reconcile_requests_and_ignores_healthy_updates() ->
         handle_pipeline_pod_event(
             type="DELETED",
             body={},
-            meta={},
+            meta=kopf.Meta({}),
             labels={OWNER_UID_LABEL: "uid"},
             name="consumer-0-0",
             namespace=WORKLOAD_NAMESPACE,
@@ -377,7 +380,7 @@ def test_pod_event_coalesces_reconcile_requests_and_ignores_healthy_updates() ->
         handle_pipeline_pod_event(
             type="DELETED",
             body={},
-            meta={},
+            meta=kopf.Meta({}),
             labels={OWNER_UID_LABEL: "uid"},
             name="consumer-1-0",
             namespace=WORKLOAD_NAMESPACE,
@@ -398,7 +401,7 @@ def test_pod_event_ignores_missing_or_inactive_owner() -> None:
         handle_pipeline_pod_event(
             type="DELETED",
             body={},
-            meta={},
+            meta=kopf.Meta({}),
             labels={},
             name="consumer-0-0",
             namespace=WORKLOAD_NAMESPACE,
@@ -410,7 +413,7 @@ def test_pod_event_ignores_missing_or_inactive_owner() -> None:
         handle_pipeline_pod_event(
             type="DELETED",
             body={},
-            meta={},
+            meta=kopf.Meta({}),
             labels={OWNER_UID_LABEL: "deleted-uid"},
             name="consumer-0-0",
             namespace=WORKLOAD_NAMESPACE,
@@ -422,11 +425,11 @@ def test_pod_event_ignores_missing_or_inactive_owner() -> None:
 
 
 def test_cleanup_deletes_owned_pods_and_prunes_resources(monkeypatch: pytest.MonkeyPatch) -> None:
-    dyn = MagicMock()
+    core = MagicMock()
     delete_pods = MagicMock()
     prune = MagicMock()
     monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
-    monkeypatch.setattr("sentry_streams_k8s.operator.operator.dynamic.DynamicClient", lambda _: dyn)
+    monkeypatch.setattr("sentry_streams_k8s.operator.operator.client.CoreV1Api", lambda: core)
     monkeypatch.setattr("sentry_streams_k8s.operator.operator.delete_owned_pods", delete_pods)
     monkeypatch.setattr("sentry_streams_k8s.operator.operator.prune_stale_configmaps", prune)
     scheduler = ReconcileScheduler()
@@ -435,7 +438,7 @@ def test_cleanup_deletes_owned_pods_and_prunes_resources(monkeypatch: pytest.Mon
 
     asyncio.run(cleanup(uid="uid", memo=memo, logger=MagicMock()))
 
-    delete_pods.assert_called_once_with(dyn, WORKLOAD_NAMESPACE, "uid", ANY)
+    delete_pods.assert_called_once_with(core, WORKLOAD_NAMESPACE, "uid", ANY)
     prune.assert_called_once_with(
         workload_namespace=WORKLOAD_NAMESPACE,
         owner_uid="uid",

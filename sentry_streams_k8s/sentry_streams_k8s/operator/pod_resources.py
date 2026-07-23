@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 from kubernetes import client
-from kubernetes.dynamic import DynamicClient
+from kubernetes.client import V1Pod, V1PodList
 
 from sentry_streams_k8s.operator.constants import (
     FIELD_MANAGER,
@@ -21,70 +21,60 @@ from sentry_streams_k8s.operator.constants import (
     WORKLOAD_SET_LABEL,
     Logger,
 )
-from sentry_streams_k8s.operator.pod_health import (
-    PodHealth,
-    is_deleting,
-    pod_labels,
-    pod_metadata,
-)
-
-
-def _pod_resource(dyn: DynamicClient) -> Any:
-    return dyn.resources.get(api_version="v1", kind="Pod")
-
-
-def _to_dict(obj: Any) -> dict[str, Any]:
-    to_dict = getattr(obj, "to_dict", None)
-    if callable(to_dict):
-        return cast(dict[str, Any], to_dict())
-    return cast(dict[str, Any], client.ApiClient().sanitize_for_serialization(obj))
+from sentry_streams_k8s.operator.pod_health import PodHealth, is_deleting
+from sentry_streams_k8s.operator.pod_types import PodManifest
 
 
 def list_owned_pods(
-    dyn: DynamicClient,
+    core: client.CoreV1Api,
     namespace: str,
     owner_uid: str,
     workload_set: str | None = None,
-) -> list[dict[str, Any]]:
+) -> list[V1Pod]:
     selector = f"{OWNER_UID_LABEL}={owner_uid}"
     if workload_set is not None:
         selector = f"{selector},{WORKLOAD_SET_LABEL}={workload_set}"
-    listing = _pod_resource(dyn).get(namespace=namespace, label_selector=selector)
-    return [_to_dict(item) for item in listing.items]
+    listing = cast(
+        V1PodList, core.list_namespaced_pod(namespace=namespace, label_selector=selector)
+    )
+    return cast(list[V1Pod], listing.items)
 
 
-def apply_pod(dyn: DynamicClient, pod: Mapping[str, Any], namespace: str) -> None:
-    _pod_resource(dyn).server_side_apply(
-        body=pod,
-        name=pod_metadata(pod)["name"],
+def apply_pod(core: client.CoreV1Api, pod: PodManifest, namespace: str) -> None:
+    core.patch_namespaced_pod(
+        name=pod["metadata"]["name"],
         namespace=namespace,
+        body=dict(pod),
         field_manager=FIELD_MANAGER,
-        force_conflicts=True,
+        force=True,
+        _content_type="application/apply-patch+yaml",
     )
 
 
-def delete_pod(dyn: DynamicClient, name: str, namespace: str, force: bool = False) -> None:
+def delete_pod(core: client.CoreV1Api, name: str, namespace: str, force: bool = False) -> None:
     if force:
         # Only use this for a Pod that has been stuck terminating:
-        _pod_resource(dyn).delete(
+        core.delete_namespaced_pod(
             name=name,
             namespace=namespace,
-            body={"apiVersion": "v1", "kind": "DeleteOptions", "gracePeriodSeconds": 0},
+            body=client.V1DeleteOptions(grace_period_seconds=0),
         )
     else:
-        _pod_resource(dyn).delete(name=name, namespace=namespace)
+        core.delete_namespaced_pod(name=name, namespace=namespace)
 
 
-def pod_name(pod: Mapping[str, Any]) -> str:
-    return cast(str, pod_metadata(pod).get("name", ""))
+def pod_name(pod: V1Pod) -> str:
+    metadata = pod.metadata
+    return metadata.name if metadata and metadata.name else ""
 
 
 def consumer_pod_name(base_name: str, ordinal: int, generation: int) -> str:
     return f"{base_name}-{ordinal}-{generation}"
 
 
-def pod_ordinal(pod: Mapping[str, Any]) -> int | None:
-    label = pod_labels(pod).get(ORDINAL_LABEL)
+def pod_ordinal(pod: V1Pod) -> int | None:
+    metadata = pod.metadata
+    label = (metadata.labels or {}).get(ORDINAL_LABEL) if metadata else None
     if label is None:
         return None
     try:
@@ -93,8 +83,9 @@ def pod_ordinal(pod: Mapping[str, Any]) -> int | None:
         return None
 
 
-def pod_generation(pod: Mapping[str, Any]) -> int:
-    label = pod_labels(pod).get(GENERATION_LABEL)
+def pod_generation(pod: V1Pod) -> int:
+    metadata = pod.metadata
+    label = (metadata.labels or {}).get(GENERATION_LABEL) if metadata else None
     if label is None:
         return 0
     try:
@@ -103,24 +94,23 @@ def pod_generation(pod: Mapping[str, Any]) -> int:
         return 0
 
 
-def pod_workload_set(pod: Mapping[str, Any]) -> str | None:
-    return pod_labels(pod).get(WORKLOAD_SET_LABEL)
+def pod_workload_set(pod: V1Pod) -> str | None:
+    metadata = pod.metadata
+    return (metadata.labels or {}).get(WORKLOAD_SET_LABEL) if metadata else None
 
 
-def pod_keep_key(pod: Mapping[str, Any], health: PodHealth) -> tuple[bool, int, str]:
+def pod_keep_key(pod: V1Pod, health: PodHealth) -> tuple[bool, int, str]:
     return (health.ready, pod_generation(pod), pod_name(pod))
 
 
 def pod_template_from_deployment(
     deployment: Mapping[str, Any],
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
-    template = cast(Mapping[str, Any], deployment["spec"]["template"])
-    return cast(Mapping[str, Any], template.get("metadata", {}) or {}), cast(
-        Mapping[str, Any], template["spec"]
-    )
+    template = deployment["spec"]["template"]
+    return template.get("metadata", {}) or {}, template["spec"]
 
 
-def _pod_spec_hash(pod: Mapping[str, Any]) -> str:
+def _pod_spec_hash(pod: PodManifest) -> str:
     metadata = pod["metadata"]
     labels = {
         key: value
@@ -151,7 +141,7 @@ def build_pipeline_pod(
     owner_name: str,
     owner_namespace: str,
     workload_set: str,
-) -> dict[str, Any]:
+) -> PodManifest:
     pod_spec = copy.deepcopy(dict(template_spec))
 
     # The operator replaces unhealthy Pods rather than letting k8s restart them:
@@ -176,7 +166,7 @@ def build_pipeline_pod(
         OWNER_NAMESPACE_ANNOTATION: owner_namespace,
     }
 
-    pod: dict[str, Any] = {
+    pod: PodManifest = {
         "apiVersion": "v1",
         "kind": "Pod",
         "metadata": {
@@ -187,15 +177,17 @@ def build_pipeline_pod(
         "spec": pod_spec,
     }
 
-    pod["metadata"]["annotations"][SPEC_HASH_ANNOTATION] = _pod_spec_hash(pod)
+    annotations[SPEC_HASH_ANNOTATION] = _pod_spec_hash(pod)
 
     return pod
 
 
-def delete_owned_pods(dyn: DynamicClient, namespace: str, owner_uid: str, logger: Logger) -> None:
-    for pod in list_owned_pods(dyn, namespace, owner_uid):
+def delete_owned_pods(
+    core: client.CoreV1Api, namespace: str, owner_uid: str, logger: Logger
+) -> None:
+    for pod in list_owned_pods(core, namespace, owner_uid):
         name = pod_name(pod)
         if is_deleting(pod):
             continue
-        delete_pod(dyn, name, namespace)
+        delete_pod(core, name, namespace)
         logger.info("deleted pipeline Pod %s/%s reason=OwnerDeleted", namespace, name)

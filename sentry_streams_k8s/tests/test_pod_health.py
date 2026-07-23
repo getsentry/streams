@@ -4,11 +4,19 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
+from kubernetes.client import V1ObjectMeta, V1Pod, V1PodCondition
 
 from sentry_streams_k8s.operator.constants import ORDINAL_LABEL, SPEC_HASH_ANNOTATION
 from sentry_streams_k8s.operator.pod_health import (
     pod_health,
     pod_spec_changed,
+)
+from sentry_streams_k8s.operator.pod_types import PodManifest
+from tests.k8s_fixtures import (
+    make_condition,
+    make_pod,
+    make_terminated_container_status,
+    make_waiting_container_status,
 )
 
 
@@ -18,25 +26,14 @@ def _image_pull_pod(
     start_time: datetime | None,
     creation_time: datetime,
     reason: str = "ImagePullBackOff",
-) -> dict[str, Any]:
-    status: dict[str, Any] = {
-        "phase": "Pending",
-        "containerStatuses": [
-            {
-                "state": {"waiting": {"reason": reason}},
-                "lastState": {"terminated": {"finishedAt": (now - timedelta(hours=1)).isoformat()}},
-            }
-        ],
-    }
-    if start_time is not None:
-        status["startTime"] = start_time.isoformat()
-    return {
-        "metadata": {
-            "name": "consumer-0-0",
-            "creationTimestamp": creation_time.isoformat(),
-        },
-        "status": status,
-    }
+) -> V1Pod:
+    return make_pod(
+        name="consumer-0-0",
+        creation_timestamp=creation_time,
+        phase="Pending",
+        container_statuses=[make_waiting_container_status(reason)],
+        start_time=start_time,
+    )
 
 
 def test_image_pull_wait_uses_pod_start_time_for_grace() -> None:
@@ -107,18 +104,15 @@ def test_crash_loop_backoff_is_not_a_waiting_replacement_reason() -> None:
 @pytest.mark.parametrize(
     ("phase", "conditions", "expected"),
     [
-        ("Running", [{"type": "Ready", "status": "True"}], True),
-        ("Running", [{"type": "Ready", "status": "False"}], False),
-        ("Pending", [{"type": "Ready", "status": "True"}], False),
+        ("Running", [make_condition("Ready", "True")], True),
+        ("Running", [make_condition("Ready", "False")], False),
+        ("Pending", [make_condition("Ready", "True")], False),
     ],
 )
 def test_pod_health_only_marks_running_ready_pods_ready(
-    phase: str, conditions: list[dict[str, str]], expected: bool
+    phase: str, conditions: list[V1PodCondition], expected: bool
 ) -> None:
-    pod = {
-        "metadata": {"name": "consumer-0-0"},
-        "status": {"phase": phase, "conditions": conditions},
-    }
+    pod = make_pod(phase=phase, conditions=conditions)
 
     health = pod_health(pod, datetime(2026, 7, 15, tzinfo=timezone.utc))
 
@@ -127,37 +121,36 @@ def test_pod_health_only_marks_running_ready_pods_ready(
 
 
 @pytest.mark.parametrize(
-    ("status", "reason"),
+    ("pod_kwargs", "reason"),
     [
         ({"phase": "Succeeded"}, "Succeeded"),
         ({"phase": "Failed", "reason": "Evicted"}, "Evicted"),
         (
             {
                 "phase": "Running",
-                "containerStatuses": [
-                    {"state": {"terminated": {"exitCode": 137, "reason": "OOMKilled"}}}
-                ],
+                "container_statuses": [make_terminated_container_status(137, "OOMKilled")],
             },
             "OOMKilled",
         ),
         (
-            {"phase": "Running", "containerStatuses": [{"state": {"terminated": {"exitCode": 9}}}]},
+            {
+                "phase": "Running",
+                "container_statuses": [make_terminated_container_status(9)],
+            },
             "ExitCode9",
         ),
         (
             {
                 "phase": "Pending",
-                "initContainerStatuses": [
-                    {"state": {"terminated": {"exitCode": 1, "reason": "Error"}}}
-                ],
+                "init_container_statuses": [make_terminated_container_status(1, "Error")],
             },
             "InitContainerError",
         ),
     ],
 )
-def test_pod_health_replaces_terminal_failures(status: dict[str, Any], reason: str) -> None:
+def test_pod_health_replaces_terminal_failures(pod_kwargs: dict[str, Any], reason: str) -> None:
     health = pod_health(
-        {"metadata": {"name": "consumer-0-0"}, "status": status},
+        make_pod(**pod_kwargs),
         datetime(2026, 7, 15, tzinfo=timezone.utc),
     )
 
@@ -166,16 +159,13 @@ def test_pod_health_replaces_terminal_failures(status: dict[str, Any], reason: s
     assert health.force is False
 
 
-@pytest.mark.parametrize("statuses_key", ["containerStatuses", "initContainerStatuses"])
+@pytest.mark.parametrize("statuses_key", ["container_statuses", "init_container_statuses"])
 def test_completed_container_does_not_fail_pod(statuses_key: str) -> None:
     health = pod_health(
-        {
-            "metadata": {"name": "consumer-0-0"},
-            "status": {
-                "phase": "Running",
-                statuses_key: [{"state": {"terminated": {"exitCode": 0, "reason": "Completed"}}}],
-            },
-        },
+        make_pod(
+            phase="Running",
+            **{statuses_key: [make_terminated_container_status(0, "Completed")]},
+        ),
         datetime(2026, 7, 15, tzinfo=timezone.utc),
     )
 
@@ -186,9 +176,9 @@ def test_completed_container_does_not_fail_pod(statuses_key: str) -> None:
 @pytest.mark.parametrize(
     ("statuses_key", "reason", "expected_reason", "permanent"),
     [
-        ("initContainerStatuses", "ImagePullBackOff", "InitContainerImagePullBackOff", False),
-        ("initContainerStatuses", "InvalidImageName", "InitContainerInvalidImageName", True),
-        ("containerStatuses", "InvalidImageName", "InvalidImageName", True),
+        ("init_container_statuses", "ImagePullBackOff", "InitContainerImagePullBackOff", False),
+        ("init_container_statuses", "InvalidImageName", "InitContainerInvalidImageName", True),
+        ("container_statuses", "InvalidImageName", "InvalidImageName", True),
     ],
 )
 def test_pod_health_classifies_init_and_permanent_waiting_reasons(
@@ -196,13 +186,11 @@ def test_pod_health_classifies_init_and_permanent_waiting_reasons(
 ) -> None:
     now = datetime(2026, 7, 15, tzinfo=timezone.utc)
     health = pod_health(
-        {
-            "metadata": {"name": "consumer-0-0", "creationTimestamp": now.isoformat()},
-            "status": {
-                "phase": "Pending",
-                statuses_key: [{"state": {"waiting": {"reason": reason}}}],
-            },
-        },
+        make_pod(
+            creation_timestamp=now,
+            phase="Pending",
+            **{statuses_key: [make_waiting_container_status(reason)]},
+        ),
         now,
     )
 
@@ -222,12 +210,7 @@ def test_pod_health_force_deletes_only_stuck_terminating_pods(
 ) -> None:
     now = datetime(2026, 7, 15, tzinfo=timezone.utc)
     health = pod_health(
-        {
-            "metadata": {
-                "name": "consumer-0-0",
-                "deletionTimestamp": (now - timedelta(seconds=age)).isoformat(),
-            }
-        },
+        make_pod(deletion_timestamp=now - timedelta(seconds=age)),
         now,
     )
 
@@ -237,17 +220,43 @@ def test_pod_health_force_deletes_only_stuck_terminating_pods(
     assert health.force is force
 
 
+def test_pod_health_handles_terminating_pod_without_status() -> None:
+    now = datetime(2026, 7, 15, tzinfo=timezone.utc)
+    pod = V1Pod(
+        metadata=V1ObjectMeta(name="consumer-0-0", deletion_timestamp=now - timedelta(seconds=600))
+    )
+
+    health = pod_health(pod, now)
+
+    assert health.reason == "StuckTerminating"
+    assert health.delete is True
+    assert health.force is True
+
+
+def test_pod_health_handles_pod_without_status() -> None:
+    health = pod_health(
+        V1Pod(metadata=V1ObjectMeta(name="consumer-0-0")),
+        datetime(2026, 7, 15, tzinfo=timezone.utc),
+    )
+
+    assert health.ready is False
+    assert health.delete is False
+
+
 def test_pod_spec_changed() -> None:
-    current = {
+    current = make_pod(
+        labels={ORDINAL_LABEL: "0"},
+        annotations={SPEC_HASH_ANNOTATION: "old"},
+        phase="Pending",
+    )
+    desired: PodManifest = {
+        "apiVersion": "v1",
+        "kind": "Pod",
         "metadata": {
             "name": "consumer-0-0",
-            "labels": {ORDINAL_LABEL: "0"},
-            "annotations": {SPEC_HASH_ANNOTATION: "old"},
+            "annotations": {SPEC_HASH_ANNOTATION: "new"},
         },
-        "status": {"phase": "Pending"},
-    }
-    desired = {
-        "metadata": {"annotations": {SPEC_HASH_ANNOTATION: "new"}},
+        "spec": {},
     }
 
     assert pod_spec_changed(current, desired) is True

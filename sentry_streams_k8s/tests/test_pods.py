@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import copy
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock
 
 import kopf
 import pytest
+from kubernetes.client import V1Pod
 
 from sentry_streams_k8s.operator.constants import (
     CANARY_WORKLOAD_SET,
@@ -24,7 +26,9 @@ from sentry_streams_k8s.operator.pod_resources import (
     list_owned_pods,
     pod_workload_set,
 )
+from sentry_streams_k8s.operator.pod_types import PodManifest
 from sentry_streams_k8s.operator.reconcile import (
+    PodSetResult,
     _combine_pod_results,
     _parse_generations,
     _reconcile_pod_set,
@@ -32,6 +36,7 @@ from sentry_streams_k8s.operator.reconcile import (
     delete_obsolete_pod_sets,
     reconcile_pipeline_pods,
 )
+from tests.k8s_fixtures import make_condition, make_pod
 
 NAMESPACE = "workloads"
 OWNER_UID = "owner-uid"
@@ -51,42 +56,60 @@ def _pod(
     ready: bool = False,
     phase: str = "Pending",
     annotations: dict[str, str] | None = None,
-    deletion_timestamp: str | None = None,
-) -> dict[str, Any]:
-    metadata: dict[str, Any] = {
-        "name": f"consumer-{ordinal}-{generation}",
-        "labels": {
-            ORDINAL_LABEL: str(ordinal),
-            GENERATION_LABEL: str(generation),
-            WORKLOAD_SET_LABEL: PRIMARY_WORKLOAD_SET,
-        },
-        "annotations": annotations or {},
+    deletion_timestamp: datetime | None = None,
+) -> V1Pod:
+    labels = {
+        ORDINAL_LABEL: str(ordinal),
+        GENERATION_LABEL: str(generation),
+        WORKLOAD_SET_LABEL: PRIMARY_WORKLOAD_SET,
     }
-    if deletion_timestamp is not None:
-        metadata["deletionTimestamp"] = deletion_timestamp
-    conditions = [{"type": "Ready", "status": "True"}] if ready else []
-    return {"metadata": metadata, "spec": {}, "status": {"phase": phase, "conditions": conditions}}
+    conditions = [make_condition("Ready", "True")] if ready else []
+    return make_pod(
+        name=f"consumer-{ordinal}-{generation}",
+        labels=labels,
+        annotations=annotations or {},
+        deletion_timestamp=deletion_timestamp,
+        phase=phase,
+        conditions=conditions,
+    )
+
+
+def _existing_pod_from_manifest(
+    manifest: PodManifest, *, phase: str = "Pending", ready: bool = False
+) -> V1Pod:
+    """Turns a desired-manifest dict (as returned by build_pipeline_pod) into an
+    existing/observed V1Pod fixture with the same identity, for tests that need a
+    "live" Pod matching a specific desired spec."""
+    metadata = manifest["metadata"]
+    conditions = [make_condition("Ready", "True")] if ready else []
+    return make_pod(
+        name=metadata["name"],
+        labels=metadata.get("labels"),
+        annotations=metadata.get("annotations"),
+        phase=phase,
+        conditions=conditions,
+    )
 
 
 def _reconcile(
     monkeypatch: pytest.MonkeyPatch,
-    pods: list[dict[str, Any]],
+    pods: list[V1Pod],
     *,
     replicas: int = 1,
     generations: dict[int, int] | None = None,
     template_metadata: dict[str, Any] | None = None,
     template_spec: dict[str, Any] | None = None,
     workload_set: str = PRIMARY_WORKLOAD_SET,
-) -> tuple[list[dict[str, Any]], list[tuple[str, bool]], dict[str, Any], dict[int, int]]:
-    applied: list[dict[str, Any]] = []
+) -> tuple[list[PodManifest], list[tuple[str, bool]], PodSetResult, dict[int, int]]:
+    applied: list[PodManifest] = []
     deleted: list[tuple[str, bool]] = []
 
     def list_pods(
-        _dyn: object,
+        _core: object,
         _namespace: str,
         _owner_uid: str,
         workload_set: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[V1Pod]:
         current = copy.deepcopy(pods)
         if workload_set is None:
             return current
@@ -98,16 +121,16 @@ def _reconcile(
     )
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.apply_pod",
-        lambda _dyn, pod, _namespace: applied.append(dict(pod)),
+        lambda _core, pod, _namespace: applied.append(pod),
     )
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.delete_pod",
-        lambda _dyn, name, _namespace, force=False: deleted.append((name, force)),
+        lambda _core, name, _namespace, force=False: deleted.append((name, force)),
     )
     metadata, spec = _template()
     ledger = generations if generations is not None else {}
     result = reconcile_pipeline_pods(
-        dyn=MagicMock(),
+        core=MagicMock(),
         workload_namespace=NAMESPACE,
         owner_uid=OWNER_UID,
         owner_name="pipeline",
@@ -148,14 +171,12 @@ def test_build_pipeline_pod_stamps_identity_without_mutating_template() -> None:
 
 
 def test_list_owned_pods_selects_owner_and_workload_set() -> None:
-    resource = MagicMock()
-    resource.get.return_value.items = []
-    dyn = MagicMock()
-    dyn.resources.get.return_value = resource
+    core = MagicMock()
+    core.list_namespaced_pod.return_value.items = []
 
-    assert list_owned_pods(dyn, NAMESPACE, OWNER_UID, CANARY_WORKLOAD_SET) == []
+    assert list_owned_pods(core, NAMESPACE, OWNER_UID, CANARY_WORKLOAD_SET) == []
 
-    resource.get.assert_called_once_with(
+    core.list_namespaced_pod.assert_called_once_with(
         namespace=NAMESPACE,
         label_selector=(
             f"streams.sentry.io/owner-uid={OWNER_UID},"
@@ -178,21 +199,23 @@ def test_reconcile_creates_all_missing_ordinals_and_is_idempotent(
 
     metadata, spec = _template()
     current = [
-        build_pipeline_pod(
-            base_name="consumer",
-            template_metadata=metadata,
-            template_spec=spec,
-            ordinal=ordinal,
-            generation=0,
-            owner_uid=OWNER_UID,
-            owner_name="pipeline",
-            owner_namespace="source",
-            workload_set=PRIMARY_WORKLOAD_SET,
+        _existing_pod_from_manifest(
+            build_pipeline_pod(
+                base_name="consumer",
+                template_metadata=metadata,
+                template_spec=spec,
+                ordinal=ordinal,
+                generation=0,
+                owner_uid=OWNER_UID,
+                owner_name="pipeline",
+                owner_namespace="source",
+                workload_set=PRIMARY_WORKLOAD_SET,
+            ),
+            phase="Running",
+            ready=True,
         )
         for ordinal in range(2)
     ]
-    for pod in current:
-        pod["status"] = {"phase": "Running", "conditions": [{"type": "Ready", "status": "True"}]}
     applied, deleted, result, ledger = _reconcile(monkeypatch, current, replicas=2)
 
     assert applied == []
@@ -230,7 +253,7 @@ def test_reconcile_raises_when_generation_exceeds_cap(
         _reconcile(monkeypatch, [current], generations={0: MAX_GENERATION})
 
 
-def _set_result(*child_pods: str) -> dict[str, Any]:
+def _set_result(*child_pods: str) -> PodSetResult:
     return {
         "childPods": list(child_pods),
         "desiredReplicas": len(child_pods),
@@ -263,7 +286,7 @@ def test_reconcile_pod_set_rejects_replicas_over_cap() -> None:
     deployment = _deployment("consumer", MAX_REPLICAS + 1)
     with pytest.raises(kopf.PermanentError, match="replica count cannot exceed"):
         _reconcile_pod_set(
-            dyn=MagicMock(),
+            core=MagicMock(),
             deployment=deployment,
             workload_set=PRIMARY_WORKLOAD_SET,
             workload_namespace=NAMESPACE,
@@ -279,7 +302,7 @@ def test_reconcile_pod_set_rejects_base_name_over_limit() -> None:
     deployment = _deployment("c" * (MAX_BASE_NAME_LENGTH + 1), 1)
     with pytest.raises(kopf.PermanentError, match="name cannot exceed"):
         _reconcile_pod_set(
-            dyn=MagicMock(),
+            core=MagicMock(),
             deployment=deployment,
             workload_set=PRIMARY_WORKLOAD_SET,
             workload_namespace=NAMESPACE,
@@ -296,7 +319,7 @@ def test_reconcile_replaces_outdated_pod_and_prunes_duplicates(
 ) -> None:
     outdated = _pod(0, 1, ready=True, phase="Running", annotations={SPEC_HASH_ANNOTATION: "old"})
     metadata, spec = _template()
-    desired = build_pipeline_pod(
+    desired_manifest = build_pipeline_pod(
         base_name="consumer",
         template_metadata=metadata,
         template_spec=spec,
@@ -307,10 +330,10 @@ def test_reconcile_replaces_outdated_pod_and_prunes_duplicates(
         owner_namespace="source",
         workload_set=PRIMARY_WORKLOAD_SET,
     )
-    duplicate = copy.deepcopy(desired)
-    duplicate["metadata"]["name"] = "consumer-0-2"
-    duplicate["metadata"]["labels"][GENERATION_LABEL] = "2"
-    duplicate["status"] = {"phase": "Running", "conditions": [{"type": "Ready", "status": "True"}]}
+    duplicate_manifest = copy.deepcopy(desired_manifest)
+    duplicate_manifest["metadata"]["name"] = "consumer-0-2"
+    duplicate_manifest["metadata"]["labels"][GENERATION_LABEL] = "2"
+    duplicate = _existing_pod_from_manifest(duplicate_manifest, phase="Running", ready=True)
 
     applied, deleted, result, ledger = _reconcile(monkeypatch, [outdated, duplicate])
 
@@ -325,7 +348,8 @@ def test_reconcile_prunes_scaled_down_and_unlabelled_pods(
 ) -> None:
     stale = _pod(2, 0)
     unlabelled = _pod(0, 0)
-    del unlabelled["metadata"]["labels"][ORDINAL_LABEL]
+    assert unlabelled.metadata is not None
+    del unlabelled.metadata.labels[ORDINAL_LABEL]
 
     applied, deleted, result, _ledger = _reconcile(monkeypatch, [stale, unlabelled], replicas=0)
 
@@ -338,33 +362,36 @@ def test_reconcile_keeps_primary_and_canary_sets_isolated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     metadata, spec = _template()
-    primary = build_pipeline_pod(
-        base_name="consumer",
-        template_metadata=metadata,
-        template_spec=spec,
-        ordinal=0,
-        generation=1,
-        owner_uid=OWNER_UID,
-        owner_name="pipeline",
-        owner_namespace="source",
-        workload_set=PRIMARY_WORKLOAD_SET,
+    primary = _existing_pod_from_manifest(
+        build_pipeline_pod(
+            base_name="consumer",
+            template_metadata=metadata,
+            template_spec=spec,
+            ordinal=0,
+            generation=1,
+            owner_uid=OWNER_UID,
+            owner_name="pipeline",
+            owner_namespace="source",
+            workload_set=PRIMARY_WORKLOAD_SET,
+        ),
+        phase="Running",
+        ready=True,
     )
-    canary = build_pipeline_pod(
-        base_name="consumer-canary",
-        template_metadata={**metadata, "labels": {"app": "consumer", "env": "canary"}},
-        template_spec=spec,
-        ordinal=0,
-        generation=3,
-        owner_uid=OWNER_UID,
-        owner_name="pipeline",
-        owner_namespace="source",
-        workload_set=CANARY_WORKLOAD_SET,
+    canary = _existing_pod_from_manifest(
+        build_pipeline_pod(
+            base_name="consumer-canary",
+            template_metadata={**metadata, "labels": {"app": "consumer", "env": "canary"}},
+            template_spec=spec,
+            ordinal=0,
+            generation=3,
+            owner_uid=OWNER_UID,
+            owner_name="pipeline",
+            owner_namespace="source",
+            workload_set=CANARY_WORKLOAD_SET,
+        ),
+        phase="Running",
+        ready=True,
     )
-    for pod in (primary, canary):
-        pod["status"] = {
-            "phase": "Running",
-            "conditions": [{"type": "Ready", "status": "True"}],
-        }
 
     applied, deleted, result, ledger = _reconcile(
         monkeypatch,
@@ -383,10 +410,12 @@ def test_delete_obsolete_pod_sets_removes_canary_when_disabled(
 ) -> None:
     primary = _pod(0, 1, ready=True, phase="Running")
     canary = _pod(0, 2, ready=True, phase="Running")
-    canary["metadata"]["name"] = "consumer-canary-0-2"
-    canary["metadata"]["labels"][WORKLOAD_SET_LABEL] = CANARY_WORKLOAD_SET
+    assert canary.metadata is not None
+    canary.metadata.name = "consumer-canary-0-2"
+    canary.metadata.labels[WORKLOAD_SET_LABEL] = CANARY_WORKLOAD_SET
     missing_set = _pod(1, 0, ready=True, phase="Running")
-    del missing_set["metadata"]["labels"][WORKLOAD_SET_LABEL]
+    assert missing_set.metadata is not None
+    del missing_set.metadata.labels[WORKLOAD_SET_LABEL]
     deleted: list[str] = []
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.list_owned_pods",
@@ -394,7 +423,7 @@ def test_delete_obsolete_pod_sets_removes_canary_when_disabled(
     )
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.delete_pod",
-        lambda _dyn, name, _namespace, force=False: deleted.append(name),
+        lambda _core, name, _namespace, force=False: deleted.append(name),
     )
 
     delete_obsolete_pod_sets(
@@ -409,14 +438,14 @@ def test_delete_obsolete_pod_sets_removes_canary_when_disabled(
 
 
 def test_delete_owned_pods_skips_pods_already_terminating(monkeypatch: pytest.MonkeyPatch) -> None:
-    pods = [_pod(0, 0), _pod(1, 0, deletion_timestamp="2026-07-16T00:00:00Z")]
+    pods = [_pod(0, 0), _pod(1, 0, deletion_timestamp=datetime(2026, 7, 16, tzinfo=timezone.utc))]
     deleted: list[str] = []
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.pod_resources.list_owned_pods", lambda *_: pods
     )
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.pod_resources.delete_pod",
-        lambda _dyn, name, _namespace: deleted.append(name),
+        lambda _core, name, _namespace: deleted.append(name),
     )
 
     delete_owned_pods(MagicMock(), NAMESPACE, OWNER_UID, MagicMock())

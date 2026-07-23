@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 import kopf
-from kubernetes import client, dynamic
+from kubernetes import client
+from kubernetes.client import V1Pod
 from kubernetes.client.exceptions import ApiException
 
 from sentry_streams_k8s.consumer_builder import compute_config_version
@@ -31,6 +32,7 @@ from sentry_streams_k8s.operator.pod_health import (
 from sentry_streams_k8s.operator.pod_resources import (
     apply_pod,
     build_pipeline_pod,
+    consumer_pod_name,
     delete_pod,
     list_owned_pods,
     pod_generation,
@@ -41,9 +43,11 @@ from sentry_streams_k8s.operator.pod_resources import (
     pod_workload_set,
 )
 from sentry_streams_k8s.operator.pod_status import (
+    PodStatusEntry,
     ReportedPodStatus,
     reported_pod_status,
 )
+from sentry_streams_k8s.operator.pod_types import PodManifest
 from sentry_streams_k8s.operator.streaming_pipeline import (
     from_crd_spec,
     render,
@@ -51,16 +55,51 @@ from sentry_streams_k8s.operator.streaming_pipeline import (
 )
 
 
-def _parse_generations(data: Any) -> dict[int, int]:
+class Condition(TypedDict):
+    type: str
+    status: str
+    reason: str
+    message: str
+
+
+class PodSetResult(TypedDict):
+    childPods: list[str]
+    desiredReplicas: int
+    readyReplicas: int
+    unhealthyPods: list[PodStatusEntry]
+    permanentErrors: list[PodStatusEntry]
+
+
+class CombinedPodResult(PodSetResult):
+    sets: dict[str, PodSetResult | None]
+
+
+class PipelineStatusPatch(TypedDict, total=False):
+    conditions: list[Condition]
+    config_version: str
+    pods: CombinedPodResult
+    workload_namespace: str
+    generations: dict[str, dict[str, int] | None]
+
+
+def _parse_generations(data: object) -> dict[int, int]:
     """
     Returns a dict mapping ordinal -> highest generation.
     Empty when there is no ledger yet (e.g. first reconcile).
     """
 
-    if not data:
+    if not isinstance(data, Mapping):
         return {}
 
-    return {int(key): value for key, value in data.items()}
+    generations: dict[int, int] = {}
+    for key, value in data.items():
+        if not isinstance(key, str) or not isinstance(value, int):
+            continue
+        try:
+            generations[int(key)] = value
+        except ValueError:
+            continue
+    return generations
 
 
 def _serialize_generations(generations: dict[int, int]) -> dict[str, int]:
@@ -96,36 +135,36 @@ def _prepare_manifest(
     }
 
 
-def _apply(
-    dyn: dynamic.DynamicClient,
+def _apply_configmap(
+    core: client.CoreV1Api,
     manifest: dict[str, Any],
     *,
     workload_namespace: str,
     owner_uid: str,
 ) -> None:
-    resource = dyn.resources.get(api_version=manifest["apiVersion"], kind=manifest["kind"])
     name = manifest["metadata"]["name"]
     try:
-        existing = resource.get(name=name, namespace=workload_namespace)
+        existing = core.read_namespaced_config_map(name=name, namespace=workload_namespace)
     except ApiException as e:
         if e.status != 404:
             raise
     else:
-        labels = existing.metadata.labels or {}
+        labels = existing.metadata.labels if existing.metadata and existing.metadata.labels else {}
         existing_owner_uid = labels.get(OWNER_UID_LABEL)
         # Do not take over a resource with the same name from another pipeline:
         if existing_owner_uid != owner_uid:
             raise kopf.PermanentError(
-                f"{manifest['kind']} {workload_namespace}/{name} is already present and is not "
+                f"ConfigMap {workload_namespace}/{name} is already present and is not "
                 "managed by this StreamingPipeline."
             )
 
-    dyn.server_side_apply(
-        resource,
-        body=manifest,
+    core.patch_namespaced_config_map(
+        name=name,
         namespace=workload_namespace,
+        body=manifest,
         field_manager=FIELD_MANAGER,
-        force_conflicts=True,
+        force=True,
+        _content_type="application/apply-patch+yaml",
     )
 
 
@@ -138,24 +177,21 @@ def prune_stale_configmaps(
 ) -> None:
     selector = f"{OWNER_UID_LABEL}={owner_uid}"
     core = client.CoreV1Api()
-    configmaps = cast(
-        Any,
-        core.list_namespaced_config_map(
-            namespace=workload_namespace,
-            label_selector=selector,
-        ),
+    configmaps = core.list_namespaced_config_map(
+        namespace=workload_namespace,
+        label_selector=selector,
     )
     for configmap in configmaps.items:
-        if configmap.metadata.name not in desired_configmaps:
-            logger.info(
-                "Pruning stale configmap %s/%s", workload_namespace, configmap.metadata.name
-            )
-            core.delete_namespaced_config_map(
-                name=configmap.metadata.name, namespace=workload_namespace
-            )
+        metadata = configmap.metadata
+        name = metadata.name if metadata else None
+        if name is None:
+            continue
+        if name not in desired_configmaps:
+            logger.info("Pruning stale configmap %s/%s", workload_namespace, name)
+            core.delete_namespaced_config_map(name=name, namespace=workload_namespace)
 
 
-def _condition(type_: str, status: bool, reason: str, message: str = "") -> dict[str, Any]:
+def _condition(type_: str, status: bool, reason: str, message: str = "") -> Condition:
     return {
         "type": type_,
         "status": "True" if status else "False",
@@ -165,8 +201,8 @@ def _condition(type_: str, status: bool, reason: str, message: str = "") -> dict
 
 
 def _delete_current_pod(
-    dyn: dynamic.DynamicClient,
-    pod: Mapping[str, Any],
+    core: client.CoreV1Api,
+    pod: V1Pod,
     namespace: str,
     logger: Logger,
     health: PodHealth,
@@ -176,25 +212,25 @@ def _delete_current_pod(
     if is_deleting(pod) and not health.delete:
         logger.info("pipeline Pod %s/%s is already deleting reason=%s", namespace, name, reason)
         return
-    delete_pod(dyn, name, namespace, force=health.force)
+    delete_pod(core, name, namespace, force=health.force)
     logger.info("deleted pipeline Pod %s/%s reason=%s", namespace, name, reason)
 
 
 def delete_obsolete_pod_sets(
-    dyn: dynamic.DynamicClient,
+    core: client.CoreV1Api,
     namespace: str,
     owner_uid: str,
     desired_sets: set[str],
     logger: Logger,
 ) -> None:
     now = datetime.now(timezone.utc)
-    for pod in list_owned_pods(dyn, namespace, owner_uid):
+    for pod in list_owned_pods(core, namespace, owner_uid):
         workload_set = pod_workload_set(pod)
         if workload_set in desired_sets:
             continue
         health = pod_health(pod, now)
         _delete_current_pod(
-            dyn,
+            core,
             pod,
             namespace,
             logger,
@@ -203,9 +239,7 @@ def delete_obsolete_pod_sets(
         )
 
 
-def _allocate_generation(
-    generations: dict[int, int], ordinal: int, pods: list[dict[str, Any]]
-) -> int:
+def _allocate_generation(generations: dict[int, int], ordinal: int, pods: list[V1Pod]) -> int:
     live_max = max((pod_generation(pod) for pod in pods), default=-1)
     generation = max(generations.get(ordinal, -1), live_max) + 1
 
@@ -219,7 +253,7 @@ def _allocate_generation(
 
 def reconcile_pipeline_pods(
     *,
-    dyn: dynamic.DynamicClient,
+    core: client.CoreV1Api,
     workload_namespace: str,
     owner_uid: str,
     owner_name: str,
@@ -231,22 +265,22 @@ def reconcile_pipeline_pods(
     generations: dict[int, int],
     logger: Logger,
     workload_set: str,
-) -> dict[str, Any]:
+) -> PodSetResult:
     desired_ordinals = set(range(max(replicas, 0)))
     current = list_owned_pods(
-        dyn,
+        core,
         workload_namespace,
         owner_uid,
         workload_set=workload_set,
     )
     now = datetime.now(timezone.utc)
 
-    pods_by_ordinal: dict[int, list[dict[str, Any]]] = {}
+    pods_by_ordinal: dict[int, list[V1Pod]] = {}
     health_by_name: dict[str, PodHealth] = {}
     reported_statuses: list[ReportedPodStatus] = []
     active_pod_names: list[str] = []
 
-    def _build(ordinal: int, generation: int) -> dict[str, Any]:
+    def _build(ordinal: int, generation: int) -> PodManifest:
         return build_pipeline_pod(
             base_name=base_name,
             template_metadata=template_metadata,
@@ -265,7 +299,7 @@ def reconcile_pipeline_pods(
         health_by_name[name] = health
         ordinal = pod_ordinal(pod)
         if ordinal is None or ordinal not in desired_ordinals:
-            _delete_current_pod(dyn, pod, workload_namespace, logger, health, "Stale")
+            _delete_current_pod(core, pod, workload_namespace, logger, health, "Stale")
             continue
         pods_by_ordinal.setdefault(ordinal, []).append(pod)
         reported_statuses.append(reported_pod_status(pod, health))
@@ -283,6 +317,7 @@ def reconcile_pipeline_pods(
             )
         ]
 
+        keep: V1Pod | None
         if candidates:
             # Prefer a ready Pod, otherwise keep the newest generation:
             keep = max(candidates, key=lambda pod: pod_keep_key(pod, health_by_name[pod_name(pod)]))
@@ -291,13 +326,15 @@ def reconcile_pipeline_pods(
         else:
             # Create the replacement before deleting the old Pod:
             generation = _allocate_generation(generations, ordinal, pods)
-            keep = _build(ordinal, generation)
-            apply_pod(dyn, keep, workload_namespace)
-            active_pod_names.append(pod_name(keep))
+            keep_manifest = _build(ordinal, generation)
+            apply_pod(core, keep_manifest, workload_namespace)
+            keep = None
+            keep_name = consumer_pod_name(base_name, ordinal, generation)
+            active_pod_names.append(keep_name)
             logger.info(
                 "applied replacement pipeline Pod %s/%s",
                 workload_namespace,
-                pod_name(keep),
+                keep_name,
             )
 
         for pod in pods:
@@ -305,13 +342,13 @@ def reconcile_pipeline_pods(
                 continue
             health = health_by_name[pod_name(pod)]
             if pod_spec_changed(pod, desired_template):
-                _delete_current_pod(dyn, pod, workload_namespace, logger, health, "Outdated")
+                _delete_current_pod(core, pod, workload_namespace, logger, health, "Outdated")
             elif health.delete:
                 _delete_current_pod(
-                    dyn, pod, workload_namespace, logger, health, cast(str, health.reason)
+                    core, pod, workload_namespace, logger, health, health.reason or "Unhealthy"
                 )
             elif pod in candidates:
-                _delete_current_pod(dyn, pod, workload_namespace, logger, health, "Duplicate")
+                _delete_current_pod(core, pod, workload_namespace, logger, health, "Duplicate")
 
     ready_ordinals = {
         ordinal
@@ -342,7 +379,7 @@ def reconcile_pipeline_pods(
 
 def _reconcile_pod_set(
     *,
-    dyn: dynamic.DynamicClient,
+    core: client.CoreV1Api,
     deployment: dict[str, Any],
     workload_set: str,
     workload_namespace: str,
@@ -351,7 +388,7 @@ def _reconcile_pod_set(
     owner_namespace: str,
     logger: Logger,
     previous_generations: dict[int, int],
-) -> tuple[dict[str, Any], dict[int, int]]:
+) -> tuple[PodSetResult, dict[int, int]]:
     base_name = deployment["metadata"]["name"]
 
     if len(base_name) > MAX_BASE_NAME_LENGTH:
@@ -370,7 +407,7 @@ def _reconcile_pod_set(
 
     generations = dict(previous_generations)
     pod_result = reconcile_pipeline_pods(
-        dyn=dyn,
+        core=core,
         workload_namespace=workload_namespace,
         owner_uid=owner_uid,
         owner_name=owner_name,
@@ -386,17 +423,17 @@ def _reconcile_pod_set(
     return pod_result, generations
 
 
-def _combine_pod_results(results: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def _combine_pod_results(results: dict[str, PodSetResult]) -> CombinedPodResult:
     child_pods: list[str] = []
-    unhealthy_pods: list[dict[str, Any]] = []
-    permanent_errors: list[dict[str, Any]] = []
+    unhealthy_pods: list[PodStatusEntry] = []
+    permanent_errors: list[PodStatusEntry] = []
     for workload_set, result in results.items():
         child_pods.extend(result["childPods"])
         unhealthy_pods.extend(
-            {**entry, "workloadSet": workload_set} for entry in result["unhealthyPods"]
+            _with_workload_set(entry, workload_set) for entry in result["unhealthyPods"]
         )
         permanent_errors.extend(
-            {**entry, "workloadSet": workload_set} for entry in result["permanentErrors"]
+            _with_workload_set(entry, workload_set) for entry in result["permanentErrors"]
         )
     return {
         "childPods": sorted(child_pods),
@@ -410,6 +447,22 @@ def _combine_pod_results(results: dict[str, dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _with_workload_set(entry: PodStatusEntry, workload_set: str) -> PodStatusEntry:
+    result: PodStatusEntry = {
+        "name": entry["name"],
+        "ready": entry["ready"],
+        "phase": entry["phase"],
+        "workloadSet": workload_set,
+    }
+    if "ordinal" in entry:
+        result["ordinal"] = entry["ordinal"]
+    if "reason" in entry:
+        result["reason"] = entry["reason"]
+    if "permanent" in entry:
+        result["permanent"] = entry["permanent"]
+    return result
+
+
 def reconcile_pipeline(
     *,
     spec: Any,
@@ -419,10 +472,14 @@ def reconcile_pipeline(
     workload_namespace: str,
     logger: Logger,
     patch: kopf.Patch | None = None,
-    status: dict[str, Any] | None = None,
-    previous_generations: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    status_patch = status if status is not None else patch.status if patch is not None else None
+    status: PipelineStatusPatch | None = None,
+    previous_generations: object = None,
+) -> CombinedPodResult:
+    status_patch = (
+        status
+        if status is not None
+        else cast(PipelineStatusPatch, patch.status) if patch is not None else None
+    )
     previous_generations = previous_generations if isinstance(previous_generations, Mapping) else {}
     consumer = from_crd_spec(dict(spec), name=name)
     try:
@@ -433,7 +490,7 @@ def reconcile_pipeline(
             status_patch["conditions"] = [_condition("Rendered", False, type(e).__name__, str(e))]
         raise kopf.PermanentError(f"StreamingPipeline {namespace}/{name} failed to render: {e}")
 
-    dyn = dynamic.DynamicClient(client.ApiClient())
+    core = client.CoreV1Api()
     configmap = result["configmap"]
 
     _prepare_manifest(
@@ -443,17 +500,17 @@ def reconcile_pipeline(
         owner_name=name,
         owner_namespace=namespace,
     )
-    _apply(dyn, configmap, workload_namespace=workload_namespace, owner_uid=uid)
+    _apply_configmap(core, configmap, workload_namespace=workload_namespace, owner_uid=uid)
 
     rendered_sets = {PRIMARY_WORKLOAD_SET: result["deployment"]}
     if "canary_deployment" in result:
         rendered_sets[CANARY_WORKLOAD_SET] = result["canary_deployment"]
 
-    pod_set_results: dict[str, dict[str, Any]] = {}
+    pod_set_results: dict[str, PodSetResult] = {}
     generations_by_set: dict[str, dict[int, int]] = {}
     for workload_set, deployment in rendered_sets.items():
         set_result, generations = _reconcile_pod_set(
-            dyn=dyn,
+            core=core,
             deployment=deployment,
             workload_set=workload_set,
             workload_namespace=workload_namespace,
@@ -468,7 +525,7 @@ def reconcile_pipeline(
 
     # Remove Pods left behind by a removed canary set:
     delete_obsolete_pod_sets(
-        dyn,
+        core,
         workload_namespace,
         uid,
         set(rendered_sets),
@@ -494,7 +551,7 @@ def reconcile_pipeline(
                 "Applied",
                 False,
                 "PermanentPodFailure",
-                f"Pod {error['name']} is permanently unhealthy: {error['reason']}. "
+                f"Pod {error['name']} is permanently unhealthy: {error.get('reason', 'Unknown')}. "
                 "Update the StreamingPipeline spec.",
             )
         status_patch["conditions"] = conditions
