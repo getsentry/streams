@@ -27,7 +27,6 @@ from sentry_streams_k8s.operator.pod_health import (
     is_deleting,
     pod_health,
     pod_spec_changed,
-    pod_status_entry,
 )
 from sentry_streams_k8s.operator.pod_resources import (
     apply_pod,
@@ -40,6 +39,10 @@ from sentry_streams_k8s.operator.pod_resources import (
     pod_ordinal,
     pod_template_from_deployment,
     pod_workload_set,
+)
+from sentry_streams_k8s.operator.pod_status import (
+    ReportedPodStatus,
+    reported_pod_status,
 )
 from sentry_streams_k8s.operator.streaming_pipeline import (
     from_crd_spec,
@@ -240,7 +243,7 @@ def reconcile_pipeline_pods(
 
     pods_by_ordinal: dict[int, list[dict[str, Any]]] = {}
     health_by_name: dict[str, PodHealth] = {}
-    pod_statuses: list[dict[str, Any]] = []
+    reported_statuses: list[ReportedPodStatus] = []
     active_pod_names: list[str] = []
 
     def _build(ordinal: int, generation: int) -> dict[str, Any]:
@@ -265,7 +268,7 @@ def reconcile_pipeline_pods(
             _delete_current_pod(dyn, pod, workload_namespace, logger, health, "Stale")
             continue
         pods_by_ordinal.setdefault(ordinal, []).append(pod)
-        pod_statuses.append(pod_status_entry(pod, health))
+        reported_statuses.append(reported_pod_status(pod, health))
 
     for ordinal in sorted(desired_ordinals):
         pods = pods_by_ordinal.get(ordinal, [])
@@ -320,8 +323,14 @@ def reconcile_pipeline_pods(
             for pod in pods
         )
     }
-    unhealthy_pods = [entry for entry in pod_statuses if entry.get("reason") is not None]
-    permanent_errors = [entry for entry in unhealthy_pods if entry.get("permanent")]
+    unhealthy_pods = [
+        status.to_status_dict() for status in reported_statuses if status.is_unhealthy
+    ]
+    permanent_errors = [
+        status.to_status_dict()
+        for status in reported_statuses
+        if status.is_unhealthy and status.permanent
+    ]
     return {
         "childPods": sorted(active_pod_names),
         "desiredReplicas": len(desired_ordinals),

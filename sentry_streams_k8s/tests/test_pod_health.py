@@ -7,10 +7,8 @@ import pytest
 
 from sentry_streams_k8s.operator.constants import ORDINAL_LABEL, SPEC_HASH_ANNOTATION
 from sentry_streams_k8s.operator.pod_health import (
-    PodHealth,
     pod_health,
     pod_spec_changed,
-    pod_status_entry,
 )
 
 
@@ -86,6 +84,7 @@ def test_invalid_image_name_is_a_non_replacing_permanent_error() -> None:
     health = pod_health(pod, now)
 
     assert health.reason == "InvalidImageName"
+    assert health.unhealthy is True
     assert health.delete is False
     assert health.permanent is True
 
@@ -233,11 +232,12 @@ def test_pod_health_force_deletes_only_stuck_terminating_pods(
     )
 
     assert health.reason == reason
+    assert health.unhealthy is delete
     assert health.delete is delete
     assert health.force is force
 
 
-def test_pod_spec_and_status_helpers() -> None:
+def test_pod_spec_changed() -> None:
     current = {
         "metadata": {
             "name": "consumer-0-0",
@@ -249,13 +249,5 @@ def test_pod_spec_and_status_helpers() -> None:
     desired = {
         "metadata": {"annotations": {SPEC_HASH_ANNOTATION: "new"}},
     }
-    health = PodHealth(name="consumer-0-0", ready=False, reason="ImagePullBackOff")
 
     assert pod_spec_changed(current, desired) is True
-    assert pod_status_entry(current, health) == {
-        "name": "consumer-0-0",
-        "ready": False,
-        "phase": "Pending",
-        "ordinal": "0",
-        "reason": "ImagePullBackOff",
-    }

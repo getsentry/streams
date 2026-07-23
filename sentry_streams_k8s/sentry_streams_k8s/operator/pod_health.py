@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import Any, cast
 
 from sentry_streams_k8s.operator.constants import (
-    ORDINAL_LABEL,
     PERMANENT_WAITING_REASONS,
     POD_TERMINATING_GRACE_SECONDS,
     POD_WAITING_GRACE_SECONDS,
@@ -131,6 +130,7 @@ class PodHealth:
     name: str
     ready: bool = False
     reason: str | None = None
+    unhealthy: bool = False
     delete: bool = False
     force: bool = False
     permanent: bool = False
@@ -141,6 +141,7 @@ def _verdict(
     *,
     ready: bool = False,
     reason: str | None = None,
+    unhealthy: bool = False,
     delete: bool = False,
     force: bool = False,
     permanent: bool = False,
@@ -149,6 +150,7 @@ def _verdict(
         name=pod_name,
         ready=ready,
         reason=reason,
+        unhealthy=unhealthy,
         delete=delete,
         force=force,
         permanent=permanent,
@@ -168,6 +170,7 @@ def _container_statuses_verdict(
         return _verdict(
             pod_name,
             reason=f"{reason_prefix}{permanent_waiting}",
+            unhealthy=True,
             permanent=True,
         )
 
@@ -176,6 +179,7 @@ def _container_statuses_verdict(
         return _verdict(
             pod_name,
             reason=f"{reason_prefix}{terminated_reason}",
+            unhealthy=True,
             delete=True,
         )
 
@@ -184,6 +188,7 @@ def _container_statuses_verdict(
         return _verdict(
             pod_name,
             reason=f"{reason_prefix}{unhealthy_waiting}",
+            unhealthy=True,
             delete=_waiting_grace_elapsed(pod, now),
         )
 
@@ -206,7 +211,13 @@ def pod_health(pod: Mapping[str, Any], now: datetime) -> PodHealth:
     if terminating_age is not None:
         stuck = terminating_age >= POD_TERMINATING_GRACE_SECONDS
         reason = "StuckTerminating" if stuck else "Terminating"
-        return _verdict(pod_name, reason=reason, delete=stuck, force=stuck)
+        return _verdict(
+            pod_name,
+            reason=reason,
+            unhealthy=stuck,
+            delete=stuck,
+            force=stuck,
+        )
 
     init_verdict = _container_statuses_verdict(
         pod_name,
@@ -237,22 +248,6 @@ def pod_health(pod: Mapping[str, Any], now: datetime) -> PodHealth:
         status_reason_str = status_reason if isinstance(status_reason, str) else None
         phase_str = phase if isinstance(phase, str) else None
         reason = status_reason_str or phase_str or "Terminated"
-        return _verdict(pod_name, reason=reason, delete=True)
+        return _verdict(pod_name, reason=reason, unhealthy=True, delete=True)
 
     return _verdict(pod_name, ready=pod_is_ready(pod))
-
-
-def pod_status_entry(pod: Mapping[str, Any], health: PodHealth) -> dict[str, Any]:
-    labels = pod_labels(pod)
-    entry: dict[str, Any] = {
-        "name": health.name,
-        "ready": health.ready,
-        "phase": pod_status(pod).get("phase", "Unknown"),
-    }
-    if labels.get(ORDINAL_LABEL) is not None:
-        entry["ordinal"] = labels[ORDINAL_LABEL]
-    if health.reason is not None:
-        entry["reason"] = health.reason
-    if health.permanent:
-        entry["permanent"] = True
-    return entry
