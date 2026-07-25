@@ -147,6 +147,17 @@ def test_render_produces_manifests_from_inputs() -> None:
     )
 
 
+def test_render_preserves_static_membership_envvar_placeholder() -> None:
+    config = pipeline_config()
+    config["pipeline"]["segments"][0]["steps_config"]["myinput"]["override_params"] = {
+        "group.instance.id": "${envvar:STREAMS_KAFKA_GROUP_INSTANCE_ID}",
+    }
+    result = render(consumer_spec(pipeline_config=config))
+    data = json.loads(result["configmap"]["data"]["pipeline_config.yaml"])
+    override = data["pipeline"]["segments"][0]["steps_config"]["myinput"]["override_params"]
+    assert override["group.instance.id"] == "${envvar:STREAMS_KAFKA_GROUP_INSTANCE_ID}"
+
+
 def test_render_passes_envvar_tokens_through_config() -> None:
     config = pipeline_config()
     config["metrics"] = {"type": "datadog", "host": "${envvar:HOST_IP}", "port": 8128}

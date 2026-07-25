@@ -1,4 +1,3 @@
-import os
 from typing import Mapping, Sequence
 
 import pytest
@@ -95,6 +94,21 @@ def test_rust_arroyo_adapter(
             {"session.timeout.ms": "30000", "heartbeat.interval.ms": "10000"},
             id="multiple_override_params_pass_through",
         ),
+        pytest.param(
+            {
+                "starts_segment": None,
+                "bootstrap_servers": ["localhost:9092"],
+                "auto_offset_reset": "earliest",
+                "override_params": {"group.instance.id": "consumer-2"},
+            },
+            None,
+            ["localhost:9092"],
+            "pipeline-test_source",
+            InitialOffset.earliest,
+            False,
+            {"group.instance.id": "consumer-2"},
+            id="group_instance_id_pass_through",
+        ),
     ],
 )
 def test_build_kafka_consumer_config(
@@ -161,48 +175,3 @@ def test_build_kafka_producer_config(
     assert result is not None
     assert list(result.bootstrap_servers) == expected_bootstrap_servers
     assert result.override_params == expected_override_params
-
-
-def test_build_kafka_consumer_config_injects_static_membership() -> None:
-    os.environ["STREAMS_KAFKA_GROUP_INSTANCE_ID"] = "consumer-2"
-    result = build_kafka_consumer_config(
-        source="test_source",
-        source_config={
-            "starts_segment": None,
-            "bootstrap_servers": ["localhost:9092"],
-            "auto_offset_reset": "earliest",
-        },
-    )
-    assert result.override_params is not None
-    assert result.override_params["group.instance.id"] == "consumer-2"
-
-
-def test_build_kafka_consumer_config_respects_explicit_instance_id() -> None:
-    os.environ["STREAMS_KAFKA_GROUP_INSTANCE_ID"] = "consumer-2"
-    result = build_kafka_consumer_config(
-        source="test_source",
-        source_config={
-            "starts_segment": None,
-            "bootstrap_servers": ["localhost:9092"],
-            "auto_offset_reset": "earliest",
-            "override_params": {
-                "group.instance.id": "explicit",
-                "session.timeout.ms": "10000",
-            },
-        },
-    )
-    assert result.override_params is not None
-    assert result.override_params["group.instance.id"] == "explicit"
-
-
-def test_build_kafka_consumer_config_no_static_membership_without_env() -> None:
-    os.environ.pop("STREAMS_KAFKA_GROUP_INSTANCE_ID", None)
-    result = build_kafka_consumer_config(
-        source="test_source",
-        source_config={
-            "starts_segment": None,
-            "bootstrap_servers": ["localhost:9092"],
-            "auto_offset_reset": "earliest",
-        },
-    )
-    assert result.override_params == {}

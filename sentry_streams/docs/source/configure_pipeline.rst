@@ -88,6 +88,10 @@ Example with env var for a list entry:
 
 Run with the variable set, e.g. ``MAX_POLL_INTERVAL_MS=30000``.
 
+Pipelines managed by the operator can opt in to Kafka static membership by setting
+``group.instance.id: "${envvar:STREAMS_KAFKA_GROUP_INSTANCE_ID}"`` under
+``override_params``. The operator sets that variable to a Pod's identity.
+
 
 Distribution and parallelism
 ============================

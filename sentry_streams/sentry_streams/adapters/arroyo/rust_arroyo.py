@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import logging
-import os
 import time
 from dataclasses import replace
 from typing import (
@@ -158,16 +157,7 @@ def build_kafka_consumer_config(
     )
     auto_offset_reset = build_initial_offset(consumer_config.get("auto_offset_reset", "latest"))
     strict_offset_reset = bool(consumer_config.get("strict_offset_reset", False))
-    override_params = dict(consumer_config.get("override_params", {}))
-
-    group_instance_id = os.environ.get("STREAMS_KAFKA_GROUP_INSTANCE_ID")
-    if group_instance_id and "group.instance.id" not in override_params:
-        override_params["group.instance.id"] = group_instance_id
-        logger.info(
-            "Enabling Kafka static membership for source %s with group.instance.id=%s",
-            source,
-            group_instance_id,
-        )
+    override_params = consumer_config.get("override_params", {})
 
     return PyKafkaConsumerConfig(
         bootstrap_servers=bootstrap_servers,
@@ -322,7 +312,9 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
             kafka_config=build_kafka_consumer_config(
-                source_name, cast(KafkaConsumerConfig, source_config), step.consumer_group
+                source_name,
+                cast(KafkaConsumerConfig, source_config),
+                step.consumer_group,
             ),
             topic=step.stream_name,
             schema=schema_name,
