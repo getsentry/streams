@@ -31,7 +31,7 @@ use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Default path for the healthcheck file touched when write_healthcheck is enabled.
 /// Matches Arroyo docs for Kubernetes liveness probes.
@@ -87,7 +87,7 @@ pub struct ArroyoConsumer {
 
     /// The ProcessorHandle allows the main thread to stop the StreamingProcessor
     /// from a different thread.
-    handle: Option<ProcessorHandle>,
+    handle: Mutex<Option<ProcessorHandle>>,
 
     // this variable must live for the lifetime of the entire consumer.
     // This is a requirement of Arroyo Rust.
@@ -133,7 +133,7 @@ impl ArroyoConsumer {
             source,
             schema,
             steps: Vec::new(),
-            handle: None,
+            handle: Mutex::new(None),
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
             step_concurrency_configs: HashMap::new(),
             metric_config,
@@ -162,8 +162,8 @@ impl ArroyoConsumer {
 
     /// Runs the consumer.
     /// This method is blocking and will run until the consumer
-    /// is stopped via SIGTERM or SIGINT.
-    fn run(&mut self) {
+    /// is stopped via `shutdown()` or SIGTERM or SIGINT.
+    fn run(&self, py: Python<'_>) {
         tracing_subscriber::fmt::init();
         println!("Running Arroyo Consumer...");
 
@@ -196,7 +196,10 @@ impl ArroyoConsumer {
 
         let processor =
             StreamProcessor::with_kafka(config, factory, Topic::new(&self.topic), dlq_policy);
-        self.handle = Some(processor.get_handle());
+
+        // Store the handle so a shutdown sent from another thread can signal
+        // this processor to stop while we are blocked in the run loop below.
+        *self.handle.lock().unwrap() = Some(processor.get_handle());
 
         let mut handle = processor.get_handle();
         ctrlc::set_handler(move || {
@@ -205,16 +208,19 @@ impl ArroyoConsumer {
         })
         .expect("Error setting Ctrl+C handler");
 
-        if let Err(e) = processor.run() {
-            tracing::error!("StreamProcessor error: {:?}", e);
-            sentry::capture_error(&e);
-        }
+        py.detach(|| {
+            if let Err(e) = processor.run() {
+                tracing::error!("StreamProcessor error: {:?}", e);
+                sentry::capture_error(&e);
+            }
+        });
+
+        *self.handle.lock().unwrap() = None;
     }
 
-    fn shutdown(&mut self) {
-        match self.handle.take() {
-            Some(mut handle) => handle.signal_shutdown(),
-            None => println!("No handle to shut down."),
+    fn shutdown(&self) {
+        if let Some(mut handle) = self.handle.lock().unwrap().take() {
+            handle.signal_shutdown();
         }
     }
 }

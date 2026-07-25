@@ -603,4 +603,5 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         Shutdown the arroyo processors allowing them to terminate the inflight
         work.
         """
-        raise NotImplementedError
+        for consumer in self.__consumers.values():
+            consumer.shutdown()
