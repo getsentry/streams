@@ -1,3 +1,4 @@
+import os
 from typing import Mapping, Sequence
 
 import pytest
@@ -162,10 +163,8 @@ def test_build_kafka_producer_config(
     assert result.override_params == expected_override_params
 
 
-def test_build_kafka_consumer_config_injects_static_membership(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("STREAMS_KAFKA_GROUP_INSTANCE_ID", "consumer-2")
+def test_build_kafka_consumer_config_injects_static_membership() -> None:
+    os.environ["STREAMS_KAFKA_GROUP_INSTANCE_ID"] = "consumer-2"
     result = build_kafka_consumer_config(
         source="test_source",
         source_config={
@@ -178,10 +177,8 @@ def test_build_kafka_consumer_config_injects_static_membership(
     assert result.override_params["group.instance.id"] == "consumer-2"
 
 
-def test_build_kafka_consumer_config_respects_explicit_instance_id(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("STREAMS_KAFKA_GROUP_INSTANCE_ID", "consumer-2")
+def test_build_kafka_consumer_config_respects_explicit_instance_id() -> None:
+    os.environ["STREAMS_KAFKA_GROUP_INSTANCE_ID"] = "consumer-2"
     result = build_kafka_consumer_config(
         source="test_source",
         source_config={
@@ -198,10 +195,8 @@ def test_build_kafka_consumer_config_respects_explicit_instance_id(
     assert result.override_params["group.instance.id"] == "explicit"
 
 
-def test_build_kafka_consumer_config_no_static_membership_without_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("STREAMS_KAFKA_GROUP_INSTANCE_ID", raising=False)
+def test_build_kafka_consumer_config_no_static_membership_without_env() -> None:
+    os.environ.pop("STREAMS_KAFKA_GROUP_INSTANCE_ID", None)
     result = build_kafka_consumer_config(
         source="test_source",
         source_config={
