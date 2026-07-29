@@ -6,10 +6,12 @@ from unittest.mock import MagicMock, patch
 import kopf
 import pytest
 
-from sentry_streams_k8s.operator.operator import (
+from sentry_streams_k8s.operator.constants import (
     OWNER_NAME_ANNOTATION,
     OWNER_NAMESPACE_ANNOTATION,
     OWNER_UID_LABEL,
+)
+from sentry_streams_k8s.operator.reconcile import (
     _apply,
     _prepare_manifest,
     _prune_stale_resources,
@@ -107,8 +109,8 @@ def test_apply_uses_workload_namespace_and_stable_field_manager() -> None:
     )
 
 
-@patch("sentry_streams_k8s.operator.operator.client.CoreV1Api")
-@patch("sentry_streams_k8s.operator.operator.client.AppsV1Api")
+@patch("sentry_streams_k8s.operator.reconcile.client.CoreV1Api")
+@patch("sentry_streams_k8s.operator.reconcile.client.AppsV1Api")
 def test_prune_removes_only_stale_resources(
     apps_api: MagicMock,
     core_api: MagicMock,
