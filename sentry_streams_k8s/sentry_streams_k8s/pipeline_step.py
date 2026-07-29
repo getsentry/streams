@@ -192,4 +192,4 @@ class PipelineStep(ExternalMacro):
         """
         ctx = parse_context(context)
         builder = ConsumerBuilder(ctx["deployment_template"], ctx["container_template"])
-        return builder.build(_to_consumer_spec(ctx), ctx["pipeline_config"])
+        return dict(builder.build_deployments(_to_consumer_spec(ctx), ctx["pipeline_config"]))
