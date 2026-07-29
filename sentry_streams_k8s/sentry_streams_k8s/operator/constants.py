@@ -7,6 +7,11 @@ PLURAL = "streamingpipelines"
 FIELD_MANAGER = "streaming-operator"
 WORKLOAD_NAMESPACE_ENV = "WORKLOAD_NAMESPACE"
 
+# SSA through API clients is tagged with the _content_type
+# override and is required to keep tracking field ownership.
+
+APPLY_PATCH_CONTENT_TYPE = "application/apply-patch+yaml"
+
 # The CR and its workloads may live in different namespaces, so we cannot use
 # ownerReferences (Kubernetes forbids cross-namespace owning) or kopf.adopt.
 # Instead every workload carries the owning CR's UID as a label with

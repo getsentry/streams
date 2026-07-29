@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
-
-import kopf
-import pytest
 
 from sentry_streams_k8s.operator.constants import (
     OWNER_NAME_ANNOTATION,
@@ -12,7 +10,9 @@ from sentry_streams_k8s.operator.constants import (
     OWNER_UID_LABEL,
 )
 from sentry_streams_k8s.operator.reconcile import (
-    _apply,
+    APPLY_PATCH_CONTENT_TYPE,
+    _apply_configmap,
+    _apply_deployment,
     _prepare_manifest,
     _prune_stale_resources,
 )
@@ -55,57 +55,51 @@ def test_prepare_manifest_routes_workload_and_records_source_cr() -> None:
     }
 
 
-def test_apply_rejects_resource_owned_by_another_cr() -> None:
-    resource = MagicMock()
-    resource.get.return_value = SimpleNamespace(
-        metadata=SimpleNamespace(labels={OWNER_UID_LABEL: "another-owner"})
-    )
-    dyn = MagicMock()
-    dyn.resources.get.return_value = resource
-    manifest = {
+def _configmap_manifest() -> dict[str, Any]:
+    return {
         "apiVersion": "v1",
         "kind": "ConfigMap",
         "metadata": {"name": "pipeline", "namespace": WORKLOAD_NAMESPACE},
     }
 
-    with pytest.raises(kopf.PermanentError, match="not managed by this StreamingPipeline"):
-        _apply(
-            dyn,
-            manifest,
-            workload_namespace=WORKLOAD_NAMESPACE,
-            owner_uid="owner-uid",
-        )
 
-    dyn.server_side_apply.assert_not_called()
-
-
-def test_apply_uses_workload_namespace_and_stable_field_manager() -> None:
-    resource = MagicMock()
-    resource.get.return_value = SimpleNamespace(
-        metadata=SimpleNamespace(labels={OWNER_UID_LABEL: "owner-uid"})
-    )
-    dyn = MagicMock()
-    dyn.resources.get.return_value = resource
-    manifest = {
-        "apiVersion": "v1",
-        "kind": "ConfigMap",
+def _deployment_manifest() -> dict[str, Any]:
+    return {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
         "metadata": {"name": "pipeline", "namespace": WORKLOAD_NAMESPACE},
     }
 
-    _apply(
-        dyn,
-        manifest,
-        workload_namespace=WORKLOAD_NAMESPACE,
-        owner_uid="owner-uid",
-    )
 
-    resource.get.assert_called_once_with(name="pipeline", namespace=WORKLOAD_NAMESPACE)
-    dyn.server_side_apply.assert_called_once_with(
-        resource,
-        body=manifest,
+def test_apply_configmap() -> None:
+    core = MagicMock()
+    manifest = _configmap_manifest()
+
+    _apply_configmap(core, manifest, workload_namespace=WORKLOAD_NAMESPACE)
+
+    core.patch_namespaced_config_map.assert_called_once_with(
+        name="pipeline",
         namespace=WORKLOAD_NAMESPACE,
+        body=manifest,
         field_manager="streaming-operator",
-        force_conflicts=True,
+        force=True,
+        _content_type=APPLY_PATCH_CONTENT_TYPE,
+    )
+
+
+def test_apply_deployment() -> None:
+    apps = MagicMock()
+    manifest = _deployment_manifest()
+
+    _apply_deployment(apps, manifest, workload_namespace=WORKLOAD_NAMESPACE)
+
+    apps.patch_namespaced_deployment.assert_called_once_with(
+        name="pipeline",
+        namespace=WORKLOAD_NAMESPACE,
+        body=manifest,
+        field_manager="streaming-operator",
+        force=True,
+        _content_type=APPLY_PATCH_CONTENT_TYPE,
     )
 
 

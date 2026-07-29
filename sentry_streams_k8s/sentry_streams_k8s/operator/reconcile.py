@@ -4,11 +4,11 @@ import logging
 from typing import Any
 
 import kopf
-from kubernetes import client, dynamic
-from kubernetes.client.exceptions import ApiException
+from kubernetes import client
 
 from sentry_streams_k8s.consumer_builder import compute_config_version
 from sentry_streams_k8s.operator.constants import (
+    APPLY_PATCH_CONTENT_TYPE,
     FIELD_MANAGER,
     OWNER_NAME_ANNOTATION,
     OWNER_NAMESPACE_ANNOTATION,
@@ -44,35 +44,35 @@ def _prepare_manifest(
     }
 
 
-def _apply(
-    dyn: dynamic.DynamicClient,
+def _apply_configmap(
+    core: client.CoreV1Api,
     manifest: dict[str, Any],
     *,
     workload_namespace: str,
-    owner_uid: str,
 ) -> None:
-    resource = dyn.resources.get(api_version=manifest["apiVersion"], kind=manifest["kind"])
-    name = manifest["metadata"]["name"]
-    try:
-        existing = resource.get(name=name, namespace=workload_namespace)
-    except ApiException as e:
-        if e.status != 404:
-            raise
-    else:
-        labels = existing.metadata.labels or {}
-        existing_owner_uid = labels.get(OWNER_UID_LABEL)
-        if existing_owner_uid != owner_uid:
-            raise kopf.PermanentError(
-                f"{manifest['kind']} {workload_namespace}/{name} is already present and is not "
-                "managed by this StreamingPipeline."
-            )
-
-    dyn.server_side_apply(
-        resource,
-        body=manifest,
+    core.patch_namespaced_config_map(
+        name=manifest["metadata"]["name"],
         namespace=workload_namespace,
+        body=manifest,
         field_manager=FIELD_MANAGER,
-        force_conflicts=True,
+        force=True,
+        _content_type=APPLY_PATCH_CONTENT_TYPE,
+    )
+
+
+def _apply_deployment(
+    apps: client.AppsV1Api,
+    manifest: dict[str, Any],
+    *,
+    workload_namespace: str,
+) -> None:
+    apps.patch_namespaced_deployment(
+        name=manifest["metadata"]["name"],
+        namespace=workload_namespace,
+        body=manifest,
+        field_manager=FIELD_MANAGER,
+        force=True,
+        _content_type=APPLY_PATCH_CONTENT_TYPE,
     )
 
 
@@ -150,7 +150,9 @@ def reconcile_pipeline(
     if "canary_deployment" in result:
         manifests.append(result["canary_deployment"])
 
-    dyn = dynamic.DynamicClient(client.ApiClient())
+    core = client.CoreV1Api()
+    apps = client.AppsV1Api()
+
     for manifest in manifests:
         _prepare_manifest(
             manifest,
@@ -159,12 +161,13 @@ def reconcile_pipeline(
             owner_name=name,
             owner_namespace=namespace,
         )
-        _apply(
-            dyn,
-            manifest,
-            workload_namespace=workload_namespace,
-            owner_uid=uid,
-        )
+        kind = manifest["kind"]
+        if kind == "ConfigMap":
+            _apply_configmap(core, manifest, workload_namespace=workload_namespace)
+        elif kind == "Deployment":
+            _apply_deployment(apps, manifest, workload_namespace=workload_namespace)
+        else:
+            raise kopf.PermanentError(f"Cannot apply unsupported manifest kind {kind}.")
 
     _prune_stale_resources(
         workload_namespace=workload_namespace,
