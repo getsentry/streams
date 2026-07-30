@@ -144,17 +144,32 @@ class RuntimeOperator:
     @classmethod
     def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
 
+class PyFakeConsumerConfig:
+    def __init__(
+        self,
+        message_size_bytes: int,
+        messages_per_second: float,
+        num_messages: int,
+    ) -> None: ...
+    @property
+    def message_size_bytes(self) -> int: ...
+    @property
+    def messages_per_second(self) -> float: ...
+    @property
+    def num_messages(self) -> int: ...
+
 class ArroyoConsumer:
     def __init__(
         self,
         source: str,
-        kafka_config: PyKafkaConsumerConfig,
         topic: str,
         schema: str | None,
+        kafka_config: PyKafkaConsumerConfig | None = None,
         metric_config: PyMetricConfig | None = None,
         write_healthcheck: bool = False,
         dlq_config: DlqConfig | None = None,
         sentry_dsn: str | None = None,
+        fake_config: PyFakeConsumerConfig | None = None,
     ) -> None: ...
     def add_step(self, step: RuntimeOperator) -> None: ...
     def run(self) -> None: ...

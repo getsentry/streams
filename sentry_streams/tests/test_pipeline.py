@@ -14,6 +14,7 @@ from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import Batch as BatchStep
 from sentry_streams.pipeline.pipeline import (
     Branch,
+    FakeSource,
     HeadersFilter,
     Map,
     Pipeline,
@@ -22,6 +23,7 @@ from sentry_streams.pipeline.pipeline import (
     StreamSink,
     TransformStep,
     branch,
+    fake_streaming_source,
     make_edge_sets,
     streaming_source,
 )
@@ -586,3 +588,21 @@ def test_streamsink_override_config_empty() -> None:
     sink.override_config(config)
 
     assert sink.stream_name == "original-topic"
+
+
+def test_fake_streaming_source() -> None:
+    """fake_streaming_source builds a pipeline rooted at a FakeSource."""
+    pipeline = fake_streaming_source(
+        name="fake_source",
+        message_size_bytes=256,
+        messages_per_second=50.0,
+        num_messages=100,
+    )
+
+    root = pipeline.root
+    assert isinstance(root, FakeSource)
+    assert root.name == "fake_source"
+    assert root.message_size_bytes == 256
+    assert root.messages_per_second == 50.0
+    assert root.num_messages == 100
+    assert root.step_type == StepType.SOURCE

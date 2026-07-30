@@ -49,6 +49,7 @@ from sentry_streams.pipeline.pipeline import (
     Broadcast,
     ComplexStep,
     DevNullSink,
+    FakeSource,
     Filter,
     FlatMap,
     GCSSink,
@@ -68,6 +69,7 @@ from sentry_streams.rust_streams import (
     ArroyoConsumer,
     DlqConfig,
     InitialOffset,
+    PyFakeConsumerConfig,
     PyKafkaConsumerConfig,
     PyKafkaProducerConfig,
     PyMetricConfig,
@@ -292,7 +294,29 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
 
         It is possible to override the configuration by providing an
         instantiated consumer for unit testing purposes.
+
+        A ``FakeSource`` builds a consumer that synthesises random messages
+        without Kafka, used to profile the pipeline.
         """
+        if isinstance(step, FakeSource):
+            logger.info(f"Building fake source consumer: {step.name}")
+            self.__consumers[step.name] = ArroyoConsumer(
+                source=step.name,
+                kafka_config=None,
+                topic=step.stream_name,
+                schema=None,
+                metric_config=build_py_metrics_config(self.__metrics_config),
+                write_healthcheck=self.__write_healthcheck,
+                dlq_config=None,
+                sentry_dsn=self.__sentry_dsn,
+                fake_config=PyFakeConsumerConfig(
+                    message_size_bytes=step.message_size_bytes,
+                    messages_per_second=step.messages_per_second,
+                    num_messages=step.num_messages,
+                ),
+            )
+            return Route(step.name, [])
+
         assert isinstance(step, StreamSource)
         source_name = step.name
         source_config = self.steps_config.get(source_name)
