@@ -33,7 +33,11 @@ from sentry_streams.adapters.arroyo.steps import (
     RouterStep,
     StreamSinkStep,
 )
-from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
+from sentry_streams.adapters.stream_adapter import (
+    PipelineConfig,
+    RuntimeState,
+    StreamAdapter,
+)
 from sentry_streams.config_types import (
     KafkaConsumerConfig,
     KafkaProducerConfig,
@@ -322,7 +326,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
             for source, consumer in self.__consumers.items()
         }
 
-    def run(self) -> None:
+    def _run(self) -> None:
         """
         Starts the pipeline
         """
@@ -332,14 +336,17 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         source = next(iter(self.__consumers))
 
         processor = self.__processors[source]
+        if self.status.state is RuntimeState.STOPPING:
+            processor.signal_shutdown()
+        else:
+            self._set_status(RuntimeState.CONSUMING)
+
         processor.run()
 
-    def shutdown(self) -> None:
+    def _shutdown(self) -> None:
         """
         Shutdown the arroyo processors allowing them to terminate the inflight
         work.
         """
-        assert len(self.__consumers) == 1, "Only one consumer is supported"
-        source = next(iter(self.__consumers))
-        processor = self.__processors[source]
-        processor.signal_shutdown()
+        for processor in self.__processors.values():
+            processor.signal_shutdown()

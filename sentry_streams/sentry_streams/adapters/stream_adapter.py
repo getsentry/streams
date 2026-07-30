@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import threading
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import (
     Any,
     Callable,
@@ -41,12 +44,96 @@ StreamT = TypeVar("StreamT")
 StreamSinkT = TypeVar("StreamSinkT")
 
 
+class RuntimeState(StrEnum):
+    IDLE = "idle"
+    STARTING = "starting"
+    CONSUMING = "consuming"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    ERRORED = "errored"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self in (RuntimeState.STOPPED, RuntimeState.ERRORED)
+
+
+# To simplify lifecycle and state transitions we can use a forward-only ranking.
+# A higher-ranked state should realistically never transition to a lower one.
+# Would need to be updated if we allow restarting (but we don't for now).
+
+_STATE_RANKS: Mapping[RuntimeState, int] = {
+    RuntimeState.IDLE: 0,
+    RuntimeState.STARTING: 1,
+    RuntimeState.CONSUMING: 2,
+    RuntimeState.STOPPING: 3,
+    RuntimeState.STOPPED: 4,
+    RuntimeState.ERRORED: 4,
+}
+
+
+@dataclass(frozen=True)
+class RuntimeStatus:
+    state: RuntimeState
+    error: str | None = None
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.state.is_terminal
+
+    def as_dict(self) -> dict[str, str | None]:
+        return {"state": self.state.value, "error": self.error}
+
+
 class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
     """
     A generic adapter for mapping sentry_streams APIs
     and primitives to runtime-specific ones. This can
     be extended to specific runtimes.
     """
+
+    def __init__(self) -> None:
+        self.__status_lock = threading.Lock()
+        self.__status = RuntimeStatus(RuntimeState.IDLE)
+
+    @property
+    def status(self) -> RuntimeStatus:
+        with self.__status_lock:
+            return self.__status
+
+    def _set_status(self, state: RuntimeState, error: str | None = None) -> None:
+        with self.__status_lock:
+            if _STATE_RANKS[state] <= _STATE_RANKS[self.__status.state]:
+                return
+            self.__status = RuntimeStatus(state, error)
+
+    def begin_start(self) -> RuntimeStatus:
+        with self.__status_lock:
+            if self.__status.state is RuntimeState.IDLE:
+                self.__status = RuntimeStatus(RuntimeState.STARTING)
+            return self.__status
+
+    def run(self) -> None:
+        if self.begin_start().state is not RuntimeState.STARTING:
+            self._set_status(RuntimeState.STOPPED)
+            return
+
+        try:
+            self._run()
+        except BaseException as exc:
+            self._set_status(RuntimeState.ERRORED, str(exc))
+            raise
+        else:
+            self._set_status(RuntimeState.STOPPED)
+
+    def shutdown(self) -> None:
+        with self.__status_lock:
+            state = self.__status.state
+            if not state.is_terminal:
+                self.__status = RuntimeStatus(
+                    RuntimeState.STOPPED if state is RuntimeState.IDLE else RuntimeState.STOPPING
+                )
+
+        self._shutdown()
 
     @classmethod
     @abstractmethod
@@ -145,14 +232,14 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
-    def run(self) -> None:
+    def _run(self) -> None:
         """
         Starts the pipeline
         """
         raise NotImplementedError
 
     @abstractmethod
-    def shutdown(self) -> None:
+    def _shutdown(self) -> None:
         """
         Cleanly shutdown the application.
         """
