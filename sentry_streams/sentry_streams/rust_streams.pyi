@@ -158,18 +158,23 @@ class PyFakeConsumerConfig:
     @property
     def num_messages(self) -> int: ...
 
+class ConsumerConfig:
+    @classmethod
+    def Kafka(cls, config: PyKafkaConsumerConfig) -> Self: ...
+    @classmethod
+    def Fake(cls, config: PyFakeConsumerConfig) -> Self: ...
+
 class ArroyoConsumer:
     def __init__(
         self,
         source: str,
         topic: str,
         schema: str | None,
-        kafka_config: PyKafkaConsumerConfig | None = None,
+        consumer_config: ConsumerConfig,
         metric_config: PyMetricConfig | None = None,
         write_healthcheck: bool = False,
         dlq_config: DlqConfig | None = None,
         sentry_dsn: str | None = None,
-        fake_config: PyFakeConsumerConfig | None = None,
     ) -> None: ...
     def add_step(self, step: RuntimeOperator) -> None: ...
     def run(self) -> None: ...

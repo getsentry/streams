@@ -5,6 +5,7 @@ mod callers;
 mod commit_policy;
 mod committable;
 mod consumer;
+mod consumer_config;
 mod dev_null_sink;
 mod fake_consumer;
 mod filter_step;
@@ -48,6 +49,7 @@ fn rust_streams(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<consumer::ArroyoConsumer>()?;
     m.add_class::<consumer::DlqConfig>()?;
     m.add_class::<fake_consumer::PyFakeConsumerConfig>()?;
+    m.add_class::<consumer_config::ConsumerConfig>()?;
     m.add_class::<metrics_config::PyMetricConfig>()?;
     m.add_class::<messages::PyAnyMessage>()?;
     m.add_class::<messages::RawMessage>()?;

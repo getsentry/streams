@@ -67,6 +67,7 @@ from sentry_streams.pipeline.pipeline import (
 from sentry_streams.pipeline.window import MeasurementUnit
 from sentry_streams.rust_streams import (
     ArroyoConsumer,
+    ConsumerConfig,
     DlqConfig,
     InitialOffset,
     PyFakeConsumerConfig,
@@ -302,18 +303,19 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             logger.info(f"Building fake source consumer: {step.name}")
             self.__consumers[step.name] = ArroyoConsumer(
                 source=step.name,
-                kafka_config=None,
+                consumer_config=ConsumerConfig.Fake(
+                    PyFakeConsumerConfig(
+                        message_size_bytes=step.message_size_bytes,
+                        messages_per_second=step.messages_per_second,
+                        num_messages=step.num_messages,
+                    )
+                ),
                 topic=step.stream_name,
                 schema=None,
                 metric_config=build_py_metrics_config(self.__metrics_config),
                 write_healthcheck=self.__write_healthcheck,
                 dlq_config=None,
                 sentry_dsn=self.__sentry_dsn,
-                fake_config=PyFakeConsumerConfig(
-                    message_size_bytes=step.message_size_bytes,
-                    messages_per_second=step.messages_per_second,
-                    num_messages=step.num_messages,
-                ),
             )
             return Route(step.name, [])
 
@@ -335,8 +337,8 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         assert isinstance(self.__write_healthcheck, bool)
         self.__consumers[source_name] = ArroyoConsumer(
             source=source_name,
-            kafka_config=build_kafka_consumer_config(
-                source_name, source_config, step.consumer_group
+            consumer_config=ConsumerConfig.Kafka(
+                build_kafka_consumer_config(source_name, source_config, step.consumer_group)
             ),
             topic=step.stream_name,
             schema=schema_name,

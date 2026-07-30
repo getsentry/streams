@@ -8,25 +8,20 @@ standing up a Kafka broker.
 
 Run it with the ``rust_arroyo`` adapter, e.g.::
 
-    python -m sentry_streams.runner --adapter rust_arroyo \\
-        --config sentry_streams/deployment_config/fake_source.yaml \\
+    python -m sentry_streams.runner --adapter rust_arroyo \
+        --segment-id 0 \
+        --config sentry_streams/deployment_config/fake_source.yaml \
         sentry_streams/examples/fake_source.py
 
 The consumer stops on its own once all messages have been produced.
 """
 
-from sentry_streams.pipeline.message import Message
+from sentry_streams.examples.transform_metrics import noop
 from sentry_streams.pipeline.pipeline import (
     DevNullSink,
     Map,
     fake_streaming_source,
 )
-
-
-def noop(msg: Message[bytes]) -> bytes:
-    """Passthrough map: returns the payload unchanged."""
-    return msg.payload
-
 
 pipeline = fake_streaming_source(
     name="fake_source",

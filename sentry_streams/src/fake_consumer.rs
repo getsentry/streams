@@ -41,7 +41,7 @@ pub struct PyFakeConsumerConfig {
 #[pymethods]
 impl PyFakeConsumerConfig {
     #[new]
-    fn new(message_size_bytes: usize, messages_per_second: f64, num_messages: usize) -> Self {
+    pub fn new(message_size_bytes: usize, messages_per_second: f64, num_messages: usize) -> Self {
         PyFakeConsumerConfig {
             message_size_bytes,
             messages_per_second,

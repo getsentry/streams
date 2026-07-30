@@ -6,8 +6,8 @@
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
 use crate::commit_policy::WatermarkCommitOffsets;
-use crate::fake_consumer::{FakeConsumer, PyFakeConsumerConfig};
-use crate::kafka_config::{PyKafkaConsumerConfig, PyKafkaProducerConfig};
+use crate::consumer_config::{build_consumer, BuiltConsumer, ConsumerConfig};
+use crate::kafka_config::PyKafkaProducerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::metrics::configure_metrics;
 use crate::metrics_config::PyMetricConfig;
@@ -17,13 +17,10 @@ use crate::routes::Route;
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
 use crate::watermark::WatermarkEmitter;
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
-use sentry_arroyo::backends::kafka::KafkaConsumer;
-use sentry_arroyo::backends::{AssignmentCallbacks, Consumer};
 use sentry_arroyo::processing::dlq::{DlqLimit, DlqPolicy, KafkaDlqProducer};
 use sentry_arroyo::processing::strategies::healthcheck::HealthCheck;
 use sentry_arroyo::processing::strategies::noop::Noop;
@@ -33,10 +30,8 @@ use sentry_arroyo::processing::strategies::ProcessingStrategy;
 use sentry_arroyo::processing::strategies::ProcessingStrategyFactory;
 use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
-use sentry_arroyo::processing::{Callbacks, ConsumerState};
-use sentry_arroyo::types::{Message, Partition, Topic};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use sentry_arroyo::types::{Message, Topic};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -83,11 +78,9 @@ impl DlqConfig {
 ///
 #[pyclass]
 pub struct ArroyoConsumer {
-    /// Kafka consumer config. `None` when running in fake (profiling) mode.
-    consumer_config: Option<PyKafkaConsumerConfig>,
-
-    /// Fake consumer config. When set, a `FakeConsumer` is used instead of Kafka.
-    fake_config: Option<PyFakeConsumerConfig>,
+    /// Where the consumer reads messages from: Kafka, or a fake source when
+    /// profiling the pipeline.
+    consumer_config: ConsumerConfig,
 
     topic: String,
 
@@ -124,34 +117,19 @@ pub struct ArroyoConsumer {
 #[pymethods]
 impl ArroyoConsumer {
     #[new]
-    #[pyo3(signature = (source, topic, schema, kafka_config=None, metric_config=None, write_healthcheck=false, dlq_config=None, sentry_dsn=None, fake_config=None))]
+    #[pyo3(signature = (source, topic, schema, consumer_config, metric_config=None, write_healthcheck=false, dlq_config=None, sentry_dsn=None))]
     fn new(
         source: String,
         topic: String,
         schema: Option<String>,
-        kafka_config: Option<PyKafkaConsumerConfig>,
+        consumer_config: ConsumerConfig,
         metric_config: Option<PyMetricConfig>,
         write_healthcheck: bool,
         dlq_config: Option<DlqConfig>,
         sentry_dsn: Option<String>,
-        fake_config: Option<PyFakeConsumerConfig>,
-    ) -> PyResult<Self> {
-        match (&kafka_config, &fake_config) {
-            (None, None) => {
-                return Err(PyValueError::new_err(
-                    "Either kafka_config or fake_config must be provided",
-                ))
-            }
-            (Some(_), Some(_)) => {
-                return Err(PyValueError::new_err(
-                    "Only one of kafka_config or fake_config may be provided",
-                ))
-            }
-            _ => {}
-        }
-        Ok(ArroyoConsumer {
-            consumer_config: kafka_config,
-            fake_config,
+    ) -> Self {
+        ArroyoConsumer {
+            consumer_config,
             topic,
             source,
             schema,
@@ -162,7 +140,7 @@ impl ArroyoConsumer {
             write_healthcheck,
             dlq_config,
             sentry_dsn,
-        })
+        }
     }
 
     /// Add a step to the Consumer pipeline at the end of it.
@@ -191,12 +169,7 @@ impl ArroyoConsumer {
             ))
         });
 
-        // The consumer group is only used by the watermark commit step; in fake
-        // mode commits hit the no-op FakeConsumer, so the source name is enough.
-        let consumer_group = match &self.consumer_config {
-            Some(config) => config.group_id().to_string(),
-            None => self.source.clone(),
-        };
+        let consumer_group = self.consumer_config.consumer_group_or(&self.source);
         let factory = ArroyoStreamingFactory::new(
             self.source.clone(),
             &self.steps,
@@ -207,55 +180,19 @@ impl ArroyoConsumer {
             consumer_group,
         );
 
-        // Set by the fake consumer once it has produced all its messages. Only
-        // used in fake mode, where nothing else would ever stop the processor.
-        let mut done: Option<Arc<AtomicBool>> = None;
+        // Build DLQ policy if configured
+        let dlq_policy = build_dlq_policy(&self.dlq_config, self.concurrency_config.handle());
 
-        let (consumer, consumer_state): (
-            Box<dyn Consumer<KafkaPayload, Callbacks<KafkaPayload>>>,
-            ConsumerState<KafkaPayload>,
-        ) = match self.fake_config.clone() {
-            Some(fake_config) => {
-                let done_flag = Arc::new(AtomicBool::new(false));
-                done = Some(done_flag.clone());
-
-                let consumer_state = ConsumerState::new(Box::new(factory), None);
-                // The processing strategy is normally created by the Kafka
-                // consumer on partition assignment. The fake consumer performs
-                // no assignment, so bootstrap the strategy explicitly for its
-                // single partition.
-                Callbacks(consumer_state.clone()).on_assign(HashMap::from([(
-                    Partition::new(Topic::new(&self.topic), 0),
-                    0,
-                )]));
-
-                (
-                    Box::new(FakeConsumer::new(&self.topic, fake_config, done_flag)),
-                    consumer_state,
-                )
-            }
-            None => {
-                let config = self
-                    .consumer_config
-                    .clone()
-                    .expect("kafka_config required when fake_config is not set")
-                    .into();
-
-                // Build DLQ policy if configured
-                let dlq_policy =
-                    build_dlq_policy(&self.dlq_config, self.concurrency_config.handle());
-                let consumer_state = ConsumerState::new(Box::new(factory), dlq_policy);
-                let callbacks = Callbacks(consumer_state.clone());
-
-                (
-                    Box::new(
-                        KafkaConsumer::new(config, &[Topic::new(&self.topic)], callbacks)
-                            .expect("Failed to create Kafka consumer"),
-                    ),
-                    consumer_state,
-                )
-            }
-        };
+        let BuiltConsumer {
+            consumer,
+            consumer_state,
+            done,
+        } = build_consumer(
+            &self.consumer_config,
+            &self.topic,
+            Box::new(factory),
+            dlq_policy,
+        );
 
         let processor = StreamProcessor::new(consumer, consumer_state);
 
