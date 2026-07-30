@@ -91,6 +91,9 @@ pub struct ArroyoConsumer {
     /// processor is not lost. `run()` checks it before entering the run loop.
     shutdown_requested: AtomicBool,
 
+    /// Static membership id provided by controller.
+    group_instance_id: Mutex<Option<String>>,
+
     /// The ProcessorHandle allows the main thread to stop the StreamingProcessor
     /// from a different thread.
     handle: Mutex<Option<ProcessorHandle>>,
@@ -140,6 +143,7 @@ impl ArroyoConsumer {
             schema,
             steps: Vec::new(),
             shutdown_requested: AtomicBool::new(false),
+            group_instance_id: Mutex::new(None),
             handle: Mutex::new(None),
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
             step_concurrency_configs: HashMap::new(),
@@ -165,6 +169,10 @@ impl ArroyoConsumer {
     /// so it takes the steps descriptor as a Py<RuntimeOperator>.
     fn add_step(&mut self, step: Py<RuntimeOperator>) {
         self.steps.push(step);
+    }
+
+    fn set_group_instance_id(&self, group_instance_id: String) {
+        *self.group_instance_id.lock().unwrap() = Some(group_instance_id);
     }
 
     /// Runs the consumer.
@@ -197,7 +205,14 @@ impl ArroyoConsumer {
             self.topic.clone(),
             self.consumer_config.group_id().to_string(),
         );
-        let config = self.consumer_config.clone().into();
+
+        let mut consumer_config = self.consumer_config.clone();
+
+        if let Some(id) = self.group_instance_id.lock().unwrap().as_deref() {
+            consumer_config.set_group_instance_id(id);
+        }
+
+        let config = consumer_config.into();
 
         // Build DLQ policy if configured
         let dlq_policy = build_dlq_policy(&self.dlq_config, self.concurrency_config.handle());

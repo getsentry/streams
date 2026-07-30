@@ -6,6 +6,7 @@ from typing import Any
 
 from sentry_streams.adapters.stream_adapter import (
     RuntimeStatus,
+    StartOptions,
     StreamAdapter,
 )
 
@@ -33,14 +34,14 @@ class PipelineController:
     def snapshot(self) -> RuntimeStatus:
         return self._runtime.status
 
-    def request_start(self) -> RuntimeStatus:
+    def request_start(self, options: StartOptions | None = None) -> RuntimeStatus:
         """
         Ask the pipeline to start (non-blocking).
         """
         with self._lock:
             status = self._runtime.begin_start()
             if self._run_future is None:
-                self._run_future = self._executor.submit(self._runtime.run)
+                self._run_future = self._executor.submit(self._runtime.run, options)
                 self._run_future.add_done_callback(self._run_finished)
             return status
 

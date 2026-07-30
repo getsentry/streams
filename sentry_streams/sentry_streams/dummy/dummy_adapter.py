@@ -1,6 +1,10 @@
 from typing import Any, Callable, Optional, Self, Sequence, Type, TypeVar, cast
 
-from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
+from sentry_streams.adapters.stream_adapter import (
+    PipelineConfig,
+    StartOptions,
+    StreamAdapter,
+)
 from sentry_streams.pipeline.function_template import (
     InputType,
     OutputType,
@@ -95,7 +99,7 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
             ret[branch.root.name] = branch
         return ret
 
-    def _run(self) -> None:
+    def _run(self, options: StartOptions) -> None:
         pass
 
     def _shutdown(self) -> None:

@@ -79,6 +79,11 @@ class RuntimeState(StrEnum):
 
 
 @dataclass(frozen=True)
+class StartOptions:
+    group_instance_id: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeStatus:
     state: RuntimeState
     error: Exception | None = None
@@ -126,7 +131,7 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
             self.__status = RuntimeStatus(RuntimeState.STARTING)
             return self.__status
 
-    def run(self) -> None:
+    def run(self, options: StartOptions | None = None) -> None:
         state = self.status.state
         if state is RuntimeState.STOPPING:
             self._set_status(RuntimeState.STOPPED)
@@ -135,7 +140,7 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
             raise RuntimeStateError(f"cannot run runtime while it is {state}")
 
         try:
-            self._run()
+            self._run(options if options is not None else StartOptions())
         except Exception as exc:
             self._set_status(RuntimeState.ERRORED, exc)
             raise
@@ -251,7 +256,7 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
-    def _run(self) -> None:
+    def _run(self, options: StartOptions) -> None:
         """
         Starts the pipeline
         """

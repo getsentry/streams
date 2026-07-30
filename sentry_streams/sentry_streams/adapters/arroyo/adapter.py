@@ -36,6 +36,7 @@ from sentry_streams.adapters.arroyo.steps import (
 from sentry_streams.adapters.stream_adapter import (
     PipelineConfig,
     RuntimeState,
+    StartOptions,
     StreamAdapter,
 )
 from sentry_streams.config_types import (
@@ -326,7 +327,7 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
             for source, consumer in self.__consumers.items()
         }
 
-    def _run(self) -> None:
+    def _run(self, options: StartOptions) -> None:
         """
         Starts the pipeline
         """

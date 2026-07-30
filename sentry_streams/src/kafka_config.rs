@@ -98,6 +98,13 @@ impl PyKafkaConsumerConfig {
     pub fn group_id(&self) -> &str {
         &self.group_id
     }
+
+    pub fn set_group_instance_id(&mut self, group_instance_id: &str) {
+        self.override_params.get_or_insert_default().insert(
+            "group.instance.id".to_string(),
+            group_instance_id.to_string(),
+        );
+    }
 }
 
 impl From<PyKafkaConsumerConfig> for KafkaConfig {
