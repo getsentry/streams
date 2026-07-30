@@ -22,7 +22,8 @@ use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
-use sentry_arroyo::backends::AssignmentCallbacks;
+use sentry_arroyo::backends::kafka::KafkaConsumer;
+use sentry_arroyo::backends::{AssignmentCallbacks, Consumer};
 use sentry_arroyo::processing::dlq::{DlqLimit, DlqPolicy, KafkaDlqProducer};
 use sentry_arroyo::processing::strategies::healthcheck::HealthCheck;
 use sentry_arroyo::processing::strategies::noop::Noop;
@@ -206,8 +207,33 @@ impl ArroyoConsumer {
             consumer_group,
         );
 
-        let processor = match self.fake_config.clone() {
-            Some(fake_config) => self.build_fake_processor(factory, fake_config),
+        // Set by the fake consumer once it has produced all its messages. Only
+        // used in fake mode, where nothing else would ever stop the processor.
+        let mut done: Option<Arc<AtomicBool>> = None;
+
+        let (consumer, consumer_state): (
+            Box<dyn Consumer<KafkaPayload, Callbacks<KafkaPayload>>>,
+            ConsumerState<KafkaPayload>,
+        ) = match self.fake_config.clone() {
+            Some(fake_config) => {
+                let done_flag = Arc::new(AtomicBool::new(false));
+                done = Some(done_flag.clone());
+
+                let consumer_state = ConsumerState::new(Box::new(factory), None);
+                // The processing strategy is normally created by the Kafka
+                // consumer on partition assignment. The fake consumer performs
+                // no assignment, so bootstrap the strategy explicitly for its
+                // single partition.
+                Callbacks(consumer_state.clone()).on_assign(HashMap::from([(
+                    Partition::new(Topic::new(&self.topic), 0),
+                    0,
+                )]));
+
+                (
+                    Box::new(FakeConsumer::new(&self.topic, fake_config, done_flag)),
+                    consumer_state,
+                )
+            }
             None => {
                 let config = self
                     .consumer_config
@@ -218,12 +244,35 @@ impl ArroyoConsumer {
                 // Build DLQ policy if configured
                 let dlq_policy =
                     build_dlq_policy(&self.dlq_config, self.concurrency_config.handle());
+                let consumer_state = ConsumerState::new(Box::new(factory), dlq_policy);
+                let callbacks = Callbacks(consumer_state.clone());
 
-                StreamProcessor::with_kafka(config, factory, Topic::new(&self.topic), dlq_policy)
+                (
+                    Box::new(
+                        KafkaConsumer::new(config, &[Topic::new(&self.topic)], callbacks)
+                            .expect("Failed to create Kafka consumer"),
+                    ),
+                    consumer_state,
+                )
             }
         };
 
+        let processor = StreamProcessor::new(consumer, consumer_state);
+
         self.handle = Some(processor.get_handle());
+
+        // In fake mode, watch for the consumer running out of messages and stop
+        // the processor so that `run()` returns instead of polling forever.
+        if let Some(done) = done {
+            let mut handle = processor.get_handle();
+            thread::spawn(move || {
+                while !done.load(Ordering::Relaxed) {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                println!("Fake consumer finished producing messages, shutting down...");
+                handle.signal_shutdown();
+            });
+        }
 
         let mut handle = processor.get_handle();
         ctrlc::set_handler(move || {
@@ -243,43 +292,6 @@ impl ArroyoConsumer {
             Some(mut handle) => handle.signal_shutdown(),
             None => println!("No handle to shut down."),
         }
-    }
-}
-
-impl ArroyoConsumer {
-    /// Builds a StreamProcessor backed by a `FakeConsumer` for profiling.
-    ///
-    /// The processing strategy is normally created by the Kafka consumer when
-    /// partitions are assigned. The FakeConsumer performs no assignment, so we
-    /// bootstrap the strategy explicitly by invoking `on_assign` once for the
-    /// single fake partition. A monitor thread watches the `done` flag set by
-    /// the FakeConsumer and signals shutdown once all messages are produced.
-    fn build_fake_processor(
-        &self,
-        factory: ArroyoStreamingFactory,
-        fake_config: PyFakeConsumerConfig,
-    ) -> StreamProcessor<KafkaPayload> {
-        let done = Arc::new(AtomicBool::new(false));
-        let consumer = FakeConsumer::new(&self.topic, fake_config, done.clone());
-
-        let consumer_state = ConsumerState::new(Box::new(factory), None);
-        Callbacks(consumer_state.clone()).on_assign(HashMap::from([(
-            Partition::new(Topic::new(&self.topic), 0),
-            0,
-        )]));
-
-        let processor = StreamProcessor::new(Box::new(consumer), consumer_state);
-
-        let mut handle = processor.get_handle();
-        thread::spawn(move || {
-            while !done.load(Ordering::Relaxed) {
-                thread::sleep(Duration::from_millis(50));
-            }
-            println!("Fake consumer finished producing messages, shutting down...");
-            handle.signal_shutdown();
-        });
-
-        processor
     }
 }
 
