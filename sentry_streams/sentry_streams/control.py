@@ -17,6 +17,9 @@ class PipelineController:
 
     A pipeline is single-use: after it stops or fails, it cannot be restarted.
     A replacement deployment must create a new controller and adapter.
+
+    Start and stop requests can arrive concurrently from HTTP handler and process
+    shutdown threads. The lock prevents state transition race conditions.
     """
 
     def __init__(self, runtime: StreamAdapter[Any, Any]) -> None:
