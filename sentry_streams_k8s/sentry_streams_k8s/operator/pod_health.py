@@ -190,7 +190,15 @@ def _container_statuses_verdict(
 
 
 def pod_health(pod: V1Pod, now: datetime) -> PodHealth:
-    """Classify a Pod into a PodHealth verdict."""
+    """
+    Classify a Pod's state into a PodHealth verdict.
+
+    A PodHealth verdict contains the following:
+    - If the Pod is in a healthy state or is waiting/ready.
+    - If the Pod is unhealthy and should be deleted.
+    - If the Pod is stuck and should be force-deleted.
+    - If the Pod's issue is unrecoverable and should be permanent.
+    """
 
     metadata = pod.metadata
     pod_name = metadata.name if metadata and metadata.name else ""
