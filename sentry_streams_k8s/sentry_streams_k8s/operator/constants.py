@@ -17,6 +17,6 @@ APPLY_PATCH_CONTENT_TYPE = "application/apply-patch+yaml"
 # Instead every workload carries the owning CR's UID as a label with
 # name/namespace annotations so the operator can delete resources itself:
 
-OWNER_UID_LABEL = "streams.sentry.io/owner-uid"
-OWNER_NAME_ANNOTATION = "streams.sentry.io/owner-name"
-OWNER_NAMESPACE_ANNOTATION = "streams.sentry.io/owner-namespace"
+OWNER_UID_LABEL = "pipeline.streams.sentry.io/owner-uid"
+OWNER_NAME_ANNOTATION = "pipeline.streams.sentry.io/owner-name"
+OWNER_NAMESPACE_ANNOTATION = "pipeline.streams.sentry.io/owner-namespace"
