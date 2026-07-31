@@ -15,6 +15,13 @@ class V1ObjectMetaDict(TypedDict, total=False):
     annotations: dict[str, str]
 
 
+class V1PodDict(TypedDict, total=False):
+    apiVersion: Required[str]
+    kind: Required[Literal["Pod"]]
+    metadata: Required[V1ObjectMetaDict]
+    spec: Required[dict[str, Any]]
+
+
 class V1DeploymentDict(TypedDict, total=False):
     apiVersion: Required[str]
     kind: Required[Literal["Deployment"]]
