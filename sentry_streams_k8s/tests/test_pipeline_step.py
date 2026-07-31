@@ -140,6 +140,8 @@ def test_build_container() -> None:
         cpu_per_process=1000,
         memory_per_process=512,
         segment_id=0,
+        control_host=None,
+        control_port=None,
     )
 
     assert container == {
@@ -208,6 +210,8 @@ def test_build_container_custom_name() -> None:
         memory_per_process=512,
         segment_id=0,
         container_name="my-custom-container",
+        control_host=None,
+        control_port=None,
     )
 
     assert container["name"] == "my-custom-container"
@@ -224,6 +228,8 @@ def test_build_container_with_log_level() -> None:
         memory_per_process=512,
         segment_id=0,
         log_level="ERROR",
+        control_host=None,
+        control_port=None,
     )
 
     assert container["args"] == [
@@ -891,6 +897,8 @@ def test_build_container_with_multiprocessing() -> None:
         memory_per_process=512,
         segment_id=0,
         process_count=4,
+        control_host=None,
+        control_port=None,
     )
 
     # Check resources are multiplied by process count
@@ -925,6 +933,8 @@ def test_build_container_without_multiprocessing() -> None:
         memory_per_process=512,
         segment_id=0,
         process_count=None,
+        control_host=None,
+        control_port=None,
     )
 
     # Check resources are NOT multiplied

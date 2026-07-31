@@ -21,6 +21,7 @@ from kubernetes.client import (
 )
 
 from sentry_streams_k8s.k8s_types import V1ConfigMapDict, V1PodDict
+from sentry_streams_k8s.operator.control_client import ControlError, RuntimeState
 
 
 def _matches_selector(labels: Mapping[str, str] | None, selector: str | None) -> bool:
@@ -193,6 +194,7 @@ def make_pod(
     init_container_statuses: list[V1ContainerStatus] | None = None,
     start_time: datetime | None = None,
     reason: str | None = None,
+    pod_ip: str | None = None,
 ) -> V1Pod:
     return V1Pod(
         metadata=V1ObjectMeta(
@@ -209,5 +211,38 @@ def make_pod(
             init_container_statuses=init_container_statuses,
             start_time=start_time,
             reason=reason,
+            pod_ip=pod_ip,
         ),
     )
+
+
+@dataclass
+class FakeControlClient:
+    """In-memory control client used by operator tests."""
+
+    states: dict[str, RuntimeState] = field(default_factory=dict)
+    unreachable: set[str] = field(default_factory=set)
+
+    started: list[tuple[str, str]] = field(default_factory=list, init=False)
+    stopped: list[str] = field(default_factory=list, init=False)
+
+    def status(self, ip: str) -> RuntimeState | None:
+        if ip in self.unreachable:
+            return None
+        return self.states.get(ip)
+
+    def readyz(self, ip: str) -> bool:
+        return ip not in self.unreachable
+
+    def start(self, ip: str, group_instance_id: str) -> None:
+        if ip in self.unreachable:
+            raise ControlError(f"cannot reach {ip}")
+        self.started.append((ip, group_instance_id))
+        self.states[ip] = RuntimeState.CONSUMING
+
+    def stop(self, ip: str) -> bool:
+        if ip in self.unreachable:
+            return False
+        self.stopped.append(ip)
+        self.states[ip] = RuntimeState.STOPPED
+        return True

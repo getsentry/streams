@@ -4,6 +4,10 @@
 
 workloadNamespace: ""
 
+control:
+  host: ""
+  port: ""
+
 image:
   repository: us-central1-docker.pkg.dev/sentryio/streaming-operator/image
   tag: ""

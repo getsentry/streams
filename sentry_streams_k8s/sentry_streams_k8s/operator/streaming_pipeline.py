@@ -82,8 +82,8 @@ def render_deployments(spec: StreamingPipelineSpec) -> RenderedDeployments:
     return builder.build_deployments(consumer, spec["pipeline_config"])
 
 
-def render_pods(spec: StreamingPipelineSpec) -> RenderedPods:
+def render_pods(spec: StreamingPipelineSpec, control_host: str, control_port: int) -> RenderedPods:
     builder = ConsumerBuilder(spec["deployment_template"], spec["container_template"])
     consumer = to_consumer_spec(spec)
     builder.validate(consumer, spec["pipeline_config"])
-    return builder.build_pods(consumer, spec["pipeline_config"])
+    return builder.build_pods(consumer, spec["pipeline_config"], control_host, control_port)
