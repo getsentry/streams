@@ -5,8 +5,12 @@ import time
 
 import pytest
 
-from sentry_streams.adapters.stream_adapter import RuntimeState, RuntimeStatus
-from sentry_streams.control import PipelineController, PipelineStateError
+from sentry_streams.adapters.stream_adapter import (
+    RuntimeState,
+    RuntimeStateError,
+    RuntimeStatus,
+)
+from sentry_streams.control import PipelineController
 from tests.adapters.fake_adapter import FakeAdapter
 
 
@@ -32,10 +36,8 @@ def test_start_and_stop_are_non_blocking() -> None:
     controller = PipelineController(runtime)
     try:
         assert controller.request_start().state is RuntimeState.STARTING
-        assert controller.request_start().state in (
-            RuntimeState.STARTING,
-            RuntimeState.CONSUMING,
-        )
+        with pytest.raises(RuntimeStateError, match="cannot start runtime"):
+            controller.request_start()
         assert runtime.run_started.wait(3.0)
         _wait_for_state(controller, RuntimeState.CONSUMING)
 
@@ -120,14 +122,17 @@ def test_stopping_a_failed_runtime_keeps_the_failure() -> None:
     controller = PipelineController(runtime)
     try:
         assert controller.request_start().state is RuntimeState.STARTING
-        assert controller.wait_until_stopped(3.0).error == "runtime failed"
+        error = controller.wait_until_stopped(3.0).error
+        assert isinstance(error, RuntimeError)
+        assert str(error) == "runtime failed"
+        assert error.__traceback__ is not None
 
         controller.request_stop()
         _stop(controller)
 
         snapshot = controller.snapshot
         assert snapshot.state is RuntimeState.ERRORED
-        assert snapshot.error == "runtime failed"
+        assert snapshot.error is error
     finally:
         _stop(controller)
 
@@ -141,7 +146,7 @@ def test_stopped_runtime_cannot_restart() -> None:
         controller.request_stop()
         controller.wait_until_stopped(3.0)
 
-        with pytest.raises(PipelineStateError, match="cannot restart"):
+        with pytest.raises(RuntimeStateError, match="cannot restart"):
             controller.request_start()
         assert runtime.run_calls == 1
         assert runtime.shutdown_calls == 1

@@ -143,7 +143,8 @@ def test_shutdown_before_start_never_builds_a_processor() -> None:
     adapter.shutdown()
     assert adapter.status.state is RuntimeState.STOPPED
 
-    adapter.run()
+    with pytest.raises(RuntimeError, match="cannot run runtime while it is stopped"):
+        adapter.run()
 
     processor.run.assert_not_called()
     assert adapter.status.state is RuntimeState.STOPPED

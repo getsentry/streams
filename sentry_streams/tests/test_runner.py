@@ -10,6 +10,7 @@ from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
     PipelineConfig,
     RuntimeState,
+    RuntimeStatus,
     RuntimeTranslator,
 )
 from sentry_streams.control import PipelineController
@@ -21,6 +22,7 @@ from sentry_streams.pipeline.pipeline import (
 )
 from sentry_streams.runner import (
     _install_signal_handlers,
+    _raise_on_error,
     _run_pipeline,
     iterate_edges,
 )
@@ -130,3 +132,12 @@ def test_run_pipeline_terminal_signals(signum: int) -> None:
 
     assert snapshot.state is RuntimeState.STOPPED
     assert runtime.shutdown_calls == 1
+
+
+def test_raise_on_error_reraises_the_stored_exception() -> None:
+    error = ValueError("runtime failed")
+
+    with pytest.raises(ValueError) as exc_info:
+        _raise_on_error(RuntimeStatus(RuntimeState.ERRORED, error))
+
+    assert exc_info.value is error

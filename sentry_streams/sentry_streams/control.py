@@ -5,19 +5,11 @@ import threading
 from typing import Any
 
 from sentry_streams.adapters.stream_adapter import (
-    RuntimeState,
     RuntimeStatus,
     StreamAdapter,
 )
 
 logger = logging.getLogger(__name__)
-
-
-class PipelineStateError(RuntimeError):
-    """
-    Raised when a request conflicts with the pipeline's state.
-    Used to differentiate between a fatal error and rejected request.
-    """
 
 
 class PipelineController:
@@ -44,12 +36,6 @@ class PipelineController:
         Ask the pipeline to start (non-blocking).
         """
         with self._lock:
-            state = self._runtime.status.state
-            if state is RuntimeState.STOPPING:
-                raise PipelineStateError("cannot start a pipeline that is stopping")
-            if state.is_terminal:
-                raise PipelineStateError(f"cannot restart a pipeline that is {state}")
-
             status = self._runtime.begin_start()
             if self._thread is None:
                 self._thread = threading.Thread(
@@ -65,16 +51,11 @@ class PipelineController:
         Ask the pipeline to stop (non-blocking).
         """
         with self._lock:
-            status = self._runtime.status
-
-            if status.state is RuntimeState.STOPPING or status.is_terminal:
-                return status
-
-            self._runtime.shutdown()
+            status = self._runtime.shutdown()
             if self._thread is None:
                 self._finished.set()
 
-            return self._runtime.status
+            return status
 
     def wait_until_finished(self, timeout: float | None = None) -> RuntimeStatus:
         """

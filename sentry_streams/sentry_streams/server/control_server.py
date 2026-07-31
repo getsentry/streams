@@ -10,11 +10,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, cast
 from urllib.parse import urlparse
 
-from sentry_streams.adapters.stream_adapter import RuntimeStatus
-from sentry_streams.control import (
-    PipelineController,
-    PipelineStateError,
+from sentry_streams.adapters.stream_adapter import (
+    RuntimeStateError,
+    RuntimeStatus,
 )
+from sentry_streams.control import PipelineController
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class ControlHandler(BaseHTTPRequestHandler):
         self._respond(code, snapshot.as_dict())
 
     def _respond_to_failure(self, exc: Exception) -> None:
-        if isinstance(exc, PipelineStateError):
+        if isinstance(exc, RuntimeStateError):
             logger.info("control-server rejected %s: %s", self.path, exc)
             self._respond(409, {"error": str(exc)})
         else:

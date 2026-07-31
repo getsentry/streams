@@ -52,7 +52,9 @@ def _install_signal_handlers(shutdown_requested: threading.Event) -> None:
 
 def _raise_on_error(snapshot: RuntimeStatus) -> None:
     if snapshot.state is RuntimeState.ERRORED:
-        raise RuntimeError(snapshot.error or "pipeline run loop failed")
+        if snapshot.error is not None:
+            raise snapshot.error
+        raise RuntimeError("pipeline run loop failed")
 
 
 def _run_pipeline(
