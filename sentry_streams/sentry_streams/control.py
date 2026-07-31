@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import logging
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
 from sentry_streams.adapters.stream_adapter import (
     RuntimeStatus,
     StreamAdapter,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class PipelineController:
@@ -24,7 +22,8 @@ class PipelineController:
     def __init__(self, runtime: StreamAdapter[Any, Any]) -> None:
         self._runtime = runtime
         self._lock = threading.Lock()
-        self._thread: threading.Thread | None = None
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pipeline-run")
+        self._run_future: Future[None] | None = None
         self._finished = threading.Event()
 
     @property
@@ -37,13 +36,9 @@ class PipelineController:
         """
         with self._lock:
             status = self._runtime.begin_start()
-            if self._thread is None:
-                self._thread = threading.Thread(
-                    target=self._run_runtime,
-                    name="pipeline-run",
-                    daemon=False,
-                )
-                self._thread.start()
+            if self._run_future is None:
+                self._run_future = self._executor.submit(self._runtime.run)
+                self._run_future.add_done_callback(self._run_finished)
             return status
 
     def request_stop(self) -> RuntimeStatus:
@@ -52,8 +47,9 @@ class PipelineController:
         """
         with self._lock:
             status = self._runtime.shutdown()
-            if self._thread is None:
+            if self._run_future is None:
                 self._finished.set()
+                self._executor.shutdown(wait=False)
 
             return status
 
@@ -61,25 +57,24 @@ class PipelineController:
         """
         Wait until this controller is completely finished.
         """
-        self._finished.wait(timeout)
+        if not self._finished.wait(timeout):
+            return self._runtime.status
+
+        with self._lock:
+            run_future = self._run_future
+
+        if run_future is not None:
+            run_future.result()
+
         return self._runtime.status
 
     def wait_until_stopped(self, timeout: float | None = None) -> RuntimeStatus:
         """
         Wait for a started pipeline's background thread to exit.
         """
-        with self._lock:
-            thread = self._thread
-
-        if thread is not None:
-            thread.join(timeout)
-
+        self._finished.wait(timeout)
         return self._runtime.status
 
-    def _run_runtime(self) -> None:
-        try:
-            self._runtime.run()
-        except Exception:
-            logger.exception("pipeline run loop failed")
-        finally:
-            self._finished.set()
+    def _run_finished(self, _future: Future[None]) -> None:
+        self._finished.set()
+        self._executor.shutdown(wait=False)

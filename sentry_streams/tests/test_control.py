@@ -117,6 +117,18 @@ def test_waiting_for_a_running_pipeline_ends_when_its_run_loop_exits() -> None:
         _stop(controller)
 
 
+def test_wait_until_finished_reraises_the_run_loop_exception() -> None:
+    runtime = FakeAdapter(fail=True)
+    controller = PipelineController(runtime)
+    controller.request_start()
+
+    with pytest.raises(RuntimeError, match="runtime failed") as exc_info:
+        controller.wait_until_finished(3.0)
+
+    assert exc_info.value is runtime.status.error
+    assert exc_info.value.__traceback__ is not None
+
+
 def test_stopping_a_failed_runtime_keeps_the_failure() -> None:
     runtime = FakeAdapter(fail=True)
     controller = PipelineController(runtime)
