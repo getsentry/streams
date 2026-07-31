@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
+Logger = Any
+
 GROUP = "streams.sentry.io"
 VERSION = "v1alpha1"
 PLURAL = "streamingpipelines"
@@ -24,3 +28,12 @@ WORKLOAD_SET_LABEL = "streams.sentry.io/workload-set"
 OWNER_UID_LABEL = "pipeline.streams.sentry.io/owner-uid"
 OWNER_NAME_ANNOTATION = "pipeline.streams.sentry.io/owner-name"
 OWNER_NAMESPACE_ANNOTATION = "pipeline.streams.sentry.io/owner-namespace"
+
+# How often the daemon re-runs a full reconcile as a safety net behind the watch:
+
+HEALTH_SCAN_INTERVAL_SECONDS = 60
+
+# Bound full reconciliations across pipelines so changes
+# to many CRs cannot overload Kubernetes API requests:
+
+MAX_CONCURRENT_RECONCILES = 8

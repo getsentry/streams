@@ -10,6 +10,7 @@ from typing import Any, Mapping, NotRequired, TypedDict, cast
 import yaml
 
 from sentry_streams_k8s.constants import CANARY_WORKLOAD_SET, PRIMARY_WORKLOAD_SET
+from sentry_streams_k8s.k8s_types import V1ConfigMapDict, V1DeploymentDict
 from sentry_streams_k8s.merge import ScalarOverwriteError, deepmerge
 from sentry_streams_k8s.validation import validate_pipeline_config
 
@@ -35,17 +36,17 @@ class WorkloadSet:
 class RenderedDeployments(TypedDict):
     """The pipeline rendered as Deployments."""
 
-    deployment: dict[str, Any]
-    configmap: dict[str, Any]
+    deployment: V1DeploymentDict
+    configmap: V1ConfigMapDict
 
-    canary_deployment: NotRequired[dict[str, Any]]
+    canary_deployment: NotRequired[V1DeploymentDict]
 
 
 class RenderedPods(TypedDict):
     """The pipeline rendered as Pods."""
 
     sets: dict[str, WorkloadSet]
-    configmap: dict[str, Any]
+    configmap: V1ConfigMapDict
 
 
 def load_base_template(file_name: str) -> dict[str, Any]:
@@ -238,7 +239,7 @@ def _build_merged_pipeline_deployment(
     container: dict[str, Any],
     volumes: list[dict[str, Any]],
     config_version: str,
-) -> dict[str, Any]:
+) -> V1DeploymentDict:
     """
     Assembles a k8s deployment by layering these structures on top of the base deployment
     manifest:
@@ -286,7 +287,7 @@ def _build_merged_pipeline_deployment(
     deployment = deepmerge(deployment, pipeline_additions)
     if emergency_patch:
         deployment = deepmerge(deployment, emergency_patch)
-    return deployment
+    return cast(V1DeploymentDict, deployment)
 
 
 def _pipeline_labels(spec: ConsumerSpec) -> dict[str, str]:
@@ -301,7 +302,7 @@ def _configmap_name(spec: ConsumerSpec) -> str:
     return make_k8s_name(f"{spec.service_name}-pipeline-{spec.pipeline_name}")
 
 
-def _to_workload_set(deployment: dict[str, Any]) -> WorkloadSet:
+def _to_workload_set(deployment: V1DeploymentDict) -> WorkloadSet:
     """Converts a Deployment to a WorkloadSet."""
 
     return WorkloadSet(
@@ -356,7 +357,7 @@ class ConsumerBuilder:
 
     def _workload_deployments(
         self, spec: ConsumerSpec, config: dict[str, Any]
-    ) -> dict[str, dict[str, Any]]:
+    ) -> dict[str, V1DeploymentDict]:
         """
         Generate the Kubernetes Deployments for the pipeline.
         Result is keyed by workload set name (primary or canary).
@@ -462,9 +463,9 @@ class ConsumerBuilder:
         self,
         spec: ConsumerSpec,
         config: dict[str, Any],
-        primary_deployment: dict[str, Any],
-    ) -> dict[str, Any]:
-        configmap: dict[str, Any] = {
+        primary_deployment: V1DeploymentDict,
+    ) -> V1ConfigMapDict:
+        configmap: V1ConfigMapDict = {
             "apiVersion": "v1",
             "kind": "ConfigMap",
             "metadata": {
