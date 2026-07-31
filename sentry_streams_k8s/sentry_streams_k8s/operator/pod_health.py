@@ -63,11 +63,12 @@ def _container_waiting_reason(status: V1ContainerStatus) -> str | None:
 
 
 def _first_waiting_reason(
-    statuses: list[V1ContainerStatus] | None, reasons: frozenset[str]
+    statuses: list[V1ContainerStatus] | None,
+    reasons: frozenset[str] | None = None,
 ) -> str | None:
     for status in statuses or []:
         reason = _container_waiting_reason(status)
-        if reason in reasons:
+        if reason is not None and (reasons is None or reason in reasons):
             return reason
     return None
 
@@ -184,6 +185,13 @@ def _container_statuses_verdict(
             reason=f"{reason_prefix}{unhealthy_waiting}",
             unhealthy=True,
             delete=_waiting_grace_elapsed(pod, now),
+        )
+
+    waiting_reason = _first_waiting_reason(statuses)
+    if waiting_reason is not None:
+        return _verdict(
+            pod_name,
+            reason=f"{reason_prefix}{waiting_reason}",
         )
 
     return None

@@ -94,8 +94,10 @@ def test_crash_loop_backoff_is_not_a_waiting_replacement_reason() -> None:
 
     health = pod_health(pod, now)
 
-    assert health.reason is None
+    assert health.reason == "CrashLoopBackOff"
+    assert health.unhealthy is False
     assert health.delete is False
+    assert health.permanent is False
 
 
 @pytest.mark.parametrize(
