@@ -1,7 +1,3 @@
-"""
-Operator control server for a consumer process.
-"""
-
 from __future__ import annotations
 
 import json
@@ -75,6 +71,22 @@ class ControlHandler(BaseHTTPRequestHandler):
 
 
 class ControlServer(ThreadingHTTPServer):
+    """
+    Expose lifecycle control for a streaming consumer process over HTTP.
+
+    In operator-controlled mode, the consumer process loads its pipeline but leaves
+    it idle. This server wraps its PipelineController so an external manager
+    (like the operator) can manually start consuming and observe/change state.
+
+    - POST /start: Start consuming.
+    - POST /stop: Stop consuming.
+
+    - GET /status: Get the current state.
+    - GET /readyz: Get a readiness response.
+
+    Invalid state transitions are rejected.
+    """
+
     def __init__(self, address: tuple[str, int], controller: PipelineController) -> None:
         self.controller = controller
         super().__init__(address, ControlHandler)
