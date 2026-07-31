@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from kubernetes.client import V1ContainerStatus, V1Pod
+from kubernetes.client import V1ContainerStatus, V1Pod, V1PodCondition
 
 from sentry_streams_k8s.k8s_types import V1PodDict
 from sentry_streams_k8s.operator.constants import (
@@ -55,6 +55,15 @@ def pod_spec_changed(current: V1Pod, desired: V1PodDict) -> bool:
     desired_annotations = desired["metadata"].get("annotations") or {}
     desired_hash = desired_annotations.get(SPEC_HASH_ANNOTATION)
     return desired_hash is not None and current_hash != desired_hash
+
+
+def _pod_unschedulable(conditions: list[V1PodCondition] | None) -> bool:
+    return any(
+        condition.type == "PodScheduled"
+        and condition.status == "False"
+        and condition.reason == "Unschedulable"
+        for condition in conditions or []
+    )
 
 
 def _container_waiting_reason(status: V1ContainerStatus) -> str | None:
@@ -230,6 +239,9 @@ def pod_health(pod: V1Pod, now: datetime) -> PodHealth:
     status = pod.status
     if status is None:
         return _verdict(pod_name)
+
+    if _pod_unschedulable(status.conditions):
+        return _verdict(pod_name, reason="Unschedulable", unhealthy=True)
 
     init_verdict = _container_statuses_verdict(
         pod_name,

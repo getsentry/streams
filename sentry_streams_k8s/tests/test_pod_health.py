@@ -119,6 +119,27 @@ def test_pod_health_only_marks_running_ready_pods_ready(
     assert health.delete is False
 
 
+def test_pod_health_reports_unschedulable_without_replacing() -> None:
+    health = pod_health(
+        make_pod(
+            phase="Pending",
+            conditions=[
+                V1PodCondition(
+                    type="PodScheduled",
+                    status="False",
+                    reason="Unschedulable",
+                )
+            ],
+        ),
+        datetime(2026, 7, 15, tzinfo=timezone.utc),
+    )
+
+    assert health.reason == "Unschedulable"
+    assert health.unhealthy is True
+    assert health.delete is False
+    assert health.permanent is False
+
+
 @pytest.mark.parametrize(
     ("pod_kwargs", "reason"),
     [
