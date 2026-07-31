@@ -23,8 +23,19 @@ def is_deleting(pod: V1Pod) -> bool:
 def age_seconds(timestamp: datetime | None, now: datetime) -> float | None:
     if timestamp is None:
         return None
+
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
+
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+
+    if timestamp.utcoffset() != now.utcoffset():
+        raise ValueError(
+            f"now and timestamp have different timezone offsets: "
+            f"now={now.tzinfo!r}, timestamp={timestamp.tzinfo!r}"
+        )
+
     return (now - timestamp).total_seconds()
 
 
