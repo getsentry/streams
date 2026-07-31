@@ -102,7 +102,6 @@ def _run_pipeline(
     finally:
         shutdown_requested.set()
         shutdown_thread.join(SHUTDOWN_TIMEOUT_SEC)
-        controller.request_stop()
         snapshot = controller.wait_until_stopped(SHUTDOWN_TIMEOUT_SEC)
         if not snapshot.is_terminal:
             logger.warning("pipeline did not stop within %ss, exiting anyway", SHUTDOWN_TIMEOUT_SEC)
