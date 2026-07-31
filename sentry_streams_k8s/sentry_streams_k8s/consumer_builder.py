@@ -5,14 +5,47 @@ import json
 import re
 from dataclasses import dataclass, field
 from importlib.resources import files
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, NotRequired, TypedDict, cast
 
 import yaml
 
+from sentry_streams_k8s.constants import CANARY_WORKLOAD_SET, PRIMARY_WORKLOAD_SET
 from sentry_streams_k8s.merge import ScalarOverwriteError, deepmerge
 from sentry_streams_k8s.validation import validate_pipeline_config
 
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+
+
+class PodTemplate(TypedDict):
+    spec: dict[str, Any]
+    metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class WorkloadSet:
+    """Group of identical replicas (primary or canary set)."""
+
+    name: str
+    replicas: int
+    labels: dict[str, str]
+
+    pod_template: PodTemplate
+
+
+class RenderedDeployments(TypedDict):
+    """The pipeline rendered as Deployments."""
+
+    deployment: dict[str, Any]
+    configmap: dict[str, Any]
+
+    canary_deployment: NotRequired[dict[str, Any]]
+
+
+class RenderedPods(TypedDict):
+    """The pipeline rendered as Pods."""
+
+    sets: dict[str, WorkloadSet]
+    configmap: dict[str, Any]
 
 
 def load_base_template(file_name: str) -> dict[str, Any]:
@@ -256,6 +289,29 @@ def _build_merged_pipeline_deployment(
     return deployment
 
 
+def _pipeline_labels(spec: ConsumerSpec) -> dict[str, str]:
+    return {
+        "pipeline-app": make_k8s_name(spec.pipeline_module),
+        "pipeline": make_k8s_name(spec.pipeline_name),
+        "service": make_k8s_name(spec.service_name),
+    }
+
+
+def _configmap_name(spec: ConsumerSpec) -> str:
+    return make_k8s_name(f"{spec.service_name}-pipeline-{spec.pipeline_name}")
+
+
+def _to_workload_set(deployment: dict[str, Any]) -> WorkloadSet:
+    """Converts a Deployment to a WorkloadSet."""
+
+    return WorkloadSet(
+        name=deployment["metadata"]["name"],
+        replicas=deployment["spec"]["replicas"],
+        labels=dict(deployment["metadata"]["labels"]),
+        pod_template=deployment["spec"]["template"],
+    )
+
+
 @dataclass(frozen=True)
 class ConsumerSpec:
     service_name: str
@@ -298,23 +354,13 @@ class ConsumerBuilder:
                 "livenessProbe from container_template."
             )
 
-    def build(self, spec: ConsumerSpec, pipeline_config: Mapping[str, Any]) -> dict[str, Any]:
+    def _workload_deployments(
+        self, spec: ConsumerSpec, config: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
         """
-        Generates Kubernetes deployment and configmap manifests.
-
-        Uses a two-stage merge approach:
-        1. Merge the caller's deployment_template onto the base deployment template
-        2. Merge pipeline-specific configuration onto the result
-
-        Returns:
-            Dictionary with 'deployment' and 'configmap' keys. When canary
-            splitting is active (``with_canary`` and ``replicas`` > 1), also
-            includes ``canary_deployment``. In that case the main deployment's
-            pods use ``env: primary`` and the canary uses ``env: canary`` so
-            selector ``matchLabels`` do not overlap.
+        Generate the Kubernetes Deployments for the pipeline.
+        Result is keyed by workload set name (primary or canary).
         """
-        config = dict(pipeline_config)
-
         process_count, segments_with_parallelism = get_multiprocess_config(config)
         if len(segments_with_parallelism) > 1:
             raise ValueError(
@@ -342,18 +388,13 @@ class ConsumerBuilder:
 
         base_deployment = load_base_template("deployment")
 
-        labels = {
-            "pipeline-app": make_k8s_name(spec.pipeline_module),
-            "pipeline": make_k8s_name(spec.pipeline_name),
-            "service": make_k8s_name(spec.service_name),
-        }
-        configmap_name = make_k8s_name(f"{spec.service_name}-pipeline-{spec.pipeline_name}")
+        labels = _pipeline_labels(spec)
 
         volumes: list[dict[str, Any]] = [
             {
                 "name": "pipeline-config",
                 "configMap": {
-                    "name": configmap_name,
+                    "name": _configmap_name(spec),
                 },
             }
         ]
@@ -388,62 +429,87 @@ class ConsumerBuilder:
 
         emergency_patch = dict(spec.emergency_patch)
 
-        if add_canary:
-            deployment = _build_merged_pipeline_deployment(
+        deployments = {
+            PRIMARY_WORKLOAD_SET: _build_merged_pipeline_deployment(
                 base_deployment=base_deployment,
                 deployment_template=self._deployment_template,
                 emergency_patch=emergency_patch,
                 deployment_name=main_deployment_name,
-                replica_count=spec.replicas - 1,
-                step_labels={**labels, "env": "primary"},
+                replica_count=spec.replicas - 1 if add_canary else spec.replicas,
+                step_labels={**labels, "env": PRIMARY_WORKLOAD_SET},
                 container=container,
                 volumes=volumes,
                 config_version=config_version,
             )
-            canary_deployment = _build_merged_pipeline_deployment(
+        }
+
+        if add_canary:
+            deployments[CANARY_WORKLOAD_SET] = _build_merged_pipeline_deployment(
                 base_deployment=base_deployment,
                 deployment_template=self._deployment_template,
                 emergency_patch=emergency_patch,
                 deployment_name=canary_deployment_name,
                 replica_count=1,
-                step_labels={**labels, "env": "canary"},
-                container=container,
-                volumes=volumes,
-                config_version=config_version,
-            )
-        else:
-            deployment = _build_merged_pipeline_deployment(
-                base_deployment=base_deployment,
-                deployment_template=self._deployment_template,
-                emergency_patch=emergency_patch,
-                deployment_name=main_deployment_name,
-                replica_count=spec.replicas,
-                step_labels={**labels, "env": "primary"},
+                step_labels={**labels, "env": CANARY_WORKLOAD_SET},
                 container=container,
                 volumes=volumes,
                 config_version=config_version,
             )
 
-        configmap = {
+        return deployments
+
+    def _build_configmap(
+        self,
+        spec: ConsumerSpec,
+        config: dict[str, Any],
+        primary_deployment: dict[str, Any],
+    ) -> dict[str, Any]:
+        configmap: dict[str, Any] = {
             "apiVersion": "v1",
             "kind": "ConfigMap",
             "metadata": {
-                "name": configmap_name,
-                "labels": labels,
+                "name": _configmap_name(spec),
+                "labels": _pipeline_labels(spec),
             },
             "data": {
                 "pipeline_config.yaml": serialize_pipeline_config(config),
             },
         }
 
-        if "namespace" in deployment.get("metadata", {}):
-            metadata = cast(dict[str, Any], configmap["metadata"])
-            metadata["namespace"] = deployment["metadata"]["namespace"]
+        if "namespace" in primary_deployment.get("metadata", {}):
+            configmap["metadata"]["namespace"] = primary_deployment["metadata"]["namespace"]
 
-        result: dict[str, Any] = {
-            "deployment": deployment,
-            "configmap": configmap,
+        return configmap
+
+    def build_deployments(
+        self, spec: ConsumerSpec, pipeline_config: Mapping[str, Any]
+    ) -> RenderedDeployments:
+        """Render the pipeline as Deployments and a ConfigMap."""
+
+        config = dict(pipeline_config)
+        deployments = self._workload_deployments(spec, config)
+        primary = deployments[PRIMARY_WORKLOAD_SET]
+
+        result: RenderedDeployments = {
+            "deployment": primary,
+            "configmap": self._build_configmap(spec, config, primary),
         }
-        if add_canary:
-            result["canary_deployment"] = canary_deployment
+
+        if CANARY_WORKLOAD_SET in deployments:
+            result["canary_deployment"] = deployments[CANARY_WORKLOAD_SET]
+
         return result
+
+    def build_pods(self, spec: ConsumerSpec, pipeline_config: Mapping[str, Any]) -> RenderedPods:
+        """Render the pipeline as Pods and a ConfigMap."""
+
+        config = dict(pipeline_config)
+        deployments = self._workload_deployments(spec, config)
+
+        return {
+            "sets": {
+                workload_set: _to_workload_set(deployment)
+                for workload_set, deployment in deployments.items()
+            },
+            "configmap": self._build_configmap(spec, config, deployments[PRIMARY_WORKLOAD_SET]),
+        }

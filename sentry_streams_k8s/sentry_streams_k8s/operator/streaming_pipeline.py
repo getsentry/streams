@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Mapping, NotRequired, TypedDict
 
-from sentry_streams_k8s.consumer_builder import ConsumerBuilder, ConsumerSpec
+from sentry_streams_k8s.consumer_builder import (
+    ConsumerBuilder,
+    ConsumerSpec,
+    RenderedDeployments,
+)
 
 
 class StreamingPipelineSpec(TypedDict):
@@ -70,8 +74,8 @@ def to_consumer_spec(spec: StreamingPipelineSpec) -> ConsumerSpec:
     )
 
 
-def render(spec: StreamingPipelineSpec) -> dict[str, Any]:
+def render(spec: StreamingPipelineSpec) -> RenderedDeployments:
     builder = ConsumerBuilder(spec["deployment_template"], spec["container_template"])
     consumer = to_consumer_spec(spec)
     builder.validate(consumer, spec["pipeline_config"])
-    return builder.build(consumer, spec["pipeline_config"])
+    return builder.build_deployments(consumer, spec["pipeline_config"])

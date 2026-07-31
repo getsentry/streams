@@ -12,6 +12,10 @@ WORKLOAD_NAMESPACE_ENV = "WORKLOAD_NAMESPACE"
 
 APPLY_PATCH_CONTENT_TYPE = "application/apply-patch+yaml"
 
+# Identifies independently reconciled Pod sets owned by the same pipeline:
+
+WORKLOAD_SET_LABEL = "streams.sentry.io/workload-set"
+
 # The CR and its workloads may live in different namespaces, so we cannot use
 # ownerReferences (Kubernetes forbids cross-namespace owning) or kopf.adopt.
 # Instead every workload carries the owning CR's UID as a label with
