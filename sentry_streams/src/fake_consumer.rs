@@ -83,7 +83,7 @@ impl FakeConsumer {
             // Emit the first message immediately on the first poll.
             next_send: Instant::now(),
             done,
-            rng: StdRng::from_entropy(),
+            rng: StdRng::from_os_rng(),
         }
     }
 
