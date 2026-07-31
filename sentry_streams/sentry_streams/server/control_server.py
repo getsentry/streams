@@ -9,16 +9,47 @@ from urllib.parse import urlparse
 from sentry_streams.adapters.stream_adapter import (
     RuntimeStateError,
     RuntimeStatus,
+    StartOptions,
 )
 from sentry_streams.control import PipelineController
 
 logger = logging.getLogger(__name__)
 
 
+class InvalidRequest(Exception):
+    """Raised when a request body cannot be read."""
+
+
 class ControlHandler(BaseHTTPRequestHandler):
     @property
     def _controller(self) -> PipelineController:
         return cast(ControlServer, self.server).controller
+
+    def _read_start_options(self) -> StartOptions | None:
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length > 0 else b""
+        if not raw.strip():
+            return None
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise InvalidRequest(f"body is not valid JSON: {exc}") from exc
+
+        if not isinstance(payload, dict):
+            raise InvalidRequest("body must be a JSON object")
+
+        unknown = set(payload) - {"group_instance_id"}
+        if unknown:
+            raise InvalidRequest(f"unknown fields: {', '.join(sorted(unknown))}")
+
+        group_instance_id = payload.get("group_instance_id")
+        if group_instance_id is not None and (
+            not isinstance(group_instance_id, str) or not group_instance_id
+        ):
+            raise InvalidRequest("group_instance_id must be a non-empty string")
+
+        return StartOptions(group_instance_id=group_instance_id)
 
     def log_message(self, format: str, *args: Any) -> None:
         logger.debug("control-server %s - %s", self.address_string(), format % args)
@@ -49,7 +80,8 @@ class ControlHandler(BaseHTTPRequestHandler):
         try:
             path = urlparse(self.path).path
             if path == "/start":
-                self._respond(202, self._controller.request_start().as_dict())
+                options = self._read_start_options()
+                self._respond(202, self._controller.request_start(options).as_dict())
             elif path == "/stop":
                 self._respond_to_stop(self._controller.request_stop())
             else:
@@ -62,7 +94,10 @@ class ControlHandler(BaseHTTPRequestHandler):
         self._respond(code, snapshot.as_dict())
 
     def _respond_to_failure(self, exc: Exception) -> None:
-        if isinstance(exc, RuntimeStateError):
+        if isinstance(exc, InvalidRequest):
+            logger.info("control-server could not read %s: %s", self.path, exc)
+            self._respond(400, {"error": str(exc)})
+        elif isinstance(exc, RuntimeStateError):
             logger.info("control-server rejected %s: %s", self.path, exc)
             self._respond(409, {"error": str(exc)})
         else:

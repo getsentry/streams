@@ -6,6 +6,7 @@ from typing import Any, Callable, Mapping, Self, Type
 from sentry_streams.adapters.stream_adapter import (
     PipelineConfig,
     RuntimeState,
+    StartOptions,
     StreamAdapter,
 )
 from sentry_streams.pipeline.function_template import InputType, OutputType
@@ -35,9 +36,11 @@ class FakeAdapter(StreamAdapter[Any, Any]):
         self.run_finished = threading.Event()
         self.run_calls = 0
         self.shutdown_calls = 0
+        self.start_options: StartOptions | None = None
 
-    def _run(self) -> None:
+    def _run(self, options: StartOptions) -> None:
         self.run_calls += 1
+        self.start_options = options
         self.run_started.set()
         if self._fail:
             raise RuntimeError("runtime failed")

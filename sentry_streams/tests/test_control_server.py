@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
-from sentry_streams.adapters.stream_adapter import RuntimeState
+from sentry_streams.adapters.stream_adapter import RuntimeState, StartOptions
 from sentry_streams.control import PipelineController
 from sentry_streams.server.control_server import make_server
 from tests.adapters.fake_adapter import FakeAdapter
@@ -22,8 +22,10 @@ def _wait_for(predicate: Callable[[], bool], timeout: float = 3.0) -> bool:
     return False
 
 
-def _request(port: int, path: str, method: str) -> tuple[int, dict[str, Any]]:
-    data = b"" if method == "POST" else None
+def _request(
+    port: int, path: str, method: str, body: bytes | None = None
+) -> tuple[int, dict[str, Any]]:
+    data = body if body is not None else (b"" if method == "POST" else None)
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method=method, data=data)
     try:
         with urllib.request.urlopen(req, timeout=3.0) as resp:
@@ -85,6 +87,25 @@ def test_readyz_reports_runtime_failure() -> None:
         assert code == 503
         assert body["state"] == RuntimeState.ERRORED
         assert body["error"] == "runtime failed"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3.0)
+        _stop(controller)
+
+
+def test_start_passes_a_group_instance_id_to_the_runtime() -> None:
+    runtime = FakeAdapter()
+    controller = PipelineController(runtime)
+    server = make_server(controller, "127.0.0.1", 0)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        body = json.dumps({"group_instance_id": "consumer-2"}).encode()
+        assert _request(port, "/start", "POST", body)[0] == 202
+        assert _wait_for(lambda: runtime.start_options is not None)
+        assert runtime.start_options == StartOptions(group_instance_id="consumer-2")
     finally:
         server.shutdown()
         server.server_close()

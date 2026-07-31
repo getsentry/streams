@@ -30,6 +30,7 @@ from sentry_streams.adapters.arroyo.steps_chain import TransformChains
 from sentry_streams.adapters.stream_adapter import (
     PipelineConfig,
     RuntimeState,
+    StartOptions,
     StreamAdapter,
 )
 from sentry_streams.config_types import (
@@ -591,13 +592,15 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         )
         return build_branches(stream, step.routing_table.values())
 
-    def _run(self) -> None:
+    def _run(self, options: StartOptions) -> None:
         """
         Starts the pipeline
         """
         # TODO: Support multiple consumers
         assert len(self.__consumers) == 1, "Multiple consumers not supported yet"
         consumer = next(iter(self.__consumers.values()))
+        if options.group_instance_id is not None:
+            consumer.set_group_instance_id(options.group_instance_id)
         self._set_status(RuntimeState.CONSUMING)
         consumer.run()
 
