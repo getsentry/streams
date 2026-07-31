@@ -9,7 +9,10 @@ from typing import Any, Mapping, NotRequired, TypedDict, cast
 
 import yaml
 
-from sentry_streams_k8s.constants import CANARY_WORKLOAD_SET, PRIMARY_WORKLOAD_SET
+from sentry_streams_k8s.constants import (
+    CANARY_WORKLOAD_SET,
+    PRIMARY_WORKLOAD_SET,
+)
 from sentry_streams_k8s.k8s_types import V1ConfigMapDict, V1DeploymentDict
 from sentry_streams_k8s.merge import ScalarOverwriteError, deepmerge
 from sentry_streams_k8s.validation import validate_pipeline_config
@@ -138,6 +141,9 @@ def build_container(
     enable_liveness_probe: bool = True,
     multiprocess_enabled: bool | None = None,
     container_name: str = "pipeline-consumer",
+    *,
+    control_host: str | None,
+    control_port: int | None,
 ) -> dict[str, Any]:
     """
     Build a complete container specification for the pipeline step.
@@ -187,23 +193,29 @@ def build_container(
             }
         )
 
+    args = [
+        "-n",
+        pipeline_name,
+        "--log-level",
+        log_level,
+        "--adapter",
+        "rust_arroyo",
+        "--segment-id",
+        str(segment_id),
+        "--config",
+        "/etc/pipeline-config/pipeline_config.yaml",
+    ]
+
+    if control_host is not None and control_port is not None:
+        args += ["--control-host", control_host, "--control-port", str(control_port)]
+
+    args.append(pipeline_module)
+
     pipeline_additions: dict[str, Any] = {
         "name": container_name,
         "image": image_name,
         "command": ["python", "-m", "sentry_streams.runner"],
-        "args": [
-            "-n",
-            pipeline_name,
-            "--log-level",
-            log_level,
-            "--adapter",
-            "rust_arroyo",
-            "--segment-id",
-            str(segment_id),
-            "--config",
-            "/etc/pipeline-config/pipeline_config.yaml",
-            pipeline_module,
-        ],
+        "args": args,
         "resources": {
             "requests": {
                 "cpu": f"{cpu_total}m",
@@ -223,6 +235,13 @@ def build_container(
             },
             "failureThreshold": 31,
             "periodSeconds": 10,
+        }
+
+    if control_port is not None:
+        pipeline_additions["readinessProbe"] = {
+            "httpGet": {"path": "/readyz", "port": control_port},
+            "periodSeconds": 5,
+            "failureThreshold": 3,
         }
 
     return deepmerge(container, pipeline_additions)
@@ -356,7 +375,11 @@ class ConsumerBuilder:
             )
 
     def _workload_deployments(
-        self, spec: ConsumerSpec, config: dict[str, Any]
+        self,
+        spec: ConsumerSpec,
+        config: dict[str, Any],
+        control_host: str | None,
+        control_port: int | None,
     ) -> dict[str, V1DeploymentDict]:
         """
         Generate the Kubernetes Deployments for the pipeline.
@@ -385,6 +408,8 @@ class ConsumerBuilder:
             spec.enable_liveness_probe,
             multiprocess_enabled,
             spec.container_name,
+            control_host=control_host,
+            control_port=control_port,
         )
 
         base_deployment = load_base_template("deployment")
@@ -488,7 +513,7 @@ class ConsumerBuilder:
         """Render the pipeline as Deployments and a ConfigMap."""
 
         config = dict(pipeline_config)
-        deployments = self._workload_deployments(spec, config)
+        deployments = self._workload_deployments(spec, config, control_host=None, control_port=None)
         primary = deployments[PRIMARY_WORKLOAD_SET]
 
         result: RenderedDeployments = {
@@ -501,11 +526,19 @@ class ConsumerBuilder:
 
         return result
 
-    def build_pods(self, spec: ConsumerSpec, pipeline_config: Mapping[str, Any]) -> RenderedPods:
+    def build_pods(
+        self,
+        spec: ConsumerSpec,
+        pipeline_config: Mapping[str, Any],
+        control_host: str,
+        control_port: int,
+    ) -> RenderedPods:
         """Render the pipeline as Pods and a ConfigMap."""
 
         config = dict(pipeline_config)
-        deployments = self._workload_deployments(spec, config)
+        deployments = self._workload_deployments(
+            spec, config, control_host=control_host, control_port=control_port
+        )
 
         return {
             "sets": {

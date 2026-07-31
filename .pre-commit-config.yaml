@@ -8,6 +8,8 @@ repos:
       - id: check-symlinks
       - id: check-xml
       - id: check-yaml
+        # Helm templates have to be rendered before they are valid Yaml.
+        exclude: "^sentry_streams_k8s/chart/[^/]+/templates/"
       - id: detect-private-key
       - id: end-of-file-fixer
         # Exclude CHANGELOG.md from this hook as Craft generates updates

@@ -16,6 +16,8 @@ from kubernetes.client.exceptions import ApiException
 
 from sentry_streams_k8s.k8s_types import V1ConditionDict
 from sentry_streams_k8s.operator.constants import (
+    CONTROL_HOST_ENV,
+    CONTROL_PORT_ENV,
     FIELD_MANAGER,
     GROUP,
     HEALTH_SCAN_INTERVAL_SECONDS,
@@ -93,6 +95,23 @@ def _workload_namespace() -> str:
     if not namespace:
         raise RuntimeError(f"{WORKLOAD_NAMESPACE_ENV} must be set.")
     return namespace
+
+
+def _control_host() -> str:
+    host = os.environ.get(CONTROL_HOST_ENV, "").strip()
+    if not host:
+        raise RuntimeError(f"{CONTROL_HOST_ENV} must be set.")
+    return host
+
+
+def _control_port() -> int:
+    port = os.environ.get(CONTROL_PORT_ENV, "").strip()
+    if not port:
+        raise RuntimeError(f"{CONTROL_PORT_ENV} must be set.")
+    try:
+        return int(port)
+    except ValueError:
+        raise RuntimeError(f"{CONTROL_PORT_ENV} must be an integer, got {port!r}.")
 
 
 def _published_conditions(status: Mapping[str, object]) -> list[V1ConditionDict] | None:
@@ -196,6 +215,8 @@ async def _reconcile_once(
                         namespace=namespace,
                         uid=uid,
                         workload_namespace=_workload_namespace(),
+                        control_host=_control_host(),
+                        control_port=_control_port(),
                         logger=logger,
                         status=status_patch,
                         previous_conditions=_published_conditions(published),
@@ -270,7 +291,7 @@ async def handle_pipeline_pod_event(
 
     if type == "MODIFIED" and meta.deletion_timestamp is None:
         health = pod_health(_deserialize_pod(body), datetime.now(timezone.utc))
-        if not health.delete:
+        if not (health.delete or health.ready):
             return
 
     owner_uid = labels.get(OWNER_UID_LABEL)

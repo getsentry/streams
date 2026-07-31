@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from kubernetes.client import V1Pod
@@ -21,6 +21,7 @@ from sentry_streams_k8s.operator.constants import (
     SPEC_HASH_ANNOTATION,
     WORKLOAD_SET_LABEL,
 )
+from sentry_streams_k8s.operator.control_client import RuntimeState
 from sentry_streams_k8s.operator.pod_health import PodHealth
 from sentry_streams_k8s.operator.pod_resources import (
     build_pipeline_pod,
@@ -39,6 +40,7 @@ from sentry_streams_k8s.operator.reconcile import (
     reconcile_pipeline_pods,
 )
 from tests.k8s_fixtures import (
+    FakeControlClient,
     FakeCoreV1Api,
     make_condition,
     make_pod,
@@ -268,6 +270,7 @@ def _observed(
     container_statuses: list[Any] | None = None,
     start_time: datetime | None = None,
     deletion_timestamp: datetime | None = None,
+    pod_ip: str | None = None,
 ) -> V1Pod:
     metadata = manifest["metadata"]
     return make_pod(
@@ -279,6 +282,7 @@ def _observed(
         container_statuses=container_statuses,
         start_time=start_time,
         deletion_timestamp=deletion_timestamp,
+        pod_ip=pod_ip,
     )
 
 
@@ -298,6 +302,7 @@ def _reconcile(
     replicas: int = 1,
     generations: dict[int, int] | None = None,
     workload_set: str = PRIMARY_WORKLOAD_SET,
+    control: FakeControlClient | None = None,
 ) -> tuple[list[V1PodDict], list[tuple[str, bool]], PodSetResult, dict[int, int]]:
     core = FakeCoreV1Api(pods=pods)
     metadata, spec = _template()
@@ -315,6 +320,7 @@ def _reconcile(
         generations=ledger,
         logger=LOGGER,
         workload_set=workload_set,
+        control=cast(Any, control if control is not None else FakeControlClient()),
     )
     return core.applied_pods, core.deleted_pods, result, ledger
 
@@ -369,12 +375,13 @@ def test_reconcile_replaces_a_failed_pod_with_the_next_generation() -> None:
     ]
 
 
-def test_reconcile_applies_the_replacement_before_deleting_outdated() -> None:
-    outdated = _observed(_manifest(0, 1), phase="Running", ready=True)
+def test_reconcile_keeps_outdated_consuming_until_the_replacement_exists() -> None:
+    outdated = _observed(_manifest(0, 1), phase="Running", ready=True, pod_ip="10.0.0.1")
     assert outdated.metadata is not None
     outdated.metadata.annotations[SPEC_HASH_ANNOTATION] = "old"
     core = FakeCoreV1Api(pods=[outdated])
     metadata, spec = _template()
+    control = FakeControlClient(states={"10.0.0.1": RuntimeState.CONSUMING})
 
     reconcile_pipeline_pods(
         core=core,
@@ -389,9 +396,12 @@ def test_reconcile_applies_the_replacement_before_deleting_outdated() -> None:
         generations={},
         logger=LOGGER,
         workload_set=PRIMARY_WORKLOAD_SET,
+        control=cast(Any, control),
     )
 
-    assert core.operations == ["apply:consumer-0-2", "delete:consumer-0-1"]
+    assert core.operations == ["apply:consumer-0-2"]
+    assert control.stopped == []
+    assert control.started == []
 
 
 def test_reconcile_keeps_the_best_duplicate_and_deletes_the_rest() -> None:
@@ -407,6 +417,109 @@ def test_reconcile_keeps_the_best_duplicate_and_deletes_the_rest() -> None:
     assert deleted == [("consumer-0-1", False)]
     assert result["childPods"] == ["consumer-0-2"]
     assert ledger == {0: 2}
+
+
+def test_reconcile_starts_a_ready_pod_that_has_no_predecessor() -> None:
+    pod = _observed(_manifest(0, 0), phase="Running", ready=True, pod_ip="10.0.0.9")
+    control = FakeControlClient(states={"10.0.0.9": RuntimeState.IDLE})
+
+    applied, deleted, _result, _ledger = _reconcile([pod], control=control)
+
+    assert applied == []
+    assert deleted == []
+    assert control.started == [("10.0.0.9", "consumer-0")]
+
+
+def test_reconcile_leaves_an_already_consuming_pod_alone() -> None:
+    pod = _observed(_manifest(0, 0), phase="Running", ready=True, pod_ip="10.0.0.9")
+    control = FakeControlClient(states={"10.0.0.9": RuntimeState.CONSUMING})
+
+    applied, deleted, _result, _ledger = _reconcile([pod], control=control)
+
+    assert applied == [] and deleted == []
+    assert control.started == [] and control.stopped == []
+
+
+def test_reconcile_hands_partitions_over_before_deleting_the_outdated_pod() -> None:
+    outdated = _observed(_manifest(0, 1), phase="Running", ready=True, pod_ip="10.0.0.1")
+    assert outdated.metadata is not None
+    outdated.metadata.annotations[SPEC_HASH_ANNOTATION] = "old"
+    replacement = _observed(_manifest(0, 2), phase="Running", ready=True, pod_ip="10.0.0.2")
+    core = FakeCoreV1Api(pods=[outdated, replacement])
+    metadata, spec = _template()
+    control = FakeControlClient(
+        states={"10.0.0.1": RuntimeState.CONSUMING, "10.0.0.2": RuntimeState.IDLE}
+    )
+
+    reconcile_pipeline_pods(
+        core=core,
+        workload_namespace=NAMESPACE,
+        owner_uid=OWNER_UID,
+        owner_name="pipeline",
+        owner_namespace="source",
+        base_name="consumer",
+        template_metadata=metadata,
+        template_spec=spec,
+        replicas=1,
+        generations={},
+        logger=LOGGER,
+        workload_set=PRIMARY_WORKLOAD_SET,
+        control=cast(Any, control),
+    )
+
+    assert control.stopped == ["10.0.0.1"]
+    assert control.started == [("10.0.0.2", "consumer-0")]
+    assert core.operations == ["delete:consumer-0-1"]
+
+
+def test_reconcile_does_not_hand_over_to_an_unready_replacement() -> None:
+    outdated = _observed(_manifest(0, 1), phase="Running", ready=True, pod_ip="10.0.0.1")
+    assert outdated.metadata is not None
+    outdated.metadata.annotations[SPEC_HASH_ANNOTATION] = "old"
+    replacement = _observed(_manifest(0, 2), phase="Pending", ready=False, pod_ip="10.0.0.2")
+    control = FakeControlClient(
+        states={"10.0.0.1": RuntimeState.CONSUMING, "10.0.0.2": RuntimeState.IDLE}
+    )
+
+    applied, deleted, _result, _ledger = _reconcile([outdated, replacement], control=control)
+
+    assert applied == [] and deleted == []
+    assert control.stopped == [] and control.started == []
+
+
+def test_reconcile_deletes_an_unreachable_predecessor_and_waits() -> None:
+    outdated = _observed(_manifest(0, 1), phase="Running", ready=True, pod_ip="10.0.0.1")
+    assert outdated.metadata is not None
+    outdated.metadata.annotations[SPEC_HASH_ANNOTATION] = "old"
+    replacement = _observed(_manifest(0, 2), phase="Running", ready=True, pod_ip="10.0.0.2")
+    control = FakeControlClient(states={"10.0.0.2": RuntimeState.IDLE}, unreachable={"10.0.0.1"})
+
+    applied, deleted, _result, _ledger = _reconcile([outdated, replacement], control=control)
+
+    assert applied == []
+    assert deleted == [("consumer-0-1", False)]
+    assert control.started == []
+
+
+def test_reconcile_waits_for_a_terminating_predecessor_to_finish_committing() -> None:
+    outdated = _observed(
+        _manifest(0, 1),
+        phase="Running",
+        ready=True,
+        pod_ip="10.0.0.1",
+        deletion_timestamp=datetime.now(timezone.utc),
+    )
+    assert outdated.metadata is not None
+    outdated.metadata.annotations[SPEC_HASH_ANNOTATION] = "old"
+    replacement = _observed(_manifest(0, 2), phase="Running", ready=True, pod_ip="10.0.0.2")
+    control = FakeControlClient(
+        states={"10.0.0.1": RuntimeState.STOPPING, "10.0.0.2": RuntimeState.IDLE}
+    )
+
+    applied, deleted, _result, _ledger = _reconcile([outdated, replacement], control=control)
+
+    assert applied == [] and deleted == []
+    assert control.started == []
 
 
 def test_delete_obsolete_pod_sets_removes_canary_when_disabled() -> None:

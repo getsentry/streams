@@ -38,6 +38,10 @@ spec:
           env:
             - name: WORKLOAD_NAMESPACE
               value: {{ include "streaming-operator.workloadNamespace" . | quote }}
+            - name: CONTROL_HOST
+              value: {{ include "streaming-operator.controlHost" . | quote }}
+            - name: CONTROL_PORT
+              value: {{ include "streaming-operator.controlPort" . | quote }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

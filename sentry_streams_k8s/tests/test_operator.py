@@ -45,6 +45,9 @@ from tests.k8s_fixtures import FakeCoreV1Api
 
 WORKLOAD_NAMESPACE = "test-streaming-pipelines"
 
+CONTROL_HOST = "127.0.0.5"
+CONTROL_PORT = 9137
+
 
 def test_prepare_manifest_routes_workload_and_records_source_cr() -> None:
     manifest = {
@@ -205,7 +208,7 @@ def _stub_render(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     monkeypatch.setattr("sentry_streams_k8s.operator.reconcile.validate", lambda _consumer: None)
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.render_pods",
-        lambda _consumer: {
+        lambda _consumer, _host, _port: {
             "configmap": configmap,
             "sets": {
                 PRIMARY_WORKLOAD_SET: _workload("consumer", 1),
@@ -232,6 +235,8 @@ def test_reconcile_applies_pods_and_reports_status_through_a_plain_dict(
         namespace="source",
         uid="owner-uid",
         workload_namespace=WORKLOAD_NAMESPACE,
+        control_host=CONTROL_HOST,
+        control_port=CONTROL_PORT,
         logger=MagicMock(),
         status=status,
     )
@@ -268,7 +273,7 @@ def test_reconcile_nulls_out_a_workload_set_that_is_no_longer_rendered(
     core = _stub_render(monkeypatch)
     monkeypatch.setattr(
         "sentry_streams_k8s.operator.reconcile.render_pods",
-        lambda _consumer: {
+        lambda _consumer, _host, _port: {
             "configmap": {
                 "apiVersion": "v1",
                 "kind": "ConfigMap",
@@ -285,6 +290,8 @@ def test_reconcile_nulls_out_a_workload_set_that_is_no_longer_rendered(
         namespace="source",
         uid="owner-uid",
         workload_namespace=WORKLOAD_NAMESPACE,
+        control_host=CONTROL_HOST,
+        control_port=CONTROL_PORT,
         logger=MagicMock(),
         status=status,
         previous_generations={PRIMARY_WORKLOAD_SET: {"0": 4}, CANARY_WORKLOAD_SET: {"0": 2}},
@@ -314,6 +321,8 @@ def test_reconcile_records_render_failure_in_the_status_dict(
             namespace="source",
             uid="owner-uid",
             workload_namespace=WORKLOAD_NAMESPACE,
+            control_host=CONTROL_HOST,
+            control_port=CONTROL_PORT,
             logger=MagicMock(),
             status=status,
         )
@@ -418,6 +427,8 @@ def test_reconcile_once_publishes_status_and_schedules_the_health_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
+    monkeypatch.setenv("CONTROL_HOST", CONTROL_HOST)
+    monkeypatch.setenv("CONTROL_PORT", str(CONTROL_PORT))
     patch_status = MagicMock()
     monkeypatch.setattr(operator_module, "_patch_pipeline_status", patch_status)
 
@@ -438,6 +449,8 @@ def test_reconcile_once_reports_a_permanent_error_without_scheduling_a_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
+    monkeypatch.setenv("CONTROL_HOST", CONTROL_HOST)
+    monkeypatch.setenv("CONTROL_PORT", str(CONTROL_PORT))
     patch_status = MagicMock()
     monkeypatch.setattr(operator_module, "_patch_pipeline_status", patch_status)
 
@@ -456,6 +469,8 @@ def test_reconcile_once_retries_soon_after_an_unexpected_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
+    monkeypatch.setenv("CONTROL_HOST", CONTROL_HOST)
+    monkeypatch.setenv("CONTROL_PORT", str(CONTROL_PORT))
     monkeypatch.setattr(operator_module, "_patch_pipeline_status", MagicMock())
     monkeypatch.setattr(
         operator_module, "reconcile_pipeline", MagicMock(side_effect=RuntimeError("boom"))
@@ -468,6 +483,8 @@ def test_reconcile_once_skips_the_pass_when_already_stopped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
+    monkeypatch.setenv("CONTROL_HOST", CONTROL_HOST)
+    monkeypatch.setenv("CONTROL_PORT", str(CONTROL_PORT))
     reconcile = MagicMock()
     monkeypatch.setattr(operator_module, "reconcile_pipeline", reconcile)
     stopped = FakeStopped()
@@ -574,6 +591,8 @@ def test_cleanup_deletes_owned_pods_and_prunes_configmaps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("WORKLOAD_NAMESPACE", WORKLOAD_NAMESPACE)
+    monkeypatch.setenv("CONTROL_HOST", CONTROL_HOST)
+    monkeypatch.setenv("CONTROL_PORT", str(CONTROL_PORT))
     core = MagicMock()
     delete_pods = MagicMock()
     prune = MagicMock()
@@ -631,3 +650,32 @@ def test_pod_event_wakes_for_unhealthy_updates_and_ignores_healthy_updates() -> 
         return healthy_woke, event.is_set()
 
     assert asyncio.run(scenario()) == (False, True)
+
+
+def test_pod_event_wakes_when_a_pod_becomes_ready() -> None:
+    scheduler = ReconcileScheduler()
+    memo = SimpleNamespace(reconcile_scheduler=scheduler)
+
+    async def scenario() -> bool:
+        event = scheduler.register("uid")
+        await handle_pipeline_pod_event(
+            type="MODIFIED",
+            body=kopf.Body(
+                {
+                    "metadata": {"name": "consumer-0-0"},
+                    "status": {
+                        "phase": "Running",
+                        "conditions": [{"type": "Ready", "status": "True"}],
+                    },
+                }
+            ),
+            meta=kopf.Meta({}),
+            labels={OWNER_UID_LABEL: "uid"},
+            name="consumer-0-0",
+            namespace=WORKLOAD_NAMESPACE,
+            memo=memo,
+            logger=MagicMock(),
+        )
+        return event.is_set()
+
+    assert asyncio.run(scenario()) is True

@@ -28,3 +28,11 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- define "streaming-operator.workloadNamespace" -}}
 {{- required "workloadNamespace must be set" .Values.workloadNamespace -}}
 {{- end -}}
+
+{{- define "streaming-operator.controlHost" -}}
+{{- required "control.host must be set" .Values.control.host -}}
+{{- end -}}
+
+{{- define "streaming-operator.controlPort" -}}
+{{- required "control.port must be set" .Values.control.port -}}
+{{- end -}}

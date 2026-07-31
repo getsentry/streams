@@ -69,6 +69,20 @@ PERMANENT_WAITING_REASONS = frozenset({"InvalidImageName"})
 POD_WAITING_GRACE_SECONDS = 300
 POD_TERMINATING_GRACE_SECONDS = 600
 
+# Environment variables for the control server address:
+
+CONTROL_HOST_ENV = "CONTROL_HOST"
+CONTROL_PORT_ENV = "CONTROL_PORT"
+
+# Handoff timeout and poll interval:
+
+HANDOFF_DRAIN_TIMEOUT_SECONDS = 30.0
+HANDOFF_POLL_INTERVAL_SECONDS = 0.5
+
+# Request timeout to a Pod's control server:
+
+CONTROL_REQUEST_TIMEOUT_SECONDS = 5.0
+
 # How often the daemon re-runs a full reconcile as a safety net behind the watch:
 
 HEALTH_SCAN_INTERVAL_SECONDS = 60

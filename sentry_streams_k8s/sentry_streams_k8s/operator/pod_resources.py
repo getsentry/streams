@@ -63,9 +63,18 @@ def delete_pod(core: client.CoreV1Api, name: str, namespace: str, force: bool = 
         core.delete_namespaced_pod(name=name, namespace=namespace)
 
 
+def pod_ip(pod: V1Pod) -> str | None:
+    status = pod.status
+    return status.pod_ip if status and status.pod_ip else None
+
+
 def pod_name(pod: V1Pod) -> str:
     metadata = pod.metadata
     return metadata.name if metadata and metadata.name else ""
+
+
+def group_instance_id(base_name: str, ordinal: int) -> str:
+    return f"{base_name}-{ordinal}"
 
 
 def consumer_pod_name(base_name: str, ordinal: int, generation: int) -> str:
