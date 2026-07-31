@@ -162,11 +162,11 @@ def test_spec_hash_tracks_the_workload_set() -> None:
         (
             CANARY_WORKLOAD_SET,
             (
-                f"streams.sentry.io/owner-uid={OWNER_UID},"
+                f"pipeline.streams.sentry.io/owner-uid={OWNER_UID},"
                 f"streams.sentry.io/workload-set={CANARY_WORKLOAD_SET}"
             ),
         ),
-        (None, f"streams.sentry.io/owner-uid={OWNER_UID}"),
+        (None, f"pipeline.streams.sentry.io/owner-uid={OWNER_UID}"),
     ],
 )
 def test_list_owned_pods_selects_owner_and_optional_workload_set(
