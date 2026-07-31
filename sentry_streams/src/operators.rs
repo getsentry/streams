@@ -14,6 +14,8 @@ use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// RuntimeOperator represent a translated step in the streaming pipeline the
@@ -70,6 +72,7 @@ pub enum RuntimeOperator {
         bucket: String,
         object_generator: Py<PyAny>,
         thread_count: usize,
+        step_name: String,
     },
     /// Represents a DevNullSink that discards all messages.
     /// Useful for testing and benchmarking pipelines.
@@ -123,7 +126,8 @@ pub fn build(
     step: &Py<RuntimeOperator>,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
     terminator_strategy: Box<dyn ProcessingStrategy<KafkaPayload>>,
-    concurrency_config: &ConcurrencyConfig,
+    default_concurrency_config: &ConcurrencyConfig,
+    step_concurrency_configs: &HashMap<String, Arc<ConcurrencyConfig>>,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
     match step.get() {
         RuntimeOperator::Map { function, route } => {
@@ -163,7 +167,7 @@ pub fn build(
             Box::new(StreamSink::new(
                 route.clone(),
                 producer,
-                concurrency_config,
+                default_concurrency_config,
                 topic_name,
                 next,
                 terminator_strategy,
@@ -173,9 +177,21 @@ pub fn build(
             route,
             bucket,
             object_generator,
-            thread_count: _,
+            thread_count,
+            step_name,
         } => {
             let func_ref = traced_with_gil!(|py| { object_generator.clone_ref(py) });
+
+            let concurrency_config = step_concurrency_configs
+                .get(step_name)
+                .map(|config| config.as_ref())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing ConcurrencyConfig for GCSSink step '{step_name}' \
+                         (thread_count={thread_count}); \
+                         call ArroyoConsumer.add_threadpool before add_step"
+                    )
+                });
 
             Box::new(GCSSink::new(
                 route.clone(),

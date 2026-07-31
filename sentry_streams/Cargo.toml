@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pyo3 = { version = "0.28.3" }
+pyo3 = { version = "0.29.0" }
 serde = { version = "1.0", features = ["derive"] }
 sentry_arroyo = { version = "<=2.40.0", features = ["ssl"] }
 chrono = "0.4.40"
@@ -21,7 +21,7 @@ clap = { version = "4.5.45", features = ["derive"], optional = true }
 gcp_auth = "0.12.2"
 metrics = "0.24.0"
 metrics-exporter-dogstatsd = "0.9.0"
-rand = "0.8"
+rand = "0.9"
 sentry = "0.48.1"
 
 [lib]

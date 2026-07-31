@@ -333,8 +333,9 @@ mod tests {
                 10,
                 Utc::now(),
             );
-            let SubmitError::InvalidMessage(InvalidMessage { partition, offset }) =
-                strategy.submit(message).unwrap_err()
+            let SubmitError::InvalidMessage(InvalidMessage {
+                partition, offset, ..
+            }) = strategy.submit(message).unwrap_err()
             else {
                 panic!("Expected SubmitError::InvalidMessage")
             };

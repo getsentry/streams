@@ -1,3 +1,28 @@
+## 0.0.62
+
+### Bug Fixes 🐛
+
+- (rust_arroyo) Honor GCSSink thread_count via per-step thread pools by @fpacifici in [#338](https://github.com/getsentry/streams/pull/338)
+
+## 0.0.61
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump msgpack from 1.1.1 to 1.2.1 in /sentry_streams by @dependabot in [#334](https://github.com/getsentry/streams/pull/334)
+- Bump sentry_arroyo to 2.40.0 by @lcian in [#331](https://github.com/getsentry/streams/pull/331)
+
+### Other
+
+- Bump kafka schemas by @fpacifici in [#337](https://github.com/getsentry/streams/pull/337)
+
+## 0.0.60
+
+### Internal Changes 🔧
+
+- (streams) Debounce noisy MessageRejected backpressure logs by @fpacifici in [#330](https://github.com/getsentry/streams/pull/330)
+
 ## 0.0.59
 
 - Make binary smaller by @fpacifici in [#329](https://github.com/getsentry/streams/pull/329)

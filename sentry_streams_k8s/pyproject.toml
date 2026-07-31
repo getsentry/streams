@@ -16,28 +16,45 @@ classifiers = [
 ]
 dependencies = [
     "jsonschema>=4.23.0",
-    "requests>=2.32.3",
-    "sentry-infra-tools>=1.24.0",
     "sentry-streams>=0.0.40",
     "pyyaml>=6.0.2",
 ]
 
+[project.optional-dependencies]
+macro = [
+    "sentry-infra-tools>=1.24.0",
+]
+operator = [
+    "kopf>=1.37",
+    "kubernetes>=29",
+]
+
+[project.scripts]
+streams-k8s-operator = "sentry_streams_k8s.operator.operator:main"
+
 [dependency-groups]
 dev = [
+    "kopf>=1.37",
+    "kubernetes>=29",
     "mypy>=1.14.1",
     "pre-commit>=4.1.0",
     "pytest>=8.3.4",
     "responses>=0.25.6",
+    "sentry-infra-tools>=1.24.0",
     "types-jsonschema>=4.23.0",
     "types-pyyaml>=6.0.2",
-    "types-requests>=2.32.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["sentry_streams_k8s*"]
 
 [tool.setuptools.package-data]
-sentry_streams_k8s = ["py.typed", "templates/deployment.yaml", "templates/container.yaml"]
+sentry_streams_k8s = [
+    "py.typed",
+    "templates/deployment.yaml",
+    "templates/container.yaml",
+]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
