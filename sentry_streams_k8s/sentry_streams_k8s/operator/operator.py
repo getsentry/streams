@@ -172,7 +172,7 @@ async def _reconcile_once(
                         await asyncio.to_thread(
                             _patch_pipeline_status, name, namespace, status_patch
                         )
-                    logger.error("%s", e)
+                    logger.exception("%s", e)
                     return None
                 if status_patch:
                     await asyncio.to_thread(_patch_pipeline_status, name, namespace, status_patch)
