@@ -84,11 +84,11 @@ pub fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     traced_with_gil!(|py| {
-        runtime
-            .bind(py)
-            .call_method0("run")
-            .expect("Unable to start runtime");
-    });
+        py.import("sentry_streams.runner")?
+            .getattr("run_runtime")?
+            .call1((runtime,))?;
+        PyResult::Ok(())
+    })?;
 
     Ok(())
 }

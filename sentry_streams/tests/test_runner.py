@@ -1,17 +1,32 @@
+import os
+import signal
+import threading
 from enum import Enum
 from typing import Any, cast
 
 import pytest
 
 from sentry_streams.adapters.loader import load_adapter
-from sentry_streams.adapters.stream_adapter import PipelineConfig, RuntimeTranslator
+from sentry_streams.adapters.stream_adapter import (
+    PipelineConfig,
+    RuntimeState,
+    RuntimeStatus,
+    RuntimeTranslator,
+)
+from sentry_streams.control import PipelineController
 from sentry_streams.dummy.dummy_adapter import DummyAdapter
 from sentry_streams.pipeline import Map, PredicateFilter, branch, streaming_source
 from sentry_streams.pipeline.pipeline import (
     DevNullSink,
     Pipeline,
 )
-from sentry_streams.runner import iterate_edges
+from sentry_streams.runner import (
+    _install_signal_handlers,
+    _raise_on_error,
+    _run_pipeline,
+    iterate_edges,
+)
+from tests.adapters.fake_adapter import FakeAdapter
 
 
 class RouterBranch(Enum):
@@ -94,3 +109,35 @@ def test_iterate_edges(create_pipeline: Pipeline[bytes]) -> None:
         "map4_segment",
         "map5_segment",
     ]
+
+
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM])
+def test_run_pipeline_terminal_signals(signum: int) -> None:
+    runtime = FakeAdapter()
+    shutdown_requested = threading.Event()
+    _install_signal_handlers(shutdown_requested)
+
+    def send_signal() -> None:
+        assert runtime.run_started.wait(3.0)
+        os.kill(os.getpid(), signum)
+
+    signal_thread = threading.Thread(target=send_signal)
+    signal_thread.start()
+    try:
+        snapshot = _run_pipeline(PipelineController(runtime), shutdown_requested)
+    finally:
+        signal_thread.join(timeout=3.0)
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+
+    assert snapshot.state is RuntimeState.STOPPED
+    assert runtime.shutdown_calls == 1
+
+
+def test_raise_on_error_reraises_the_stored_exception() -> None:
+    error = ValueError("runtime failed")
+
+    with pytest.raises(ValueError) as exc_info:
+        _raise_on_error(RuntimeStatus(RuntimeState.ERRORED, error))
+
+    assert exc_info.value is error

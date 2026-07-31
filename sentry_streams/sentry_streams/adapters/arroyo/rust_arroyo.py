@@ -27,7 +27,11 @@ from sentry_streams.adapters.arroyo.reduce_delegate import ReduceDelegateFactory
 from sentry_streams.adapters.arroyo.routers import build_branches
 from sentry_streams.adapters.arroyo.routes import Route
 from sentry_streams.adapters.arroyo.steps_chain import TransformChains
-from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
+from sentry_streams.adapters.stream_adapter import (
+    PipelineConfig,
+    RuntimeState,
+    StreamAdapter,
+)
 from sentry_streams.config_types import (
     KafkaConsumerConfig,
     KafkaProducerConfig,
@@ -587,18 +591,20 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         )
         return build_branches(stream, step.routing_table.values())
 
-    def run(self) -> None:
+    def _run(self) -> None:
         """
         Starts the pipeline
         """
         # TODO: Support multiple consumers
         assert len(self.__consumers) == 1, "Multiple consumers not supported yet"
         consumer = next(iter(self.__consumers.values()))
+        self._set_status(RuntimeState.CONSUMING)
         consumer.run()
 
-    def shutdown(self) -> None:
+    def _shutdown(self) -> None:
         """
         Shutdown the arroyo processors allowing them to terminate the inflight
         work.
         """
-        raise NotImplementedError
+        for consumer in self.__consumers.values():
+            consumer.shutdown()

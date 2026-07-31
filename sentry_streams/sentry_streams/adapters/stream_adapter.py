@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import threading
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import (
     Any,
     Callable,
@@ -41,12 +44,115 @@ StreamT = TypeVar("StreamT")
 StreamSinkT = TypeVar("StreamSinkT")
 
 
+class RuntimeStateError(RuntimeError):
+    """
+    Raised when an operation conflicts with the runtime's lifecycle state.
+    """
+
+
+class RuntimeState(StrEnum):
+    IDLE = "idle"
+    STARTING = "starting"
+    CONSUMING = "consuming"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    ERRORED = "errored"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self in (RuntimeState.STOPPED, RuntimeState.ERRORED)
+
+    @property
+    def rank(self) -> int:
+        if self is RuntimeState.IDLE:
+            return 0
+        if self is RuntimeState.STARTING:
+            return 1
+        if self is RuntimeState.CONSUMING:
+            return 2
+        if self is RuntimeState.STOPPING:
+            return 3
+        return 4
+
+    def can_transition_to(self, state: RuntimeState) -> bool:
+        return self.rank < state.rank
+
+
+@dataclass(frozen=True)
+class RuntimeStatus:
+    state: RuntimeState
+    error: Exception | None = None
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.state.is_terminal
+
+    def as_dict(self) -> dict[str, str | None]:
+        return {
+            "state": self.state.value,
+            "error": str(self.error) if self.error is not None else None,
+        }
+
+
 class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
     """
     A generic adapter for mapping sentry_streams APIs
     and primitives to runtime-specific ones. This can
     be extended to specific runtimes.
     """
+
+    def __init__(self) -> None:
+        self.__status_lock = threading.Lock()
+        self.__status = RuntimeStatus(RuntimeState.IDLE)
+
+    @property
+    def status(self) -> RuntimeStatus:
+        with self.__status_lock:
+            return self.__status
+
+    def _set_status(self, state: RuntimeState, error: Exception | None = None) -> None:
+        with self.__status_lock:
+            if not self.__status.state.can_transition_to(state):
+                return
+            self.__status = RuntimeStatus(state, error)
+
+    def begin_start(self) -> RuntimeStatus:
+        with self.__status_lock:
+            state = self.__status.state
+            if state.is_terminal:
+                raise RuntimeStateError(f"cannot restart runtime that is {state}")
+            if state is not RuntimeState.IDLE:
+                raise RuntimeStateError(f"cannot start runtime while it is {state}")
+            self.__status = RuntimeStatus(RuntimeState.STARTING)
+            return self.__status
+
+    def run(self) -> None:
+        state = self.status.state
+        if state is RuntimeState.STOPPING:
+            self._set_status(RuntimeState.STOPPED)
+            return
+        if state is not RuntimeState.STARTING:
+            raise RuntimeStateError(f"cannot run runtime while it is {state}")
+
+        try:
+            self._run()
+        except Exception as exc:
+            self._set_status(RuntimeState.ERRORED, exc)
+            raise
+        else:
+            self._set_status(RuntimeState.STOPPED)
+
+    def shutdown(self) -> RuntimeStatus:
+        with self.__status_lock:
+            state = self.__status.state
+            if state is RuntimeState.STOPPING or state.is_terminal:
+                return self.__status
+            self.__status = RuntimeStatus(
+                RuntimeState.STOPPED if state is RuntimeState.IDLE else RuntimeState.STOPPING
+            )
+
+        self._shutdown()
+        return self.status
 
     @classmethod
     @abstractmethod
@@ -145,14 +251,14 @@ class StreamAdapter(ABC, Generic[StreamT, StreamSinkT]):
         raise NotImplementedError
 
     @abstractmethod
-    def run(self) -> None:
+    def _run(self) -> None:
         """
         Starts the pipeline
         """
         raise NotImplementedError
 
     @abstractmethod
-    def shutdown(self) -> None:
+    def _shutdown(self) -> None:
         """
         Cleanly shutdown the application.
         """

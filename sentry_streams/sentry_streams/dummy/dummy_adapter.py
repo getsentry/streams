@@ -33,6 +33,7 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
     """
 
     def __init__(self, _: PipelineConfig) -> None:
+        super().__init__()
         self.input_streams: list[str] = []
         self.branches: list[str] = []
 
@@ -94,8 +95,8 @@ class DummyAdapter(StreamAdapter[DummyInput, DummyOutput]):
             ret[branch.root.name] = branch
         return ret
 
-    def run(self) -> None:
+    def _run(self) -> None:
         pass
 
-    def shutdown(self) -> None:
+    def _shutdown(self) -> None:
         pass

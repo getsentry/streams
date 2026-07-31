@@ -16,6 +16,7 @@ use crate::routes::Route;
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
 use crate::watermark::WatermarkEmitter;
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
@@ -31,7 +32,8 @@ use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// Default path for the healthcheck file touched when write_healthcheck is enabled.
 /// Matches Arroyo docs for Kubernetes liveness probes.
@@ -85,9 +87,13 @@ pub struct ArroyoConsumer {
 
     steps: Vec<Py<RuntimeOperator>>,
 
+    /// Set by `shutdown()` so a stop that arrives before `run()` builds the
+    /// processor is not lost. `run()` checks it before entering the run loop.
+    shutdown_requested: AtomicBool,
+
     /// The ProcessorHandle allows the main thread to stop the StreamingProcessor
     /// from a different thread.
-    handle: Option<ProcessorHandle>,
+    handle: Mutex<Option<ProcessorHandle>>,
 
     // this variable must live for the lifetime of the entire consumer.
     // This is a requirement of Arroyo Rust.
@@ -133,7 +139,8 @@ impl ArroyoConsumer {
             source,
             schema,
             steps: Vec::new(),
-            handle: None,
+            shutdown_requested: AtomicBool::new(false),
+            handle: Mutex::new(None),
             concurrency_config: Arc::new(ConcurrencyConfig::new(1)),
             step_concurrency_configs: HashMap::new(),
             metric_config,
@@ -162,8 +169,9 @@ impl ArroyoConsumer {
 
     /// Runs the consumer.
     /// This method is blocking and will run until the consumer
-    /// is stopped via SIGTERM or SIGINT.
-    fn run(&mut self) {
+    /// is stopped via shutdown(). Signals are handled by the Python
+    /// runner, which turns them into a shutdown call.
+    fn run(&self, py: Python<'_>) -> PyResult<()> {
         tracing_subscriber::fmt::init();
         println!("Running Arroyo Consumer...");
 
@@ -196,25 +204,40 @@ impl ArroyoConsumer {
 
         let processor =
             StreamProcessor::with_kafka(config, factory, Topic::new(&self.topic), dlq_policy);
-        self.handle = Some(processor.get_handle());
 
-        let mut handle = processor.get_handle();
-        ctrlc::set_handler(move || {
-            println!("\nCtrl+C pressed!");
-            handle.signal_shutdown();
-        })
-        .expect("Error setting Ctrl+C handler");
+        *self.handle.lock().unwrap() = Some(processor.get_handle());
 
-        if let Err(e) = processor.run() {
-            tracing::error!("StreamProcessor error: {:?}", e);
-            sentry::capture_error(&e);
+        if self.shutdown_requested.load(Ordering::Acquire) {
+            processor.get_handle().signal_shutdown();
         }
+
+        // The GIL is released around the run loop so that a Python control
+        // thread can call shutdown while this consumer is running:
+
+        let run_error = py.detach(|| match processor.run() {
+            Ok(()) => None,
+            Err(error) => {
+                tracing::error!("StreamProcessor error: {:?}", error);
+                sentry::capture_error(&error);
+                Some(error.to_string())
+            }
+        });
+
+        *self.handle.lock().unwrap() = None;
+
+        if let Some(error) = run_error {
+            return Err(PyRuntimeError::new_err(format!(
+                "StreamProcessor error: {error}"
+            )));
+        }
+
+        Ok(())
     }
 
-    fn shutdown(&mut self) {
-        match self.handle.take() {
-            Some(mut handle) => handle.signal_shutdown(),
-            None => println!("No handle to shut down."),
+    fn shutdown(&self) {
+        self.shutdown_requested.store(true, Ordering::Release);
+        if let Some(mut handle) = self.handle.lock().unwrap().take() {
+            handle.signal_shutdown();
         }
     }
 }

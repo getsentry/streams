@@ -1,17 +1,25 @@
 import logging
 import multiprocessing
+import signal
 import sys
-from typing import Any, Mapping, Optional, cast
+import threading
+from http.server import ThreadingHTTPServer
+from types import FrameType
+from typing import Any, Callable, Mapping, Optional, cast
 
 import click
 import sentry_sdk
 
 from sentry_streams.adapters.loader import load_adapter
 from sentry_streams.adapters.stream_adapter import (
+    RuntimeState,
+    RuntimeStatus,
     RuntimeTranslator,
+    StreamAdapter,
     StreamSinkT,
     StreamT,
 )
+from sentry_streams.control import PipelineController
 from sentry_streams.metrics import (
     DatadogMetricsConfig,
     MetricsConfig,
@@ -23,8 +31,95 @@ from sentry_streams.pipeline.pipeline import (
     WithInput,
 )
 from sentry_streams.pipeline.validation import validate_all_branches_have_sinks
+from sentry_streams.server.control_server import make_server
+from sentry_streams.server.control_server import serve as serve_control_server
 
 logger = logging.getLogger(__name__)
+
+SHUTDOWN_TIMEOUT_SEC = 60.0
+
+
+def _install_signal_handlers(shutdown_requested: threading.Event) -> None:
+    """Turn SIGINT/SIGTERM into a shutdown request."""
+
+    def _handle_termination(signum: int, _frame: FrameType | None) -> None:
+        logger.info("received signal %d; requesting pipeline shutdown", signum)
+        shutdown_requested.set()
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, _handle_termination)
+
+
+def _raise_on_error(snapshot: RuntimeStatus) -> None:
+    if snapshot.state is RuntimeState.ERRORED:
+        if snapshot.error is not None:
+            raise snapshot.error
+        raise RuntimeError("pipeline run loop failed")
+
+
+def _run_pipeline(
+    controller: PipelineController,
+    shutdown_requested: threading.Event,
+    server: ThreadingHTTPServer | None = None,
+    serve: Callable[[ThreadingHTTPServer], None] = serve_control_server,
+) -> RuntimeStatus:
+    def _stop_on_shutdown_request() -> None:
+        shutdown_requested.wait()
+        controller.request_stop()
+
+    shutdown_thread = threading.Thread(
+        target=_stop_on_shutdown_request,
+        name="pipeline-signal",
+        daemon=False,
+    )
+    shutdown_thread.start()
+
+    serve_thread: threading.Thread | None = None
+    serve_failure: list[BaseException] = []
+
+    if server is not None:
+
+        def _serve_until_shutdown() -> None:
+            try:
+                serve(server)
+            except BaseException as exc:
+                serve_failure.append(exc)
+                logger.exception("control server failed")
+            finally:
+                shutdown_requested.set()
+
+        serve_thread = threading.Thread(
+            target=_serve_until_shutdown,
+            name="control-server",
+            daemon=True,
+        )
+        serve_thread.start()
+    else:
+        controller.request_start()
+
+    try:
+        controller.wait_until_finished()
+    finally:
+        shutdown_requested.set()
+        shutdown_thread.join(SHUTDOWN_TIMEOUT_SEC)
+        snapshot = controller.wait_until_stopped(SHUTDOWN_TIMEOUT_SEC)
+        if not snapshot.is_terminal:
+            logger.warning("pipeline did not stop within %ss, exiting anyway", SHUTDOWN_TIMEOUT_SEC)
+        if server is not None and serve_thread is not None:
+            if serve_thread.is_alive():
+                server.shutdown()
+            serve_thread.join(SHUTDOWN_TIMEOUT_SEC)
+
+    if serve_failure:
+        raise serve_failure[0]
+
+    return controller.snapshot
+
+
+def run_runtime(runtime: StreamAdapter[Any, Any]) -> None:
+    shutdown_requested = threading.Event()
+    _install_signal_handlers(shutdown_requested)
+    _raise_on_error(_run_pipeline(PipelineController(runtime), shutdown_requested))
 
 
 def iterate_edges(
@@ -179,14 +274,34 @@ def run_with_config_file(
 
     NOTE: This function is separate from load_runtime_with_config_file() for a reason:
     - load_runtime_with_config_file() returns the runtime WITHOUT calling .run()
-    - This allows the Rust CLI (run.rs) to call .run() itself
-    - Do NOT combine these functions - it would break the Rust CLI which needs to
-      control when .run() is called
+    - This allows the Rust CLI (run.rs) to pass that runtime to run_runtime()
+    - Do NOT combine these functions: both CLIs need the runner-owned controller
+      to decide when .run() is called
     """
     runtime = load_runtime_with_config_file(
         name, log_level, adapter, config, segment_id, application
     )
-    runtime.run()
+    run_runtime(runtime)
+
+
+def serve_with_config_file(
+    name: str,
+    log_level: str,
+    adapter: str,
+    config: str,
+    segment_id: Optional[str],
+    application: str,
+    control_host: str,
+    control_port: int,
+) -> None:
+    runtime = load_runtime_with_config_file(
+        name, log_level, adapter, config, segment_id, application
+    )
+    controller = PipelineController(runtime)
+    server = make_server(controller, control_host, control_port)
+    shutdown_requested = threading.Event()
+    _install_signal_handlers(shutdown_requested)
+    _raise_on_error(_run_pipeline(controller, shutdown_requested, server))
 
 
 @click.command()
@@ -232,6 +347,24 @@ def run_with_config_file(
     type=str,
     help="The segment id to run the pipeline for",
 )
+@click.option(
+    "--control-host",
+    type=str,
+    default=None,
+    help=(
+        "Runs in operator-controlled mode and serves the control server on this host."
+        "Required with --control-port."
+    ),
+)
+@click.option(
+    "--control-port",
+    type=int,
+    default=None,
+    help=(
+        "Runs in operator-controlled mode and serves the control server on this port."
+        "Required with --control-host."
+    ),
+)
 @click.argument(
     "application",
     required=True,
@@ -242,9 +375,25 @@ def main(
     adapter: str,
     config: str,
     segment_id: Optional[str],
+    control_host: Optional[str],
+    control_port: Optional[int],
     application: str,
 ) -> None:
-    run_with_config_file(name, log_level, adapter, config, segment_id, application)
+    if control_host is not None or control_port is not None:
+        if control_host is None or control_port is None:
+            raise click.UsageError("--control-host and --control-port must be provided together")
+        serve_with_config_file(
+            name,
+            log_level,
+            adapter,
+            config,
+            segment_id,
+            application,
+            control_host,
+            control_port,
+        )
+    else:
+        run_with_config_file(name, log_level, adapter, config, segment_id, application)
 
 
 if __name__ == "__main__":

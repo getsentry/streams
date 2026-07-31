@@ -12,7 +12,10 @@ from sentry_streams.adapters.arroyo.adapter import (
     ArroyoAdapter,
     StreamSources,
 )
-from sentry_streams.adapters.stream_adapter import RuntimeTranslator
+from sentry_streams.adapters.stream_adapter import (
+    RuntimeState,
+    RuntimeTranslator,
+)
 from sentry_streams.config_types import KafkaConsumerConfig
 from sentry_streams.pipeline.pipeline import (
     Pipeline,
@@ -99,3 +102,62 @@ def test_adapter(
     msg2 = broker.consume(Partition(topic, 0), 1)
     assert msg2 is not None and msg2.payload.value == json.dumps(transformed_metric).encode("utf-8")
     assert broker.consume(Partition(topic, 0), 2) is None
+
+
+def _adapter_with_stub_processor(processor: mock.Mock) -> ArroyoAdapter:
+    adapter = ArroyoAdapter({})
+    setattr(adapter, "_ArroyoAdapter__consumers", {"source": mock.Mock()})
+    setattr(
+        adapter,
+        "create_processors",
+        lambda: setattr(adapter, "_ArroyoAdapter__processors", {"source": processor}),
+    )
+    return adapter
+
+
+def test_shutdown_while_building_the_processor_is_applied_to_it() -> None:
+    processor = mock.Mock()
+    adapter = _adapter_with_stub_processor(processor)
+    processor.run.side_effect = lambda: (
+        adapter.status.state is RuntimeState.STOPPING
+        or pytest.fail(f"unexpected status: {adapter.status.state}")
+    )
+
+    def shutdown_while_building() -> None:
+        adapter.shutdown()
+        setattr(adapter, "_ArroyoAdapter__processors", {"source": processor})
+
+    setattr(adapter, "create_processors", shutdown_while_building)
+    adapter.begin_start()
+    adapter.run()
+
+    processor.signal_shutdown.assert_called_once_with()
+    processor.run.assert_called_once_with()
+    assert adapter.status.state is RuntimeState.STOPPED
+
+
+def test_shutdown_before_start_never_builds_a_processor() -> None:
+    processor = mock.Mock()
+    adapter = _adapter_with_stub_processor(processor)
+
+    adapter.shutdown()
+    assert adapter.status.state is RuntimeState.STOPPED
+
+    with pytest.raises(RuntimeError, match="cannot run runtime while it is stopped"):
+        adapter.run()
+
+    processor.run.assert_not_called()
+    assert adapter.status.state is RuntimeState.STOPPED
+
+
+def test_shutdown_during_startup_never_builds_a_processor() -> None:
+    processor = mock.Mock()
+    adapter = _adapter_with_stub_processor(processor)
+
+    adapter.begin_start()
+    adapter.shutdown()
+    adapter.shutdown()
+    adapter.run()
+
+    processor.run.assert_not_called()
+    assert adapter.status.state is RuntimeState.STOPPED
