@@ -40,16 +40,10 @@ impl GcsClient {
     }
 
     /// Upload bytes to GCS as the given object name.
-    pub async fn upload(
-        &self,
-        object_name: &str,
-        bytes: &[u8],
-    ) -> Result<(), GcsError> {
+    pub async fn upload(&self, object_name: &str, bytes: &[u8]) -> Result<(), GcsError> {
         let auth_provider = self
             .auth_provider
-            .get_or_init(|| async {
-                provider().await.expect("Failed to get gcp_auth provider")
-            })
+            .get_or_init(|| async { provider().await.expect("Failed to get gcp_auth provider") })
             .await;
 
         let scopes = &["https://www.googleapis.com/auth/devstorage.read_write"];

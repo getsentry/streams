@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Mapping, Self, Type
 
+from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
 from sentry_streams.pipeline.function_template import InputType, OutputType
 from sentry_streams.pipeline.pipeline import (
     Batch,
@@ -33,12 +34,10 @@ from sentry_streams.pipeline.pipeline import (
     StreamSource,
 )
 from sentry_streams.pipeline.window import MeasurementUnit
-
-from sentry_streams.adapters.stream_adapter import PipelineConfig, StreamAdapter
-
 from sentry_streams.rust_streams import (
     PullConsumer,
     PullOperator,
+    PullSourceConfig,
     PyKafkaConsumerConfig,
 )
 
@@ -62,12 +61,13 @@ def build_kafka_consumer_config(
 
     # Map string offset reset to the Rust enum
     from sentry_streams.rust_streams import InitialOffset
+
     offset_map = {
-        "earliest": InitialOffset.Earliest,
-        "latest": InitialOffset.Latest,
-        "error": InitialOffset.Error,
+        "earliest": InitialOffset.earliest,
+        "latest": InitialOffset.latest,
+        "error": InitialOffset.error,
     }
-    initial_offset = offset_map.get(auto_offset_reset, InitialOffset.Earliest)
+    initial_offset = offset_map.get(auto_offset_reset, InitialOffset.earliest)
 
     override_params = source_config.get("override_params", None)
 
@@ -95,7 +95,9 @@ class PullBasedAdapter(StreamAdapter[str, str]):
         steps_config: Mapping[str, Any],
     ) -> None:
         self._steps_config = steps_config
-        self._consumer: PullConsumer | None = None
+        self._kafka_config: PyKafkaConsumerConfig | None = None
+        self._topic: str = ""
+        self._schema: str | None = None
         self._steps: list[PullOperator] = []
         self._sink: PullOperator | None = None
 
@@ -119,13 +121,11 @@ class PullBasedAdapter(StreamAdapter[str, str]):
         step.override_config(step_config)
         step.validate()
 
-        kafka_config = build_kafka_consumer_config(
+        self._kafka_config = build_kafka_consumer_config(
             source_name, source_config, step.consumer_group
         )
-        self._consumer = PullConsumer(
-            consumer_config=kafka_config,
-            topic=step.stream_name,
-        )
+        self._topic = step.stream_name
+        self._schema = step.stream_name  # schema name matches topic for codec lookup
 
         return source_name
 
@@ -142,10 +142,12 @@ class PullBasedAdapter(StreamAdapter[str, str]):
         return stream
 
     def map(self, step: Map[Any, Any], stream: str) -> str:
+        assert self._schema is not None, "source() must be called before map()"
         self._steps.append(
             PullOperator.PyCallable(
-                callable=step.function,
+                callable=step.resolved_function,
                 name=step.name,
+                schema=self._schema,
             )
         )
         return stream
@@ -162,12 +164,8 @@ class PullBasedAdapter(StreamAdapter[str, str]):
                 )
             )
         else:
-            # PredicateFilter — wrap as PyCallable
-            self._steps.append(
-                PullOperator.PyCallable(
-                    callable=step.function,
-                    name=step.name,
-                )
+            raise NotImplementedError(
+                f"PullBasedAdapter does not support filter type: {type(step).__name__}"
             )
         return stream
 
@@ -177,9 +175,8 @@ class PullBasedAdapter(StreamAdapter[str, str]):
         stream: str,
     ) -> str:
         if isinstance(step, Batch):
-            self._steps.append(
-                PullOperator.Batch(max_batch_size=step.batch_size)
-            )
+            assert step.batch_size is not None, "Batch requires batch_size"
+            self._steps.append(PullOperator.Batch(max_batch_size=step.batch_size))
         else:
             raise NotImplementedError(
                 f"PullBasedAdapter does not support reduce type: {type(step).__name__}"
@@ -201,13 +198,19 @@ class PullBasedAdapter(StreamAdapter[str, str]):
         raise NotImplementedError("PullBasedAdapter does not support broadcast")
 
     def run(self) -> None:
-        assert self._consumer is not None, "No source configured"
-        assert self._sink is not None, "No sink configured"
+        assert self._kafka_config is not None, "No source configured"
 
-        logger.info(
-            "Starting pull-based pipeline with %d steps", len(self._steps)
+        logger.info("Starting pull-based pipeline with %d steps", len(self._steps))
+        source = PullSourceConfig.Kafka(
+            config=self._kafka_config,
+            topic=self._topic,
         )
-        self._consumer.run(steps=self._steps, sink=self._sink)
+        consumer = PullConsumer(
+            source=source,
+            steps=self._steps,
+            sink=self._sink,
+        )
+        consumer.run()
 
     def shutdown(self) -> None:
         # TODO: signal the pipeline to stop gracefully

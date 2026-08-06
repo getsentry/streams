@@ -4,6 +4,7 @@ use sentry_arroyo::processing::stream::PipelineEnvelope;
 
 use super::gcs_client::GcsClient;
 use super::pipeline_value::PipelineValue;
+use super::pipeline_value_converter::PipelineValueConverter;
 
 /// Sink handler that uploads pipeline output to GCS.
 ///
@@ -20,25 +21,6 @@ impl GcsSinkHandler {
         Self {
             client,
             object_generator,
-        }
-    }
-
-    /// Extract bytes from the pipeline value.
-    fn extract_bytes(value: &PipelineValue) -> Result<Vec<u8>, Box<dyn std::error::Error + Send>> {
-        match value {
-            PipelineValue::Python(obj) => Python::attach(|py| {
-                obj.extract::<Vec<u8>>(py)
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)
-            }),
-            PipelineValue::Rust(boxed) => {
-                boxed.downcast_ref::<Vec<u8>>().cloned().ok_or_else(|| {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "GcsSinkHandler expected Rust Vec<u8>",
-                    )) as Box<dyn std::error::Error + Send>
-                })
-            }
-            PipelineValue::Raw(kp) => Ok(kp.payload().map(|v| v.to_vec()).unwrap_or_default()),
         }
     }
 
@@ -60,7 +42,7 @@ impl NextHandler<PipelineValue> for GcsSinkHandler {
         &self,
         envelope: &PipelineEnvelope<PipelineValue>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        let bytes = Self::extract_bytes(&envelope.payload)?;
+        let bytes = PipelineValueConverter::extract_bytes(&envelope.payload)?;
         let object_name = self.generate_object_name()?;
         self.client
             .upload(&object_name, &bytes)
