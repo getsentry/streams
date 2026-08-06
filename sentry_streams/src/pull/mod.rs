@@ -1,6 +1,9 @@
 pub mod gcs_client;
 pub mod gcs_sink_handler;
+pub mod pipeline_stage;
 pub mod pipeline_value;
+pub mod pull_consumer;
+pub mod pull_operator;
 pub mod stages;
 
 #[cfg(test)]

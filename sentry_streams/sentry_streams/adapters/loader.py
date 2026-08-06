@@ -65,6 +65,15 @@ def load_adapter(
             StreamAdapter[Stream, Sink],
             RustArroyoAdapter.build(config, metrics_config),
         )
+
+    if adapter_type == "pull":
+        from sentry_streams.adapters.arroyo.pull_adapter import PullBasedAdapter
+
+        return cast(
+            StreamAdapter[Stream, Sink],
+            PullBasedAdapter.build(config),
+        )
+
     else:
         mod, cls = adapter_type.rsplit(".", 1)
 

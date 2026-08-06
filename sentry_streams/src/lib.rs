@@ -52,5 +52,7 @@ fn rust_streams(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<messages::PyAnyMessage>()?;
     m.add_class::<messages::RawMessage>()?;
     m.add_class::<messages::PyWatermark>()?;
+    m.add_class::<pull::pull_operator::PullOperator>()?;
+    m.add_class::<pull::pull_consumer::PullConsumer>()?;
     Ok(())
 }
