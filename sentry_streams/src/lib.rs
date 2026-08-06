@@ -26,6 +26,8 @@ mod transformer;
 mod utils;
 mod watermark;
 
+pub mod pull;
+
 #[doc(hidden)]
 pub mod ffi;
 pub use ffi::Message;
