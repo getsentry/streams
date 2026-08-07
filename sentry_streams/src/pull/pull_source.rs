@@ -7,27 +7,9 @@ use pyo3::prelude::*;
 use sentry_arroyo::backends::kafka::types::{Headers, KafkaPayload};
 use sentry_arroyo::processing::strategies::offset_tracker::OffsetCommitter;
 use sentry_arroyo::processing::stream::source::KafkaSource;
+use sentry_arroyo::processing::stream::PullSource;
 use sentry_arroyo::processing::stream::{MessageMetadata, PipelineEnvelope, StageResult};
 use sentry_arroyo::types::{Partition, Topic};
-
-/// Trait for pipeline sources. Provides a stream of raw Kafka payloads
-/// and an offset committer.
-pub trait PullSource: Send + Sync {
-    fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>>;
-    fn committer(&self) -> &dyn OffsetCommitter;
-}
-
-impl PullSource for KafkaSource {
-    fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>> {
-        Box::pin(KafkaSource::stream(self))
-    }
-
-    fn committer(&self) -> &dyn OffsetCommitter {
-        self
-    }
-}
-
-// ── Test infrastructure ─────────────────────────────────────────────
 
 /// A test message with payload bytes and optional headers.
 #[pyclass]
@@ -128,6 +110,10 @@ impl PullSource for VecSource {
 
     fn committer(&self) -> &dyn OffsetCommitter {
         &self.committer
+    }
+
+    fn shutdown(&self) {
+        // No-op for test source
     }
 }
 

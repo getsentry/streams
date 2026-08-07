@@ -321,8 +321,9 @@ mod tests {
 
     use super::pull_consumer::PullConsumer;
     use super::pull_operator::PullOperator;
-    use super::pull_source::PullSource;
     use futures::stream::Stream;
+    use futures::StreamExt;
+    use sentry_arroyo::processing::stream::PullSource;
     use std::pin::Pin;
 
     /// Test source that drains its messages on first stream() call.
@@ -351,6 +352,10 @@ mod tests {
 
         fn committer(&self) -> &dyn OffsetCommitter {
             self.committer.as_ref()
+        }
+
+        fn shutdown(&self) {
+            // No-op for test source
         }
     }
 
@@ -470,5 +475,99 @@ mod tests {
         let last = committed.last().unwrap();
         let partition = Partition::new(Topic::new("test"), 0);
         assert_eq!(last.get(&partition), Some(&4));
+    }
+
+    // ── Cancellation test ───────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_pull_consumer_shutdown() {
+        use tokio_util::sync::CancellationToken;
+
+        /// A source that blocks until shutdown is called, then emits its messages.
+        struct BlockingSource {
+            messages: Mutex<Vec<StageResult<KafkaPayload>>>,
+            committer: Arc<MockCommitter>,
+            cancel: CancellationToken,
+        }
+
+        impl BlockingSource {
+            fn new(messages: Vec<StageResult<KafkaPayload>>) -> (Self, Arc<MockCommitter>) {
+                let committer = Arc::new(MockCommitter::new());
+                let source = Self {
+                    messages: Mutex::new(messages),
+                    committer: committer.clone(),
+                    cancel: CancellationToken::new(),
+                };
+                (source, committer)
+            }
+        }
+
+        impl PullSource for BlockingSource {
+            fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>> {
+                let messages: Vec<_> = self.messages.lock().unwrap().drain(..).collect();
+                // Emit buffered messages, then block until shutdown
+                let msg_stream: Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>> =
+                    Box::pin(futures::stream::iter(messages));
+                let pending: Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>> =
+                    Box::pin(futures::stream::pending());
+                Box::pin(
+                    msg_stream
+                        .chain(pending)
+                        .take_until(self.cancel.cancelled()),
+                )
+            }
+
+            fn committer(&self) -> &dyn OffsetCommitter {
+                self.committer.as_ref()
+            }
+
+            fn shutdown(&self) {
+                self.cancel.cancel();
+            }
+        }
+
+        let messages = vec![
+            make_raw_envelope_with_header(b"msg-0", 0, "item_type", 1),
+            make_raw_envelope_with_header(b"msg-1", 1, "item_type", 1),
+        ];
+
+        let (source, committer) = BlockingSource::new(messages);
+
+        // Get a reference to trigger shutdown later
+        let source = Arc::new(source);
+        let source_for_shutdown = source.clone();
+
+        let stages = pyo3::Python::attach(|py| {
+            vec![PullOperator::HeaderFilter {
+                header_name: "item_type".into(),
+                expected_value: 1,
+            }]
+            .iter()
+            .map(|op| op.build_stage(py))
+            .collect()
+        });
+
+        let consumer = PullConsumer {
+            source: source as Arc<dyn PullSource>,
+            stages,
+            sink: None,
+        };
+
+        // Spawn shutdown after a short delay
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            source_for_shutdown.shutdown();
+        });
+
+        // run_pipeline should return cleanly after shutdown
+        let result = consumer.run_pipeline().await;
+        assert!(result.is_ok(), "Pipeline should exit cleanly on shutdown");
+
+        // Messages should have been processed and committed
+        let committed = committer.committed();
+        assert!(
+            !committed.is_empty(),
+            "Offsets should be committed on shutdown"
+        );
     }
 }
