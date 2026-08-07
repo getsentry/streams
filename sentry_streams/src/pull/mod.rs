@@ -356,10 +356,6 @@ mod tests {
         fn shutdown(&self) {
             // No-op for test source
         }
-
-        fn signal_drain_complete(&self) {
-            // No-op for test source
-        }
     }
 
     /// Helper to create a raw StageResult<KafkaPayload> (not wrapped in PipelineValue).
@@ -476,8 +472,6 @@ mod tests {
             fn shutdown(&self) {
                 self.cancel.cancel();
             }
-
-            fn signal_drain_complete(&self) {}
         }
 
         let messages = vec![

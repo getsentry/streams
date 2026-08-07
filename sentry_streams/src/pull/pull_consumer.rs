@@ -65,15 +65,11 @@ impl PullConsumer {
                     (stages, sink)
                 });
 
-                let exit = Self::run_pipeline(&self.source, &stages, sink.as_ref()).await;
-
-                // Always signal drain complete — unblocks the rebalance callback
-                // if one is waiting. No-op if no rebalance is in progress.
-                self.source.signal_drain_complete();
-
-                let exit = exit.map_err(|e| {
-                    pyo3::exceptions::PyRuntimeError::new_err(format!("Pipeline failed: {e}"))
-                })?;
+                let exit = Self::run_pipeline(&self.source, &stages, sink.as_ref())
+                    .await
+                    .map_err(|e| {
+                        pyo3::exceptions::PyRuntimeError::new_err(format!("Pipeline failed: {e}"))
+                    })?;
 
                 match exit {
                     PipelineExit::Rebalance => {
