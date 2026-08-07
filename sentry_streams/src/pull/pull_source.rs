@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 use futures::Stream;
 use pyo3::prelude::*;
 use sentry_arroyo::backends::kafka::types::{Headers, KafkaPayload};
-use sentry_arroyo::processing::strategies::offset_tracker::OffsetCommitter;
 use sentry_arroyo::processing::stream::source::KafkaSource;
-use sentry_arroyo::processing::stream::PullSource;
-use sentry_arroyo::processing::stream::{MessageMetadata, PipelineEnvelope, StageResult};
+use sentry_arroyo::processing::stream::{
+    MessageMetadata, OffsetCommitter, PipelineEnvelope, PullSource, StageResult,
+};
 use sentry_arroyo::types::{Partition, Topic};
 
 /// A test message with payload bytes and optional headers.

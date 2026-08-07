@@ -192,23 +192,25 @@ def test_pull_adapter_batch_parser_converts_to_map():
 
 # ── E2E: Python → Rust pipeline execution ───────────────────────
 
+# Shared capture list for e2e tests — populated by capturing Map steps.
+_captured: list = []
 
-def _message_aware_transform(msg):
-    """Transform that reads msg.payload (like real pipeline callables do).
-    Appends '-processed' to each bytes item in the batch."""
-    items = msg.payload  # Message[Sequence[bytes]] -> Sequence[bytes]
-    return [item + b"-processed" if isinstance(item, bytes) else item for item in items]
+
+def _capture_and_passthrough(msg):
+    """Map function that captures msg.payload into _captured, then returns it."""
+    _captured.append(msg.payload)
+    return msg.payload
 
 
 def test_pull_consumer_e2e_python_to_rust():
-    """Full e2e: Python DSL → PullBasedAdapter → PullConsumer → stages → sink.
+    """Full e2e: Python DSL → PullBasedAdapter → PullConsumer → stages → verify output.
 
-    Pipeline: HeaderFilter → Batch(2) → PyCallable(transform) → MockSink
+    Pipeline: HeaderFilter → Batch(2) → PyCallable(capture) → no sink
 
-    The transform function receives a Message wrapper (because the adapter
-    sets schema on PyCallable operators), accesses .payload, and returns
-    the transformed data. PyCallableStage re-wraps the result in a new Message.
+    Uses a capturing Map step to verify data flows through the pipeline.
+    No mock sink needed — the capture happens in a regular pipeline stage.
     """
+    _captured.clear()
 
     pipeline: Pipeline[bytes] = (
         streaming_source(name="kafka", stream_name="test-topic")
@@ -220,7 +222,7 @@ def test_pull_consumer_e2e_python_to_rust():
             )
         )
         .apply(Batch(name="batcher", batch_size=2))
-        .apply(Map(name="transformer", function=_message_aware_transform))
+        .apply(Map(name="capture", function=_capture_and_passthrough))
         .sink(
             GCSSink(
                 name="gcs_sink",
@@ -230,7 +232,6 @@ def test_pull_consumer_e2e_python_to_rust():
         )
     )
 
-    # Translate DSL to PullOperator list via the adapter
     adapter = PullBasedAdapter.build(
         {
             "steps_config": {
@@ -249,7 +250,6 @@ def test_pull_consumer_e2e_python_to_rust():
     py_callable_step = adapter._steps[2]  # HeaderFilter, Batch, PyCallable
     assert py_callable_step.schema == "test-topic"
 
-    # Swap source and sink for testing
     source = PullSourceConfig.Test(
         messages=[
             PyTestMessage(payload=b"span-0", headers={"item_type": b"1"}),
@@ -259,28 +259,24 @@ def test_pull_consumer_e2e_python_to_rust():
             PyTestMessage(payload=b"span-4", headers={"item_type": b"1"}),
         ]
     )
-    mock_sink = PullOperator.MockSink()
 
     consumer = PullConsumer(
         source=source,
         steps=adapter._steps,
-        sink=mock_sink,
+        sink=None,  # no sink — capture step verifies output
     )
     consumer.run()
 
-    # 4 matching messages, batch size 2 → 2 batches
-    # Each batch goes through _message_aware_transform (PyCallableStage with Message wrapping)
-    # MockSink captures the output
-    results = consumer.get_mock_sink_results()
-    assert len(results) == 2, f"Expected 2 batches, got {len(results)}"
+    # 4 matching messages, batch size 2 → 2 batches captured
+    assert len(_captured) == 2, f"Expected 2 batches, got {len(_captured)}"
 
 
 def test_pull_consumer_e2e_complex_steps():
     """E2E test with real ComplexStep conversions: BatchParser and ParquetSerializer.
 
-    Pipeline: Batch(2) → BatchParser[TraceItem] → Map(extract_org_id) → ParquetSerializer → MockSink
+    Pipeline: Batch(2) → BatchParser[TraceItem] → Map(extract_org_id) → ParquetSerializer → Map(capture)
 
-    This tests that:
+    Tests that:
     - BatchParser.convert() produces a Map(batch_msg_parser) that works with Message wrapping
     - batch_msg_parser uses msg.schema to find the codec and parses protobuf bytes
     - ParquetSerializer.convert() produces a Map(serialize_to_parquet) that serializes to parquet
@@ -291,10 +287,16 @@ def test_pull_consumer_e2e_complex_steps():
     from sentry_streams.pipeline.datatypes import Uint64
     from sentry_streams.pipeline.pipeline import BatchParser, ParquetSerializer
 
-    # Create a simple processor that extracts org_id into a dict
+    _captured.clear()
+
     def extract_org_id(msg):
         """Map function: Sequence[TraceItem] → list[dict]"""
         return [{"org_id": item.organization_id} for item in msg.payload]
+
+    def capture_parquet(msg):
+        """Capture parquet bytes output."""
+        _captured.append(msg.payload)
+        return msg.payload
 
     pipeline: Pipeline[bytes] = (
         streaming_source(name="kafka", stream_name="snuba-items")
@@ -307,6 +309,7 @@ def test_pull_consumer_e2e_complex_steps():
                 schema_fields={"org_id": Uint64()},
             )
         )
+        .apply(Map(name="capture", function=capture_parquet))
         .sink(
             GCSSink(
                 name="gcs_sink",
@@ -330,7 +333,6 @@ def test_pull_consumer_e2e_complex_steps():
     )
     iterate_edges(pipeline, RuntimeTranslator(adapter))
 
-    # Create test messages: real serialized TraceItem protobufs
     item1 = TraceItemProto()
     item1.organization_id = 42
     item1.trace_id = b"0123456789abcdef"
@@ -355,21 +357,17 @@ def test_pull_consumer_e2e_complex_steps():
             PyTestMessage(payload=item4.SerializeToString(), headers={}),
         ]
     )
-    mock_sink = PullOperator.MockSink()
 
     consumer = PullConsumer(
         source=source,
         steps=adapter._steps,
-        sink=mock_sink,
+        sink=None,
     )
     consumer.run()
 
-    # 4 messages, batch size 2 → 2 batches
-    # Each batch: batch_msg_parser (protobuf decode) → extract_org_id → parquet serialize
-    # MockSink should capture 2 parquet byte blobs
-    results = consumer.get_mock_sink_results()
-    assert len(results) == 2, f"Expected 2 parquet outputs, got {len(results)}"
+    # 4 messages, batch size 2 → 2 batches → 2 parquet outputs captured
+    assert len(_captured) == 2, f"Expected 2 parquet outputs, got {len(_captured)}"
 
     # Verify the results are actual parquet bytes (magic number: PAR1)
-    for i, result_bytes in enumerate(results):
+    for i, result_bytes in enumerate(_captured):
         assert result_bytes[:4] == b"PAR1", f"Result {i} doesn't start with PAR1 magic"

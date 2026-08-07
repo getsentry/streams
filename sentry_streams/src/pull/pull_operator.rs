@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 
 use super::gcs_client::GcsClient;
 use super::gcs_sink_handler::GcsSinkHandler;
-use super::pipeline_sink::{MockSinkHandler, PipelineSink};
+use super::pipeline_sink::PipelineSink;
 use super::pipeline_stage::PipelineStage;
 use super::stages::batch::BatchAccumulatorStage;
 use super::stages::header_filter::HeaderFilterStage;
@@ -32,9 +32,6 @@ pub enum PullOperator {
         bucket: String,
         object_generator: Py<PyAny>,
     },
-
-    #[pyo3(constructor = ())]
-    MockSink {},
 }
 
 impl PullOperator {
@@ -59,7 +56,7 @@ impl PullOperator {
                 name.clone(),
                 schema.clone(),
             )),
-            PullOperator::GcsSink { .. } | PullOperator::MockSink { .. } => {
+            PullOperator::GcsSink { .. } => {
                 panic!("Sink operators are not stages — use build_sink()")
             }
         }
@@ -74,7 +71,6 @@ impl PullOperator {
                 let client = GcsClient::with_defaults(bucket.clone());
                 PipelineSink::Gcs(GcsSinkHandler::new(client, object_generator.clone_ref(py)))
             }
-            PullOperator::MockSink {} => PipelineSink::Mock(MockSinkHandler::new()),
             _ => panic!("build_sink() called on non-sink operator"),
         }
     }

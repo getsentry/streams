@@ -18,10 +18,10 @@ mod tests {
 
     use futures::stream;
     use sentry_arroyo::backends::kafka::types::{Headers, KafkaPayload};
-    use sentry_arroyo::processing::strategies::offset_tracker::{OffsetCommitter, OffsetTracker};
     use sentry_arroyo::processing::stream::{
         LogHandler, MessageMetadata, PipelineEnvelope, PipelineExt, Stage, StageResult,
     };
+    use sentry_arroyo::processing::stream::{OffsetCommitter, OffsetTracker};
     use sentry_arroyo::types::{Partition, Topic};
 
     use super::pipeline_value::{PipelineValue, PipelineValueCaster};
@@ -319,6 +319,7 @@ mod tests {
 
     // ── PullConsumer e2e test ───────────────────────────────────────
 
+    use super::pipeline_stage::PipelineStage;
     use super::pull_consumer::PullConsumer;
     use super::pull_operator::PullOperator;
     use futures::stream::Stream;
@@ -401,7 +402,7 @@ mod tests {
 
         let (source, committer) = TestSource::new(messages);
 
-        let stages = pyo3::Python::attach(|py| {
+        let stages: Vec<PipelineStage> = pyo3::Python::attach(|py| {
             vec![
                 PullOperator::HeaderFilter {
                     header_name: "item_type".into(),
@@ -414,9 +415,9 @@ mod tests {
             .collect()
         });
 
-        let consumer = PullConsumer::with_source(source, stages, None);
+        let source: Arc<dyn PullSource> = Arc::new(source);
 
-        let result = consumer.run_pipeline().await;
+        let result = PullConsumer::run_pipeline(&source, &stages, None).await;
         assert!(result.is_ok());
 
         let committed = committer.committed();
@@ -424,57 +425,6 @@ mod tests {
         let last = committed.last().unwrap();
         let partition = Partition::new(Topic::new("test"), 0);
         assert_eq!(last.get(&partition), Some(&6));
-    }
-
-    // ── Test #3: e2e with sink ──────────────────────────────────────
-
-    use super::pipeline_sink::{MockSinkHandler, PipelineSink};
-
-    #[tokio::test]
-    async fn test_pull_consumer_e2e_with_sink() {
-        // 4 messages with matching header → batch of 2 → 2 batches emitted → 2 sink calls
-        let messages = vec![
-            make_raw_envelope_with_header(b"span-0", 0, "item_type", 1),
-            make_raw_envelope_with_header(b"span-1", 1, "item_type", 1),
-            make_raw_envelope_with_header(b"span-2", 2, "item_type", 1),
-            make_raw_envelope_with_header(b"span-3", 3, "item_type", 1),
-        ];
-
-        let (source, committer) = TestSource::new(messages);
-
-        let stages = pyo3::Python::attach(|py| {
-            vec![
-                PullOperator::HeaderFilter {
-                    header_name: "item_type".into(),
-                    expected_value: 1,
-                },
-                PullOperator::Batch { max_batch_size: 2 },
-            ]
-            .iter()
-            .map(|op| op.build_stage(py))
-            .collect()
-        });
-
-        let mock_sink = MockSinkHandler::new();
-        let consumer =
-            PullConsumer::with_source(source, stages, Some(PipelineSink::Mock(mock_sink)));
-
-        let result = consumer.run_pipeline().await;
-        assert!(result.is_ok());
-
-        // Verify sink was called twice (2 batches of 2)
-        let results = match &consumer.sink {
-            Some(PipelineSink::Mock(h)) => h.get_results(),
-            _ => panic!("Expected MockSink"),
-        };
-        assert_eq!(results.len(), 2, "Expected 2 sink calls (2 batches of 2)");
-
-        // Verify offsets committed
-        let committed = committer.committed();
-        assert!(!committed.is_empty());
-        let last = committed.last().unwrap();
-        let partition = Partition::new(Topic::new("test"), 0);
-        assert_eq!(last.get(&partition), Some(&4));
     }
 
     // ── Cancellation test ───────────────────────────────────────────
@@ -537,7 +487,7 @@ mod tests {
         let source = Arc::new(source);
         let source_for_shutdown = source.clone();
 
-        let stages = pyo3::Python::attach(|py| {
+        let stages: Vec<PipelineStage> = pyo3::Python::attach(|py| {
             vec![PullOperator::HeaderFilter {
                 header_name: "item_type".into(),
                 expected_value: 1,
@@ -547,12 +497,6 @@ mod tests {
             .collect()
         });
 
-        let consumer = PullConsumer {
-            source: source as Arc<dyn PullSource>,
-            stages,
-            sink: None,
-        };
-
         // Spawn shutdown after a short delay
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -560,7 +504,8 @@ mod tests {
         });
 
         // run_pipeline should return cleanly after shutdown
-        let result = consumer.run_pipeline().await;
+        let result =
+            PullConsumer::run_pipeline(&(source as Arc<dyn PullSource>), &stages, None).await;
         assert!(result.is_ok(), "Pipeline should exit cleanly on shutdown");
 
         // Messages should have been processed and committed
