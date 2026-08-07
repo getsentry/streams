@@ -115,6 +115,10 @@ impl PullSource for VecSource {
     fn shutdown(&self) {
         // No-op for test source
     }
+
+    fn signal_drain_complete(&self) {
+        // No-op for test source
+    }
 }
 
 /// No-op committer for testing.
