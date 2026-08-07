@@ -13,18 +13,24 @@ pub mod stages;
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::pin::Pin;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     use futures::stream;
+    use futures::stream::Stream;
+    use futures::StreamExt;
     use sentry_arroyo::backends::kafka::types::{Headers, KafkaPayload};
     use sentry_arroyo::processing::stream::{
-        LogHandler, MessageMetadata, PipelineEnvelope, PipelineExt, Stage, StageResult,
+        LogHandler, MessageMetadata, OffsetCommitter, OffsetTracker, PipelineEnvelope, PipelineExt,
+        PullSource, Stage, StageResult,
     };
-    use sentry_arroyo::processing::stream::{OffsetCommitter, OffsetTracker};
     use sentry_arroyo::types::{Partition, Topic};
 
+    use super::pipeline_stage::PipelineStage;
     use super::pipeline_value::{PipelineValue, PipelineValueCaster};
+    use super::pull_consumer::PullConsumer;
+    use super::pull_operator::PullOperator;
     use super::stages::batch::BatchAccumulatorStage;
     use super::stages::header_filter::HeaderFilterStage;
 
@@ -318,14 +324,6 @@ mod tests {
     }
 
     // ── PullConsumer e2e test ───────────────────────────────────────
-
-    use super::pipeline_stage::PipelineStage;
-    use super::pull_consumer::PullConsumer;
-    use super::pull_operator::PullOperator;
-    use futures::stream::Stream;
-    use futures::StreamExt;
-    use sentry_arroyo::processing::stream::PullSource;
-    use std::pin::Pin;
 
     /// Test source that drains its messages on first stream() call.
     /// Wraps committer in Arc so it can be inspected after run.

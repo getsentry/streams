@@ -99,7 +99,7 @@ impl Stage for BatchAccumulatorStage {
         }
     }
 
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "batch_accumulator"
     }
 }

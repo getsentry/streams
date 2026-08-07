@@ -36,12 +36,6 @@ impl fmt::Debug for PipelineValue {
     }
 }
 
-// PipelineValue is Send because all variants are Send:
-// - KafkaPayload is Send
-// - Box<dyn Any + Send> is Send
-// - Py<PyAny> is Send (PyO3 guarantees this)
-unsafe impl Send for PipelineValue {}
-
 /// Error returned when a stage receives an unexpected PipelineValue variant.
 #[derive(Debug)]
 pub struct DowncastError {

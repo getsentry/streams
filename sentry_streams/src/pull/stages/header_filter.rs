@@ -61,7 +61,7 @@ impl Stage for HeaderFilterStage {
         }
     }
 
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "header_filter"
     }
 }

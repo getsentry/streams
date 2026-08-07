@@ -12,16 +12,15 @@ use crate::pull::pipeline_value_converter::PipelineValueConverter;
 /// `Message[T]` with `.payload`, `.headers`, `.timestamp`, `.schema`.
 pub struct PyCallableStage {
     callable: Py<PyAny>,
-    stage_name: &'static str,
+    stage_name: String,
     schema: String,
 }
 
 impl PyCallableStage {
     pub fn new(callable: Py<PyAny>, name: impl Into<String>, schema: impl Into<String>) -> Self {
-        let leaked: &'static str = Box::leak(name.into().into_boxed_str());
         Self {
             callable,
-            stage_name: leaked,
+            stage_name: name.into(),
             schema: schema.into(),
         }
     }
@@ -55,7 +54,7 @@ impl Stage for PyCallableStage {
         }
     }
 
-    fn name(&self) -> &'static str {
-        self.stage_name
+    fn name(&self) -> &str {
+        &self.stage_name
     }
 }

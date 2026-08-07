@@ -31,7 +31,7 @@ impl Stage for PipelineStage {
         }
     }
 
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         match self {
             PipelineStage::HeaderFilter(s) => s.name(),
             PipelineStage::Batch(s) => s.name(),
