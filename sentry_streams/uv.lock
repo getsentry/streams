@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -1179,7 +1179,7 @@ wheels = [
 
 [[package]]
 name = "sentry-kafka-schemas"
-version = "2.1.38"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastjsonschema" },
@@ -1189,9 +1189,9 @@ dependencies = [
     { name = "sentry-protos" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/7e/7d0f45d8f825d98ed49751c35813220c64def71a7c52c6401d85623b6427/sentry_kafka_schemas-2.1.38.tar.gz", hash = "sha256:33e6aafcc89e3b76dd980d52bb314884a71477b726c0a29cd0ce6c6567861d5e", size = 159218, upload-time = "2026-06-25T18:46:15.082Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/f1/918f5709f945e37e2980c148e06556d8947c66ab702c6aa94699ba71edcf/sentry_kafka_schemas-2.2.0.tar.gz", hash = "sha256:f5a3b5e61a296689e1df96171d441826083d925c4037567f14506f1b63b9470f", size = 158574, upload-time = "2026-07-15T18:43:44.364Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/9b/8fe454c5c984f77ce4b7cd59febd647722ad227a8ea9acf76ddd4459183e/sentry_kafka_schemas-2.1.38-py2.py3-none-any.whl", hash = "sha256:af1e09ba14fa0333933c30c01b71fb423bce4713d845567ab334840e7ef28aae", size = 299770, upload-time = "2026-06-25T18:46:13.445Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/9c/80abe6fb6ec08626e7d251b54d7e5a54957c2a12021cbc66cbdd0555b313/sentry_kafka_schemas-2.2.0-py2.py3-none-any.whl", hash = "sha256:8c7f55f4074ab3082bc7df23e88d12cbcfb94cc4aa545980d9469ccfe72a9f13", size = 279203, upload-time = "2026-07-15T18:43:43.157Z" },
 ]
 
 [[package]]
@@ -1265,7 +1265,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "sentry-arroyo", specifier = ">=2.39.2" },
-    { name = "sentry-kafka-schemas", specifier = ">=2.1.38" },
+    { name = "sentry-kafka-schemas", specifier = ">=2.2.0" },
 ]
 
 [package.metadata.requires-dev]
