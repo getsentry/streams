@@ -1,3 +1,7 @@
+## 0.0.64
+
+- Update kafka schemas by @fpacifici in [#369](https://github.com/getsentry/streams/pull/369)
+
 ## 0.0.62
 
 ### Bug Fixes 🐛
