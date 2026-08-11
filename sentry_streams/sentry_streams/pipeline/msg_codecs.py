@@ -15,8 +15,9 @@ from typing import (
 import polars as pl
 from polars import Schema as PolarsSchema
 from sentry_kafka_schemas import get_codec
-from sentry_kafka_schemas.codecs import Codec
+from sentry_kafka_schemas.codecs import Codec, ValidationError
 
+from sentry_streams.metrics.stats import get_stats
 from sentry_streams.pipeline.datatypes import (
     DataType,
 )
@@ -42,18 +43,35 @@ def _get_codec_from_msg(msg: Message[Any]) -> Codec[Any]:
     return codec
 
 
-def msg_parser(msg: Message[bytes]) -> Any:
+def msg_parser(msg: Message[bytes], skip_validation: bool = False, step_name: str = "") -> Any:
     codec = _get_codec_from_msg(msg)
-    payload = msg.payload
-    decoded = codec.decode(payload, True)
-
+    decoded = codec.decode(msg.payload, validate=False)
+    try:
+        codec.validate(decoded)
+    except ValidationError:
+        get_stats().parser_validation_failure(step_name)
+        if not skip_validation:
+            raise
     return decoded
 
 
-def batch_msg_parser(msg: Message[Sequence[bytes]]) -> Sequence[Any]:
-    payloads = msg.payload
+def batch_msg_parser(
+    msg: Message[Sequence[bytes]],
+    skip_validation: bool = False,
+    step_name: str = "",
+) -> Sequence[Any]:
     codec = _get_codec_from_msg(msg)
-    return [codec.decode(payload, True) for payload in payloads]
+    decoded: list[Any] = []
+    for payload in msg.payload:
+        decoded_payload = codec.decode(payload, validate=False)
+        try:
+            codec.validate(decoded_payload)
+        except ValidationError:
+            get_stats().parser_validation_failure(step_name)
+            if not skip_validation:
+                raise
+        decoded.append(decoded_payload)
+    return decoded
 
 
 def msg_serializer(msg: Message[Any], dt_format: Optional[str] = None) -> bytes:

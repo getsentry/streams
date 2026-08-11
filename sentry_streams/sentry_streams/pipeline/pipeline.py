@@ -724,13 +724,20 @@ class Parser(ComplexStep[bytes, TransformFuncReturnType], Generic[TransformFuncR
     is supported by sentry-kafka-schemas. See examples/ for usage, this step can be plugged in
     flexibly into a pipeline. Keep in mind, data up until this step will simply be bytes.
 
-    Supports both JSON and protobuf.
+    Supports both JSON and protobuf. Set ``skip_validation=True`` to decode without
+    schema validation.
     """
+
+    skip_validation: bool = False
 
     def convert(self) -> Transform[bytes, TransformFuncReturnType]:
         return Map[bytes, TransformFuncReturnType](
             name=self.name,
-            function=msg_parser,
+            function=partial(
+                msg_parser,
+                skip_validation=self.skip_validation,
+                step_name=self.name,
+            ),
         )
 
 
@@ -739,11 +746,21 @@ class BatchParser(
     ComplexStep[Sequence[bytes], Sequence[TransformFuncReturnType]],
     Generic[TransformFuncReturnType],
 ):
+    """
+    Like :class:`Parser`, but for batches of byte payloads. Set ``skip_validation=True``
+    to decode without schema validation.
+    """
+
+    skip_validation: bool = False
 
     def convert(self) -> Transform[Sequence[bytes], Sequence[TransformFuncReturnType]]:
         return Map[Sequence[bytes], Sequence[TransformFuncReturnType]](
             name=self.name,
-            function=batch_msg_parser,
+            function=partial(
+                batch_msg_parser,
+                skip_validation=self.skip_validation,
+                step_name=self.name,
+            ),
         )
 
 

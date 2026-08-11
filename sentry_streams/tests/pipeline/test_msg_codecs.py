@@ -1,15 +1,16 @@
 import json
 from collections.abc import Iterable
 from datetime import datetime
-from importlib import resources
 from io import BytesIO
 from typing import Any, Mapping, Sequence, Union
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
 from polars import Schema as PolarsSchema
 from polars.testing import assert_frame_equal
+from sentry_kafka_schemas.codecs import ValidationError
+from sentry_kafka_schemas.schema_types.ingest_metrics_v1 import IngestMetric
 
 from sentry_streams.pipeline.datatypes import (
     Field,
@@ -26,6 +27,22 @@ from sentry_streams.pipeline.msg_codecs import (
     resolve_polars_schema,
     serialize_to_parquet,
 )
+from sentry_streams.pipeline.pipeline import BatchParser, Map, Parser
+
+INGEST_METRIC: IngestMetric = {
+    "org_id": 420,
+    "project_id": 420,
+    "name": "s:sessions/user@none",
+    "tags": {
+        "sdk": "raven-node/2.6.3",
+        "environment": "production",
+        "release": "sentry-test@1.0.0",
+    },
+    "timestamp": 1846062325,
+    "type": "s",
+    "retention_days": 90,
+    "value": [1617781333],
+}
 
 
 def test_msg_serializer_default_isoformat() -> None:
@@ -50,15 +67,7 @@ def test_msg_serializer_custom_dt_format() -> None:
 
 
 def test_batch_msg_parser_nominal_case() -> None:
-    with (
-        resources.files("sentry_kafka_schemas.examples.ingest-metrics.1")
-        .joinpath("base64-set.json")
-        .open("r") as f
-    ):
-        data = json.load(f)
-    expected = [data]
-
-    payload: Sequence[bytes] = [json.dumps(data).encode("utf-8")]
+    payload: Sequence[bytes] = [json.dumps(INGEST_METRIC).encode("utf-8")]
 
     msg = PyMessage(
         payload=payload,
@@ -68,7 +77,56 @@ def test_batch_msg_parser_nominal_case() -> None:
     )
 
     result = batch_msg_parser(msg)
-    assert result == expected
+    assert result == [INGEST_METRIC]
+
+
+def test_parser_validates_by_default() -> None:
+    step = Parser[IngestMetric]("parser").convert()
+    assert isinstance(step, Map)
+    msg = PyMessage(payload=b"{}", schema="ingest-metrics", headers=[], timestamp=0.0)
+    mock_stats = MagicMock()
+    with (
+        patch("sentry_streams.pipeline.msg_codecs.get_stats", return_value=mock_stats),
+        pytest.raises(ValidationError),
+    ):
+        step.resolved_function(msg)
+    mock_stats.parser_validation_failure.assert_called_once_with("parser")
+
+
+def test_parser_skip_validation() -> None:
+    step = Parser[IngestMetric]("parser", skip_validation=True).convert()
+    assert isinstance(step, Map)
+    msg = PyMessage(payload=b"{}", schema="ingest-metrics", headers=[], timestamp=0.0)
+    mock_stats = MagicMock()
+    with patch("sentry_streams.pipeline.msg_codecs.get_stats", return_value=mock_stats):
+        assert step.resolved_function(msg) == {}
+    mock_stats.parser_validation_failure.assert_called_once_with("parser")
+
+
+def test_batch_parser_validates_by_default() -> None:
+    step = BatchParser[IngestMetric]("batch-parser").convert()
+    assert isinstance(step, Map)
+    payloads: Sequence[bytes] = [b"{}"]
+    msg = PyMessage(payload=payloads, schema="ingest-metrics", headers=[], timestamp=0.0)
+    mock_stats = MagicMock()
+    with (
+        patch("sentry_streams.pipeline.msg_codecs.get_stats", return_value=mock_stats),
+        pytest.raises(ValidationError),
+    ):
+        step.resolved_function(msg)
+    mock_stats.parser_validation_failure.assert_called_once_with("batch-parser")
+
+
+def test_batch_parser_skip_validation() -> None:
+    step = BatchParser[IngestMetric]("batch-parser", skip_validation=True).convert()
+    assert isinstance(step, Map)
+    payloads: Sequence[bytes] = [b"{}", b'{"extra": true}']
+    msg = PyMessage(payload=payloads, schema="ingest-metrics", headers=[], timestamp=0.0)
+    mock_stats = MagicMock()
+    with patch("sentry_streams.pipeline.msg_codecs.get_stats", return_value=mock_stats):
+        assert step.resolved_function(msg) == [{}, {"extra": True}]
+    assert mock_stats.parser_validation_failure.call_count == 2
+    mock_stats.parser_validation_failure.assert_called_with("batch-parser")
 
 
 def test_msg_no_schema() -> None:

@@ -14,6 +14,7 @@ class PipelineStats:
 
         self._exec_buffer: dict[str, int] = defaultdict(int)
         self._error_buffer: dict[str, int] = defaultdict(int)
+        self._validation_buffer: dict[str, int] = defaultdict(int)
         self._timing_buffer: dict[str, float] = defaultdict(float)
 
         self.__last_flush_time = 0.0
@@ -24,6 +25,10 @@ class PipelineStats:
 
     def step_error(self, step: str) -> None:
         self._error_buffer[step] += 1
+        self._maybe_flush()
+
+    def parser_validation_failure(self, step: str) -> None:
+        self._validation_buffer[step] += 1
         self._maybe_flush()
 
     def step_timing(self, step: str, value: float) -> None:
@@ -41,12 +46,16 @@ class PipelineStats:
             for step, value in self._error_buffer.items():
                 tags = {"step": step}
                 self._metrics.increment(Metric.ERRORS, value, tags)
+            for step, value in self._validation_buffer.items():
+                tags = {"step": step}
+                self._metrics.increment(Metric.PARSER_VALIDATION, value, tags)
             for step, fvalue in self._timing_buffer.items():
                 tags = {"step": step}
                 self._metrics.timing(Metric.DURATION, fvalue, tags)
 
             self._exec_buffer = defaultdict(int)
             self._error_buffer = defaultdict(int)
+            self._validation_buffer = defaultdict(int)
             self._timing_buffer = defaultdict(float)
 
 
