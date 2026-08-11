@@ -1,3 +1,7 @@
+## 0.0.65
+
+- Allow skipping validation by @fpacifici in [#370](https://github.com/getsentry/streams/pull/370)
+
 ## 0.0.64
 
 - Update kafka schemas by @fpacifici in [#369](https://github.com/getsentry/streams/pull/369)
