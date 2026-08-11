@@ -84,6 +84,9 @@ class Metric(Enum):
     # This counts how many errors were encountered in the step in the pipeline.
     # Tags: step, pipeline, error_type
     ERRORS = "errors"
+    # This counts how many schema validation failures occurred while parsing messages.
+    # Tags: step, pipeline
+    PARSER_VALIDATION = "parser.validation"
 
 
 @runtime_checkable

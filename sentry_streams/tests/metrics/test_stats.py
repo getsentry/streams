@@ -24,6 +24,7 @@ def test_correct_values_are_flushed(
     stats.step_exec("in_step")
     stats.step_exec("in_step")
     stats.step_error("err_step")
+    stats.parser_validation_failure("parser_step")
     stats.step_timing("timer_step", 0.1)
     _mock_time.return_value = 120.0
     stats.step_timing("timer_step", 0.05)  # max is 0.1
@@ -32,6 +33,7 @@ def test_correct_values_are_flushed(
         [
             call(Metric.INPUT_MESSAGES.value, 2, tags={"step": "in_step"}),
             call(Metric.ERRORS.value, 1, tags={"step": "err_step"}),
+            call(Metric.PARSER_VALIDATION.value, 1, tags={"step": "parser_step"}),
         ],
         any_order=True,
     )

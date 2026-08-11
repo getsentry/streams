@@ -42,6 +42,7 @@ def test_metric_enum_values() -> None:
     assert Metric.OUTPUT_BYTES.value == "output.bytes"
     assert Metric.DURATION.value == "duration"
     assert Metric.ERRORS.value == "errors"
+    assert Metric.PARSER_VALIDATION.value == "parser.validation"
 
 
 def test_dummy_metrics_backend_increment() -> None:
