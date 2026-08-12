@@ -145,13 +145,33 @@ class RuntimeOperator:
     @classmethod
     def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
 
+class PyFakeConsumerConfig:
+    def __init__(
+        self,
+        message_size_bytes: int,
+        messages_per_second: float,
+        num_messages: int,
+    ) -> None: ...
+    @property
+    def message_size_bytes(self) -> int: ...
+    @property
+    def messages_per_second(self) -> float: ...
+    @property
+    def num_messages(self) -> int: ...
+
+class ConsumerConfig:
+    @classmethod
+    def Kafka(cls, config: PyKafkaConsumerConfig) -> Self: ...
+    @classmethod
+    def Fake(cls, config: PyFakeConsumerConfig) -> Self: ...
+
 class ArroyoConsumer:
     def __init__(
         self,
         source: str,
-        kafka_config: PyKafkaConsumerConfig,
         topic: str,
         schema: str | None,
+        consumer_config: ConsumerConfig,
         metric_config: PyMetricConfig | None = None,
         write_healthcheck: bool = False,
         dlq_config: DlqConfig | None = None,

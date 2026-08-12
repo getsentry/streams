@@ -179,6 +179,33 @@ def streaming_source(name: str, stream_name: str) -> Pipeline[bytes]:
     return Pipeline(StreamSource(name=name, stream_name=stream_name))
 
 
+def fake_streaming_source(
+    name: str,
+    *,
+    message_size_bytes: int,
+    messages_per_second: float,
+    num_messages: int,
+    stream_name: str = "fake",
+) -> Pipeline[bytes]:
+    """
+    Used to create a new pipeline with a fake source for profiling purposes.
+
+    Instead of reading from Kafka, the source synthesises ``num_messages`` messages,
+    each containing ``message_size_bytes`` random bytes, emitted at a rate of
+    ``messages_per_second``. The consumer terminates once all messages have been
+    produced. This requires no Kafka broker and is meant to profile the pipeline.
+    """
+    return Pipeline(
+        FakeSource(
+            name=name,
+            stream_name=stream_name,
+            message_size_bytes=message_size_bytes,
+            messages_per_second=messages_per_second,
+            num_messages=num_messages,
+        )
+    )
+
+
 def branch(name: str) -> Pipeline[Any]:
     """
     Used to create a new pipeline with a branch as the root step. This pipeline can then be added as part of
@@ -245,6 +272,26 @@ class StreamSource(Source[bytes]):
             self.stream_name = str(loaded_config.get("topic"))
         if loaded_config.get("consumer_group"):
             self.consumer_group = str(loaded_config.get("consumer_group"))
+
+
+@dataclass
+class FakeSource(Source[bytes]):
+    """
+    A Source that synthesises messages of random bytes instead of reading from Kafka.
+
+    It is meant for profiling pipelines without a Kafka broker. The source emits
+    ``num_messages`` messages, each containing ``message_size_bytes`` random bytes,
+    paced at ``messages_per_second``, then terminates.
+    """
+
+    message_size_bytes: int
+    messages_per_second: float
+    num_messages: int
+    stream_name: str = "fake"
+    step_type: StepType = StepType.SOURCE
+
+    def register(self, ctx: Pipeline[bytes], previous: Step) -> None:
+        super().register(ctx, previous)
 
 
 @dataclass

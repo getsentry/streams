@@ -12,6 +12,7 @@ from sentry_streams.pipeline.pipeline import (
     Serializer,
     StreamSink,
     branch,
+    fake_streaming_source,
     streaming_source,
 )
 
@@ -29,5 +30,6 @@ __all__ = [
     "Serializer",
     "StreamSink",
     "branch",
+    "fake_streaming_source",
     "streaming_source",
 ]
