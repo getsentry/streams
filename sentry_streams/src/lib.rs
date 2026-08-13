@@ -26,6 +26,8 @@ mod transformer;
 mod utils;
 mod watermark;
 
+pub mod pull;
+
 #[doc(hidden)]
 pub mod ffi;
 pub use ffi::Message;
@@ -50,5 +52,9 @@ fn rust_streams(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<messages::PyAnyMessage>()?;
     m.add_class::<messages::RawMessage>()?;
     m.add_class::<messages::PyWatermark>()?;
+    m.add_class::<pull::pull_operator::PullOperator>()?;
+    m.add_class::<pull::pull_consumer::PullConsumer>()?;
+    m.add_class::<pull::pull_source::PullSourceConfig>()?;
+    m.add_class::<pull::pull_source::PyTestMessage>()?;
     Ok(())
 }
