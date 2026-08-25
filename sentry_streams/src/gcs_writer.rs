@@ -154,12 +154,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     Ok(token) => token,
                     Err(e) => {
                         let err = format!("Failed to obtain token: {:?}", e);
-                        tracing::warn!(
-                            "{}, attempt {}/{}",
-                            err,
-                            attempt,
-                            GCS_UPLOAD_MAX_ATTEMPTS
-                        );
+                        tracing::warn!("{}, attempt {}/{}", err, attempt, GCS_UPLOAD_MAX_ATTEMPTS);
                         last_error = Some(err);
                         if attempt == GCS_UPLOAD_MAX_ATTEMPTS {
                             break;
@@ -184,12 +179,7 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                     Ok(response) => response,
                     Err(e) => {
                         let err = format!("Failed to send request: {:?}", e);
-                        tracing::warn!(
-                            "{}, attempt {}/{}",
-                            err,
-                            attempt,
-                            GCS_UPLOAD_MAX_ATTEMPTS
-                        );
+                        tracing::warn!("{}, attempt {}/{}", err, attempt, GCS_UPLOAD_MAX_ATTEMPTS);
                         last_error = Some(err);
                         if attempt == GCS_UPLOAD_MAX_ATTEMPTS {
                             break;
