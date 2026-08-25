@@ -12,6 +12,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
 use reqwest::ClientBuilder;
+use reqwest::StatusCode;
 use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskError;
 use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskFunc;
 use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
@@ -19,9 +20,15 @@ use sentry_arroyo::types::Message;
 
 use gcp_auth::{provider, TokenProvider};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::OnceCell;
 
 const METRIC_SINK_GCS_WRITER_BYTES: &str = "streams.pipeline.sink.gcs_writer.bytes";
+
+/// Max attempts for a single GCS upload (initial try + retries).
+const GCS_UPLOAD_MAX_ATTEMPTS: u32 = 5;
+const GCS_UPLOAD_INITIAL_BACKOFF: Duration = Duration::from_millis(500);
+const GCS_UPLOAD_MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 pub struct GCSWriter {
     client: Client,
@@ -42,6 +49,18 @@ fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Ve
             Ok(py_bytes.as_bytes().to_vec())
         }
     }
+}
+
+/// Exponential backoff for attempt `n` (0-based failure index), capped at max.
+fn gcs_upload_backoff(failure_index: u32) -> Duration {
+    let shift = failure_index.min(16);
+    let backoff = GCS_UPLOAD_INITIAL_BACKOFF.saturating_mul(1u32 << shift);
+    backoff.min(GCS_UPLOAD_MAX_BACKOFF)
+}
+
+/// Client (4xx) errors are permanent. Everything else is treated as transient.
+fn is_permanent_http_status(status: StatusCode) -> bool {
+    status.is_client_error()
 }
 
 impl GCSWriter {
@@ -118,72 +137,111 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
             // Lazily initialize the auth provider on first use. Since it is async, it may call
             // external services, so we don't want it to block initialization. If we fail to get an
             // auth provider the error is fatal and should stop the pipeline.
-            let token_start = std::time::Instant::now();
             let auth_provider = auth_provider_cell
                 .get_or_init(|| async {
                     provider().await.expect("Failed to get gcp_auth provider")
                 })
                 .await;
 
-            // Get a fresh token (gcp_auth caches and only refreshes when expired)
-            // If getting a token fails we should be able to retry.
             let scopes = &["https://www.googleapis.com/auth/devstorage.read_write"];
-            let token = auth_provider.token(scopes).await.map_err(|e| {
-                tracing::warn!("Failed to obtain token: {:?}", e);
-                RunTaskError::RetryableError
-            })?;
-            let token_ms = token_start.elapsed().as_millis();
+            let mut last_error: Option<String> = None;
 
-            let request_start = std::time::Instant::now();
-            let response = client
-                .post(&url)
-                .header(
-                    AUTHORIZATION,
-                    HeaderValue::from_str(&format!("Bearer {}", token.as_str())).unwrap(),
-                )
-                .body(bytes)
-                .send()
-                .await
-                .map_err(|e| {
-                    tracing::warn!("Failed to send request: {:?}", e);
-                    RunTaskError::RetryableError
-                })?;
-            let request_ms = request_start.elapsed().as_millis();
+            for attempt in 1..=GCS_UPLOAD_MAX_ATTEMPTS {
+                // Get a fresh token (gcp_auth caches and only refreshes when expired).
+                // Token fetch failures are transient and retried with backoff.
+                let token_start = std::time::Instant::now();
+                let token = match auth_provider.token(scopes).await {
+                    Ok(token) => token,
+                    Err(e) => {
+                        let err = format!("Failed to obtain token: {:?}", e);
+                        tracing::warn!("{}, attempt {}/{}", err, attempt, GCS_UPLOAD_MAX_ATTEMPTS);
+                        last_error = Some(err);
+                        if attempt == GCS_UPLOAD_MAX_ATTEMPTS {
+                            break;
+                        }
+                        tokio::time::sleep(gcs_upload_backoff(attempt - 1)).await;
+                        continue;
+                    }
+                };
+                let token_ms = token_start.elapsed().as_millis();
 
-            let status = response.status();
-            if !status.is_success() {
-                if status.is_client_error() {
+                let request_start = std::time::Instant::now();
+                let response = match client
+                    .post(&url)
+                    .header(
+                        AUTHORIZATION,
+                        HeaderValue::from_str(&format!("Bearer {}", token.as_str())).unwrap(),
+                    )
+                    .body(bytes.clone())
+                    .send()
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(e) => {
+                        let err = format!("Failed to send request: {:?}", e);
+                        tracing::warn!("{}, attempt {}/{}", err, attempt, GCS_UPLOAD_MAX_ATTEMPTS);
+                        last_error = Some(err);
+                        if attempt == GCS_UPLOAD_MAX_ATTEMPTS {
+                            break;
+                        }
+                        tokio::time::sleep(gcs_upload_backoff(attempt - 1)).await;
+                        continue;
+                    }
+                };
+                let request_ms = request_start.elapsed().as_millis();
+
+                let status = response.status();
+                if status.is_success() {
+                    tracing::info!(
+                        "Finished writing file to GCS bucket: {}, file name: {}",
+                        bucket_str,
+                        object_name
+                    );
+                    tracing::info!(
+                        "Length of bytes successfully written: {} (pybytes_to_bytes_ms={}, token_ms={}, request_ms={}, attempts={})",
+                        bytes_len,
+                        pybytes_ms,
+                        token_ms,
+                        request_ms,
+                        attempt
+                    );
+                    let gcs_labels = vec![("source".to_string(), route_source.clone())];
+                    metrics::histogram!(METRIC_SINK_GCS_WRITER_BYTES, &gcs_labels)
+                        .record(bytes_len as f64);
+                    return Ok(message);
+                }
+
+                if is_permanent_http_status(status) {
                     let body = response.text().await;
-                    panic!(
+                    // Permanent client errors must crash the consumer so offsets are not committed.
+                    return Err(RunTaskError::Other(anyhow::anyhow!(
                         "Fatal error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
                         status,
                         body
-                    )
-                } else {
-                    tracing::warn!(
-                        "Transient error encountered while attempting write to GCS. Status code: {}",
-                        status,
-                    );
-                    Err(RunTaskError::RetryableError)
+                    )));
                 }
-            } else {
-                tracing::info!(
-                    "Finished writing file to GCS bucket: {}, file name: {}",
-                    bucket_str,
-                    object_name
+
+                let err = format!(
+                    "Transient error encountered while attempting write to GCS. Status code: {}",
+                    status
                 );
-                tracing::info!(
-                    "Length of bytes successfully written: {} (pybytes_to_bytes_ms={}, token_ms={}, request_ms={})",
-                    bytes_len,
-                    pybytes_ms,
-                    token_ms,
-                    request_ms
-                );
-                let gcs_labels = vec![("source".to_string(), route_source.clone())];
-                metrics::histogram!(METRIC_SINK_GCS_WRITER_BYTES, &gcs_labels)
-                    .record(bytes_len as f64);
-                Ok(message)
+                tracing::warn!("{}, attempt {}/{}", err, attempt, GCS_UPLOAD_MAX_ATTEMPTS);
+                last_error = Some(err);
+                if attempt == GCS_UPLOAD_MAX_ATTEMPTS {
+                    break;
+                }
+                tokio::time::sleep(gcs_upload_backoff(attempt - 1)).await;
             }
+
+            // Exhausted retries: permanent error so arroyo crashes the consumer and does not
+            // commit offsets past the failed parquet batch.
+            Err(RunTaskError::Other(anyhow::anyhow!(
+                "GCS write failed after {} attempts for bucket {}, object {}: {}",
+                GCS_UPLOAD_MAX_ATTEMPTS,
+                bucket_str,
+                object_name,
+                last_error.unwrap_or_else(|| "unknown error".to_string())
+            )))
         })
     }
 }
@@ -204,5 +262,28 @@ mod tests {
                 b"hello".to_vec()
             );
         });
+    }
+
+    #[test]
+    fn test_gcs_upload_backoff_doubles_and_caps() {
+        assert_eq!(gcs_upload_backoff(0), Duration::from_millis(500));
+        assert_eq!(gcs_upload_backoff(1), Duration::from_secs(1));
+        assert_eq!(gcs_upload_backoff(2), Duration::from_secs(2));
+        assert_eq!(gcs_upload_backoff(3), Duration::from_secs(4));
+        assert_eq!(gcs_upload_backoff(10), GCS_UPLOAD_MAX_BACKOFF);
+        assert_eq!(gcs_upload_backoff(100), GCS_UPLOAD_MAX_BACKOFF);
+    }
+
+    #[test]
+    fn test_permanent_http_status_classification() {
+        assert!(is_permanent_http_status(StatusCode::BAD_REQUEST));
+        assert!(is_permanent_http_status(StatusCode::UNAUTHORIZED));
+        assert!(is_permanent_http_status(StatusCode::FORBIDDEN));
+        assert!(is_permanent_http_status(StatusCode::NOT_FOUND));
+        assert!(is_permanent_http_status(StatusCode::TOO_MANY_REQUESTS));
+        assert!(!is_permanent_http_status(StatusCode::INTERNAL_SERVER_ERROR));
+        assert!(!is_permanent_http_status(StatusCode::BAD_GATEWAY));
+        assert!(!is_permanent_http_status(StatusCode::SERVICE_UNAVAILABLE));
+        assert!(!is_permanent_http_status(StatusCode::GATEWAY_TIMEOUT));
     }
 }
