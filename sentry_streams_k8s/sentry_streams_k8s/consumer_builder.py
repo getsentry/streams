@@ -58,12 +58,16 @@ def load_base_template(file_name: str) -> dict[str, Any]:
     return cast(dict[str, Any], yaml.safe_load(template_content.read_text()))
 
 
+MAX_K8S_NAME_LENGTH = 63
+
+
 def make_k8s_name(name: str) -> str:
     """
     Generate a valid Kubernetes name from a string.
 
     Converts the string to a valid RFC 1123 compliant name
     by replacing dots and underscores with dashes and converting to lowercase.
+    Values are truncated to 63 characters (Kubernetes label/name limit).
 
     Examples:
         >>> build_name("sbc.profiles")
@@ -74,6 +78,10 @@ def make_k8s_name(name: str) -> str:
     name = name.replace(".", "-").replace("_", "-").lower()
     name = re.sub(r"[^a-z0-9-]", "", name)
     name = name.strip("-")
+    if len(name) > MAX_K8S_NAME_LENGTH:
+        # Labels/names are reference-only; truncate and drop a trailing dash
+        # that truncation can leave behind.
+        name = name[:MAX_K8S_NAME_LENGTH].rstrip("-")
     return name
 
 

@@ -27,6 +27,13 @@ def test_make_k8s_name() -> None:
     # Test with special characters (should be removed)
     assert make_k8s_name("my@module.sub#module") == "mymodule-submodule"
 
+    # Kubernetes label values / resource names must be <= 63 bytes.
+    long_module = "consumer/streaming_platform/pipelines/shared_resources_inventory.py"
+    truncated = make_k8s_name(long_module)
+    assert truncated == "consumerstreaming-platformpipelinesshared-resources-inventory-p"
+    assert len(truncated) <= 63
+    assert not truncated.endswith("-")
+
 
 def test_parse_context() -> None:
 
