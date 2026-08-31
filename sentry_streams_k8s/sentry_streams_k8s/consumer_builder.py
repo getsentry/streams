@@ -58,7 +58,7 @@ def load_base_template(file_name: str) -> dict[str, Any]:
     return cast(dict[str, Any], yaml.safe_load(template_content.read_text()))
 
 
-def make_k8s_name(name: str) -> str:
+def make_k8s_name(name: str, limit: int | None = None) -> str:
     """
     Generate a valid Kubernetes name from a string.
 
@@ -74,6 +74,10 @@ def make_k8s_name(name: str) -> str:
     name = name.replace(".", "-").replace("_", "-").lower()
     name = re.sub(r"[^a-z0-9-]", "", name)
     name = name.strip("-")
+    if limit is not None:
+        # Truncation can land on a hyphen (e.g. a dotted module path). Kubernetes
+        # label values must start and end with an alphanumeric character.
+        return name[:limit].rstrip("-")
     return name
 
 
@@ -292,7 +296,7 @@ def _build_merged_pipeline_deployment(
 
 def _pipeline_labels(spec: ConsumerSpec) -> dict[str, str]:
     return {
-        "pipeline-app": make_k8s_name(spec.pipeline_module),
+        "pipeline-app": make_k8s_name(spec.pipeline_module, limit=63),
         "pipeline": make_k8s_name(spec.pipeline_name),
         "service": make_k8s_name(spec.service_name),
     }
