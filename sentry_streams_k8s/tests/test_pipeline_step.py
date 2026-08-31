@@ -27,6 +27,62 @@ def test_make_k8s_name() -> None:
     # Test with special characters (should be removed)
     assert make_k8s_name("my@module.sub#module") == "mymodule-submodule"
 
+    long_name = "a" * 80
+    assert make_k8s_name(long_name, limit=63) == "a" * 63
+    assert make_k8s_name(long_name) == long_name
+
+    # Truncation must not leave a trailing hyphen (invalid K8s label value).
+    assert make_k8s_name("abc.def", limit=4) == "abc"
+    assert not make_k8s_name("a.b.c.d.e.f.g.h", limit=8).endswith("-")
+
+
+def test_pipeline_app_label_truncated_to_63_chars() -> None:
+    """Kubernetes label values are limited to 63 characters."""
+    # Repeating "ab." sanitizes to "ab-ab-..." so a 63-char slice would end in "-".
+    long_module = "ab." * 30
+    sanitized = make_k8s_name(long_module)
+    assert len(sanitized) > 63
+    assert sanitized[:63].endswith("-")
+
+    context: dict[str, Any] = {
+        "service_name": "my-service",
+        "pipeline_name": "profiles",
+        "deployment_template": {},
+        "container_template": {},
+        "pipeline_config": {
+            "env": {},
+            "pipeline": {
+                "segments": [
+                    {
+                        "steps_config": {
+                            "myinput": {
+                                "starts_segment": True,
+                                "bootstrap_servers": ["127.0.0.1:9092"],
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        "pipeline_module": long_module,
+        "image_name": "my-image:latest",
+        "cpu_per_process": 1000,
+        "memory_per_process": 512,
+        "segment_id": 0,
+        "replicas": 1,
+    }
+
+    result = PipelineStep().run(context)
+    expected = make_k8s_name(long_module, limit=63)
+    assert not expected.endswith("-")
+    assert len(expected) <= 63
+    assert result["deployment"]["metadata"]["labels"]["pipeline-app"] == expected
+    assert result["deployment"]["spec"]["selector"]["matchLabels"]["pipeline-app"] == expected
+    assert (
+        result["deployment"]["spec"]["template"]["metadata"]["labels"]["pipeline-app"] == expected
+    )
+    assert result["configmap"]["metadata"]["labels"]["pipeline-app"] == expected
+
 
 def test_parse_context() -> None:
 
