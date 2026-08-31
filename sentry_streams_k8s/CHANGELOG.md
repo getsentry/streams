@@ -1,3 +1,7 @@
+## 0.0.10
+
+- Avoid naming overflow in k8s by @fpacifici in [#372](https://github.com/getsentry/streams/pull/372)
+
 ## 0.0.9
 
 - No documented changes.
