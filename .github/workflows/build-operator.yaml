@@ -25,7 +25,7 @@ jobs:
             image: us-docker.pkg.dev/sentryio/streaming-operator-mr/image
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - uses: getsentry/action-build-and-push-images@4852d671d747d7c0268b2a3fc429fee9d4a16f78
+      - uses: getsentry/action-build-and-push-images@dd9b907092cdd2dbc6c1a409f7290df1b391f6ee
         with:
           image_name: 'streaming-operator'
           platforms: linux/amd64
@@ -36,7 +36,7 @@ jobs:
           google_ar: true
           google_ar_image_name: ${{ matrix.image }}
           google_workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
-          google_service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
+          google_service_account: gha-streams-push@sac-prod-sa.iam.gserviceaccount.com
 
   publish-chart:
     name: Publish Helm chart
