@@ -385,4 +385,219 @@ mod tests {
         assert_eq!(batch.num_rows(), 0);
         assert!(batch.num_columns() > 0);
     }
+
+    /// The whole point of the exercise, verified end to end: raw protobuf off the
+    /// wire reaches polars as a typed frame without a Python object per message.
+    #[test]
+    fn a_python_consumer_reads_the_batch_with_polars() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let items: Vec<TraceItem> = (1..=4)
+                .map(|org| TraceItem {
+                    organization_id: org,
+                    trace_id: format!("trace-{org}"),
+                    item_type: 1,
+                    attributes: std::collections::HashMap::from([(
+                        "service".to_string(),
+                        sentry_protos::snuba::v1::AnyValue {
+                            value: Some(sentry_protos::snuba::v1::any_value::Value::StringValue(
+                                format!("svc-{org}"),
+                            )),
+                        },
+                    )]),
+                    ..Default::default()
+                })
+                .collect();
+
+            let elements: Vec<BatchElement> = items
+                .iter()
+                .map(|item| {
+                    match build_raw_routed_value(py, item.encode_to_vec(), "s", vec!["w".into()])
+                        .payload
+                    {
+                        RoutedValuePayload::PyStreamingMessage(m) => m,
+                        _ => unreachable!(),
+                    }
+                })
+                .collect();
+
+            let message = producer()
+                .produce(&route(), &elements, BTreeMap::new())
+                .expect("produce");
+
+            let payload = message.into_payload();
+            let content = match payload.payload {
+                RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
+                    content,
+                }) => content,
+                _ => unreachable!(),
+            };
+            let py_batch = content.bind(py).borrow().payload.clone_ref(py);
+
+            let pl = py.import("polars").expect("polars must be importable");
+            let df = pl.call_method1("DataFrame", (py_batch,)).unwrap();
+
+            assert_eq!(
+                df.call_method0("__len__")
+                    .unwrap()
+                    .extract::<usize>()
+                    .unwrap(),
+                4
+            );
+            let trace_ids: Vec<String> = df
+                .get_item("trace_id")
+                .unwrap()
+                .call_method0("to_list")
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert_eq!(trace_ids, vec!["trace-1", "trace-2", "trace-3", "trace-4"]);
+
+            let item_types: Vec<String> = df
+                .get_item("item_type")
+                .unwrap()
+                .call_method0("to_list")
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert!(item_types.iter().all(|t| t == "TRACE_ITEM_TYPE_SPAN"));
+
+            // The type-split attribute map survives the FFI boundary as a nested
+            // column rather than being flattened or dropped.
+            let columns: Vec<String> = df.getattr("columns").unwrap().extract().unwrap();
+            assert!(columns.contains(&"attr_str".to_string()), "{columns:?}");
+            let dtype = df
+                .get_item("attr_str")
+                .unwrap()
+                .getattr("dtype")
+                .unwrap()
+                .str()
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+            assert!(
+                dtype.contains("List") || dtype.contains("Struct"),
+                "attr_str should arrive as a nested column, got {dtype}"
+            );
+        });
+    }
+
+    /// Phase 6's benchmark. Not run by default -- it is a measurement, not an
+    /// assertion:
+    ///
+    ///     cargo test --release bench_arrow_vs_pylist -- --ignored --nocapture
+    ///
+    /// It compares the Arrow producer against the Python-list producer the
+    /// existing `Batch` step uses, on the same window, and so answers whether
+    /// inline decoding on the consumer thread is affordable.
+    #[test]
+    #[ignore = "benchmark: run explicitly with --ignored --nocapture"]
+    fn bench_arrow_vs_pylist() {
+        use crate::batch_step::PyListFlushProducer;
+        use std::time::Instant;
+
+        crate::testutils::initialize_python();
+        const ROWS: usize = 10_000;
+        const REPEATS: usize = 20;
+
+        traced_with_gil!(|py| {
+            let elements: Vec<BatchElement> = (0..ROWS)
+                .map(|i| {
+                    let item = TraceItem {
+                        organization_id: i as u64,
+                        trace_id: format!("trace-{i}"),
+                        item_type: 1,
+                        attributes: std::collections::HashMap::from([(
+                            "service".to_string(),
+                            sentry_protos::snuba::v1::AnyValue {
+                                value: Some(
+                                    sentry_protos::snuba::v1::any_value::Value::StringValue(
+                                        "checkout".to_string(),
+                                    ),
+                                ),
+                            },
+                        )]),
+                        ..Default::default()
+                    };
+                    match build_raw_routed_value(py, item.encode_to_vec(), "s", vec!["w".into()])
+                        .payload
+                    {
+                        RoutedValuePayload::PyStreamingMessage(m) => m,
+                        _ => unreachable!(),
+                    }
+                })
+                .collect();
+
+            let arrow = producer();
+            let pylist = PyListFlushProducer;
+
+            // The path this step replaces: Batch -> Map(extract_bytes) -> BatchParser.
+            // Decoding in Python is what makes it a fair comparison; the list build
+            // alone is not the competitor.
+            let decode_in_python = py
+                .eval(
+                    c"lambda batch, codec: [codec.decode(p, validate=False) for p in batch]",
+                    None,
+                    None,
+                )
+                .unwrap();
+            let codec = py
+                .import("sentry_kafka_schemas")
+                .unwrap()
+                .call_method1("get_codec", ("snuba-items",))
+                .unwrap();
+
+            let mut arrow_times = Vec::with_capacity(REPEATS);
+            let mut pylist_times = Vec::with_capacity(REPEATS);
+            let mut python_times = Vec::with_capacity(REPEATS);
+            for _ in 0..REPEATS {
+                let t = Instant::now();
+                arrow
+                    .produce(&route(), &elements, BTreeMap::new())
+                    .expect("arrow produce");
+                arrow_times.push(t.elapsed().as_secs_f64());
+
+                let t = Instant::now();
+                let listed = pylist
+                    .produce(&route(), &elements, BTreeMap::new())
+                    .expect("pylist produce");
+                pylist_times.push(t.elapsed().as_secs_f64());
+
+                let batch_list = match listed.into_payload().payload {
+                    RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
+                        content,
+                    }) => content.bind(py).borrow().payload.clone_ref(py),
+                    _ => unreachable!(),
+                };
+                let t = Instant::now();
+                decode_in_python
+                    .call1((batch_list, &codec))
+                    .expect("python decode");
+                python_times.push(t.elapsed().as_secs_f64() + pylist_times[pylist_times.len() - 1]);
+            }
+
+            let report = |label: &str, mut times: Vec<f64>| {
+                times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                let p50 = times[times.len() / 2];
+                let p99 = times[(times.len() as f64 * 0.99) as usize % times.len()];
+                println!(
+                    "{label:>10}: p50 {:>8.2}ms  p99 {:>8.2}ms  {:>10.0} rows/s",
+                    p50 * 1000.0,
+                    p99 * 1000.0,
+                    ROWS as f64 / p50
+                );
+            };
+
+            println!("\n{ROWS} rows/window, {REPEATS} windows");
+            report("arrow", arrow_times);
+            report("list only", pylist_times);
+            report("list+parse", python_times);
+            println!(
+                "  arrow     = ArrowBatchParser: decode to a RecordBatch in Rust\n  \
+                 list only = Batch's flush alone, a Python list of `bytes` (not a \
+                 complete path)\n  list+parse = Batch -> BatchParser, the path this \
+                 step replaces\n"
+            );
+        });
+    }
 }

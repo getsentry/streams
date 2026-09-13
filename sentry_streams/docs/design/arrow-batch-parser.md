@@ -1,6 +1,6 @@
 # Arrow Batch Parser — PoC Implementation Plan
 
-**Status:** design agreed, not yet implemented
+**Status:** implemented, phases 0-6 (see git history on `fpacifici/arrow_batches`)
 **Scope:** proof of concept — protobuf only, `sentry_protos.snuba.v1.TraceItem` only
 
 ## Goal
@@ -423,9 +423,27 @@ raises `NotImplementedError`; `make typecheck` clean.
 1. `sentry_streams/examples/arrow_trace_items.py` — `snuba-items` → `ArrowBatchParser`
    → a `Map` consuming the batch via polars.
 2. End-to-end test through the full step with real `TraceItem` payloads.
-3. **Benchmark against `Batch` + `BatchParser`.** This validates the premise of the
-   exercise and tells us whether inline decoding (decision 5) holds against
-   `max_poll_interval_ms=60000`. Record throughput and p99 batch decode time here.
+3. **Benchmark against `Batch` + `BatchParser`.** Implemented as an `#[ignore]`d test
+   rather than a criterion suite, so it adds no dependency:
+   `cargo test --release bench_arrow_vs_pylist -- --ignored --nocapture`.
+
+   **Results** (10 000 rows/window, `TraceItem` with one string attribute, 20 windows):
+
+   | Path | p50 | p99 | rows/s (p50) |
+   |---|---|---|---|
+   | `ArrowBatchParser` | 3.5 ms | 4.1 ms | 2.86 M |
+   | `Batch` → `BatchParser` | 4.3 ms | 6.4 ms | 2.33 M |
+   | `Batch` flush alone (not a complete path) | 0.15 ms | 0.20 ms | 65.8 M |
+
+   About **20% faster at p50 and 35% at p99** — real, but well short of what the "no
+   Python round trip" framing suggests, and worth being straight about. Two caveats
+   both point the same way: the comparison stops at *decoded values*, where the Python
+   path still has to build something columnar from those objects, and the Arrow path is
+   still paying the `Py<RawMessage>` copy and holding the GIL (see *Assumed future
+   work*). Re-run once the source goes native.
+
+   Decision 5 holds comfortably: a 1000-row window decodes in well under a millisecond,
+   nowhere near `max_poll_interval_ms`. Threadpool decoding stays deferred.
 4. Docs page: the hardcoded-schema contract, Rust-adapter-only, failure behaviour.
 
 ---
