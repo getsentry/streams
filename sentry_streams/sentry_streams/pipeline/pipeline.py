@@ -682,6 +682,75 @@ class Batch(
 
 
 @dataclass
+class ArrowBatchParser(
+    Reduce[MeasurementUnit, InputType, Any],
+    Generic[MeasurementUnit, InputType],
+):
+    """
+    Batches raw Kafka payloads and decodes them into an Apache Arrow
+    ``RecordBatch``, entirely in Rust.
+
+    The emitted message payload is a ``rust_streams.ArrowRecordBatch``, readable
+    by anything implementing the Arrow PyCapsule interface::
+
+        import polars as pl
+
+        def to_frame(msg):
+            return pl.DataFrame(msg.payload)
+
+    This is the fused equivalent of ``Batch`` -> ``Map(extract_bytes)`` ->
+    ``BatchParser``, without copying every message into Python memory on the way.
+
+    Limitations of the current implementation, all of which fail loudly:
+
+    * **Protobuf topics only.** A JSON or msgpack topic raises at startup.
+    * **The Arrow schema is hardcoded in Rust**, per message type, so there is
+      nothing to configure here and adding a column needs a release.
+    * **Rust adapter only.** The pure-Python Arroyo adapter raises
+      ``NotImplementedError``.
+    * **It must read raw payloads**, so it has to come before any step that
+      converts messages into Python objects.
+    * A payload that fails to decode **fails the process**: batching collapses
+      offsets, so there is no single offset to dead-letter.
+
+    Configured by batch size and/or batch_timedelta exactly like ``Batch``, and
+    both are overridable from the deployment config's ``steps_config``.
+    """
+
+    batch_size: int | None = None
+    batch_timedelta: timedelta | None = timedelta(seconds=10)
+    step_type: StepType = StepType.REDUCE
+
+    def validate(self) -> None:
+        """Validate that at least one of batch_size or batch_timedelta is set."""
+        if self.batch_size is None and self.batch_timedelta is None:
+            raise ValueError("At least one of batch_size or batch_timedelta must be set.")
+
+    @property
+    def group_by(self) -> Optional[GroupBy]:
+        return None
+
+    @property
+    def windowing(self) -> Window[MeasurementUnit]:
+        return TumblingWindow(self.batch_size, self.batch_timedelta)
+
+    @property
+    def aggregate_fn(self) -> Callable[[], Accumulator[Message[InputType], Any]]:
+        raise NotImplementedError(
+            "ArrowBatchParser is implemented natively in Rust and has no Python accumulator."
+        )
+
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
+        if loaded_config.get("batch_size") is not None:
+            self.batch_size = loaded_config.get("batch_size")
+
+        if loaded_config.get("batch_timedelta") is not None:
+            loaded_kwargs = loaded_config.get("batch_timedelta")
+            assert isinstance(loaded_kwargs, Mapping)
+            self.batch_timedelta = timedelta(**loaded_kwargs)
+
+
+@dataclass
 class FlatMap(Transform[TIn, TOut], Generic[TIn, TOut]):
     """
     A generic step for mapping and flattening (and therefore alerting the shape of) inputs to

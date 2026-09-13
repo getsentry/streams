@@ -1,7 +1,4 @@
 use pyo3::prelude::*;
-// Reachable once `operators::build()` gains its ArrowBatchParser arm (phase 5);
-// until then the whole chain is dead in the non-test build.
-#[allow(dead_code)]
 mod arrow_batch_parser;
 mod batch_step;
 mod broadcaster;
@@ -10,9 +7,6 @@ mod commit_policy;
 mod committable;
 mod consumer;
 mod dev_null_sink;
-// Reachable once `operators::build()` gains its ArrowBatchParser arm (phase 5);
-// until then the whole chain is dead in the non-test build.
-#[allow(dead_code)]
 mod extractors;
 mod filter_step;
 mod gcs_writer;

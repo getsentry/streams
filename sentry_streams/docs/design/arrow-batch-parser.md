@@ -399,9 +399,12 @@ mirror `Batch` (`pipeline.py:674-681`). No schema, no format, no type name.
    `self.__source_schemas[source_name] = schema_name`.
 2. In `reduce()`, add an `isinstance(step, ArrowBatchParser)` branch before the `Batch`
    branch, emitting `RuntimeOperator.ArrowBatchParser(..., schema_name=self.__source_schemas[stream.source], ...)`.
-3. Build-time input check: walk the pipeline's incoming edges from this step; if any
-   predecessor is not a `RawMessage`-preserving step (source, `HeadersFilter`), raise
-   naming the step and the offending predecessor.
+3. Build-time input check. *(Implemented differently from the sketch: `reduce()` is
+   handed only the step and the `Route`, never the pipeline graph, so the walk is not
+   available.)* The adapter instead tracks which routes still carry raw payloads — the
+   source marks its route raw, `map`/`flat_map` and every other `reduce` clear it, and
+   filters, `broadcast` and `router` propagate it, since they forward messages
+   untouched. `ArrowBatchParser` raises if its route is not raw.
 
 **`adapters/arroyo/adapter.py`** — `NotImplementedError` pointing at the Rust adapter,
 documented Rust-only in the style of `HeadersFilter`.
@@ -409,7 +412,9 @@ documented Rust-only in the style of `HeadersFilter`.
 **Also:** export from `pipeline/__init__.py` (both the import and `__all__`); add
 `RuntimeOperator.ArrowBatchParser` and `ArrowRecordBatch` to `rust_streams.pyi`.
 
-**Tests:** placing the step after a Python `Map` fails at build time naming both steps;
+**Tests:** placing the step after a Python `Map` fails at build time naming the step;
+a filter between source and parser is accepted; a deployment topic override does not
+change the resolved schema;
 a JSON topic panics at startup with the actual `schema_type`; the pure-Python adapter
 raises `NotImplementedError`; `make typecheck` clean.
 
