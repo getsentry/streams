@@ -23,6 +23,8 @@ from sentry_streams.pipeline import ArrowBatchParser, StreamSink, streaming_sour
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import Map
 
+TOPIC = "snuba-items"
+
 
 def summarize(msg: Message[object]) -> bytes:
     """Read the Arrow batch through polars and emit a one-line summary.
@@ -38,10 +40,10 @@ def summarize(msg: Message[object]) -> bytes:
 
 
 pipeline = (
-    streaming_source(name="myinput", stream_name="snuba-items")
-    # Must come before any step that turns messages into Python objects: it reads
-    # the raw payloads. Placing it later is a build-time error.
-    .apply(ArrowBatchParser(name="parse_arrow", batch_size=1000))
+    streaming_source(name="myinput", stream_name=TOPIC)
+    # Takes bytes, so it must come before any step that turns messages into
+    # Python objects. Placing it later is a type error.
+    .apply(ArrowBatchParser(name="parse_arrow", schema_name=TOPIC, batch_size=1000))
     .apply(Map(name="summarize", function=summarize))
     .sink(StreamSink[bytes](name="mysink", stream_name="transformed-events"))
 )

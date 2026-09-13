@@ -33,14 +33,14 @@ extraction; per-row dead-lettering; `TraceItem.outcomes`; replacing the Python
 | 4 | New primitive; Python `BatchParser` untouched. |
 | 5 | Decoding runs **inline** on the consumer thread. |
 | 9 | Offsets collapse to `max` per partition, as `batch_step.rs` does today. |
-| 10/17 | Input contract **`RawMessage` only** — build-time check in the adapter, runtime backstop. |
+| 10/17 | Input contract **`RawMessage` only** — expressed as `bytes` in the DSL signature (mypy), with the runtime panic as the backstop. |
 | 11 | **Generalize `BatchStep`** over a flush-producer trait rather than forking it. |
 | 12 | `Reduce` subclass, `StepType.REDUCE`, `isinstance` branch in `reduce()`. |
 | 14 | Failure is `panic!`, matching `transformer.rs:45-46`. |
 | 22 | `map<string, AnyValue>` → **type-split maps** `attr_str/int/double/bool/bytes`. |
 | 23 | **Protobuf only.** |
 | 24 | `sentry-protos` for types and `prost` decode; `sentry-kafka-schemas` (`default-features = false`) for topic → schema. |
-| 25 | Extractors indexed by the **raw resource string**; several topics sharing a schema share one extractor. |
+| 25 | Extractors indexed by the **raw resource string**; several topics sharing a schema share one extractor. The topic is declared on the step as `schema_name`. |
 | 26 | Resolution and validation at **step construction**; failures panic at startup. |
 | 27 | `TraceItem` schema: all fields except `outcomes`. |
 
@@ -399,12 +399,14 @@ mirror `Batch` (`pipeline.py:674-681`). No schema, no format, no type name.
    `self.__source_schemas[source_name] = schema_name`.
 2. In `reduce()`, add an `isinstance(step, ArrowBatchParser)` branch before the `Batch`
    branch, emitting `RuntimeOperator.ArrowBatchParser(..., schema_name=self.__source_schemas[stream.source], ...)`.
-3. Build-time input check. *(Implemented differently from the sketch: `reduce()` is
-   handed only the step and the `Route`, never the pipeline graph, so the walk is not
-   available.)* The adapter instead tracks which routes still carry raw payloads — the
-   source marks its route raw, `map`/`flat_map` and every other `reduce` clear it, and
-   filters, `broadcast` and `router` propagate it, since they forward messages
-   untouched. `ArrowBatchParser` raises if its route is not raw.
+3. ~~Build-time input check.~~ **Dropped as PoC scope.** It was first implemented as
+   route-rawness tracking in the adapter (the sketch's edge walk is not available —
+   `reduce()` never sees the pipeline graph), but that is ~55 lines of adapter state to
+   pre-empt a failure the step already catches. The contract now lives in the DSL
+   signature: `ArrowBatchParser` is a `Reduce[MeasurementUnit, bytes, Any]`, so
+   misplacing it is a mypy error on `apply()`, and the `with_payloads` panic remains the
+   runtime backstop. Likewise `schema_name` is declared on the step rather than
+   stashed per source, which removes the other piece of adapter state.
 
 **`adapters/arroyo/adapter.py`** — `NotImplementedError` pointing at the Rust adapter,
 documented Rust-only in the style of `HeadersFilter`.
@@ -412,9 +414,10 @@ documented Rust-only in the style of `HeadersFilter`.
 **Also:** export from `pipeline/__init__.py` (both the import and `__all__`); add
 `RuntimeOperator.ArrowBatchParser` and `ArrowRecordBatch` to `rust_streams.pyi`.
 
-**Tests:** placing the step after a Python `Map` fails at build time naming the step;
-a filter between source and parser is accepted; a deployment topic override does not
-change the resolved schema;
+**Tests:** placing the step after a Python `Map` is a mypy error and correct placement
+is not (both run mypy out of process, since the mistake is by construction not
+detectable at runtime); a filter between source and parser is accepted; a deployment
+topic override does not change the resolved schema;
 a JSON topic panics at startup with the actual `schema_type`; the pure-Python adapter
 raises `NotImplementedError`; `make typecheck` clean.
 

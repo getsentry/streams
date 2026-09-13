@@ -683,8 +683,8 @@ class Batch(
 
 @dataclass
 class ArrowBatchParser(
-    Reduce[MeasurementUnit, InputType, Any],
-    Generic[MeasurementUnit, InputType],
+    Reduce[MeasurementUnit, bytes, Any],
+    Generic[MeasurementUnit],
 ):
     """
     Batches raw Kafka payloads and decodes them into an Apache Arrow
@@ -701,6 +701,11 @@ class ArrowBatchParser(
     This is the fused equivalent of ``Batch`` -> ``Map(extract_bytes)`` ->
     ``BatchParser``, without copying every message into Python memory on the way.
 
+    ``schema_name`` is the logical stream name whose ``sentry-kafka-schemas``
+    entry names the message type, and so selects the extractor -- usually the
+    source's ``stream_name``. It is given explicitly rather than inferred so the
+    step does not depend on where it sits in the pipeline.
+
     Limitations of the current implementation, all of which fail loudly:
 
     * **Protobuf topics only.** A JSON or msgpack topic raises at startup.
@@ -708,8 +713,9 @@ class ArrowBatchParser(
       nothing to configure here and adding a column needs a release.
     * **Rust adapter only.** The pure-Python Arroyo adapter raises
       ``NotImplementedError``.
-    * **It must read raw payloads**, so it has to come before any step that
-      converts messages into Python objects.
+    * **It reads raw payloads**, so it takes ``bytes`` and must come before any
+      step that converts messages into Python objects. Placing it after one is a
+      type error, and a panic at runtime if the types were bypassed.
     * A payload that fails to decode **fails the process**: batching collapses
       offsets, so there is no single offset to dead-letter.
 
@@ -717,6 +723,7 @@ class ArrowBatchParser(
     both are overridable from the deployment config's ``steps_config``.
     """
 
+    schema_name: str
     batch_size: int | None = None
     batch_timedelta: timedelta | None = timedelta(seconds=10)
     step_type: StepType = StepType.REDUCE
@@ -735,7 +742,7 @@ class ArrowBatchParser(
         return TumblingWindow(self.batch_size, self.batch_timedelta)
 
     @property
-    def aggregate_fn(self) -> Callable[[], Accumulator[Message[InputType], Any]]:
+    def aggregate_fn(self) -> Callable[[], Accumulator[Message[bytes], Any]]:
         raise NotImplementedError(
             "ArrowBatchParser is implemented natively in Rust and has no Python accumulator."
         )

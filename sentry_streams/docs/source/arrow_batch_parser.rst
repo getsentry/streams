@@ -21,7 +21,11 @@ interface <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterfac
 
    pipeline = (
        streaming_source(name="myinput", stream_name="snuba-items")
-       .apply(ArrowBatchParser(name="parse_arrow", batch_size=1000))
+       .apply(
+           ArrowBatchParser(
+               name="parse_arrow", schema_name="snuba-items", batch_size=1000
+           )
+       )
        .apply(Map(name="summarize", function=summarize))
        .sink(StreamSink[bytes](name="mysink", stream_name="transformed-events"))
    )
@@ -31,6 +35,12 @@ message is copied into Python memory as ``bytes`` and decoded under the GIL.
 
 Windowing is configured exactly like :class:`Batch`, by ``batch_size`` and/or
 ``batch_timedelta``, both overridable from ``steps_config``.
+
+``schema_name`` is the logical stream name whose ``sentry-kafka-schemas`` entry
+names the message type, and so selects the extractor -- normally the source's
+``stream_name``. It is declared on the step rather than inferred from the source,
+so the step does not depend on where it sits and a deployment topic override
+cannot change which extractor is used.
 
 The schema is hardcoded
 -----------------------
@@ -65,7 +75,7 @@ Every failure is loud, and most happen at startup rather than in production:
    * - Message type has no extractor
      - Panic at startup, listing the supported message types
    * - Step placed after a ``Map`` or other converting step
-     - ``ValueError`` at build time
+     - Type error under mypy; **panic** on the first batch if types were bypassed
    * - Used with the pure-Python Arroyo adapter
      - ``NotImplementedError``
    * - A payload fails to decode

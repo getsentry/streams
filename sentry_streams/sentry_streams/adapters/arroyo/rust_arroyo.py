@@ -257,12 +257,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers: MutableMapping[str, ArroyoConsumer] = {}
         self.__chains = TransformChains()
         self.__sentry_dsn = sentry_sdk_config.get("dsn") if sentry_sdk_config else None
-        # Logical stream name per source, captured before any topic override, so
-        # steps that resolve a schema are unaffected by deployment overrides.
-        self.__source_schemas: MutableMapping[str, str] = {}
-        # Routes whose messages still carry raw Kafka payloads. ArrowBatchParser
-        # reads bytes off the wire, so it can only be placed on one of these.
-        self.__raw_routes: set[tuple[str, tuple[str, ...]]] = set()
 
     @classmethod
     def build(  # type: ignore[override]
@@ -283,32 +277,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             self.__consumers[stream.source].add_step(
                 finalize_chain(self.__chains, stream, self.__metrics_config)
             )
-
-    @staticmethod
-    def __route_key(stream: Route) -> tuple[str, tuple[str, ...]]:
-        return (stream.source, tuple(stream.waypoints))
-
-    def __mark_route_raw(self, stream: Route) -> None:
-        self.__raw_routes.add(self.__route_key(stream))
-
-    def __mark_route_converted(self, stream: Route) -> None:
-        """Record that messages on this route are now Python objects.
-
-        Steps that only forward messages -- filters, broadcast, router -- leave
-        the payload alone and so do not call this.
-        """
-        self.__raw_routes.discard(self.__route_key(stream))
-
-    def __route_is_raw(self, stream: Route) -> bool:
-        return self.__route_key(stream) in self.__raw_routes
-
-    def __propagate_raw(self, stream: Route, branches: Mapping[str, Route]) -> Mapping[str, Route]:
-        """Broadcast and router forward messages untouched, so each branch keeps
-        whatever the incoming route had."""
-        if self.__route_is_raw(stream):
-            for branch in branches.values():
-                self.__mark_route_raw(branch)
-        return branches
 
     def get_consumer(self, source: str) -> ArroyoConsumer:
         return self.__consumers[source]
@@ -354,10 +322,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             dlq_config=dlq_config,
             sentry_dsn=self.__sentry_dsn,
         )
-        self.__source_schemas[source_name] = schema_name
-        route = Route(source_name, [])
-        self.__mark_route_raw(route)
-        return route
+        return Route(source_name, [])
 
     def sink(self, step: Sink[Any], stream: Route) -> Route:
         """
@@ -470,7 +435,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
             if self.__chains.exists(stream):
                 self.__chains.add_map(stream, step)
 
-        self.__mark_route_converted(stream)
         return stream
 
     def flat_map(self, step: FlatMap[Any, Any], stream: Route) -> Route:
@@ -536,27 +500,12 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         step.validate()
 
         if isinstance(step, ArrowBatchParser):
-            if not self.__route_is_raw(stream):
-                raise ValueError(
-                    f"Step '{step.name}' is an ArrowBatchParser, which decodes raw Kafka "
-                    f"payloads, but the messages reaching it on route {stream} have already "
-                    "been converted to Python objects by an earlier step. Place it directly "
-                    "after the source, with only filters, broadcasts or routers in between."
-                )
-
-            schema_name = self.__source_schemas.get(stream.source)
-            if schema_name is None:
-                raise ValueError(
-                    f"Step '{step.name}': no schema recorded for source '{stream.source}'. "
-                    "ArrowBatchParser resolves its Arrow schema from the source topic."
-                )
-
             logger.info(f"Adding Arrow batch parser (native): {step.name} to pipeline")
             self.__consumers[stream.source].add_step(
                 RuntimeOperator.ArrowBatchParser(
                     route=route,
                     step_name=step.name,
-                    schema_name=schema_name,
+                    schema_name=step.schema_name,
                     max_batch_size=step.batch_size,
                     max_batch_time_ms=(
                         step.batch_timedelta.total_seconds() * 1000.0
@@ -565,8 +514,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                     ),
                 )
             )
-            # The batch is an ArrowRecordBatch from here on, not raw payloads.
-            self.__mark_route_converted(stream)
             return stream
 
         if isinstance(step, Batch):
@@ -584,7 +531,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                     max_batch_time_ms=max_batch_time_ms,
                 )
             )
-            self.__mark_route_converted(stream)
             return stream
 
         step = MetricsReportingReduce(step, name)
@@ -594,7 +540,6 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         self.__consumers[stream.source].add_step(
             RuntimeOperator.PythonAdapter(route, ReduceDelegateFactory(step))
         )
-        self.__mark_route_converted(stream)
         return stream
 
     def broadcast(
@@ -619,7 +564,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 route, downstream_routes=[branch.root.name for branch in step.routes]
             )
         )
-        return self.__propagate_raw(stream, build_branches(stream, step.routes))
+        return build_branches(stream, step.routes)
 
     def router(
         self,
@@ -658,7 +603,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                 route, routing_function, cast(Sequence[str], step.routing_table.values())
             )
         )
-        return self.__propagate_raw(stream, build_branches(stream, step.routing_table.values()))
+        return build_branches(stream, step.routing_table.values())
 
     def run(self) -> None:
         """
