@@ -38,9 +38,6 @@ pub struct PyRecordBatch {
 }
 
 impl PyRecordBatch {
-    // Constructed by the Arrow batch parser step (phase 4); until then only the
-    // tests build one.
-    #[allow(dead_code)]
     pub(crate) fn new(batch: RecordBatch) -> Self {
         Self { batch }
     }

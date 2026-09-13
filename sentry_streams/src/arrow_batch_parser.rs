@@ -1,0 +1,388 @@
+//! The Arrow batch parser step: batches raw Kafka payloads and decodes them into
+//! an Apache Arrow `RecordBatch` without ever materialising them as Python
+//! objects.
+//!
+//! It reuses [`BatchStep`] wholesale -- windowing, watermark ordering and
+//! backpressure are identical to the `Batch` step -- and supplies its own
+//! [`BatchFlushProducer`]. See `docs/design/arrow-batch-parser.md`, phase 4.
+
+use crate::batch_step::{BatchElement, BatchFlushProducer, BatchStep};
+use crate::extractors::{get_extractor, registered_resources, Extractor};
+use crate::messages::{into_pyany, PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
+use crate::py_record_batch::PyRecordBatch;
+use crate::routes::{Route, RoutedValue};
+use crate::utils::traced_with_gil;
+use pyo3::prelude::*;
+use sentry_arroyo::processing::strategies::{ProcessingStrategy, StrategyError};
+use sentry_arroyo::types::{Message, Partition};
+use sentry_kafka_schemas::{get_schema, SchemaType};
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+/// Runs `f` over the batch's payload bytes.
+///
+/// **This is the only place that knows where payload bytes live.** Today the
+/// source boxes every payload into a `Py<RawMessage>` (`consumer.rs`), so the
+/// bytes are Python-owned and reading them needs the GIL; the borrow is held for
+/// the duration of the decode. When the source starts emitting Rust-native
+/// messages this function loses its GIL block and its `PyRef` guards, and
+/// nothing else in the step changes.
+///
+/// It is a scope rather than a plain accessor because the `PyRef` guards must
+/// outlive the slices handed to `f`.
+///
+/// Do **not** copy the payloads out to release the GIL sooner. It would work
+/// today and would become permanent dead weight the moment the source goes
+/// native -- a per-message copy in the one step whose whole purpose is to remove
+/// per-message copies.
+fn with_payloads<R>(
+    step_name: &str,
+    elements: &[BatchElement],
+    f: impl FnOnce(&[&[u8]]) -> R,
+) -> R {
+    traced_with_gil!(|py| {
+        let guards: Vec<PyRef<'_, crate::messages::RawMessage>> = elements
+            .iter()
+            .map(|element| match element {
+                PyStreamingMessage::RawMessage { content } => content.bind(py).borrow(),
+                // Decision 10: this step reads bytes off the wire. A PyAnyMessage
+                // means a Python step ran in between and the bytes are gone.
+                // The adapter rejects this at build time; this is the backstop.
+                PyStreamingMessage::PyAnyMessage { .. } => panic!(
+                    "step '{step_name}': the Arrow batch parser only accepts raw messages, \
+                     but the window contains a message already converted to a Python object. \
+                     Place this step directly after the source."
+                ),
+            })
+            .collect();
+
+        let payloads: Vec<&[u8]> = guards.iter().map(|g| g.payload.as_slice()).collect();
+        f(&payloads)
+    })
+}
+
+/// Decodes a flushed window into a `RecordBatch` and hands it to Python.
+pub(crate) struct ArrowFlushProducer {
+    extractor: &'static dyn Extractor,
+    step_name: String,
+    schema_name: String,
+}
+
+impl ArrowFlushProducer {
+    /// Resolve topic -> schema -> extractor once, at step construction.
+    ///
+    /// Every failure here is a configuration error that will never fix itself at
+    /// runtime, so each one panics at startup rather than at the first message.
+    /// `get_schema` leaks on protobuf topics and must never be called per
+    /// message, which is the other reason this happens exactly once.
+    fn resolve(step_name: String, schema_name: &str) -> Self {
+        let schema = get_schema(schema_name, None).unwrap_or_else(|e| {
+            panic!(
+                "step '{step_name}': no schema registered for topic '{schema_name}': {e}. \
+                 The Arrow batch parser resolves its extractor from the source topic's schema."
+            )
+        });
+
+        if schema.schema_type != SchemaType::Protobuf {
+            panic!(
+                "step '{step_name}': topic '{schema_name}' has schema type {:?}, but the Arrow \
+                 batch parser supports protobuf only.",
+                schema.schema_type
+            );
+        }
+
+        let resource = schema.raw_schema();
+        let extractor = get_extractor(resource).unwrap_or_else(|| {
+            panic!(
+                "step '{step_name}': topic '{schema_name}' carries '{resource}', which has no \
+                 Arrow extractor. Known message types: {:?}",
+                registered_resources()
+            )
+        });
+
+        Self {
+            extractor,
+            step_name,
+            schema_name: schema_name.to_string(),
+        }
+    }
+}
+
+impl BatchFlushProducer for ArrowFlushProducer {
+    fn produce(
+        &self,
+        route: &Route,
+        elements: &[BatchElement],
+        committable: BTreeMap<Partition, u64>,
+    ) -> Result<Message<RoutedValue>, StrategyError> {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+
+        let batch = with_payloads(&self.step_name, elements, |payloads| {
+            self.extractor.extract(payloads)
+        })
+        .unwrap_or_else(|e| {
+            // Offsets are collapsed to max per partition on flush, so there is no
+            // (partition, offset) for arroyo's DLQ to reject a single row with,
+            // and no way to fail the batch without failing the window. Panicking
+            // matches what the runtime already does for an error on an
+            // AnyMessage; see transformer.rs.
+            panic!(
+                "step '{}': could not decode a batch of {} message(s) from topic '{}': {e}",
+                self.step_name,
+                elements.len(),
+                self.schema_name,
+            )
+        });
+
+        let content = traced_with_gil!(|py| -> PyResult<Py<PyAnyMessage>> {
+            let py_batch = Py::new(py, PyRecordBatch::new(batch))?;
+            into_pyany(
+                py,
+                PyAnyMessage {
+                    payload: py_batch.into_any(),
+                    headers: vec![],
+                    timestamp: ts,
+                    schema: Some(self.schema_name.clone()),
+                },
+            )
+        })
+        .map_err(|e| StrategyError::Other(Box::new(e)))?;
+
+        Ok(Message::new_any_message(
+            RoutedValue {
+                route: route.clone(),
+                payload: RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
+                    content,
+                }),
+            },
+            committable,
+        ))
+    }
+}
+
+pub fn build_arrow_batch_parser_step(
+    route: &Route,
+    schema_name: &str,
+    step_name: String,
+    max_batch_size: Option<usize>,
+    max_batch_time: Option<Duration>,
+    next: Box<dyn ProcessingStrategy<RoutedValue>>,
+) -> Box<dyn ProcessingStrategy<RoutedValue>> {
+    let producer = ArrowFlushProducer::resolve(step_name.clone(), schema_name);
+    Box::new(BatchStep::with_producer(
+        route.clone(),
+        max_batch_size,
+        max_batch_time,
+        step_name,
+        next,
+        Arc::new(producer),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fake_strategy::FakeStrategy;
+    use crate::testutils::{build_raw_routed_value, build_routed_value};
+    use arrow::array::{RecordBatch, StringArray, UInt64Array};
+    use prost::Message as _;
+    use pyo3::types::PyAnyMethods;
+    use pyo3::IntoPyObject;
+    use sentry_arroyo::types::{Partition, Topic};
+    use sentry_protos::snuba::v1::TraceItem;
+    use std::sync::Mutex;
+
+    const SNUBA_ITEMS: &str = "snuba-items";
+
+    fn route() -> Route {
+        Route::new("s".into(), vec!["w".into()])
+    }
+
+    fn trace_item(org: u64) -> Vec<u8> {
+        TraceItem {
+            organization_id: org,
+            trace_id: format!("trace-{org}"),
+            ..Default::default()
+        }
+        .encode_to_vec()
+    }
+
+    fn producer() -> ArrowFlushProducer {
+        ArrowFlushProducer::resolve("test_arrow".to_string(), SNUBA_ITEMS)
+    }
+
+    /// Pull the `RecordBatch` back out of the emitted message, the way a Python
+    /// consumer would see it.
+    fn batch_of(message: Message<RoutedValue>) -> (RecordBatch, Option<String>) {
+        let payload = message.into_payload();
+        let content = match payload.payload {
+            RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
+                content,
+            }) => content,
+            _ => panic!("expected a PyAnyMessage carrying the record batch"),
+        };
+        traced_with_gil!(|py| {
+            let borrowed = content.bind(py).borrow();
+            let schema = borrowed.schema.clone();
+            let rb: PyRef<PyRecordBatch> = borrowed.payload.bind(py).extract().unwrap();
+            (rb.batch.clone(), schema)
+        })
+    }
+
+    #[test]
+    fn decodes_a_window_of_raw_messages_into_one_record_batch() {
+        crate::testutils::initialize_python();
+        let partition = Partition::new(Topic::new("t"), 0);
+        let committable = BTreeMap::from([(partition, 11_u64)]);
+
+        let (batch, schema) = traced_with_gil!(|py| {
+            let elements: Vec<BatchElement> = [1_u64, 2, 3]
+                .into_iter()
+                .map(|org| {
+                    match build_raw_routed_value(py, trace_item(org), "s", vec!["w".into()]).payload
+                    {
+                        RoutedValuePayload::PyStreamingMessage(m) => m,
+                        _ => unreachable!(),
+                    }
+                })
+                .collect();
+
+            let message = producer()
+                .produce(&route(), &elements, committable.clone())
+                .expect("produce");
+            assert_eq!(
+                message.committable().collect::<BTreeMap<_, _>>(),
+                committable
+            );
+            batch_of(message)
+        });
+
+        assert_eq!(batch.num_rows(), 3);
+        let orgs = batch
+            .column_by_name("organization_id")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .unwrap();
+        assert_eq!(orgs.values(), &[1, 2, 3]);
+        let traces = batch
+            .column_by_name("trace_id")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(traces.value(0), "trace-1");
+
+        // Downstream Python needs to know which stream the batch came from.
+        assert_eq!(schema.as_deref(), Some(SNUBA_ITEMS));
+    }
+
+    /// Decision 10: this step only accepts RawMessage. A PyAnyMessage means some
+    /// Python step ran in between and the payload bytes are gone.
+    #[test]
+    #[should_panic(expected = "test_arrow")]
+    fn a_python_payload_in_the_window_panics() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let payload = 1i32.into_pyobject(py).unwrap().into_any().unbind();
+            let element = match build_routed_value(py, payload, "s", vec!["w".into()]).payload {
+                RoutedValuePayload::PyStreamingMessage(m) => m,
+                _ => unreachable!(),
+            };
+            let _ = producer().produce(&route(), &[element], BTreeMap::new());
+        });
+    }
+
+    /// A malformed payload cannot be dead-lettered -- offsets are collapsed to
+    /// max per partition -- so it fails the process. Decisions 9 and 14.
+    #[test]
+    #[should_panic(expected = "row 1")]
+    fn a_malformed_payload_panics_naming_the_row() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let payloads = vec![trace_item(1), vec![0xff, 0xff, 0xff]];
+            let elements: Vec<BatchElement> = payloads
+                .into_iter()
+                .map(
+                    |p| match build_raw_routed_value(py, p, "s", vec!["w".into()]).payload {
+                        RoutedValuePayload::PyStreamingMessage(m) => m,
+                        _ => unreachable!(),
+                    },
+                )
+                .collect();
+            let _ = producer().produce(&route(), &elements, BTreeMap::new());
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "not-a-real-topic")]
+    fn an_unknown_topic_panics_at_construction() {
+        ArrowFlushProducer::resolve("test_arrow".to_string(), "not-a-real-topic");
+    }
+
+    /// JSON topics are out of scope for the PoC and must fail loudly at startup
+    /// rather than at the first message.
+    #[test]
+    #[should_panic(expected = "Json")]
+    fn a_json_topic_panics_at_construction() {
+        let topic = "events";
+        let schema = sentry_kafka_schemas::get_schema(topic, None).unwrap();
+        assert_eq!(
+            schema.schema_type,
+            SchemaType::Json,
+            "{topic} is expected to be a JSON topic"
+        );
+        ArrowFlushProducer::resolve("test_arrow".to_string(), topic);
+    }
+
+    /// The step is a BatchStep underneath: same windowing, same watermarks.
+    #[test]
+    fn behaves_as_a_batch_step_end_to_end() {
+        crate::testutils::initialize_python();
+        let sub = Arc::new(Mutex::new(Vec::new()));
+        let wms = Arc::new(Mutex::new(Vec::new()));
+        let mut step = build_arrow_batch_parser_step(
+            &route(),
+            SNUBA_ITEMS,
+            "test_arrow".to_string(),
+            Some(2),
+            None,
+            Box::new(FakeStrategy::new(sub.clone(), wms, false)),
+        );
+
+        traced_with_gil!(|py| {
+            for org in [1_u64, 2] {
+                let msg = Message::new_any_message(
+                    build_raw_routed_value(py, trace_item(org), "s", vec!["w".into()]),
+                    BTreeMap::new(),
+                );
+                step.submit(msg).unwrap();
+            }
+            step.poll().unwrap();
+        });
+
+        let out = sub.lock().unwrap();
+        assert_eq!(out.len(), 1, "one batch downstream, not two rows");
+        traced_with_gil!(|py| {
+            let rb: PyRef<PyRecordBatch> = out[0].bind(py).extract().unwrap();
+            assert_eq!(rb.batch.num_rows(), 2);
+        });
+    }
+
+    /// An empty window never reaches a producer, but the extractor's empty batch
+    /// must still be schema-correct if it ever does.
+    #[test]
+    fn an_empty_window_still_produces_a_typed_batch() {
+        crate::testutils::initialize_python();
+        let message = producer()
+            .produce(&route(), &[], BTreeMap::new())
+            .expect("produce");
+        let (batch, _) = batch_of(message);
+        assert_eq!(batch.num_rows(), 0);
+        assert!(batch.num_columns() > 0);
+    }
+}
