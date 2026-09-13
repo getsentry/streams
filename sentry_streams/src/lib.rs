@@ -6,6 +6,10 @@ mod commit_policy;
 mod committable;
 mod consumer;
 mod dev_null_sink;
+// Consumed by the Arrow batch parser step (phase 4). Until that lands nothing
+// outside this module's own tests calls into it.
+#[allow(dead_code)]
+mod extractors;
 mod filter_step;
 mod gcs_writer;
 mod header_filter_step;

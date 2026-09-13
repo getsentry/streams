@@ -2793,6 +2793,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "ctrlc",
@@ -2802,6 +2803,7 @@ dependencies = [
  "metrics-exporter-dogstatsd",
  "parking_lot",
  "prost",
+ "prost-types",
  "pyo3",
  "rand 0.9.4",
  "rdkafka",

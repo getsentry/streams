@@ -79,8 +79,8 @@ Constraints discovered by reading the runtime. These drive several choices below
 | `timestamp` | `Timestamp(us, "UTC")` | **yes** | 6 |
 | `client_sample_rate` | `Float64` | no | 8 |
 | `server_sample_rate` | `Float64` | no | 9 |
-| `conversation_id` | `Utf8` | yes | 10, proto3 `optional` |
-| `session_id` | `Utf8` | yes | 11, proto3 `optional` |
+| `conversation_id` | `Utf8` | no | 10 |
+| `session_id` | `Utf8` | no | 11 |
 | `retention_days` | `UInt32` | no | 100 |
 | `received` | `Timestamp(us, "UTC")` | **yes** | 101 |
 | `downsampled_retention_days` | `UInt32` | no | 102 |
@@ -95,17 +95,33 @@ fields always have explicit presence in proto3, so prost yields `Option<Timestam
 for *both* `timestamp` and `received` — both nullable. Implicit-presence scalars cannot
 distinguish unset from zero, so they are non-nullable columns carrying the default.
 
+> **Corrected during phase 3.** This table originally marked `conversation_id` and
+> `session_id` nullable, on the assumption they were declared `optional`. In
+> `sentry_protos` 0.70.0 both are plain `String`, not `Option<String>` — implicit
+> presence, despite the "if any" comments in the proto. Applying the rule above,
+> they are non-nullable columns carrying `""` when unset. Should they ever gain
+> `optional` upstream, prost will change their type and the extractor will fail to
+> compile, which is the right way to find out.
+
 `ArrayValue` (arm 5) and `KeyValueList` (arm 6) are recursive; Arrow has no recursive
-types, so they are JSON-encoded into `attr_str`.
+types, so they are JSON-encoded into `attr_str`. Bytes *nested inside* such a value
+are base64-encoded, following proto3's canonical JSON mapping — there is no way to put
+raw bytes in a JSON string. This is not the case the plan rejected earlier: top-level
+`bytes` attributes never pass through JSON, they keep their raw bytes in `attr_bytes`.
 
 ## Dependencies
 
 ```toml
 arrow = { version = "59", features = ["ffi"] }
 prost = "0.14"
+prost-types = "0.14"          # prost_types::Timestamp, reached through TraceItem
+base64 = "0.22"               # bytes nested in recursive attribute values
 sentry_protos = "0.70"
 sentry-kafka-schemas = { version = "3", default-features = false }
 ```
+
+`prost-types` and `base64` were added in phase 3; both were already in the lock file
+transitively, so neither costs build time.
 
 No new Python dependencies; `pyarrow` is deliberately not added.
 
@@ -252,7 +268,8 @@ extractor down to one file plus one registry line.
   `HashMap` with nondeterministic iteration order; unsorted output makes batches
   irreproducible and tests flaky.
 - **Unknown enum values must not panic.** `TraceItemType::try_from(i32)` fails on a value
-  from a newer producer; render `TYPE_UNKNOWN_<n>`. Enum additions are routine
+  from a newer producer; render `TRACE_ITEM_TYPE_UNKNOWN_<n>` (the enum's own
+  prefix, so string comparisons downstream stay uniform). Enum additions are routine
   forward-compatible producer changes and crashing on them would be a self-inflicted
   outage. *(Flagged — override if you want strictness.)*
 - **Timestamps:** `prost_types::Timestamp { seconds, nanos }` →
