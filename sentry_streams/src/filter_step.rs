@@ -50,22 +50,21 @@ impl ProcessingStrategy<RoutedValue> for Filter {
             return self.next_step.submit(message);
         }
 
-        let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) =
-            message.payload().payload
-        else {
-            unreachable!("Watermark message trying to be passed to filter function.")
+        // Exhaustive on purpose: every `RoutedValuePayload` variant has to be spelled out so
+        // adding a variant is a build failure rather than a panic on the first message.
+        let py_arg: Py<PyAny> = match &message.payload().payload {
+            RoutedValuePayload::PyStreamingMessage(py_streaming_msg) => py_streaming_msg.into(),
+            RoutedValuePayload::WatermarkMessage(..) => {
+                unreachable!("Watermark message trying to be passed to filter function.")
+            }
         };
 
         let stats = get_stats();
         stats.step_exec(&self.step_name);
         let start = Instant::now();
         let res = traced_with_gil!(|py| {
-            try_apply_py(
-                py,
-                &self.callable,
-                (Into::<Py<PyAny>>::into(py_streaming_msg),),
-            )
-            .and_then(|py_res| py_res.is_truthy(py).map_err(|_| ApplyError::ApplyFailed))
+            try_apply_py(py, &self.callable, (py_arg,))
+                .and_then(|py_res| py_res.is_truthy(py).map_err(|_| ApplyError::ApplyFailed))
         });
         let elapsed = start.elapsed().as_secs_f64();
 

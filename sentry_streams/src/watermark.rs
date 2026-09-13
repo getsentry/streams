@@ -103,12 +103,19 @@ impl ProcessingStrategy<RoutedValue> for WatermarkEmitter {
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
         self.merge_watermark_committable(&message);
-        if let RoutedValuePayload::PyStreamingMessage(ref sm) = &message.payload().payload {
-            let ts = traced_with_gil!(|py| match sm {
-                PyStreamingMessage::PyAnyMessage { content } => content.bind(py).borrow().timestamp,
-                PyStreamingMessage::RawMessage { content } => content.bind(py).borrow().timestamp,
-            });
-            self.last_data_message_time = Some(ts);
+        // Exhaustive on purpose: every `RoutedValuePayload` variant has to be spelled out so
+        // adding a variant is a build failure rather than a silently skipped timestamp update.
+        match &message.payload().payload {
+            RoutedValuePayload::PyStreamingMessage(sm) => {
+                let ts = traced_with_gil!(|py| match sm {
+                    PyStreamingMessage::PyAnyMessage { content } =>
+                        content.bind(py).borrow().timestamp,
+                    PyStreamingMessage::RawMessage { content } =>
+                        content.bind(py).borrow().timestamp,
+                });
+                self.last_data_message_time = Some(ts);
+            }
+            RoutedValuePayload::WatermarkMessage(..) => {}
         }
         self.next_step.submit(message)
     }

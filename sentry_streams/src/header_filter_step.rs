@@ -93,15 +93,17 @@ impl ProcessingStrategy<RoutedValue> for HeaderIntEqualityFilter {
             return self.next_step.submit(message);
         }
 
-        let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) =
-            message.payload().payload
-        else {
-            return self.next_step.submit(message);
+        // Exhaustive on purpose: every `RoutedValuePayload` variant has to be spelled out so
+        // adding a variant is a build failure rather than a filter that silently stops filtering.
+        let headers = match &message.payload().payload {
+            RoutedValuePayload::PyStreamingMessage(py_streaming_msg) => {
+                streaming_message_headers(py_streaming_msg)
+            }
+            RoutedValuePayload::WatermarkMessage(..) => return self.next_step.submit(message),
         };
 
         let stats = get_stats();
         stats.step_exec(&self.step_name);
-        let headers = streaming_message_headers(py_streaming_msg);
         let decision = header_int_equality_decision(&headers, &self.header_name, self.expected);
 
         match decision {

@@ -25,17 +25,16 @@ pub fn build_map(
             return Ok(message);
         }
 
-        let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) =
-            message.payload().payload
-        else {
-            return Ok(message);
+        // Exhaustive on purpose: every `RoutedValuePayload` variant has to be spelled out so
+        // adding a variant is a build failure rather than a map that silently becomes a no-op.
+        let py_arg: Py<PyAny> = match &message.payload().payload {
+            RoutedValuePayload::PyStreamingMessage(py_streaming_msg) => py_streaming_msg.into(),
+            RoutedValuePayload::WatermarkMessage(..) => return Ok(message),
         };
 
         let route = message.payload().route.clone();
 
-        let res = traced_with_gil!(|py| {
-            try_apply_py(py, &callable, (Into::<Py<PyAny>>::into(py_streaming_msg),))
-        });
+        let res = traced_with_gil!(|py| { try_apply_py(py, &callable, (py_arg,)) });
 
         match (res, &message.inner_message) {
             (Ok(transformed), _) => Ok(message.replace(RoutedValue {

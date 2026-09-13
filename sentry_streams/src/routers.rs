@@ -17,20 +17,20 @@ fn route_message(
         return Ok(message);
     }
 
-    let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) = message.payload().payload
-    else {
+    // Exhaustive on purpose: every `RoutedValuePayload` variant has to be spelled out so
+    // adding a variant is a build failure rather than routing that is silently skipped.
+    let py_arg: Py<PyAny> = match &message.payload().payload {
+        RoutedValuePayload::PyStreamingMessage(py_streaming_msg) => py_streaming_msg.into(),
         // TODO: a future PR will remove this gate on WatermarkMessage and duplicate it for each downstream route.
-        return Ok(message);
+        RoutedValuePayload::WatermarkMessage(..) => return Ok(message),
     };
 
     let res = traced_with_gil!(|py| {
-        try_apply_py(py, callable, (Into::<Py<PyAny>>::into(py_streaming_msg),)).and_then(
-            |py_res| {
-                py_res
-                    .extract::<String>(py)
-                    .map_err(|_| ApplyError::ApplyFailed)
-            },
-        )
+        try_apply_py(py, callable, (py_arg,)).and_then(|py_res| {
+            py_res
+                .extract::<String>(py)
+                .map_err(|_| ApplyError::ApplyFailed)
+        })
     });
 
     match (res, &message.inner_message) {
