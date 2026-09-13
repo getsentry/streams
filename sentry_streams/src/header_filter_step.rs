@@ -50,10 +50,18 @@ fn invalid_message_submit_error(message: &Message<RoutedValue>) -> SubmitError<R
     }
 }
 
-fn streaming_message_headers(msg: &PyStreamingMessage) -> Vec<(String, Vec<u8>)> {
+/// Applies the header decision to a message that lives in Python memory. Takes the Gil and
+/// reads the headers in place, without copying the header vector out of Python.
+fn py_streaming_message_decision(
+    msg: &PyStreamingMessage,
+    name: &str,
+    expected: i64,
+) -> Result<bool, ()> {
     traced_with_gil!(|py| match msg {
-        PyStreamingMessage::PyAnyMessage { content } => content.bind(py).borrow().headers.clone(),
-        PyStreamingMessage::RawMessage { content } => content.bind(py).borrow().headers.clone(),
+        PyStreamingMessage::PyAnyMessage { content } =>
+            header_int_equality_decision(&content.bind(py).borrow().headers, name, expected),
+        PyStreamingMessage::RawMessage { content } =>
+            header_int_equality_decision(&content.bind(py).borrow().headers, name, expected),
     })
 }
 
@@ -93,18 +101,23 @@ impl ProcessingStrategy<RoutedValue> for HeaderIntEqualityFilter {
             return self.next_step.submit(message);
         }
 
+        let stats = get_stats();
+        stats.step_exec(&self.step_name);
+
         // Exhaustive on purpose: every `RoutedValuePayload` variant has to be spelled out so
         // adding a variant is a build failure rather than a filter that silently stops filtering.
-        let headers = match &message.payload().payload {
+        let decision = match &message.payload().payload {
+            // Headers are already Rust data here: no Gil, and no copy of the header vector.
+            // This step drops most of the traffic, and everything it drops stays out of
+            // Python memory.
+            RoutedValuePayload::RustRawMessage(raw) => {
+                header_int_equality_decision(&raw.headers, &self.header_name, self.expected)
+            }
             RoutedValuePayload::PyStreamingMessage(py_streaming_msg) => {
-                streaming_message_headers(py_streaming_msg)
+                py_streaming_message_decision(py_streaming_msg, &self.header_name, self.expected)
             }
             RoutedValuePayload::WatermarkMessage(..) => return self.next_step.submit(message),
         };
-
-        let stats = get_stats();
-        stats.step_exec(&self.step_name);
-        let decision = header_int_equality_decision(&headers, &self.header_name, self.expected);
 
         match decision {
             Ok(true) => self.next_step.submit(message),
@@ -148,7 +161,7 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::Watermark;
     use crate::routes::Route;
-    use crate::testutils::build_routed_value_with_headers;
+    use crate::testutils::{build_py_routed_value_with_headers, build_routed_value_with_headers};
     use crate::utils::traced_with_gil;
     use pyo3::types::PyAnyMethods;
     use pyo3::IntoPyObjectExt;
@@ -237,8 +250,7 @@ mod tests {
 
             let msg_ok = Message::new_any_message(
                 build_routed_value_with_headers(
-                    py,
-                    "x".into_py_any(py).unwrap(),
+                    b"x".to_vec(),
                     "source1",
                     vec!["waypoint1".to_string()],
                     vec![("pid".to_string(), b"42".to_vec())],
@@ -249,8 +261,7 @@ mod tests {
 
             let msg_drop = Message::new_any_message(
                 build_routed_value_with_headers(
-                    py,
-                    "y".into_py_any(py).unwrap(),
+                    b"y".to_vec(),
                     "source1",
                     vec!["waypoint1".to_string()],
                     vec![("pid".to_string(), b"41".to_vec())],
@@ -261,8 +272,7 @@ mod tests {
 
             let other_route = Message::new_any_message(
                 build_routed_value_with_headers(
-                    py,
-                    "z".into_py_any(py).unwrap(),
+                    b"z".to_vec(),
                     "source1",
                     vec!["waypoint2".to_string()],
                     vec![("pid".to_string(), b"99".to_vec())],
@@ -271,7 +281,7 @@ mod tests {
             );
             assert!(strategy.submit(other_route).is_ok());
 
-            let expected = vec!["x".into_py_any(py).unwrap(), "z".into_py_any(py).unwrap()];
+            let expected = vec![b"x".into_py_any(py).unwrap(), b"z".into_py_any(py).unwrap()];
             assert_messages_match(py, expected, submitted.lock().unwrap().deref());
         });
     }
@@ -279,31 +289,28 @@ mod tests {
     #[test]
     fn test_header_int_filter_empty_header_dropped() {
         crate::testutils::initialize_python();
-        traced_with_gil!(|py| {
-            let submitted = Arc::new(Mutex::new(Vec::new()));
-            let submitted_clone = submitted.clone();
-            let next_step = FakeStrategy::new(submitted_clone, Arc::default(), false);
-            let mut strategy = build_header_int_filter(
-                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
-                "pid".to_string(),
-                42,
-                "test_step".to_string(),
-                Box::new(next_step),
-            );
+        let submitted = Arc::new(Mutex::new(Vec::new()));
+        let submitted_clone = submitted.clone();
+        let next_step = FakeStrategy::new(submitted_clone, Arc::default(), false);
+        let mut strategy = build_header_int_filter(
+            &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+            "pid".to_string(),
+            42,
+            "test_step".to_string(),
+            Box::new(next_step),
+        );
 
-            let msg = Message::new_any_message(
-                build_routed_value_with_headers(
-                    py,
-                    "y".into_py_any(py).unwrap(),
-                    "source1",
-                    vec!["waypoint1".to_string()],
-                    vec![("pid".to_string(), vec![])],
-                ),
-                BTreeMap::new(),
-            );
-            assert!(strategy.submit(msg).is_ok());
-            assert!(submitted.lock().unwrap().is_empty());
-        });
+        let msg = Message::new_any_message(
+            build_routed_value_with_headers(
+                b"y".to_vec(),
+                "source1",
+                vec!["waypoint1".to_string()],
+                vec![("pid".to_string(), vec![])],
+            ),
+            BTreeMap::new(),
+        );
+        assert!(strategy.submit(msg).is_ok());
+        assert!(submitted.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -314,36 +321,33 @@ mod tests {
         use sentry_arroyo::types::Partition;
         use sentry_arroyo::types::Topic;
 
-        traced_with_gil!(|py| {
-            let mut strategy = build_header_int_filter(
-                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
-                "pid".to_string(),
-                42,
-                "test_step".to_string(),
-                Box::new(FakeStrategy::new(Arc::default(), Arc::default(), false)),
-            );
+        let mut strategy = build_header_int_filter(
+            &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+            "pid".to_string(),
+            42,
+            "test_step".to_string(),
+            Box::new(FakeStrategy::new(Arc::default(), Arc::default(), false)),
+        );
 
-            let message = Message::new_broker_message(
-                build_routed_value_with_headers(
-                    py,
-                    "x".into_py_any(py).unwrap(),
-                    "source1",
-                    vec!["waypoint1".to_string()],
-                    vec![("pid".to_string(), b"not-an-int".to_vec())],
-                ),
-                Partition::new(Topic::new("topic"), 2),
-                10,
-                Utc::now(),
-            );
-            let SubmitError::InvalidMessage(InvalidMessage {
-                partition, offset, ..
-            }) = strategy.submit(message).unwrap_err()
-            else {
-                panic!("Expected SubmitError::InvalidMessage")
-            };
-            assert_eq!(partition, Partition::new(Topic::new("topic"), 2));
-            assert_eq!(offset, 10);
-        });
+        let message = Message::new_broker_message(
+            build_routed_value_with_headers(
+                b"x".to_vec(),
+                "source1",
+                vec!["waypoint1".to_string()],
+                vec![("pid".to_string(), b"not-an-int".to_vec())],
+            ),
+            Partition::new(Topic::new("topic"), 2),
+            10,
+            Utc::now(),
+        );
+        let SubmitError::InvalidMessage(InvalidMessage {
+            partition, offset, ..
+        }) = strategy.submit(message).unwrap_err()
+        else {
+            panic!("Expected SubmitError::InvalidMessage")
+        };
+        assert_eq!(partition, Partition::new(Topic::new("topic"), 2));
+        assert_eq!(offset, 10);
     }
 
     #[test]
@@ -363,8 +367,7 @@ mod tests {
 
             let msg = Message::new_any_message(
                 build_routed_value_with_headers(
-                    py,
-                    "p".into_py_any(py).unwrap(),
+                    b"p".to_vec(),
                     "s",
                     vec!["w".to_string()],
                     vec![("k".to_string(), b"-1".to_vec())],
@@ -373,8 +376,53 @@ mod tests {
             );
             assert!(strategy.submit(msg).is_ok());
 
-            let expected = vec!["p".into_py_any(py).unwrap()];
+            let expected = vec![b"p".into_py_any(py).unwrap()];
             assert_messages_match(py, expected, submitted.lock().unwrap().deref());
+        });
+    }
+
+    /// The filter branches on the payload representation, so the Python-memory form needs
+    /// its own coverage: every other test here uses the Rust form the source emits.
+    #[test]
+    fn test_header_int_filter_on_py_message() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let submitted = Arc::new(Mutex::new(Vec::new()));
+            let submitted_clone = submitted.clone();
+            let mut strategy = build_header_int_filter(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                "pid".to_string(),
+                42,
+                "test_step".to_string(),
+                Box::new(FakeStrategy::new(submitted, Arc::default(), false)),
+            );
+
+            let msg_ok = Message::new_any_message(
+                build_py_routed_value_with_headers(
+                    py,
+                    "x".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                    vec![("pid".to_string(), b"42".to_vec())],
+                ),
+                BTreeMap::new(),
+            );
+            assert!(strategy.submit(msg_ok).is_ok());
+
+            let msg_drop = Message::new_any_message(
+                build_py_routed_value_with_headers(
+                    py,
+                    "y".into_py_any(py).unwrap(),
+                    "source1",
+                    vec!["waypoint1".to_string()],
+                    vec![("pid".to_string(), b"41".to_vec())],
+                ),
+                BTreeMap::new(),
+            );
+            assert!(strategy.submit(msg_drop).is_ok());
+
+            let expected = vec!["x".into_py_any(py).unwrap()];
+            assert_messages_match(py, expected, submitted_clone.lock().unwrap().deref());
         });
     }
 
@@ -417,8 +465,7 @@ mod tests {
 
             let msg = Message::new_any_message(
                 build_routed_value_with_headers(
-                    py,
-                    "payload".into_py_any(py).unwrap(),
+                    b"payload".to_vec(),
                     "source1",
                     vec!["other".to_string()],
                     vec![],
@@ -426,7 +473,7 @@ mod tests {
                 BTreeMap::new(),
             );
             assert!(strategy.submit(msg).is_ok());
-            let expected = vec!["payload".into_py_any(py).unwrap()];
+            let expected = vec![b"payload".into_py_any(py).unwrap()];
             assert_messages_match(py, expected, submitted_clone.lock().unwrap().deref());
         });
     }

@@ -29,6 +29,9 @@ pub fn build_map(
         // adding a variant is a build failure rather than a map that silently becomes a no-op.
         let py_arg: Py<PyAny> = match &message.payload().payload {
             RoutedValuePayload::PyStreamingMessage(py_streaming_msg) => py_streaming_msg.into(),
+            // Ratchet: the map result below replaces the payload with its Python form, so a
+            // Rust message that reaches a map stays in Python memory from here on.
+            RoutedValuePayload::RustRawMessage(raw) => raw.into(),
             RoutedValuePayload::WatermarkMessage(..) => return Ok(message),
         };
 
@@ -72,9 +75,11 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::Watermark;
     use crate::routes::Route;
+    use crate::testutils::build_raw_routed_value;
     use crate::testutils::build_routed_value;
     use crate::testutils::import_py_dep;
     use crate::testutils::make_lambda;
+    use crate::testutils::RecordingStrategy;
     use crate::utils::traced_with_gil;
     use chrono::Utc;
     use pyo3::ffi::c_str;
@@ -257,6 +262,33 @@ mod tests {
             assert!(watermark_res.is_ok());
             let watermark_messages = submitted_watermarks_clone.lock().unwrap();
             assert_eq!(watermark_messages[0], Watermark::new(BTreeMap::new(), 0));
+        });
+    }
+
+    /// Map transforms the payload, so it ratchets: a Rust message goes into Python memory and
+    /// the Python form is written back for every step downstream.
+    #[test]
+    fn test_map_converts_rust_message_and_ratchets() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let (recorder, kinds) = RecordingStrategy::new();
+            let callable = make_lambda(
+                py,
+                c_str!("lambda x: x.replace_payload(x.payload + b'_transformed')"),
+            );
+            let mut strategy = build_map(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                callable,
+                Box::new(recorder),
+            );
+
+            let message = Message::new_any_message(
+                build_raw_routed_value(b"raw".to_vec(), "source1", vec!["waypoint1".to_string()]),
+                BTreeMap::new(),
+            );
+            assert!(strategy.submit(message).is_ok());
+
+            assert_eq!(kinds.lock().unwrap().deref(), &["py_raw"]);
         });
     }
 }
