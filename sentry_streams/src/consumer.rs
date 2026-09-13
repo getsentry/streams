@@ -297,7 +297,7 @@ fn to_routed_value(
         None => 0.0, // Default to 0 if no timestamp is available
     };
     let raw_message = RawMessage {
-        payload: raw_payload.to_vec(),
+        payload: raw_payload.as_slice().into(),
         headers: transformed_headers,
         timestamp,
         schema: schema.clone(),

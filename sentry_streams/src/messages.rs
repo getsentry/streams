@@ -34,6 +34,7 @@
 //!       will allow us to optimize the translation avoiding copy without
 //!       impacting each operator.
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use pyo3::types::{PyBytes, PyDict, PyInt, PyList, PyTuple};
 use pyo3::Python;
@@ -269,23 +270,27 @@ impl PyAnyMessage {
     }
 }
 
-/// Represent a message whose payload is a byte array. The payload is a Vec<u8>, not
-/// a PyBytes. Copy is needed to convert one to the other. This is meant primarily to
-/// represent the message produced by a Rust source and consumed by a Rust Sink.
+/// Represent a message whose payload is a byte array. The payload is an `Arc<[u8]>`,
+/// not a PyBytes. Copy is needed to convert one to the other. This is meant primarily
+/// to represent the message produced by a Rust source and consumed by a Rust Sink.
+///
+/// The payload is behind an `Arc` so that cloning a message (the `Broadcaster` clones
+/// one copy per downstream branch) does not copy the bytes, and so the immutability
+/// this module claims is actually enforced.
 ///
 /// TODO: With FFI there should be a way to share a byte array between Rust and Python
 ///       without copying.
 #[pyclass]
 #[derive(Debug)]
 pub struct RawMessage {
-    pub payload: Vec<u8>,
+    pub payload: Arc<[u8]>,
 
     pub headers: Vec<(String, Vec<u8>)>,
 
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub timestamp: f64,
 
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub schema: Option<String>,
 }
 
@@ -300,7 +305,7 @@ impl RawMessage {
         py: Python,
     ) -> PyResult<Self> {
         Ok(Self {
-            payload: payload.as_bytes(py).to_vec(),
+            payload: payload.as_bytes(py).into(),
             // Kafka headers are not read from the constructor; keep an empty vec.
             headers: Vec::new(),
             timestamp,
@@ -320,7 +325,7 @@ impl RawMessage {
 
     fn replace_payload(&self, new_payload: Py<PyBytes>, py: Python<'_>) -> RawMessage {
         RawMessage {
-            payload: new_payload.as_bytes(py).to_vec(),
+            payload: new_payload.as_bytes(py).into(),
             headers: self.headers.clone(),
             timestamp: self.timestamp,
             schema: self.schema.clone(),
@@ -340,7 +345,7 @@ impl RawMessage {
 }
 
 #[allow(unused)]
-pub fn replace_raw_payload(message: RawMessage, new_payload: Vec<u8>) -> RawMessage {
+pub fn replace_raw_payload(message: RawMessage, new_payload: Arc<[u8]>) -> RawMessage {
     // Replaces the payload of a `RawMessage` with a new byte array when the
     // message is managed by Rust and is not on Python memory.
     RawMessage {
@@ -406,6 +411,9 @@ impl RoutedValuePayload {
 
     /// Unwraps the `PyStreamingMessage` within the `RoutedValue` payload.
     /// If the payload is a `WatermarkMessage` this panics.
+    ///
+    /// Test-only: production code matches on every variant instead.
+    #[cfg(test)]
     pub fn unwrap_payload(&self) -> &PyStreamingMessage {
         match &self {
             RoutedValuePayload::PyStreamingMessage(payload) => payload,
@@ -547,18 +555,6 @@ impl TryFrom<Py<PyAny>> for WatermarkMessage {
     }
 }
 
-/// Represents a generic message that is in Rust memory and can be processed by Rust
-/// code without taking the Gil.
-///
-/// TODO: See the TODO at the module level. This is where we would put the message
-///       metadata.
-#[allow(unused)]
-#[derive(Debug)]
-pub enum StreamingMessage {
-    PyAnyMessage { content: PyAnyMessage },
-    RawMessage { content: RawMessage },
-}
-
 #[cfg(test)]
 mod tests {
     use pyo3::types::PyDict;
@@ -686,7 +682,7 @@ mod tests {
             assert_eq!(msg.schema, schema);
 
             // Check payload
-            assert_eq!(msg.payload, payload_bytes);
+            assert_eq!(&msg.payload[..], &payload_bytes[..]);
 
             // Check headers (constructor ignores the argument; always empty)
             assert!(msg.headers.is_empty());

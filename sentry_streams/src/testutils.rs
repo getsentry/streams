@@ -123,7 +123,7 @@ pub fn build_raw_routed_value(
         content: into_pyraw(
             py,
             RawMessage {
-                payload: msg_payload,
+                payload: msg_payload.into(),
                 headers: vec![],
                 timestamp: 0.0,
                 schema: None,
