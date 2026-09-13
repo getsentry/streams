@@ -16,6 +16,7 @@ mod metrics_config;
 mod mocks;
 mod operators;
 mod pipeline_stats;
+mod py_record_batch;
 mod python_operator;
 mod routers;
 mod routes;
@@ -50,6 +51,7 @@ fn rust_streams(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<messages::PyAnyMessage>()?;
     m.add_class::<messages::RawMessage>()?;
     m.add_class::<messages::PyWatermark>()?;
+    m.add_class::<py_record_batch::PyRecordBatch>()?;
     Ok(())
 }
 
