@@ -31,6 +31,19 @@ pub struct GCSWriter {
     auth_provider: Arc<OnceCell<Arc<dyn TokenProvider>>>,
 }
 
+/// The payload bytes to upload, or `None` for a watermark, which this step forwards untouched.
+/// Only the `PyStreamingMessage` arm takes the Gil and copies out of Python memory.
+fn payload_to_bytes(payload: &RoutedValuePayload) -> Option<Vec<u8>> {
+    match payload {
+        // Already Rust-owned bytes: no Gil, no copy out of Python.
+        RoutedValuePayload::RustRawMessage(raw) => Some(raw.payload.to_vec()),
+        RoutedValuePayload::PyStreamingMessage(py_message) => {
+            Some(traced_with_gil!(|py| pybytes_to_bytes(py_message, py)).unwrap())
+        }
+        RoutedValuePayload::WatermarkMessage(..) => None,
+    }
+}
+
 fn pybytes_to_bytes(message: &PyStreamingMessage, py: Python<'_>) -> PyResult<Vec<u8>> {
     match message {
         PyStreamingMessage::PyAnyMessage { .. } => {
@@ -93,11 +106,9 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         let actual_route = self.route.clone();
 
         let pybytes_start = std::time::Instant::now();
-        let bytes: Vec<u8> = match message.payload().payload {
-            RoutedValuePayload::PyStreamingMessage(ref py_message) => {
-                traced_with_gil!(|py| pybytes_to_bytes(py_message, py)).unwrap()
-            }
-            RoutedValuePayload::WatermarkMessage(..) => {
+        let bytes: Vec<u8> = match payload_to_bytes(&message.payload().payload) {
+            Some(bytes) => bytes,
+            None => {
                 return Box::pin(async move { Ok(message) });
             }
         };
@@ -190,19 +201,39 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 
 #[cfg(test)]
 mod tests {
-    use crate::testutils::make_raw_routed_msg;
+    use crate::testutils::{make_py_raw_routed_msg, make_raw_routed_msg};
 
     use super::*;
 
+    /// The Rust representation the source emits: no Gil, no copy out of Python.
     #[test]
     fn test_to_bytes() {
         crate::testutils::initialize_python();
+        let arroyo_msg = make_raw_routed_msg(b"hello".to_vec(), "source1", vec![]);
+        assert_eq!(
+            payload_to_bytes(&arroyo_msg.payload().payload),
+            Some(b"hello".to_vec())
+        );
+    }
+
+    /// The same payload once it has been moved into Python memory, e.g. by a Python step
+    /// upstream of this sink.
+    #[test]
+    fn test_to_bytes_py_message() {
+        crate::testutils::initialize_python();
         traced_with_gil!(|py| {
-            let arroyo_msg = make_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
+            let arroyo_msg = make_py_raw_routed_msg(py, b"hello".to_vec(), "source1", vec![]);
             assert_eq!(
-                pybytes_to_bytes(arroyo_msg.payload().payload.unwrap_payload(), py).unwrap(),
-                b"hello".to_vec()
+                payload_to_bytes(&arroyo_msg.payload().payload),
+                Some(b"hello".to_vec())
             );
         });
+    }
+
+    #[test]
+    fn test_to_bytes_watermark_is_forwarded() {
+        let payload =
+            RoutedValuePayload::make_watermark_payload(std::collections::BTreeMap::new(), 0, None);
+        assert_eq!(payload_to_bytes(&payload), None);
     }
 }

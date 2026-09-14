@@ -1,8 +1,9 @@
-//! Batches streaming messages on a route. [`Batch`] stores [`PyStreamingMessage`] values; `PyAnyMessage`
-//! and `RawMessage` may appear in the same window. On flush, output is a single `PyAnyMessage` whose
-//! `payload` is a Python `list` with one item per element (each item is the row’s Python payload for
-//! `PyAnyMessage`, or `bytes` for `RawMessage`). The batched `schema` is taken from the first
-//! element. Watermark handling and backpressure are unchanged.
+//! Batches streaming messages on a route. [`Batch`] stores [`RoutedValuePayload`] values, so a
+//! Rust-owned `RustRawMessage` stays in Rust memory for the whole window; `RustRawMessage`,
+//! `PyAnyMessage` and `RawMessage` may appear in the same window. On flush, output is a single
+//! `PyAnyMessage` whose `payload` is a Python `list` with one item per element (each item is the
+//! row's Python payload for `PyAnyMessage`, or `bytes` for the two raw variants). The batched
+//! `schema` is taken from the first element. Watermark handling and backpressure are unchanged.
 //!
 //! The GIL is taken only to build the list on flush (after [`Message::into_payload`] in submit).
 use crate::messages::{into_pyany, PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
@@ -32,29 +33,57 @@ const METRIC_BATCH_SUBMIT_REJECTED: &str = "streams.pipeline.batch.submit_reject
 /// aggregate rejections instead of emitting one per attempt.
 const REJECTED_DEBOUNCE_INTERVAL: Duration = Duration::from_secs(3);
 
-fn first_element_schema(py: Python<'_>, first: &PyStreamingMessage) -> Option<String> {
+/// Panic message used by the arms that a watermark can never reach: [`BatchStep::submit`]
+/// routes watermarks to the watermark buffer, they never become batch elements.
+const WATERMARK_IN_BATCH: &str = "BatchStep: a watermark is never stored as a batch element";
+
+/// Reads the element's schema. Only the `PyStreamingMessage` arms take the Gil.
+fn element_schema(py: Python<'_>, first: &RoutedValuePayload) -> Option<String> {
     match first {
-        PyStreamingMessage::PyAnyMessage { content } => content.bind(py).borrow().schema.clone(),
-        PyStreamingMessage::RawMessage { content } => content.bind(py).borrow().schema.clone(),
+        RoutedValuePayload::RustRawMessage(raw) => raw.schema.clone(),
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage { content }) => {
+            content.bind(py).borrow().schema.clone()
+        }
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { content }) => {
+            content.bind(py).borrow().schema.clone()
+        }
+        RoutedValuePayload::WatermarkMessage(..) => unreachable!("{WATERMARK_IN_BATCH}"),
+    }
+}
+
+/// Reads the element's logical timestamp. Only the `PyStreamingMessage` arms take the Gil.
+fn element_timestamp(py: Python<'_>, element: &RoutedValuePayload) -> f64 {
+    match element {
+        RoutedValuePayload::RustRawMessage(raw) => raw.timestamp,
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage { content }) => {
+            content.bind(py).borrow().timestamp
+        }
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { content }) => {
+            content.bind(py).borrow().timestamp
+        }
+        RoutedValuePayload::WatermarkMessage(..) => unreachable!("{WATERMARK_IN_BATCH}"),
     }
 }
 
 /// Returns the Python object to be added to the produced batch. This is
 /// the Python object that contains the payload of the message.
-fn list_item_for_streaming_message(
-    py: Python<'_>,
-    pysm: &PyStreamingMessage,
-) -> PyResult<Py<PyAny>> {
-    match pysm {
-        PyStreamingMessage::PyAnyMessage { content } => {
+fn list_item_for_element(py: Python<'_>, element: &RoutedValuePayload) -> PyResult<Py<PyAny>> {
+    match element {
+        RoutedValuePayload::RustRawMessage(raw) => {
+            // This is where a Rust-owned payload finally enters Python memory: the batch is
+            // only consumed by Python today, so flush copies the bytes across.
+            Ok(PyBytes::new(py, &raw.payload).into_any().unbind())
+        }
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage { content }) => {
             Ok(content.bind(py).borrow().payload.clone_ref(py))
         }
-        PyStreamingMessage::RawMessage { content } => {
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { content }) => {
             // RawMessages payload is turned into a Python bytes object as
             // we do not have a native Rust batch message.
             let p = &content.bind(py).borrow().payload;
             Ok(PyBytes::new(py, p).into_any().unbind())
         }
+        RoutedValuePayload::WatermarkMessage(..) => unreachable!("{WATERMARK_IN_BATCH}"),
     }
 }
 
@@ -67,7 +96,7 @@ pub(crate) struct Batch {
     batch_deadline: Option<Deadline>,
     /// Wall time when the first element opened this batch window.
     created_at: Instant,
-    elements: Vec<PyStreamingMessage>,
+    elements: Vec<RoutedValuePayload>,
     batch_offsets: BTreeMap<Partition, u64>,
 }
 
@@ -81,7 +110,7 @@ impl Batch {
         // Keeps track of the highest offset for each partition. This represent the committable
         // we will return when the batch is flushed.
         committable: BTreeMap<Partition, u64>,
-        first: PyStreamingMessage,
+        first: RoutedValuePayload,
     ) -> Self {
         let mut batch_offsets: BTreeMap<Partition, u64> = BTreeMap::new();
         for (p, o) in committable {
@@ -101,14 +130,14 @@ impl Batch {
         }
     }
 
-    pub fn append(&mut self, committable: BTreeMap<Partition, u64>, pysm: PyStreamingMessage) {
+    pub fn append(&mut self, committable: BTreeMap<Partition, u64>, element: RoutedValuePayload) {
         for (p, o) in committable {
             self.batch_offsets
                 .entry(p)
                 .and_modify(|e| *e = (*e).max(o))
                 .or_insert(o);
         }
-        self.elements.push(pysm);
+        self.elements.push(element);
     }
 
     pub fn is_empty(&self) -> bool {
@@ -149,14 +178,7 @@ impl Batch {
         traced_with_gil!(|py| {
             let mut min_t: Option<f64> = None;
             for el in &self.elements {
-                let t = match el {
-                    PyStreamingMessage::PyAnyMessage { content } => {
-                        content.bind(py).borrow().timestamp
-                    }
-                    PyStreamingMessage::RawMessage { content } => {
-                        content.bind(py).borrow().timestamp
-                    }
-                };
+                let t = element_timestamp(py, el);
                 min_t = Some(min_t.map_or(t, |m| m.min(t)));
             }
             min_t
@@ -172,11 +194,11 @@ impl Batch {
             .unwrap_or(0.0);
 
         let content = traced_with_gil!(|py| -> PyResult<Py<PyAnyMessage>> {
-            let first_schema = first_element_schema(py, &self.elements[0]);
+            let first_schema = element_schema(py, &self.elements[0]);
             let py_items: Result<Vec<Py<PyAny>>, _> = self
                 .elements
                 .iter()
-                .map(|el| list_item_for_streaming_message(py, el))
+                .map(|el| list_item_for_element(py, el))
                 .collect();
             let py_items = py_items.map_err(|e: PyErr| e)?;
             let list = PyList::new(py, &py_items)?.unbind();
@@ -494,20 +516,23 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
                 ));
                 Ok(())
             }
-            RoutedValuePayload::PyStreamingMessage(pysm) => {
+            // Both data variants are stored as they arrive: a Rust payload is not converted
+            // on the way into the window, only on flush.
+            element @ (RoutedValuePayload::PyStreamingMessage(..)
+            | RoutedValuePayload::RustRawMessage(..)) => {
                 if self.batch.is_none() {
                     self.batch = Some(Batch::from_initial(
                         self.route.clone(),
                         self.max_batch_size,
                         self.max_batch_time,
                         committable,
-                        pysm,
+                        element,
                     ));
                 } else {
                     self.batch
                         .as_mut()
                         .expect("open batch")
-                        .append(committable, pysm);
+                        .append(committable, element);
                 }
                 get_stats().step_exec(&self.step_name);
                 Ok(())
@@ -551,7 +576,9 @@ mod tests {
         use crate::batch_step::Batch;
         use crate::messages::{PyStreamingMessage, RoutedValuePayload};
         use crate::routes::{Route, RoutedValue};
-        use crate::testutils::{build_raw_routed_value, build_routed_value};
+        use crate::testutils::{
+            build_py_raw_routed_value, build_raw_routed_value, build_routed_value, payload_kind,
+        };
         use crate::utils::traced_with_gil;
         use chrono::Utc;
         use pyo3::prelude::*;
@@ -564,16 +591,17 @@ mod tests {
             Route::new("s".into(), vec!["w".into()])
         }
 
-        /// Same decomposition as [`BatchStep::submit`]: committable map + owned streaming row.
-        fn committable_and_streaming(
+        /// Same decomposition as [`BatchStep::submit`]: committable map + owned batch element.
+        fn committable_and_element(
             message: Message<RoutedValue>,
-        ) -> (BTreeMap<Partition, u64>, PyStreamingMessage) {
+        ) -> (BTreeMap<Partition, u64>, RoutedValuePayload) {
             let c = message.committable().collect();
             let rv = message.into_payload();
-            let RoutedValuePayload::PyStreamingMessage(s) = rv.payload else {
-                panic!("test expects PyStreamingMessage");
-            };
-            (c, s)
+            assert!(
+                !rv.payload.is_watermark_msg(),
+                "test expects a data message"
+            );
+            (c, rv.payload)
         }
 
         #[test]
@@ -591,9 +619,9 @@ mod tests {
                     build_routed_value(py, p2, "s", vec!["w".into()]),
                     BTreeMap::from([(part, 2u64)]),
                 );
-                let (c1, el1) = committable_and_streaming(m1);
+                let (c1, el1) = committable_and_element(m1);
                 let mut b = Batch::from_initial(r.clone(), Some(2), None, c1, el1);
-                let (c2, el2) = committable_and_streaming(m2);
+                let (c2, el2) = committable_and_element(m2);
                 b.append(c2, el2);
                 let msg = b.flush().expect("build");
                 assert!(
@@ -620,16 +648,16 @@ mod tests {
                 let r = route();
                 let part = Partition::new(Topic::new("t"), 0);
                 let m1 = Message::new_any_message(
-                    build_raw_routed_value(py, vec![1, 2], "s", vec!["w".into()]),
+                    build_raw_routed_value(vec![1, 2], "s", vec!["w".into()]),
                     BTreeMap::from([(part, 1u64)]),
                 );
                 let m2 = Message::new_any_message(
-                    build_raw_routed_value(py, vec![3], "s", vec!["w".into()]),
+                    build_raw_routed_value(vec![3], "s", vec!["w".into()]),
                     BTreeMap::from([(part, 2u64)]),
                 );
-                let (c1, el1) = committable_and_streaming(m1);
+                let (c1, el1) = committable_and_element(m1);
                 let mut b = Batch::from_initial(r, Some(2), None, c1, el1);
-                let (c2, el2) = committable_and_streaming(m2);
+                let (c2, el2) = committable_and_element(m2);
                 b.append(c2, el2);
                 let msg = b.flush().expect("build");
                 let RoutedValuePayload::PyStreamingMessage(pysm) = &msg.payload().payload else {
@@ -660,6 +688,67 @@ mod tests {
             });
         }
 
+        /// All three data representations can share one window. The Rust rows stay in Rust
+        /// memory until flush, which is the only place the batch enters Python.
+        #[test]
+        fn flush_mixes_rust_and_python_elements() {
+            crate::testutils::initialize_python();
+            traced_with_gil!(|py| {
+                let r = route();
+                let part = Partition::new(Topic::new("t"), 0);
+                let rows = [
+                    build_raw_routed_value(vec![1], "s", vec!["w".into()]),
+                    build_py_raw_routed_value(py, vec![2], "s", vec!["w".into()]),
+                    build_routed_value(
+                        py,
+                        PyBytes::new(py, &[3]).into_any().unbind(),
+                        "s",
+                        vec!["w".into()],
+                    ),
+                ];
+                assert_eq!(
+                    rows.iter()
+                        .map(|rv| payload_kind(&rv.payload))
+                        .collect::<Vec<_>>(),
+                    vec!["rust_raw", "py_raw", "py_any"],
+                    "the window has to hold one of each representation"
+                );
+
+                let mut batch: Option<Batch> = None;
+                for (offset, rv) in rows.into_iter().enumerate() {
+                    let (c, el) = committable_and_element(Message::new_any_message(
+                        rv,
+                        BTreeMap::from([(part, offset as u64)]),
+                    ));
+                    match batch.as_mut() {
+                        None => batch = Some(Batch::from_initial(r.clone(), Some(3), None, c, el)),
+                        Some(b) => b.append(c, el),
+                    }
+                }
+
+                let msg = batch.expect("open batch").flush().expect("build");
+                let RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
+                    content,
+                }) = &msg.payload().payload
+                else {
+                    panic!("batched output is always PyAnyMessage with list");
+                };
+                let pl = content.bind(py).getattr("payload").unwrap();
+                let list = pl.cast::<PyList>().unwrap();
+                assert_eq!(list.len(), 3);
+                for (i, expected) in [1u8, 2, 3].iter().enumerate() {
+                    let item: Vec<u8> = list
+                        .get_item(i)
+                        .unwrap()
+                        .cast::<PyBytes>()
+                        .unwrap()
+                        .as_bytes()
+                        .to_vec();
+                    assert_eq!(item, vec![*expected]);
+                }
+            });
+        }
+
         #[test]
         fn append_merges_max_per_partition() {
             traced_with_gil!(|py| {
@@ -677,9 +766,9 @@ mod tests {
                     9,
                     Utc::now(),
                 );
-                let (c1, el1) = committable_and_streaming(m1);
+                let (c1, el1) = committable_and_element(m1);
                 let mut b = Batch::from_initial(r, None, None, c1, el1);
-                let (c2, el2) = committable_and_streaming(m2);
+                let (c2, el2) = committable_and_element(m2);
                 b.append(c2, el2);
                 let snap = b.current_offsets_snapshot();
                 assert_eq!(snap.get(&part).copied(), Some(10u64));
@@ -701,10 +790,10 @@ mod tests {
                     build_routed_value(py, p2, "s", vec!["w".into()]),
                     BTreeMap::from([(part, 1u64)]),
                 );
-                let (c1, el1) = committable_and_streaming(m1);
+                let (c1, el1) = committable_and_element(m1);
                 let mut b = Batch::from_initial(r, Some(2), None, c1, el1);
                 assert!(!b.should_flush(), "one element, limit 2");
-                let (c2, el2) = committable_and_streaming(m2);
+                let (c2, el2) = committable_and_element(m2);
                 b.append(c2, el2);
                 assert!(b.should_flush(), "two elements, limit 2");
             });
@@ -810,7 +899,7 @@ mod tests {
                     Utc::now(),
                 );
                 let raw_m = Message::new_broker_message(
-                    build_raw_routed_value(py, vec![1, 2, 3], "s", vec!["w".into()]),
+                    build_raw_routed_value(vec![1, 2, 3], "s", vec!["w".into()]),
                     part,
                     2,
                     Utc::now(),
@@ -833,7 +922,7 @@ mod tests {
                     BTreeMap::from([(part, 1u64)]),
                 );
                 let raw_m = Message::new_any_message(
-                    build_raw_routed_value(py, vec![1, 2, 3], "s", vec!["w".into()]),
+                    build_raw_routed_value(vec![1, 2, 3], "s", vec!["w".into()]),
                     BTreeMap::from([(part, 2u64)]),
                 );
                 step.submit(any_m).unwrap();

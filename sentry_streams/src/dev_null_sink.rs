@@ -191,14 +191,14 @@ mod tests {
             None, // max_sleep_time_ms
         );
 
-        traced_with_gil!(|py| {
+        traced_with_gil!(|_py| {
             // Message that matches the route should be discarded
             let matching_message =
-                make_raw_routed_msg(py, b"test1".to_vec(), "source", vec!["wp1".to_string()]);
+                make_raw_routed_msg(b"test1".to_vec(), "source", vec!["wp1".to_string()]);
             sink.submit(matching_message).unwrap();
 
             // Message that doesn't match should be forwarded
-            let non_matching_message = make_raw_routed_msg(py, b"test2".to_vec(), "source", vec![]);
+            let non_matching_message = make_raw_routed_msg(b"test2".to_vec(), "source", vec![]);
             sink.submit(non_matching_message).unwrap();
 
             sink.join(None).unwrap();
@@ -268,11 +268,11 @@ mod tests {
             Some(2.0), // max_sleep_time_ms (2ms)
         );
 
-        traced_with_gil!(|py| {
+        traced_with_gil!(|_py| {
             // Submit messages that match the route
             for _ in 0..3 {
                 let message =
-                    make_raw_routed_msg(py, b"test".to_vec(), "source", vec!["wp1".to_string()]);
+                    make_raw_routed_msg(b"test".to_vec(), "source", vec!["wp1".to_string()]);
                 sink.submit(message).unwrap();
             }
 
@@ -306,10 +306,9 @@ mod tests {
             Some(2.0),  // max_sleep_time_ms (2ms)
         );
 
-        traced_with_gil!(|py| {
+        traced_with_gil!(|_py| {
             // Submit one message
-            let message =
-                make_raw_routed_msg(py, b"test".to_vec(), "source", vec!["wp1".to_string()]);
+            let message = make_raw_routed_msg(b"test".to_vec(), "source", vec!["wp1".to_string()]);
             sink.submit(message).unwrap();
 
             assert_eq!(sink.current_batch_size, 1);
@@ -341,11 +340,11 @@ mod tests {
             None, // max_sleep_time_ms
         );
 
-        traced_with_gil!(|py| {
+        traced_with_gil!(|_py| {
             // Submit messages
             for _ in 0..10 {
                 let message =
-                    make_raw_routed_msg(py, b"test".to_vec(), "source", vec!["wp1".to_string()]);
+                    make_raw_routed_msg(b"test".to_vec(), "source", vec!["wp1".to_string()]);
                 sink.submit(message).unwrap();
             }
 

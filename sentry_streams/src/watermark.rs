@@ -103,12 +103,24 @@ impl ProcessingStrategy<RoutedValue> for WatermarkEmitter {
 
     fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
         self.merge_watermark_committable(&message);
-        if let RoutedValuePayload::PyStreamingMessage(ref sm) = &message.payload().payload {
-            let ts = traced_with_gil!(|py| match sm {
-                PyStreamingMessage::PyAnyMessage { content } => content.bind(py).borrow().timestamp,
-                PyStreamingMessage::RawMessage { content } => content.bind(py).borrow().timestamp,
-            });
-            self.last_data_message_time = Some(ts);
+        // Exhaustive on purpose: every `RoutedValuePayload` variant has to be spelled out so
+        // adding a variant is a build failure rather than a silently skipped timestamp update.
+        match &message.payload().payload {
+            RoutedValuePayload::PyStreamingMessage(sm) => {
+                let ts = traced_with_gil!(|py| match sm {
+                    PyStreamingMessage::PyAnyMessage { content } =>
+                        content.bind(py).borrow().timestamp,
+                    PyStreamingMessage::RawMessage { content } =>
+                        content.bind(py).borrow().timestamp,
+                });
+                self.last_data_message_time = Some(ts);
+            }
+            // The source emits this variant, so on a pipeline with a Rust step first this
+            // is the arm 100% of the traffic takes. Reading the timestamp takes no Gil.
+            RoutedValuePayload::RustRawMessage(raw) => {
+                self.last_data_message_time = Some(raw.timestamp);
+            }
+            RoutedValuePayload::WatermarkMessage(..) => {}
         }
         self.next_step.submit(message)
     }
@@ -136,7 +148,11 @@ mod tests {
     use crate::mocks::set_timestamp;
     use crate::operators::RuntimeOperator;
     use crate::routes::Route;
-    use crate::testutils::{build_routed_value, make_committable, make_lambda, make_msg};
+    use crate::testutils::{
+        build_raw_routed_value_with_timestamp, build_routed_value,
+        build_routed_value_with_timestamp, make_committable, make_lambda, make_msg,
+        RecordingStrategy,
+    };
     use crate::utils::traced_with_gil;
     use pyo3::ffi::c_str;
     use pyo3::prelude::*;
@@ -354,6 +370,63 @@ class PassthroughDelegateFactory:
                 })
             );
             set_timestamp(0);
+        });
+    }
+
+    /// The watermark step runs before any filter, on 100% of the traffic. It must read the
+    /// timestamp of a Rust message natively, without moving it into Python memory.
+    #[test]
+    fn test_watermark_reads_rust_message_timestamp() {
+        crate::testutils::initialize_python();
+        let (recorder, kinds) = RecordingStrategy::new();
+        let mut watermark = WatermarkEmitter::new(
+            Box::new(recorder),
+            Route {
+                source: String::from("source"),
+                waypoints: vec![],
+            },
+            10,
+        );
+
+        let message = Message::new_any_message(
+            build_raw_routed_value_with_timestamp(b"raw".to_vec(), "source", vec![], 12.5),
+            make_committable(1, 1),
+        );
+        assert!(watermark.submit(message).is_ok());
+
+        assert_eq!(watermark.last_data_message_time, Some(12.5));
+        assert_eq!(kinds.lock().unwrap().deref(), &["rust_raw"]);
+    }
+
+    /// The same read for a message that already lives in Python memory.
+    #[test]
+    fn test_watermark_reads_py_message_timestamp() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let (recorder, kinds) = RecordingStrategy::new();
+            let mut watermark = WatermarkEmitter::new(
+                Box::new(recorder),
+                Route {
+                    source: String::from("source"),
+                    waypoints: vec![],
+                },
+                10,
+            );
+
+            let message = Message::new_any_message(
+                build_routed_value_with_timestamp(
+                    py,
+                    "m".into_py_any(py).unwrap(),
+                    "source",
+                    vec![],
+                    7.25,
+                ),
+                make_committable(1, 1),
+            );
+            assert!(watermark.submit(message).is_ok());
+
+            assert_eq!(watermark.last_data_message_time, Some(7.25));
+            assert_eq!(kinds.lock().unwrap().deref(), &["py_any"]);
         });
     }
 }

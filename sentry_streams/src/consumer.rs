@@ -7,7 +7,7 @@
 
 use crate::commit_policy::WatermarkCommitOffsets;
 use crate::kafka_config::{PyKafkaConsumerConfig, PyKafkaProducerConfig};
-use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
+use crate::messages::{RawMessage, RoutedValuePayload};
 use crate::metrics::configure_metrics;
 use crate::metrics_config::PyMetricConfig;
 use crate::operators::build;
@@ -259,8 +259,9 @@ pub fn build_dlq_policy(
 /// the `Route` object that represent the path the message took when
 /// going through branches.
 /// The message coming from Kafka is a Message<KafkaPayload>, so we need
-/// to turn the content into PyBytes for python to manage the content
-/// and we need to wrap the message into a RoutedValue object.
+/// to wrap the message into a RoutedValue object. The payload stays in Rust
+/// memory; it is moved into Python only by the first step that hands it to
+/// Python code.
 fn to_routed_value(
     source: &str,
     message: Message<KafkaPayload>,
@@ -297,19 +298,18 @@ fn to_routed_value(
         None => 0.0, // Default to 0 if no timestamp is available
     };
     let raw_message = RawMessage {
-        payload: raw_payload.to_vec(),
+        payload: raw_payload.as_slice().into(),
         headers: transformed_headers,
         timestamp,
         schema: schema.clone(),
     };
-    let py_msg = traced_with_gil!(|py| PyStreamingMessage::RawMessage {
-        content: into_pyraw(py, raw_message).unwrap(),
-    });
-
+    // The message stays in Rust memory. Steps that can work natively (watermark, the header
+    // filter, batch, the sinks) never take the Gil for it; a message dropped before it reaches
+    // any Python code never enters Python memory at all.
     let route = Route::new(source.to_string(), vec![]);
     message.replace(RoutedValue {
         route,
-        payload: RoutedValuePayload::PyStreamingMessage(py_msg),
+        payload: RoutedValuePayload::RustRawMessage(raw_message),
     })
 }
 
@@ -436,9 +436,11 @@ mod tests {
     use crate::routes::Route;
     use crate::testutils::make_lambda;
     use crate::testutils::make_msg;
+    use crate::testutils::RecordingStrategy;
     use pyo3::ffi::c_str;
-    use pyo3::types::PyBytes;
     use pyo3::IntoPyObjectExt;
+    use sentry_arroyo::backends::kafka::types::Headers;
+    use sentry_arroyo::types::Partition;
     use std::collections::BTreeMap;
     use std::collections::HashMap;
     use std::ops::Deref;
@@ -447,55 +449,41 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
+    /// Reads the payload of a `RoutedValue` the source produced, asserting it never left
+    /// Rust memory on the way.
+    fn rust_payload(value: &RoutedValue) -> &RawMessage {
+        match &value.payload {
+            RoutedValuePayload::RustRawMessage(raw) => raw,
+            other => panic!(
+                "the source must emit a Rust-owned message, got {}",
+                crate::testutils::payload_kind(other)
+            ),
+        }
+    }
+
     #[test]
     fn test_to_routed_value() {
         crate::testutils::initialize_python();
-        traced_with_gil!(|py| {
-            let payload_data = b"test_payload";
-            let message = make_msg(Some(payload_data.to_vec()), BTreeMap::new());
+        let payload_data = b"test_payload";
+        let message = make_msg(Some(payload_data.to_vec()), BTreeMap::new());
 
-            let python_message = to_routed_value("source", message, &Some("schema".to_string()));
+        let routed = to_routed_value("source", message, &Some("schema".to_string()));
 
-            let msg_payload = python_message.payload();
-            let py_payload = msg_payload.payload.unwrap_payload();
+        let msg_payload = routed.payload();
+        let raw = rust_payload(msg_payload);
+        assert_eq!(&raw.payload[..], payload_data);
+        assert_eq!(raw.schema.as_deref(), Some("schema"));
 
-            if let PyStreamingMessage::RawMessage { ref content } = py_payload {
-                let payload = content.getattr(py, "payload").unwrap();
-                let down: &Bound<PyBytes> = payload.bind(py).cast().unwrap();
-                let payload_bytes: &[u8] = down.as_bytes();
-                assert_eq!(payload_bytes, payload_data);
-            } else {
-                panic!("Expected RawMessage, got PyAnyMessage");
-            }
-
-            assert_eq!(msg_payload.route.source, "source");
-            assert_eq!(msg_payload.route.waypoints.len(), 0);
-        });
+        assert_eq!(msg_payload.route.source, "source");
+        assert_eq!(msg_payload.route.waypoints.len(), 0);
     }
 
     #[test]
     fn test_to_none_python() {
         crate::testutils::initialize_python();
-        traced_with_gil!(|py| {
-            let message = make_msg(None, BTreeMap::new());
-            let python_message = to_routed_value("source", message, &Some("schema".to_string()));
-            let msg_payload = &python_message.payload();
-            let py_payload = msg_payload.payload.unwrap_payload();
-
-            if let PyStreamingMessage::RawMessage { content } = py_payload {
-                let bytes = content
-                    .getattr(py, "payload")
-                    .unwrap()
-                    .bind(py)
-                    .cast::<PyBytes>()
-                    .unwrap()
-                    .as_bytes()
-                    .to_vec();
-                assert_eq!(bytes, Vec::<u8>::new());
-            } else {
-                panic!("Expected RawMessage, got PyAnyMessage");
-            }
-        });
+        let message = make_msg(None, BTreeMap::new());
+        let routed = to_routed_value("source", message, &Some("schema".to_string()));
+        assert_eq!(&rust_payload(routed.payload()).payload[..], b"");
     }
 
     #[test]
@@ -562,6 +550,108 @@ mod tests {
             );
             let _ = std::fs::remove_file(healthcheck_path);
         })
+    }
+
+    /// A message the header filter drops must never enter Python memory, and one it keeps must
+    /// still be Rust-owned when it reaches the next step. Python is entered only at the batch
+    /// flush, which builds the `PyList` the downstream Python code consumes.
+    #[test]
+    fn test_build_chain_keeps_payload_out_of_python_until_batch_flush() {
+        crate::testutils::initialize_python();
+
+        fn msg_with_pid(payload: &[u8], pid: &[u8], offset: u64) -> Message<KafkaPayload> {
+            let headers = Headers::new().insert("pid", Some(pid.to_vec()));
+            Message::new_any_message(
+                KafkaPayload::new(None, Some(headers), Some(payload.to_vec())),
+                BTreeMap::from([(Partition::new(Topic::new("t"), 0), offset)]),
+            )
+        }
+
+        fn header_filter_step(py: Python<'_>) -> Py<RuntimeOperator> {
+            Py::new(
+                py,
+                RuntimeOperator::HeaderFilter {
+                    route: Route::new("source".to_string(), vec![]),
+                    step_name: "header_filter".to_string(),
+                    header_name: "pid".to_string(),
+                    expected_value: 42,
+                },
+            )
+            .unwrap()
+        }
+
+        fn chain_of(
+            steps: &[Py<RuntimeOperator>],
+        ) -> (
+            Box<dyn ProcessingStrategy<KafkaPayload>>,
+            Arc<Mutex<Vec<&'static str>>>,
+        ) {
+            let (recorder, kinds) = RecordingStrategy::new();
+            let chain = build_chain(
+                "source",
+                steps,
+                Box::new(recorder),
+                &ConcurrencyConfig::new(1),
+                &HashMap::new(),
+                &None,
+                false,
+            );
+            (chain, kinds)
+        }
+
+        /// What the chain forwarded, minus the watermarks the emitter injects on poll.
+        fn data_kinds(kinds: &Arc<Mutex<Vec<&'static str>>>) -> Vec<&'static str> {
+            kinds
+                .lock()
+                .unwrap()
+                .iter()
+                .copied()
+                .filter(|k| *k != "watermark")
+                .collect()
+        }
+
+        // source -> header_filter: what the filter forwards is what the next step sees.
+        let steps = traced_with_gil!(|py| vec![header_filter_step(py)]);
+        let (mut chain, kinds) = chain_of(&steps);
+
+        chain.submit(msg_with_pid(b"dropped", b"7", 1)).unwrap();
+        assert!(
+            data_kinds(&kinds).is_empty(),
+            "a filtered-out message must not reach the next step"
+        );
+
+        chain.submit(msg_with_pid(b"kept", b"42", 2)).unwrap();
+        assert_eq!(
+            data_kinds(&kinds),
+            vec!["rust_raw"],
+            "the payload must still be Rust-owned after source, watermark and header filter"
+        );
+
+        // source -> header_filter -> batch: the flush is where the payload enters Python.
+        let steps = traced_with_gil!(|py| {
+            vec![
+                header_filter_step(py),
+                Py::new(
+                    py,
+                    RuntimeOperator::Batch {
+                        route: Route::new("source".to_string(), vec![]),
+                        step_name: "batch".to_string(),
+                        max_batch_size: Some(1),
+                        max_batch_time_ms: None,
+                    },
+                )
+                .unwrap(),
+            ]
+        });
+        let (mut chain, kinds) = chain_of(&steps);
+
+        chain.submit(msg_with_pid(b"kept", b"42", 3)).unwrap();
+        let _ = chain.poll();
+        assert_eq!(
+            data_kinds(&kinds),
+            vec!["py_any"],
+            "the flushed batch is the only Python object downstream"
+        );
     }
 
     #[test]

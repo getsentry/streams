@@ -105,6 +105,12 @@ fn to_kafka_payload(message: Message<RoutedValue>) -> Message<KafkaPayload> {
         RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage { .. }) => {
             panic!("PyAnyMessage is not supported in KafkaPayload conversion");
         }
+        // No Gil and no copy out of Python: the bytes are already Rust-owned.
+        RoutedValuePayload::RustRawMessage(ref raw) => {
+            let mut headers = Headers::new();
+            headers = headers.insert("is_watermark", Some(vec![0]));
+            KafkaPayload::new(None, Some(headers), Some(raw.payload.to_vec()))
+        }
         RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { ref content }) => {
             traced_with_gil!(|py| {
                 let payload_content = content.bind(py).getattr("payload").unwrap();
@@ -270,7 +276,7 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::{RoutedValuePayload, Watermark};
     use crate::routes::Route;
-    use crate::testutils::make_raw_routed_msg;
+    use crate::testutils::{make_py_raw_routed_msg, make_raw_routed_msg};
     use crate::utils::traced_with_gil;
     use sentry_arroyo::backends::local::broker::LocalBroker;
 
@@ -330,20 +336,17 @@ mod tests {
     #[test]
     fn test_kafka_payload() {
         crate::testutils::initialize_python();
-        traced_with_gil!(|py| {
-            let message = make_raw_routed_msg(
-                py,
-                "test_message".as_bytes().to_vec(),
-                "source",
-                vec!["waypoint1".to_string()],
-            );
-            let kafka_payload = to_kafka_payload(message);
-            let py_payload = kafka_payload.payload();
+        let message = make_raw_routed_msg(
+            "test_message".as_bytes().to_vec(),
+            "source",
+            vec!["waypoint1".to_string()],
+        );
+        let kafka_payload = to_kafka_payload(message);
+        let py_payload = kafka_payload.payload();
 
-            let kafka_payload = py_payload.payload();
-            assert!(kafka_payload.is_some());
-            assert_eq!(kafka_payload.unwrap(), b"test_message");
-        });
+        let kafka_payload = py_payload.payload();
+        assert!(kafka_payload.is_some());
+        assert_eq!(kafka_payload.unwrap(), b"test_message");
 
         let watermark_payload = Watermark::new(
             BTreeMap::from([
@@ -439,7 +442,7 @@ mod tests {
 
         traced_with_gil!(|py| {
             let value = b"test_message";
-            let message = make_raw_routed_msg(py, value.to_vec(), "source", vec![]);
+            let message = make_raw_routed_msg(value.to_vec(), "source", vec![]);
             sink.submit(message).unwrap();
             sink.join(None).unwrap();
 
@@ -451,13 +454,29 @@ mod tests {
 
             // Try to send to the producer
             // No new message on the next strategy.
-            let message =
-                make_raw_routed_msg(py, value.to_vec(), "source", vec!["wp1".to_string()]);
+            let message = make_raw_routed_msg(value.to_vec(), "source", vec!["wp1".to_string()]);
             sink.submit(message).unwrap();
             sink.poll().unwrap();
             let expected_messages = vec![PyBytes::new(py, b"test_message").into_any().unbind()];
             let actual_messages = submitted_messages_clone.lock().unwrap();
             assert_messages_match(py, expected_messages, actual_messages.deref());
+        });
+    }
+
+    /// The same payload once a Python step has moved it into Python memory: the sink reads it
+    /// back out through the Gil.
+    #[test]
+    fn test_kafka_payload_from_py_message() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let message = make_py_raw_routed_msg(
+                py,
+                "test_message".as_bytes().to_vec(),
+                "source",
+                vec!["waypoint1".to_string()],
+            );
+            let kafka_payload = to_kafka_payload(message);
+            assert_eq!(kafka_payload.payload().payload().unwrap(), b"test_message");
         });
     }
 }

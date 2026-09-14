@@ -2,6 +2,7 @@ use super::*;
 use crate::messages::{PyStreamingMessage, RoutedValuePayload, Watermark, WatermarkMessage};
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
+use pyo3::types::PyBytes;
 
 use sentry_arroyo::processing::strategies::{
     merge_commit_request, CommitRequest, InvalidMessage, InvalidMessageReason, MessageRejected,
@@ -79,6 +80,12 @@ impl ProcessingStrategy<RoutedValue> for FakeStrategy {
                     }
                     WatermarkMessage::PyWatermark(..) => (),
                 },
+                RoutedValuePayload::RustRawMessage(raw) => {
+                    traced_with_gil!(|py| {
+                        let msg = PyBytes::new(py, &raw.payload).into_any().unbind();
+                        self.submitted.lock().unwrap().push(msg);
+                    });
+                }
                 RoutedValuePayload::PyStreamingMessage(py_payload) => {
                     traced_with_gil!(|py| {
                         let msg = match py_payload {
