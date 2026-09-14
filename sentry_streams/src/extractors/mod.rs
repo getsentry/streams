@@ -1,4 +1,8 @@
 //! Hand-written protobuf -> Arrow extractors, one per message type.
+//! This is meant to exist for the PoC, if this works we will need a better
+//! way for the rust code to generate the Arrow schema from the protobuf message
+//! definitions. This may be done by exposing the protobuf definitions from
+//! sentry proto.
 //!
 //! Each extractor owns a hardcoded Arrow schema and knows how to turn a batch of
 //! encoded payloads into a `RecordBatch`. This is the PoC trade recorded in

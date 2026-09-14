@@ -155,6 +155,12 @@ Phases 1 and 2 are independent and may run in parallel. 3 depends on 0; 4 on 1+2
 `get_schema("snuba-items", None).unwrap().raw_schema()` equals
 `"sentry_protos.snuba.v1.trace_item_pb2.TraceItem"`.
 
+> Throwaway as intended: those tests were **deleted** once later phases covered the same
+> ground. `get_schema`/`raw_schema` (and so `default-features = false`) are pinned by
+> `extractors::tests::registry_key_matches_the_schema_registry`, `schema_type` by
+> `ArrowFlushProducer::resolve` and its tests, and the `prost` version agreement by every
+> extractor test that round-trips a `TraceItem`.
+
 ## Phase 1 — `PyRecordBatch` (Arrow → Python)
 
 **File:** `src/py_record_batch.rs` *(new)*; register in `src/lib.rs`; stubs in
