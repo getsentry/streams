@@ -37,7 +37,7 @@ extraction; per-row dead-lettering; `TraceItem.outcomes`; replacing the Python
 | 11 | **Generalize `BatchStep`** over a flush-producer trait rather than forking it. |
 | 12 | `Reduce` subclass, `StepType.REDUCE`, `isinstance` branch in `reduce()`. |
 | 14 | Failure is `panic!`, matching `transformer.rs:45-46`. |
-| 22 | `map<string, AnyValue>` → **type-split maps** `attr_str/int/double/bool/bytes`. |
+| 22 | `map<string, AnyValue>` → **type-split maps** `attr_str/int/double/bool/bytes`; the two recursive arms are dropped. |
 | 23 | **Protobuf only.** |
 | 24 | `sentry-protos` for types and `prost` decode; `sentry-kafka-schemas` (`default-features = false`) for topic → schema. |
 | 25 | Extractors indexed by the **raw resource string**; several topics sharing a schema share one extractor. The topic is declared on the step as `schema_name`. |
@@ -84,7 +84,7 @@ Constraints discovered by reading the runtime. These drive several choices below
 | `retention_days` | `UInt32` | no | 100 |
 | `received` | `Timestamp(us, "UTC")` | **yes** | 101 |
 | `downsampled_retention_days` | `UInt32` | no | 102 |
-| `attr_str` | `Map<Utf8, Utf8>` | no | 7, `AnyValue` arm 1 (+ 5, 6 JSON-encoded) |
+| `attr_str` | `Map<Utf8, Utf8>` | no | 7, `AnyValue` arm 1 |
 | `attr_int` | `Map<Utf8, Int64>` | no | 7, arm 3 |
 | `attr_double` | `Map<Utf8, Float64>` | no | 7, arm 4 |
 | `attr_bool` | `Map<Utf8, Boolean>` | no | 7, arm 2 |
@@ -104,10 +104,22 @@ distinguish unset from zero, so they are non-nullable columns carrying the defau
 > compile, which is the right way to find out.
 
 `ArrayValue` (arm 5) and `KeyValueList` (arm 6) are recursive; Arrow has no recursive
-types, so they are JSON-encoded into `attr_str`. Bytes *nested inside* such a value
-are base64-encoded, following proto3's canonical JSON mapping — there is no way to put
-raw bytes in a JSON string. This is not the case the plan rejected earlier: top-level
-`bytes` attributes never pass through JSON, they keep their raw bytes in `attr_bytes`.
+type, so **those attributes are dropped**.
+
+> **Revised after phase 3.** They were originally JSON-encoded into `attr_str`, with
+> nested bytes base64-encoded per proto3 canonical JSON. Two things were wrong with
+> that. It creates an ambiguity the input did not have — a JSON-encoded array in
+> `attr_str` is indistinguishable from a string attribute whose value happens to look
+> like JSON. And it is unnecessary: `AnyValue` is a port of OpenTelemetry's type, so the
+> recursive arms exist because OTel has them, and the canonical `snuba-items` example
+> uses only `string`/`int`/`double`/`bool`. Dropping them removed ~25 lines, the
+> `base64` dependency, and the ambiguity.
+>
+> The accepted cost is **silent loss** if a producer ever does send one. Failing the
+> batch was considered and rejected: such a message is valid protobuf we merely choose
+> not to represent, and panicking on it is the same self-inflicted outage as panicking
+> on an unknown enum value. If these ever show up in practice, give them their own
+> `attr_json` column rather than folding them back into `attr_str`.
 
 ## Dependencies
 
@@ -115,13 +127,12 @@ raw bytes in a JSON string. This is not the case the plan rejected earlier: top-
 arrow = { version = "59", features = ["ffi"] }
 prost = "0.14"
 prost-types = "0.14"          # prost_types::Timestamp, reached through TraceItem
-base64 = "0.22"               # bytes nested in recursive attribute values
 sentry_protos = "0.70"
 sentry-kafka-schemas = { version = "3", default-features = false }
 ```
 
-`prost-types` and `base64` were added in phase 3; both were already in the lock file
-transitively, so neither costs build time.
+`prost-types` was added in phase 3, and was already in the lock file transitively, so
+it costs no build time.
 
 No new Python dependencies; `pyarrow` is deliberately not added.
 
@@ -286,7 +297,7 @@ in-process with prost, encode, extract, assert:
 |---|---|
 | all scalar fields populated | every column matches |
 | each `AnyValue` arm (string, bool, int, double, bytes) | lands in its own `attr_*` map |
-| `ArrayValue` / `KeyValueList` | JSON-encoded into `attr_str` |
+| `ArrayValue` / `KeyValueList` | dropped, leaving the row's other attributes intact |
 | absent `timestamp` / `received` | null, not epoch zero |
 | absent `conversation_id` / `session_id` | null |
 | unset implicit-presence scalars | zero/empty, non-null |
@@ -461,7 +472,7 @@ raises `NotImplementedError`; `make typecheck` clean.
    the explicit PoC trade for dropping the descriptor pool.
 3. **An attribute changing type between messages lands in different columns** across
    batches. Inherent to decision 22; Snuba EAP has the same property.
-4. **Recursive attribute values become JSON strings**, not structured data.
+4. **Recursive attribute values are dropped**, silently. See the schema section.
 5. **Protobuf only.** A JSON or msgpack topic panics at startup.
 6. **Rust adapter only**, unlike the Python `BatchParser`.
 7. **Decoding holds the GIL** for the batch and stalls the consumer loop. Temporary,

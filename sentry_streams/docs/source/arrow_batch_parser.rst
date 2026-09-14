@@ -104,9 +104,14 @@ Arrow has no usable union type here and Snuba EAP splits the same way. Two
 consequences:
 
 * an attribute that changes type between messages lands in different columns;
-* recursive values (``ArrayValue``, ``KeyValueList``) are JSON-encoded into
-  ``attr_str``, with any nested bytes base64-encoded per proto3's canonical JSON
-  mapping.
+* recursive values (``ArrayValue``, ``KeyValueList``) are **dropped**. Arrow has
+  no recursive type. ``AnyValue`` is a port of OpenTelemetry's type, so these
+  arms exist because OTel has them rather than because Sentry ingestion uses
+  them, and they do not appear in the canonical ``snuba-items`` example. If one
+  does arrive, that attribute is skipped -- the rest of its row is unaffected --
+  and nothing is logged. If they turn out to occur in practice they should get
+  their own column rather than being flattened into ``attr_str``, where an
+  encoded array would be indistinguishable from a string that looks like one.
 
 Performance
 -----------

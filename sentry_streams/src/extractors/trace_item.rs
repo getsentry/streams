@@ -13,8 +13,9 @@
 //!   "if any" comments in the proto.
 //! * **`map<string, AnyValue>` is split by value type** into `attr_str`,
 //!   `attr_int`, `attr_double`, `attr_bool` and `attr_bytes`. Arrow has no usable
-//!   union type here, and Snuba EAP splits the same way. One consequence: an
-//!   attribute that changes type between messages lands in different columns.
+//!   union type here, and Snuba EAP splits the same way. Two consequences: an
+//!   attribute that changes type between messages lands in different columns, and
+//!   `AnyValue`'s two recursive arms are dropped -- see `AttributeBuilders`.
 
 use crate::extractors::{Extractor, ExtractorError};
 use arrow::array::{
@@ -23,12 +24,9 @@ use arrow::array::{
     UInt64Builder,
 };
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef, TimeUnit};
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine as _;
 use prost::Message;
 use prost_types::Timestamp;
-use sentry_protos::snuba::v1::{any_value::Value, AnyValue, TraceItem, TraceItemType};
-use serde_json::{Map as JsonMap, Value as Json};
+use sentry_protos::snuba::v1::{any_value::Value, TraceItem, TraceItemType};
 use std::sync::{Arc, LazyLock};
 
 pub struct TraceItemExtractor;
@@ -123,38 +121,6 @@ fn item_type_name(value: i32) -> String {
     }
 }
 
-/// `ArrayValue` and `KeyValueList` are recursive and Arrow has no recursive type,
-/// so they are flattened to JSON and stored in `attr_str`.
-///
-/// Bytes nested inside such a value are base64-encoded, following the proto3
-/// canonical JSON mapping. (Top-level `bytes` attributes do *not* go through
-/// here: they keep their raw bytes in `attr_bytes`.)
-fn any_value_to_json(value: &AnyValue) -> Json {
-    match &value.value {
-        None => Json::Null,
-        Some(Value::StringValue(s)) => Json::String(s.clone()),
-        Some(Value::BoolValue(b)) => Json::Bool(*b),
-        Some(Value::IntValue(i)) => Json::Number((*i).into()),
-        Some(Value::DoubleValue(d)) => serde_json::Number::from_f64(*d)
-            .map(Json::Number)
-            .unwrap_or(Json::Null),
-        Some(Value::BytesValue(b)) => Json::String(BASE64.encode(b)),
-        Some(Value::ArrayValue(a)) => Json::Array(a.values.iter().map(any_value_to_json).collect()),
-        Some(Value::KvlistValue(kv)) => {
-            let mut out = JsonMap::with_capacity(kv.values.len());
-            for entry in &kv.values {
-                let v = entry
-                    .value
-                    .as_ref()
-                    .map(any_value_to_json)
-                    .unwrap_or(Json::Null);
-                out.insert(entry.key.clone(), v);
-            }
-            Json::Object(out)
-        }
-    }
-}
-
 /// The five type-split attribute map builders.
 struct AttributeBuilders {
     str_: MapBuilder<StringBuilder, StringBuilder>,
@@ -227,12 +193,12 @@ impl AttributeBuilders {
                     self.bytes.keys().append_value(key);
                     self.bytes.values().append_value(b);
                 }
-                Some(Value::ArrayValue(_)) | Some(Value::KvlistValue(_)) => {
-                    self.str_.keys().append_value(key);
-                    self.str_
-                        .values()
-                        .append_value(any_value_to_json(value).to_string());
-                }
+                // Recursive values have no Arrow representation, and are not
+                // produced in practice: `AnyValue` mirrors OpenTelemetry's type,
+                // so these arms exist because OTel has them. Dropped rather than
+                // flattened into `attr_str`, where a JSON-encoded array would be
+                // indistinguishable from a string attribute that looks like one.
+                Some(Value::ArrayValue(_)) | Some(Value::KvlistValue(_)) => {}
                 // An attribute whose oneof is unset carries no information.
                 None => {}
             }
@@ -567,10 +533,14 @@ mod tests {
         );
     }
 
+    /// Recursive attribute values are dropped, not flattened. Folding them into
+    /// `attr_str` as JSON would make an array attribute indistinguishable from a
+    /// string attribute whose value happens to look like JSON.
     #[test]
-    fn recursive_values_are_json_encoded_into_attr_str() {
+    fn recursive_values_are_dropped_and_do_not_disturb_their_row() {
         let item = TraceItem {
             attributes: HashMap::from([
+                ("kept".into(), attr(Value::StringValue("here".into()))),
                 (
                     "arr".into(),
                     attr(Value::ArrayValue(ArrayValue {
@@ -593,10 +563,26 @@ mod tests {
             ..Default::default()
         };
 
-        let batch = extract(&[item]);
-        let row: HashMap<String, String> = map_row(&batch, "attr_str", 0).into_iter().collect();
-        assert_eq!(row["arr"], r#"[1,"two"]"#);
-        assert_eq!(row["kv"], r#"{"inner":false}"#);
+        let batch = extract(&[item, TraceItem::default()]);
+
+        // The scalar attribute alongside them survives, and only it.
+        assert_eq!(
+            map_row(&batch, "attr_str", 0),
+            vec![("kept".to_string(), "here".to_string())]
+        );
+        for column in ["attr_int", "attr_double", "attr_bool", "attr_bytes"] {
+            assert_eq!(map_row(&batch, column, 0), vec![], "{column}");
+        }
+        // ... and the dropped entries did not shift the following row's offsets.
+        for column in [
+            "attr_str",
+            "attr_int",
+            "attr_double",
+            "attr_bool",
+            "attr_bytes",
+        ] {
+            assert_eq!(map_row(&batch, column, 1), vec![], "{column}");
+        }
     }
 
     #[test]

@@ -26,7 +26,6 @@ sentry = "0.48.1"
 arrow = { version = "59", features = ["ffi"] }
 prost = "0.14"
 prost-types = "0.14"
-base64 = "0.22"
 sentry_protos = "0.70"
 sentry-kafka-schemas = { version = "3", default-features = false }
 
