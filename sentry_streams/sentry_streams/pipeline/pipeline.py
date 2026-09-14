@@ -682,6 +682,85 @@ class Batch(
 
 
 @dataclass
+class ArrowBatchParser(
+    Reduce[MeasurementUnit, bytes, bytes],
+    Generic[MeasurementUnit],
+):
+    """
+    Batches raw Kafka payloads and decodes them into an Apache Arrow
+    ``RecordBatch``, entirely in Rust.
+
+    The emitted message payload is the batch serialized as an Arrow IPC stream,
+    so downstream steps receive ordinary ``bytes``::
+
+        import polars as pl
+
+        def to_frame(msg: Message[bytes]) -> pl.DataFrame:
+            return pl.read_ipc_stream(msg.payload)
+
+    This is the fused equivalent of ``Batch`` -> ``Map(extract_bytes)`` ->
+    ``BatchParser``: the individual messages are never turned into Python
+    objects. The batch itself is serialized and copied into Python memory, which
+    is a deliberate simplification -- handing the ``RecordBatch`` over directly
+    through the Arrow C data interface is deferred.
+
+    ``schema_name`` is the logical stream name whose ``sentry-kafka-schemas``
+    entry names the message type, and so selects the extractor -- usually the
+    source's ``stream_name``. It is given explicitly rather than inferred so the
+    step does not depend on where it sits in the pipeline.
+
+    Limitations of the current implementation, all of which fail loudly:
+
+    * **Protobuf topics only.** A JSON or msgpack topic raises at startup.
+    * **The Arrow schema is hardcoded in Rust**, per message type, so there is
+      nothing to configure here and adding a column needs a release.
+    * **Rust adapter only.** The pure-Python Arroyo adapter raises
+      ``NotImplementedError``.
+    * **It reads raw payloads**, so it takes ``bytes`` and must come before any
+      step that converts messages into Python objects. Placing it after one is a
+      type error, and a panic at runtime if the types were bypassed.
+    * A payload that fails to decode **fails the process**: batching collapses
+      offsets, so there is no single offset to dead-letter.
+
+    Configured by batch size and/or batch_timedelta exactly like ``Batch``, and
+    both are overridable from the deployment config's ``steps_config``.
+    """
+
+    schema_name: str
+    batch_size: int | None = None
+    batch_timedelta: timedelta | None = timedelta(seconds=10)
+    step_type: StepType = StepType.REDUCE
+
+    def validate(self) -> None:
+        """Validate that at least one of batch_size or batch_timedelta is set."""
+        if self.batch_size is None and self.batch_timedelta is None:
+            raise ValueError("At least one of batch_size or batch_timedelta must be set.")
+
+    @property
+    def group_by(self) -> Optional[GroupBy]:
+        return None
+
+    @property
+    def windowing(self) -> Window[MeasurementUnit]:
+        return TumblingWindow(self.batch_size, self.batch_timedelta)
+
+    @property
+    def aggregate_fn(self) -> Callable[[], Accumulator[Message[bytes], bytes]]:
+        raise NotImplementedError(
+            "ArrowBatchParser is implemented natively in Rust and has no Python accumulator."
+        )
+
+    def override_config(self, loaded_config: Mapping[str, Any]) -> None:
+        if loaded_config.get("batch_size") is not None:
+            self.batch_size = loaded_config.get("batch_size")
+
+        if loaded_config.get("batch_timedelta") is not None:
+            loaded_kwargs = loaded_config.get("batch_timedelta")
+            assert isinstance(loaded_kwargs, Mapping)
+            self.batch_timedelta = timedelta(**loaded_kwargs)
+
+
+@dataclass
 class FlatMap(Transform[TIn, TOut], Generic[TIn, TOut]):
     """
     A generic step for mapping and flattening (and therefore alerting the shape of) inputs to

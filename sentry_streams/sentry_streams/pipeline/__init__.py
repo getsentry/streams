@@ -1,4 +1,5 @@
 from sentry_streams.pipeline.pipeline import (
+    ArrowBatchParser,
     Batch,
     BatchParser,
     Filter,
@@ -16,6 +17,7 @@ from sentry_streams.pipeline.pipeline import (
 )
 
 __all__ = [
+    "ArrowBatchParser",
     "Batch",
     "BatchParser",
     "Filter",

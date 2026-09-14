@@ -11,5 +11,6 @@
    build_pipeline
    configure_pipeline
    runtime/arroyo
+   arrow_batch_parser
    deployment
    rust

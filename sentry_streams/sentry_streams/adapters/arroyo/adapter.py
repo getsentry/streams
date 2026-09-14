@@ -44,6 +44,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
+    ArrowBatchParser,
     Broadcast,
     ComplexStep,
     Filter,
@@ -271,6 +272,13 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         assert (
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a reduce"
+
+        if isinstance(step, ArrowBatchParser):
+            raise NotImplementedError(
+                "ArrowBatchParser is only supported by the Rust Arroyo adapter (rust_arroyo), "
+                "not the pure Python Arroyo adapter. It decodes raw payloads into an Arrow "
+                "RecordBatch in Rust and has no Python implementation."
+            )
 
         self.__consumers[stream.source].add_step(ReduceStep(route=stream, pipeline_step=step))
         return stream
