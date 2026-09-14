@@ -36,13 +36,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// messages this function loses its GIL block and its `PyRef` guards, and
 /// nothing else in the step changes.
 ///
-/// It is a scope rather than a plain accessor because the `PyRef` guards must
-/// outlive the slices handed to `f`.
+/// This is needed because the consumer immediately moves the raw message into
+/// Python memory. This behavior is removed in:
+/// https://github.com/getsentry/streams/pull/376
 ///
-/// Do **not** copy the payloads out to release the GIL sooner. It would work
-/// today and would become permanent dead weight the moment the source goes
-/// native -- a per-message copy in the one step whose whole purpose is to remove
-/// per-message copies.
+/// When The PR above will be merged, we will simplify this and avoid taking the
+/// GIL at ewvery message.
 fn with_payloads<R>(
     step_name: &str,
     elements: &[BatchElement],
