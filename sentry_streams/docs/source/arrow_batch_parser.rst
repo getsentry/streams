@@ -3,8 +3,8 @@ Arrow Batch Parser
 
 ``ArrowBatchParser`` batches raw Kafka payloads and decodes them into an Apache
 Arrow ``RecordBatch`` entirely in Rust. The batch is handed to Python as an
-``ArrowRecordBatch``, readable by anything that implements the `Arrow PyCapsule
-interface <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_.
+`Arrow IPC stream <https://arrow.apache.org/docs/format/Columnar.html#serialization-and-interprocess-communication-ipc>`_
+-- an ordinary ``bytes`` payload, which every existing step already understands.
 
 .. code-block:: python
 
@@ -15,7 +15,7 @@ interface <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterfac
 
 
    def summarize(msg):
-       df = pl.DataFrame(msg.payload)   # zero-copy, via __arrow_c_stream__
+       df = pl.read_ipc_stream(msg.payload)
        return f"{df.height} rows".encode()
 
 
@@ -32,6 +32,14 @@ interface <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterfac
 
 It replaces ``Batch`` → ``Map(extract_bytes)`` → ``BatchParser``, in which every
 message is copied into Python memory as ``bytes`` and decoded under the GIL.
+Here the individual messages are never turned into Python objects; only the
+assembled batch crosses over.
+
+.. note::
+
+   Serializing the batch and copying it into Python memory is a deliberate
+   simplification. Handing the ``RecordBatch`` across directly, through the Arrow
+   C data interface, removes both copies and is deferred rather than ruled out.
 
 Windowing is configured exactly like :class:`Batch`, by ``batch_size`` and/or
 ``batch_timedelta``, both overridable from ``steps_config``.
@@ -126,11 +134,11 @@ Measured with ``cargo test --release bench_arrow_vs_pylist -- --ignored
      - p50
      - p99
    * - ``ArrowBatchParser``
-     - 3.5 ms
-     - 4.1 ms
+     - 3.6 ms
+     - 4.8 ms
    * - ``Batch`` → ``BatchParser``
-     - 4.3 ms
-     - 6.4 ms
+     - 4.2 ms
+     - 6.3 ms
 
 About 20% faster at the median and 35% at the tail — a real but modest win on
 this workload, not the order of magnitude the "no Python round trip" framing
@@ -140,7 +148,7 @@ might suggest. Two things to keep in mind when reading it:
   something columnar (polars, parquet) from those objects, which this step has
   already done.
 * The source still hands Rust its payloads inside Python-owned ``RawMessage``
-  objects, so decoding holds the GIL and pays a copy per message. Removing that
+  objects, so decoding holds the GIL and pays a copy *per message*. Removing that
   is work owned elsewhere; the numbers here understate what the step can do once
   it lands, and the benchmark should be re-run then.
 

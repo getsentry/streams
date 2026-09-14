@@ -29,7 +29,7 @@ extraction; per-row dead-lettering; `TraceItem.outcomes`; replacing the Python
 | # | Decision |
 |---|---|
 | 1 | **Fused step** — batching and decoding in one primitive, not a parser after `Batch`. |
-| 2 | Output is a `#[pyclass]` implementing the **Arrow PyCapsule interface**. No `pyarrow` dependency. |
+| 2 | Output is the batch **serialized as an Arrow IPC stream** in a `RawMessage`. Python reads it with `polars.read_ipc_stream`. No `pyarrow` dependency. |
 | 4 | New primitive; Python `BatchParser` untouched. |
 | 5 | Decoding runs **inline** on the consumer thread. |
 | 9 | Offsets collapse to `max` per partition, as `batch_step.rs` does today. |
@@ -161,62 +161,20 @@ Phases 1 and 2 are independent and may run in parallel. 3 depends on 0; 4 on 1+2
 > `ArrowFlushProducer::resolve` and its tests, and the `prost` version agreement by every
 > extractor test that round-trips a `TraceItem`.
 
-## Phase 1 — `PyRecordBatch` (Arrow → Python)
+## Phase 1 — ~~`PyRecordBatch` (Arrow → Python)~~ — reverted
 
-**File:** `src/py_record_batch.rs` *(new)*; register in `src/lib.rs`; stubs in
-`sentry_streams/rust_streams.pyi`.
+Originally a `#[pyclass]` implementing `__arrow_c_array__`, `__arrow_c_schema__` and
+`__arrow_c_stream__`, so Python received the `RecordBatch` itself with no copy.
 
-```rust
-#[pyclass(name = "ArrowRecordBatch", module = "sentry_streams.rust_streams")]
-pub struct PyRecordBatch { pub(crate) batch: RecordBatch }
+**Removed as PoC scope.** The step now serializes the batch to an Arrow IPC stream and
+emits it as a `RawMessage` via `into_pyraw`, so Python gets `bytes` and calls
+`polars.read_ipc_stream`. That costs a serialization plus a copy into Python memory,
+and in exchange deletes the entire FFI surface: capsule naming, release-callback
+ownership, the double-consume hazard, and the three dunders that had to agree.
 
-#[pymethods]
-impl PyRecordBatch {
-    #[getter] fn num_rows(&self) -> usize;
-    #[getter] fn num_columns(&self) -> usize;
-    fn __repr__(&self) -> String;
-
-    #[pyo3(signature = (requested_schema=None))]
-    fn __arrow_c_array__<'py>(&self, py: Python<'py>, requested_schema: Option<Bound<'py, PyAny>>)
-        -> PyResult<(Bound<'py, PyCapsule>, Bound<'py, PyCapsule>)>;
-
-    fn __arrow_c_schema__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyCapsule>>;
-
-    #[pyo3(signature = (requested_schema=None))]
-    fn __arrow_c_stream__<'py>(&self, py: Python<'py>, requested_schema: Option<Bound<'py, PyAny>>)
-        -> PyResult<Bound<'py, PyCapsule>>;
-}
-```
-
-**Implement all three, not just `__arrow_c_array__`.** Table-level consumers —
-`pl.DataFrame(obj)`, `pa.table(obj)` — look for `__arrow_c_stream__`; array-level
-consumers use `__arrow_c_array__`. Implementing only one makes the object work in some
-call sites and not others.
-
-Mechanics:
-
-- Array: `StructArray::from(batch.clone())` → `arrow::ffi::to_ffi(&struct_array.to_data())`
-  → two capsules.
-- Stream: `FFI_ArrowArrayStream::new(Box::new(RecordBatchIterator::new(...)))`, one batch.
-- **Capsule names must be exactly** `arrow_schema`, `arrow_array`, `arrow_array_stream`,
-  as NUL-terminated `CString`. A wrong name fails at the consumer with an opaque error.
-- `PyCapsule::new` takes ownership; `FFI_ArrowSchema`/`FFI_ArrowArray`'s `Drop` invokes
-  the C release callback, so no manual destructor is needed.
-- `requested_schema` is accepted and **ignored** — the protocol permits returning the
-  native schema when a cast is unsupported. Document it in the docstring.
-
-**Tests**
-
-| Test | Assertion |
-|---|---|
-| `polars.DataFrame(rb)` | values, column names, dtypes match |
-| `pyarrow.record_batch(rb)` *(dev-dep only)* | round-trips `__arrow_c_array__` |
-| `pyarrow.table(rb)` | round-trips `__arrow_c_stream__` |
-| consume twice | second call still yields a valid batch (no double-release) |
-| nested `Map` column | survives the FFI boundary |
-
-**Acceptance:** a Rust-built `RecordBatch` reaches polars with correct values and
-schema. pyarrow may be a dev-only dependency; it must not enter runtime deps.
+The copies are the thing to remove later, and they are removable independently — the
+extractor still produces a plain `RecordBatch`, so restoring a zero-copy handoff is a
+change to `ArrowFlushProducer::produce` and nothing else.
 
 ## Phase 2 — Generalize `BatchStep` (pure refactor)
 
@@ -451,16 +409,20 @@ raises `NotImplementedError`; `make typecheck` clean.
 
    | Path | p50 | p99 | rows/s (p50) |
    |---|---|---|---|
-   | `ArrowBatchParser` | 3.5 ms | 4.1 ms | 2.86 M |
-   | `Batch` → `BatchParser` | 4.3 ms | 6.4 ms | 2.33 M |
-   | `Batch` flush alone (not a complete path) | 0.15 ms | 0.20 ms | 65.8 M |
+   | `ArrowBatchParser` (incl. IPC serialization + copy) | 3.6 ms | 4.8 ms | 2.77 M |
+   | `Batch` → `BatchParser` | 4.2 ms | 6.3 ms | 2.39 M |
+   | `Batch` flush alone (not a complete path) | 0.16 ms | 0.25 ms | 60.7 M |
 
-   About **20% faster at p50 and 35% at p99** — real, but well short of what the "no
+   Re-measured after phase 1 was reverted, so these *include* serializing the batch and
+   copying it into Python memory — which turned out to cost about 0.1 ms per 10 000
+   rows, roughly 3% of the step. The copies the PoC accepts are not what limits it.
+
+   About **15% faster at p50 and 25% at p99** — real, but well short of what the "no
    Python round trip" framing suggests, and worth being straight about. Two caveats
    both point the same way: the comparison stops at *decoded values*, where the Python
    path still has to build something columnar from those objects, and the Arrow path is
-   still paying the `Py<RawMessage>` copy and holding the GIL (see *Assumed future
-   work*). Re-run once the source goes native.
+   still paying the per-message `Py<RawMessage>` copy and holding the GIL (see *Assumed
+   future work*). Re-run once the source goes native.
 
    Decision 5 holds comfortably: a 1000-row window decodes in well under a millisecond,
    nowhere near `max_poll_interval_ms`. Threadpool decoding stays deferred.
@@ -481,6 +443,7 @@ raises `NotImplementedError`; `make typecheck` clean.
 4. **Recursive attribute values are dropped**, silently. See the schema section.
 5. **Protobuf only.** A JSON or msgpack topic panics at startup.
 6. **Rust adapter only**, unlike the Python `BatchParser`.
+8. **The batch is serialized and copied into Python memory.** Deliberate, see phase 1.
 7. **Decoding holds the GIL** for the batch and stalls the consumer loop. Temporary,
    and confined to `with_payloads`; see phase 4 and *Assumed future work*.
 
@@ -506,6 +469,8 @@ even once the source is native.
 
 ## Deferred
 
+- **Zero-copy handoff to Python**, via the Arrow C data interface, replacing the IPC
+  serialization and the copy it implies. See phase 1.
 - **Descriptor-driven extraction** — `prost-reflect` + `DescriptorPool` restores
   `get_field_by_name`, making a new column configuration rather than a release.
   Descriptors from vendored `.proto` compiled by `protox`, or better from an upstream PR

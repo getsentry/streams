@@ -683,23 +683,26 @@ class Batch(
 
 @dataclass
 class ArrowBatchParser(
-    Reduce[MeasurementUnit, bytes, Any],
+    Reduce[MeasurementUnit, bytes, bytes],
     Generic[MeasurementUnit],
 ):
     """
     Batches raw Kafka payloads and decodes them into an Apache Arrow
     ``RecordBatch``, entirely in Rust.
 
-    The emitted message payload is a ``rust_streams.ArrowRecordBatch``, readable
-    by anything implementing the Arrow PyCapsule interface::
+    The emitted message payload is the batch serialized as an Arrow IPC stream,
+    so downstream steps receive ordinary ``bytes``::
 
         import polars as pl
 
-        def to_frame(msg):
-            return pl.DataFrame(msg.payload)
+        def to_frame(msg: Message[bytes]) -> pl.DataFrame:
+            return pl.read_ipc_stream(msg.payload)
 
     This is the fused equivalent of ``Batch`` -> ``Map(extract_bytes)`` ->
-    ``BatchParser``, without copying every message into Python memory on the way.
+    ``BatchParser``: the individual messages are never turned into Python
+    objects. The batch itself is serialized and copied into Python memory, which
+    is a deliberate simplification -- handing the ``RecordBatch`` over directly
+    through the Arrow C data interface is deferred.
 
     ``schema_name`` is the logical stream name whose ``sentry-kafka-schemas``
     entry names the message type, and so selects the extractor -- usually the
@@ -742,7 +745,7 @@ class ArrowBatchParser(
         return TumblingWindow(self.batch_size, self.batch_timedelta)
 
     @property
-    def aggregate_fn(self) -> Callable[[], Accumulator[Message[bytes], Any]]:
+    def aggregate_fn(self) -> Callable[[], Accumulator[Message[bytes], bytes]]:
         raise NotImplementedError(
             "ArrowBatchParser is implemented natively in Rust and has no Python accumulator."
         )

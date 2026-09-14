@@ -1,6 +1,11 @@
 //! The Arrow batch parser step: batches raw Kafka payloads and decodes them into
-//! an Apache Arrow `RecordBatch` without ever materialising them as Python
-//! objects.
+//! an Apache Arrow `RecordBatch` without ever materialising the individual
+//! messages as Python objects.
+//!
+//! The batch leaves as an Arrow IPC stream in a `RawMessage`, so Python receives
+//! ordinary `bytes` and reads them with `polars.read_ipc_stream`. That costs a
+//! serialization and a copy into Python memory; handing the `RecordBatch` over
+//! directly through the Arrow C data interface is deferred.
 //!
 //! It reuses [`BatchStep`] wholesale -- windowing, watermark ordering and
 //! backpressure are identical to the `Batch` step -- and supplies its own
@@ -8,10 +13,12 @@
 
 use crate::batch_step::{BatchElement, BatchFlushProducer, BatchStep};
 use crate::extractors::{get_extractor, registered_resources, Extractor};
-use crate::messages::{into_pyany, PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
-use crate::py_record_batch::PyRecordBatch;
+use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::routes::{Route, RoutedValue};
 use crate::utils::traced_with_gil;
+use arrow::array::RecordBatch;
+use arrow::error::ArrowError;
+use arrow::ipc::writer::StreamWriter;
 use pyo3::prelude::*;
 use sentry_arroyo::processing::strategies::{ProcessingStrategy, StrategyError};
 use sentry_arroyo::types::{Message, Partition};
@@ -60,6 +67,21 @@ fn with_payloads<R>(
         let payloads: Vec<&[u8]> = guards.iter().map(|g| g.payload.as_slice()).collect();
         f(&payloads)
     })
+}
+
+/// Serialize a batch as an Arrow IPC stream.
+///
+/// This costs a copy into a `Vec<u8>` and another into Python memory. That is
+/// deliberate for now: it keeps the handoff an ordinary `bytes` payload, which
+/// every existing step already understands, rather than an FFI object. Python
+/// reads it back with `polars.read_ipc_stream`.
+fn to_ipc_stream(batch: &RecordBatch) -> Result<Vec<u8>, ArrowError> {
+    let mut buffer = Vec::new();
+    let mut writer = StreamWriter::try_new(&mut buffer, batch.schema().as_ref())?;
+    writer.write(batch)?;
+    writer.finish()?;
+    drop(writer);
+    Ok(buffer)
 }
 
 /// Decodes a flushed window into a `RecordBatch` and hands it to Python.
@@ -138,15 +160,27 @@ impl BatchFlushProducer for ArrowFlushProducer {
             )
         });
 
-        let content = traced_with_gil!(|py| -> PyResult<Py<PyAnyMessage>> {
-            let py_batch = Py::new(py, PyRecordBatch::new(batch))?;
-            into_pyany(
+        let payload = to_ipc_stream(&batch).unwrap_or_else(|e| {
+            panic!(
+                "step '{}': could not serialize a {}-row Arrow batch from topic '{}': {e}",
+                self.step_name,
+                batch.num_rows(),
+                self.schema_name,
+            )
+        });
+
+        let content = traced_with_gil!(|py| {
+            into_pyraw(
                 py,
-                PyAnyMessage {
-                    payload: py_batch.into_any(),
+                RawMessage {
+                    payload,
                     headers: vec![],
                     timestamp: ts,
-                    schema: Some(self.schema_name.clone()),
+                    // Deliberately not `schema_name`. In this runtime `schema` means
+                    // "the schema this payload can be decoded with" (see
+                    // `msg_codecs._get_codec_from_msg`), and these bytes are an Arrow
+                    // IPC stream, not a message of the source's schema.
+                    schema: None,
                 },
             )
         })
@@ -155,7 +189,7 @@ impl BatchFlushProducer for ArrowFlushProducer {
         Ok(Message::new_any_message(
             RoutedValue {
                 route: route.clone(),
-                payload: RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
+                payload: RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage {
                     content,
                 }),
             },
@@ -188,7 +222,8 @@ mod tests {
     use super::*;
     use crate::fake_strategy::FakeStrategy;
     use crate::testutils::{build_raw_routed_value, build_routed_value};
-    use arrow::array::{RecordBatch, StringArray, UInt64Array};
+    use arrow::array::{StringArray, UInt64Array};
+    use arrow::ipc::reader::StreamReader;
     use prost::Message as _;
     use pyo3::types::PyAnyMethods;
     use pyo3::IntoPyObject;
@@ -215,21 +250,26 @@ mod tests {
         ArrowFlushProducer::resolve("test_arrow".to_string(), SNUBA_ITEMS)
     }
 
-    /// Pull the `RecordBatch` back out of the emitted message, the way a Python
-    /// consumer would see it.
+    fn from_ipc_stream(bytes: &[u8]) -> RecordBatch {
+        let mut reader = StreamReader::try_new(bytes, None).expect("valid Arrow IPC stream");
+        let batch = reader.next().expect("one batch").expect("readable batch");
+        assert!(reader.next().is_none(), "stream carries exactly one batch");
+        batch
+    }
+
+    /// Pull the emitted payload apart the way a Python consumer would: raw bytes
+    /// out of a `RawMessage`, decoded as an Arrow IPC stream.
     fn batch_of(message: Message<RoutedValue>) -> (RecordBatch, Option<String>) {
         let payload = message.into_payload();
         let content = match payload.payload {
-            RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
-                content,
-            }) => content,
-            _ => panic!("expected a PyAnyMessage carrying the record batch"),
+            RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { content }) => {
+                content
+            }
+            _ => panic!("expected a RawMessage carrying the serialized batch"),
         };
         traced_with_gil!(|py| {
             let borrowed = content.bind(py).borrow();
-            let schema = borrowed.schema.clone();
-            let rb: PyRef<PyRecordBatch> = borrowed.payload.bind(py).extract().unwrap();
-            (rb.batch.clone(), schema)
+            (from_ipc_stream(&borrowed.payload), borrowed.schema.clone())
         })
     }
 
@@ -277,8 +317,9 @@ mod tests {
             .unwrap();
         assert_eq!(traces.value(0), "trace-1");
 
-        // Downstream Python needs to know which stream the batch came from.
-        assert_eq!(schema.as_deref(), Some(SNUBA_ITEMS));
+        // `schema` means "decodable with this codec" in this runtime, and an Arrow
+        // IPC stream is not a snuba-items message, so it is deliberately unset.
+        assert_eq!(schema, None);
     }
 
     /// Decision 10: this step only accepts RawMessage. A PyAnyMessage means some
@@ -368,8 +409,8 @@ mod tests {
         let out = sub.lock().unwrap();
         assert_eq!(out.len(), 1, "one batch downstream, not two rows");
         traced_with_gil!(|py| {
-            let rb: PyRef<PyRecordBatch> = out[0].bind(py).extract().unwrap();
-            assert_eq!(rb.batch.num_rows(), 2);
+            let bytes: Vec<u8> = out[0].bind(py).extract().unwrap();
+            assert_eq!(from_ipc_stream(&bytes).num_rows(), 2);
         });
     }
 
@@ -427,15 +468,16 @@ mod tests {
 
             let payload = message.into_payload();
             let content = match payload.payload {
-                RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage {
+                RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage {
                     content,
                 }) => content,
                 _ => unreachable!(),
             };
-            let py_batch = content.bind(py).borrow().payload.clone_ref(py);
+            let py_bytes = content.bind(py).getattr("payload").unwrap();
 
+            // Exactly what a downstream Map would do with the payload.
             let pl = py.import("polars").expect("polars must be importable");
-            let df = pl.call_method1("DataFrame", (py_batch,)).unwrap();
+            let df = pl.call_method1("read_ipc_stream", (py_bytes,)).unwrap();
 
             assert_eq!(
                 df.call_method0("__len__")

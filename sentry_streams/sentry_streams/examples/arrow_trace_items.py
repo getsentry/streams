@@ -1,9 +1,8 @@
 """Decode a batch of TraceItem protobufs into an Apache Arrow RecordBatch in Rust.
 
 ``ArrowBatchParser`` fuses batching and decoding: it reads the raw Kafka payloads
-without copying them into Python memory, and hands the result over as an
-``ArrowRecordBatch``. Any consumer implementing the Arrow PyCapsule interface can
-read it -- here, polars.
+without turning the individual messages into Python objects, and hands the batch
+over as an Arrow IPC stream -- ordinary ``bytes``, read here with polars.
 
 Compare with ``parquet_serializer.py``, which does the same job as
 ``Batch`` -> ``Map(extract_bytes)`` -> ``BatchParser`` and pays a Python round
@@ -26,13 +25,13 @@ from sentry_streams.pipeline.pipeline import Map
 TOPIC = "snuba-items"
 
 
-def summarize(msg: Message[object]) -> bytes:
+def summarize(msg: Message[bytes]) -> bytes:
     """Read the Arrow batch through polars and emit a one-line summary.
 
-    ``pl.DataFrame(batch)`` goes through ``__arrow_c_stream__``; nothing is
-    converted row by row.
+    The payload is an Arrow IPC stream; polars reads all of it at once, with no
+    row-by-row conversion.
     """
-    df = pl.DataFrame(msg.payload)
+    df = pl.read_ipc_stream(msg.payload)
 
     by_type = df.group_by("item_type").agg(pl.len().alias("rows")).sort("rows", descending=True)
     summary = ", ".join(f"{row[0]}={row[1]}" for row in by_type.iter_rows())
