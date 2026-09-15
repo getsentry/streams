@@ -6,6 +6,7 @@ from sentry_streams.adapters.arroyo.rust_arroyo import build_dlq_config
 from sentry_streams.pipeline.pipeline import StreamSource
 from sentry_streams.rust_streams import (
     ArroyoConsumer,
+    ConsumerConfig,
     DlqConfig,
     InitialOffset,
     PyKafkaConsumerConfig,
@@ -47,7 +48,7 @@ def test_consumer_creation(
 
     consumer = ArroyoConsumer(
         source="test_source",
-        kafka_config=kafka_consumer_config,
+        consumer_config=ConsumerConfig.Kafka(kafka_consumer_config),
         topic="test-topic",
         schema=None,
         metric_config=None,

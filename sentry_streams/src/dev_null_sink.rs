@@ -87,12 +87,12 @@ where
         let average = self.average_sleep_time.unwrap();
         let max = self.max_sleep_time.unwrap_or(average * 2);
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         // Generate a random value around the average using a triangular distribution
         // This gives us values clustered around the average with a max limit
         let min_factor = 0.5;
         let max_factor = 1.5;
-        let factor: f64 = rng.gen_range(min_factor..=max_factor);
+        let factor: f64 = rng.random_range(min_factor..=max_factor);
 
         let sleep_duration = average.mul_f64(factor);
 

@@ -1,0 +1,12 @@
+# Configuration for the fake (Kafka-less) profiling pipeline.
+# The fake source synthesises random messages and terminates on its own,
+# so no Kafka bootstrap servers are required.
+
+env: {}
+
+pipeline:
+  segments:
+    - steps_config:
+        fake_source:
+          starts_segment: True
+        devnull: {}

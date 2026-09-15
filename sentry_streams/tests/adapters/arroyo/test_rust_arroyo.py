@@ -9,9 +9,43 @@ from sentry_streams.adapters.arroyo.rust_arroyo import (
 )
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.config_types import StepConfig
-from sentry_streams.pipeline.pipeline import Pipeline
+from sentry_streams.pipeline.message import Message
+from sentry_streams.pipeline.pipeline import (
+    DevNullSink,
+    Map,
+    Pipeline,
+    fake_streaming_source,
+)
 from sentry_streams.runner import iterate_edges
 from sentry_streams.rust_streams import InitialOffset
+
+
+def _noop(msg: Message[bytes]) -> bytes:
+    return msg.payload
+
+
+def test_fake_source_builds_consumer() -> None:
+    """A FakeSource pipeline builds a consumer without any Kafka config."""
+    pipeline = fake_streaming_source(
+        name="fake_source",
+        message_size_bytes=128,
+        messages_per_second=100.0,
+        num_messages=10,
+    ).apply(Map("noop", function=_noop))
+    pipeline.sink(DevNullSink[bytes](name="devnull"))
+
+    adapter = RustArroyoAdapter.build(
+        {
+            "steps_config": {
+                "fake_source": {"starts_segment": True},
+                "devnull": {},
+            },
+        },
+        {"type": "dummy"},
+    )
+    iterate_edges(pipeline, RuntimeTranslator(adapter))
+
+    assert adapter.get_consumer("fake_source") is not None
 
 
 def test_rust_arroyo_adapter(

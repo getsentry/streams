@@ -18,3 +18,9 @@ def transform_msg(msg: Message[IngestMetric]) -> Mapping[str, Any]:
 def filter_events(msg: Message[IngestMetric]) -> bool:
     print(f"Filtering event: {msg.payload}")
     return bool(msg.payload["type"] == "c")
+
+
+def noop(msg: Message[bytes]) -> bytes:
+    """Passthrough map: returns the payload unchanged."""
+    print(f"Received message: {len(msg.payload)}")
+    return msg.payload

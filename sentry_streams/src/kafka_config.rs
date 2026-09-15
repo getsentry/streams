@@ -75,7 +75,7 @@ pub struct PyKafkaConsumerConfig {
 #[pymethods]
 impl PyKafkaConsumerConfig {
     #[new]
-    fn new(
+    pub fn new(
         bootstrap_servers: Vec<String>,
         group_id: String,
         auto_offset_reset: InitialOffset,

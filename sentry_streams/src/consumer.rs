@@ -6,7 +6,8 @@
 //! The pipeline is built by adding RuntimeOperators to the consumer.
 
 use crate::commit_policy::WatermarkCommitOffsets;
-use crate::kafka_config::{PyKafkaConsumerConfig, PyKafkaProducerConfig};
+use crate::consumer_config::{build_consumer, BuiltConsumer, ConsumerConfig};
+use crate::kafka_config::PyKafkaProducerConfig;
 use crate::messages::{into_pyraw, PyStreamingMessage, RawMessage, RoutedValuePayload};
 use crate::metrics::configure_metrics;
 use crate::metrics_config::PyMetricConfig;
@@ -31,7 +32,10 @@ use sentry_arroyo::processing::ProcessorHandle;
 use sentry_arroyo::processing::StreamProcessor;
 use sentry_arroyo::types::{Message, Topic};
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 /// Default path for the healthcheck file touched when write_healthcheck is enabled.
 /// Matches Arroyo docs for Kubernetes liveness probes.
@@ -75,7 +79,9 @@ impl DlqConfig {
 ///
 #[pyclass]
 pub struct ArroyoConsumer {
-    consumer_config: PyKafkaConsumerConfig,
+    /// Where the consumer reads messages from: Kafka, or a fake source when
+    /// profiling the pipeline.
+    consumer_config: ConsumerConfig,
 
     topic: String,
 
@@ -116,19 +122,19 @@ pub struct ArroyoConsumer {
 #[pymethods]
 impl ArroyoConsumer {
     #[new]
-    #[pyo3(signature = (source, kafka_config, topic, schema, metric_config=None, write_healthcheck=false, dlq_config=None, sentry_dsn=None))]
+    #[pyo3(signature = (source, topic, schema, consumer_config, metric_config=None, write_healthcheck=false, dlq_config=None, sentry_dsn=None))]
     fn new(
         source: String,
-        kafka_config: PyKafkaConsumerConfig,
         topic: String,
         schema: Option<String>,
+        consumer_config: ConsumerConfig,
         metric_config: Option<PyMetricConfig>,
         write_healthcheck: bool,
         dlq_config: Option<DlqConfig>,
         sentry_dsn: Option<String>,
     ) -> Self {
         ArroyoConsumer {
-            consumer_config: kafka_config,
+            consumer_config,
             topic,
             source,
             schema,
@@ -179,6 +185,7 @@ impl ArroyoConsumer {
             ))
         });
 
+        let consumer_group = self.consumer_config.consumer_group_or(&self.source);
         let factory = ArroyoStreamingFactory::new(
             self.source.clone(),
             &self.steps,
@@ -187,16 +194,39 @@ impl ArroyoConsumer {
             self.schema.clone(),
             self.write_healthcheck,
             self.topic.clone(),
-            self.consumer_config.group_id().to_string(),
+            consumer_group,
         );
-        let config = self.consumer_config.clone().into();
 
         // Build DLQ policy if configured
         let dlq_policy = build_dlq_policy(&self.dlq_config, self.concurrency_config.handle());
 
-        let processor =
-            StreamProcessor::with_kafka(config, factory, Topic::new(&self.topic), dlq_policy);
+        let BuiltConsumer {
+            consumer,
+            consumer_state,
+            done,
+        } = build_consumer(
+            &self.consumer_config,
+            &self.topic,
+            Box::new(factory),
+            dlq_policy,
+        );
+
+        let processor = StreamProcessor::new(consumer, consumer_state);
+
         self.handle = Some(processor.get_handle());
+
+        // In fake mode, watch for the consumer running out of messages and stop
+        // the processor so that `run()` returns instead of polling forever.
+        if let Some(done) = done {
+            let mut handle = processor.get_handle();
+            thread::spawn(move || {
+                while !done.load(Ordering::Relaxed) {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                println!("Fake consumer finished producing messages, shutting down...");
+                handle.signal_shutdown();
+            });
+        }
 
         let mut handle = processor.get_handle();
         ctrlc::set_handler(move || {
