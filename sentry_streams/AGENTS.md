@@ -24,6 +24,10 @@ the runner CLI script and the Arroyo adapter to run the application on single no
 - **`integration_tests/`** - Integration tests
 - **`docs/`** - Sphinx documentation
 
+## Architecture documents
+
+Architecture is described [here](./docs/architecture/README.md)
+
 ## Quick Start
 
 **Recommended:** Use the repository root Makefile commands documented in [../AGENTS.md](../AGENTS.md):

@@ -18,7 +18,7 @@ classifiers = [
 
 dependencies = [
     "requests>=2.32.3",
-    "sentry-arroyo>=2.39.2",
+    "sentry-arroyo>=2.39.2,<2.44.0",
     "pyyaml>=6.0.2",
     "jsonschema>=4.23.0",
     "sentry-kafka-schemas>=2.2.0",

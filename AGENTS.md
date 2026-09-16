@@ -16,6 +16,13 @@ The repository is organized into two main Python packages:
 - **`sentry_streams_k8s/`** - Kubernetes integration and deployment automation for Sentry Streams (pure Python package)
   - See [sentry_streams_k8s/AGENTS.md](./sentry_streams_k8s/AGENTS.md) for package-specific development instructions
 
+## Architecture documents
+
+Overall structure of the streaming platform is in the [README](./README.md).
+It contains links to the specific module.
+
+The architecture of the platform itself — subsystems, decisions, invariants, guarantees
+and known debt — is in [sentry_streams/docs/architecture](./sentry_streams/docs/architecture/README.md).
 
 ### Other Directories
 
