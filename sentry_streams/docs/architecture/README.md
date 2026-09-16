@@ -2,7 +2,8 @@
 
 This directory describes the architecture of the `sentry_streams` package: the roles of
 the main subsystems, the decisions behind them, the rules that must hold, and what we
-know is unfinished.
+know is unfinished. The decisions themselves, one per page, are in the
+[decision log](./decisions/README.md).
 
 # The model
 
@@ -84,7 +85,7 @@ The DSL is built from a small set of primitives, in a few families:
   ones: `Parser`, `Serializer`, `BatchParser`, `ParquetSerializer`, `Reducer`. See
   [Pipeline DSL and runner](./pipeline-dsl-and-runner.md#complex-steps).
 
-Refer to [pipeline.py](../../sentry_streams/pipeline/pipeline.py) to find documentaiton
+Refer to [pipeline.py](../../sentry_streams/pipeline/pipeline.py) to find documentation
 on each of the implemented steps.
 
 A pipeline is built by chaining these together. Each step has a name, which is also the
@@ -158,6 +159,7 @@ in [The Rust Arroyo adapter](./rust-arroyo/README.md).
 
 **Architecture**
 
+1. [Decision log](./decisions/README.md) — the choices this design rests on, and why.
 2. [Guarantees and failure modes](./guarantees.md) — what the system promises.
 
 
