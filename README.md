@@ -21,9 +21,6 @@ The main features are:
 - Support for stateful and stateless transformations. The state storage is
   provided by the platform rather than being part of the application.
 
-- Distributed execution. The primitives used to build the application can
-  be distributed on multiple nodes by configuration.
-
 - Hide the Kafka details from the application. Like commit policy and topic
   partitioning.
 
@@ -34,7 +31,72 @@ The main features are:
 
 - Support for multiple runtimes.
 
-[Streams Documentation](https://getsentry.github.io/streams/)
+[Streams User Documentation](https://getsentry.github.io/streams/)
+
+## Architecture of a Streaming Application
+
+The three main components of a streaming application built with this library are:
+
+* The pipeline itself written via the Pipeline DSL. This represents the application logic.
+
+* The runtime. This is the binary that executes the pipeline primitives and processes data.
+
+* The Kubernetes infrastructure to deploy the pipeline (when on Kubernetes).
+
+```mermaid
+flowchart TB
+    Kafka[Kafka]
+
+    subgraph StreamingApp["Streaming Application"]
+        subgraph deployment["Kubernetes deployment"]
+          subgraph Pipeline["Pipeline"]
+              direction LR
+              source[source] --> transform[transform] --> sink[sink]
+          end
+
+          Runtime[Runtime]
+          Runtime -->|executes| Pipeline
+
+          Config[Pipeline ConfigMap]
+        end
+
+        subgraph K8s["Kubernetes Infra"]
+            Macro["sentry-kube macro"]
+            Operator[Operator]
+        end
+    end
+    K8s -- manages --> deployment
+    K8s -- manages --> Config
+    Kafka --> source
+```
+
+Pipeline and runtime architecture docs are [here](./sentry_streams/docs/architecture/README.md)
+
+The pipeline DSL allows the user to define the streaming pipeline through a set
+of dataflow primitives chained together. This is a Python DSL now.
+
+The application logic is separate from the infrastructure configuration which
+is provided as a separate yaml file. The config file covers aspects like
+observability, scale, parallelism, tuning, etc. This is meant to separate
+the application logic from infra.
+
+The Runtime consumes the pipeline defined above and the config file, manages
+the connectivity with Kafka and executes the processing in a supposedly optimized
+way.
+
+The platform is provided as a Python package that contains also a native
+portion as the runner. This package (`sentry_streams`) is imported by the application
+code. The application defines the pipeline in its own code base and then uses
+the runner provided by the library for the execution.
+
+This system provides the infrastructure needed to run the application in Kubernetes.
+There are two options:
+
+* A [Sentry Kube](https://github.com/getsentry/sentry-infra-tools#sentry-kube) macro.
+  This can be used to generate Deployments and Configmap manifests to deploy manually
+
+* An experimental operator that manages a pipeline as a CRD.
+
 
 ## to develop in this repo
 
