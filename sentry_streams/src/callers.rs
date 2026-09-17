@@ -109,6 +109,7 @@ mod tests {
                         .into()
                     })
                 }
+                RoutedValuePayload::RustRawMessage(..) => unreachable!(),
                 RoutedValuePayload::WatermarkMessage(..) => unreachable!(),
             };
 

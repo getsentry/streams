@@ -17,20 +17,23 @@ fn route_message(
         return Ok(message);
     }
 
-    let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) = message.payload().payload
-    else {
+    // Exhaustive on purpose: every `RoutedValuePayload` variant has to be spelled out so
+    // adding a variant is a build failure rather than routing that is silently skipped.
+    let py_arg: Py<PyAny> = match &message.payload().payload {
+        RoutedValuePayload::PyStreamingMessage(py_streaming_msg) => py_streaming_msg.into(),
+        // The routing function only reads the message to pick a waypoint, so the Python copy
+        // is transient: the message forwarded downstream keeps its Rust payload.
+        RoutedValuePayload::RustRawMessage(raw) => raw.into(),
         // TODO: a future PR will remove this gate on WatermarkMessage and duplicate it for each downstream route.
-        return Ok(message);
+        RoutedValuePayload::WatermarkMessage(..) => return Ok(message),
     };
 
     let res = traced_with_gil!(|py| {
-        try_apply_py(py, callable, (Into::<Py<PyAny>>::into(py_streaming_msg),)).and_then(
-            |py_res| {
-                py_res
-                    .extract::<String>(py)
-                    .map_err(|_| ApplyError::ApplyFailed)
-            },
-        )
+        try_apply_py(py, callable, (py_arg,)).and_then(|py_res| {
+            py_res
+                .extract::<String>(py)
+                .map_err(|_| ApplyError::ApplyFailed)
+        })
     });
 
     match (res, &message.inner_message) {
@@ -62,9 +65,11 @@ pub fn build_router(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutils::build_raw_routed_value;
     use crate::testutils::build_routed_value;
     use crate::testutils::import_py_dep;
     use crate::testutils::make_lambda;
+    use crate::testutils::payload_kind;
     use crate::utils::traced_with_gil;
     use chrono::Utc;
     use pyo3::ffi::c_str;
@@ -224,6 +229,36 @@ mod tests {
                     vec!["waypoint1".to_string(), "waypoint2".to_string()]
                 )
             );
+        });
+    }
+
+    /// The router only reads the payload to pick a waypoint, so the Python copy is transient:
+    /// the forwarded message keeps its Rust payload.
+    #[test]
+    fn test_router_forwards_rust_message_unconverted() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let callable = make_lambda(py, c_str!("lambda x: 'waypoint2'"));
+            let message = Message::new_any_message(
+                build_raw_routed_value(b"raw".to_vec(), "source1", vec!["waypoint1".to_string()]),
+                BTreeMap::new(),
+            );
+
+            let routed = route_message(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                &callable,
+                message,
+            )
+            .unwrap();
+
+            assert_eq!(
+                routed.payload().route,
+                Route::new(
+                    "source1".to_string(),
+                    vec!["waypoint1".to_string(), "waypoint2".to_string()]
+                )
+            );
+            assert_eq!(payload_kind(&routed.payload().payload), "rust_raw");
         });
     }
 }

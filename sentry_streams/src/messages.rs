@@ -34,6 +34,7 @@
 //!       will allow us to optimize the translation avoiding copy without
 //!       impacting each operator.
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use pyo3::types::{PyBytes, PyDict, PyInt, PyList, PyTuple};
 use pyo3::Python;
@@ -269,23 +270,29 @@ impl PyAnyMessage {
     }
 }
 
-/// Represent a message whose payload is a byte array. The payload is a Vec<u8>, not
-/// a PyBytes. Copy is needed to convert one to the other. This is meant primarily to
-/// represent the message produced by a Rust source and consumed by a Rust Sink.
+/// Represent a message whose payload is a byte array. The payload is an `Arc<[u8]>`,
+/// not a PyBytes. Copy is needed to convert one to the other. This is meant primarily
+/// to represent the message produced by a Rust source and consumed by a Rust Sink.
+///
+/// The payload is behind an `Arc` so that cloning a message (the `Broadcaster` clones
+/// one copy per downstream branch) does not copy the bytes, and so the immutability
+/// this module claims is actually enforced.
 ///
 /// TODO: With FFI there should be a way to share a byte array between Rust and Python
 ///       without copying.
-#[pyclass]
-#[derive(Debug)]
+// `skip_from_py_object` keeps the `Clone` derive from silently adding a `FromPyObject` impl
+// this type never had: Python code hands us `Py<RawMessage>`, never an extracted value.
+#[pyclass(skip_from_py_object)]
+#[derive(Debug, Clone)]
 pub struct RawMessage {
-    pub payload: Vec<u8>,
+    pub payload: Arc<[u8]>,
 
     pub headers: Vec<(String, Vec<u8>)>,
 
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub timestamp: f64,
 
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub schema: Option<String>,
 }
 
@@ -300,7 +307,7 @@ impl RawMessage {
         py: Python,
     ) -> PyResult<Self> {
         Ok(Self {
-            payload: payload.as_bytes(py).to_vec(),
+            payload: payload.as_bytes(py).into(),
             // Kafka headers are not read from the constructor; keep an empty vec.
             headers: Vec::new(),
             timestamp,
@@ -320,7 +327,7 @@ impl RawMessage {
 
     fn replace_payload(&self, new_payload: Py<PyBytes>, py: Python<'_>) -> RawMessage {
         RawMessage {
-            payload: new_payload.as_bytes(py).to_vec(),
+            payload: new_payload.as_bytes(py).into(),
             headers: self.headers.clone(),
             timestamp: self.timestamp,
             schema: self.schema.clone(),
@@ -340,7 +347,7 @@ impl RawMessage {
 }
 
 #[allow(unused)]
-pub fn replace_raw_payload(message: RawMessage, new_payload: Vec<u8>) -> RawMessage {
+pub fn replace_raw_payload(message: RawMessage, new_payload: Arc<[u8]>) -> RawMessage {
     // Replaces the payload of a `RawMessage` with a new byte array when the
     // message is managed by Rust and is not on Python memory.
     RawMessage {
@@ -386,29 +393,45 @@ impl Clone for PyStreamingMessage {
     }
 }
 
-/// RoutedValuePayload is an enum type to describe the 2 possible payload values of a RoutedValue:
-/// - PyStreamingMessage: a message containing data that will be processed by the pipeline
+/// RoutedValuePayload is an enum type to describe the 3 possible payload values of a RoutedValue:
+/// - RustRawMessage: a message whose bytes live in Rust memory. Steps that can do their work
+///   natively read it without ever taking the Gil. This is what the Kafka source emits.
+/// - PyStreamingMessage: a message that lives in Python memory, ready to be handed to a Python
+///   operator. A `RustRawMessage` becomes one on its way into Python code.
 /// - WatermarkMessage: a message emitted by the Watermark step which is propagated down the pipeline
 ///   to ensure we only commit messages which have completed all pipeline processing
+///
+/// Conversion only goes one way: `RustRawMessage` -> `PyStreamingMessage`. Steps that transform the
+/// payload (Map, PythonAdapter) write the Python form back into the message; steps that only read
+/// the payload to make a decision (Filter, Router) convert transiently and forward the original
+/// Rust form, so a following Rust step keeps the cheap path.
 #[derive(Debug)]
 pub enum RoutedValuePayload {
     PyStreamingMessage(PyStreamingMessage),
     WatermarkMessage(WatermarkMessage),
+    RustRawMessage(RawMessage),
 }
 
 impl RoutedValuePayload {
     pub fn is_watermark_msg(&self) -> bool {
         match self {
             RoutedValuePayload::PyStreamingMessage(..) => false,
+            RoutedValuePayload::RustRawMessage(..) => false,
             RoutedValuePayload::WatermarkMessage(..) => true,
         }
     }
 
     /// Unwraps the `PyStreamingMessage` within the `RoutedValue` payload.
     /// If the payload is a `WatermarkMessage` this panics.
+    ///
+    /// Test-only: production code matches on every variant instead.
+    #[cfg(test)]
     pub fn unwrap_payload(&self) -> &PyStreamingMessage {
         match &self {
             RoutedValuePayload::PyStreamingMessage(payload) => payload,
+            RoutedValuePayload::RustRawMessage(..) => panic!(
+                "Invalid message payload, expected PyStreamingMessage but got RustRawMessage."
+            ),
             RoutedValuePayload::WatermarkMessage(..) => panic!(
                 "Invalid message payload, expected PyStreamingMessage but got WatermarkPayload."
             ),
@@ -434,6 +457,10 @@ impl Clone for RoutedValuePayload {
             }
             RoutedValuePayload::PyStreamingMessage(ref py_msg) => {
                 RoutedValuePayload::PyStreamingMessage(py_msg.clone())
+            }
+            // No Gil: the payload bytes are behind an `Arc`, so this is a refcount bump.
+            RoutedValuePayload::RustRawMessage(ref raw) => {
+                RoutedValuePayload::RustRawMessage(raw.clone())
             }
         }
     }
@@ -480,6 +507,23 @@ impl From<&RoutedValuePayload> for Py<PyAny> {
         match &value {
             RoutedValuePayload::PyStreamingMessage(msg) => msg.into(),
             RoutedValuePayload::WatermarkMessage(msg) => msg.into(),
+            RoutedValuePayload::RustRawMessage(msg) => msg.into(),
+        }
+    }
+}
+
+/// Moves a Rust-owned `RawMessage` into Python memory. This is the only direction we
+/// convert in: there is no way back from Python to Rust without copying the payload.
+impl From<&RawMessage> for Py<PyAny> {
+    fn from(value: &RawMessage) -> Self {
+        traced_with_gil!(|py| into_pyraw(py, value.clone()).unwrap().into_any())
+    }
+}
+
+impl From<&RawMessage> for PyStreamingMessage {
+    fn from(value: &RawMessage) -> Self {
+        PyStreamingMessage::RawMessage {
+            content: traced_with_gil!(|py| into_pyraw(py, value.clone()).unwrap()),
         }
     }
 }
@@ -545,18 +589,6 @@ impl TryFrom<Py<PyAny>> for WatermarkMessage {
             }
         })
     }
-}
-
-/// Represents a generic message that is in Rust memory and can be processed by Rust
-/// code without taking the Gil.
-///
-/// TODO: See the TODO at the module level. This is where we would put the message
-///       metadata.
-#[allow(unused)]
-#[derive(Debug)]
-pub enum StreamingMessage {
-    PyAnyMessage { content: PyAnyMessage },
-    RawMessage { content: RawMessage },
 }
 
 #[cfg(test)]
@@ -686,7 +718,7 @@ mod tests {
             assert_eq!(msg.schema, schema);
 
             // Check payload
-            assert_eq!(msg.payload, payload_bytes);
+            assert_eq!(&msg.payload[..], &payload_bytes[..]);
 
             // Check headers (constructor ignores the argument; always empty)
             assert!(msg.headers.is_empty());

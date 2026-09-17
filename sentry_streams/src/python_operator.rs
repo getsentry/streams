@@ -186,6 +186,9 @@ impl ProcessingStrategy<RoutedValue> for PythonAdapter {
 
         let committable = match &message.payload().payload {
             RoutedValuePayload::PyStreamingMessage(..) => clone_committable(&message),
+            // Ratchet: the delegate returns Python payloads, which are written back as
+            // `PyStreamingMessage`, so a Rust message entering here stays in Python memory.
+            RoutedValuePayload::RustRawMessage(..) => clone_committable(&message),
             RoutedValuePayload::WatermarkMessage(WatermarkMessage::Watermark(watermark)) => {
                 watermark.committable.clone()
             }

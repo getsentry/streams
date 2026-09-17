@@ -7,10 +7,18 @@ use pyo3::prelude::*;
 use pyo3::IntoPyObjectExt;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 #[cfg(test)]
+use sentry_arroyo::processing::strategies::{
+    CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
+};
+#[cfg(test)]
 use sentry_arroyo::types::{Message, Partition, Topic};
 #[cfg(test)]
 use std::collections::BTreeMap;
 use std::ffi::CStr;
+#[cfg(test)]
+use std::sync::{Arc, Mutex};
+#[cfg(test)]
+use std::time::Duration;
 
 #[cfg(test)]
 pub fn import_py_dep(module: &str, attr: &str) {
@@ -82,8 +90,31 @@ pub fn build_routed_value_with_timestamp(
     }
 }
 
+/// A Rust-owned message with headers. This is the representation the Kafka source emits,
+/// so it is the default for tests: the suite exercises the path production takes.
+/// Use [`build_py_routed_value_with_headers`] for the Python-memory counterpart.
 #[cfg(test)]
 pub fn build_routed_value_with_headers(
+    msg_payload: Vec<u8>,
+    source: &str,
+    waypoints: Vec<String>,
+    headers: Vec<(String, Vec<u8>)>,
+) -> RoutedValue {
+    RoutedValue {
+        route: Route::new(source.to_string(), waypoints),
+        payload: RoutedValuePayload::RustRawMessage(RawMessage {
+            payload: msg_payload.into(),
+            headers,
+            timestamp: 0.0,
+            schema: None,
+        }),
+    }
+}
+
+/// The Python-memory counterpart of [`build_routed_value_with_headers`]: a `PyAnyMessage`
+/// in a `PyStreamingMessage`, as a step downstream of a Python operator would see.
+#[cfg(test)]
+pub fn build_py_routed_value_with_headers(
     py: Python<'_>,
     msg_payload: Py<PyAny>,
     source: &str,
@@ -109,21 +140,50 @@ pub fn build_routed_value_with_headers(
     }
 }
 
+/// A Rust-owned byte message, the representation the Kafka source emits. Default for tests;
+/// use [`build_py_raw_routed_value`] for the Python-memory counterpart.
 #[cfg(test)]
 pub fn build_raw_routed_value(
+    msg_payload: Vec<u8>,
+    source: &str,
+    waypoints: Vec<String>,
+) -> RoutedValue {
+    build_raw_routed_value_with_timestamp(msg_payload, source, waypoints, 0.0)
+}
+
+#[cfg(test)]
+pub fn build_raw_routed_value_with_timestamp(
+    msg_payload: Vec<u8>,
+    source: &str,
+    waypoints: Vec<String>,
+    timestamp: f64,
+) -> RoutedValue {
+    RoutedValue {
+        route: Route::new(source.to_string(), waypoints),
+        payload: RoutedValuePayload::RustRawMessage(RawMessage {
+            payload: msg_payload.into(),
+            headers: vec![],
+            timestamp,
+            schema: None,
+        }),
+    }
+}
+
+/// The Python-memory counterpart of [`build_raw_routed_value`]: a `RawMessage` that has
+/// already been moved into Python memory.
+#[cfg(test)]
+pub fn build_py_raw_routed_value(
     py: Python<'_>,
     msg_payload: Vec<u8>,
     source: &str,
     waypoints: Vec<String>,
 ) -> RoutedValue {
-    use std::vec;
-
     let route = Route::new(source.to_string(), waypoints);
     let payload = PyStreamingMessage::RawMessage {
         content: into_pyraw(
             py,
             RawMessage {
-                payload: msg_payload,
+                payload: msg_payload.into(),
                 headers: vec![],
                 timestamp: 0.0,
                 schema: None,
@@ -151,12 +211,24 @@ pub fn make_routed_msg(
 
 #[cfg(test)]
 pub fn make_raw_routed_msg(
+    msg_payload: Vec<u8>,
+    source: &str,
+    waypoints: Vec<String>,
+) -> Message<RoutedValue> {
+    let routed_value = build_raw_routed_value(msg_payload, source, waypoints);
+    Message::new_any_message(routed_value, std::collections::BTreeMap::new())
+}
+
+/// The Python-memory counterpart of [`make_raw_routed_msg`].
+#[allow(unused)]
+#[cfg(test)]
+pub fn make_py_raw_routed_msg(
     py: Python<'_>,
     msg_payload: Vec<u8>,
     source: &str,
     waypoints: Vec<String>,
 ) -> Message<RoutedValue> {
-    let routed_value = build_raw_routed_value(py, msg_payload, source, waypoints);
+    let routed_value = build_py_raw_routed_value(py, msg_payload, source, waypoints);
     Message::new_any_message(routed_value, std::collections::BTreeMap::new())
 }
 
@@ -173,6 +245,60 @@ pub fn make_committable(num_partitions: u64, starting_offset: u64) -> BTreeMap<P
         );
     }
     committable
+}
+
+/// Names the representation of a payload, so a test can assert which memory a message lives
+/// in. The ratchet rule is only observable this way: steps that read the payload to make a
+/// decision must forward the Rust form, steps that transform it must write back the Python one.
+#[cfg(test)]
+pub fn payload_kind(payload: &RoutedValuePayload) -> &'static str {
+    match payload {
+        RoutedValuePayload::RustRawMessage(..) => "rust_raw",
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::RawMessage { .. }) => "py_raw",
+        RoutedValuePayload::PyStreamingMessage(PyStreamingMessage::PyAnyMessage { .. }) => "py_any",
+        RoutedValuePayload::WatermarkMessage(..) => "watermark",
+    }
+}
+
+/// A next step that records the representation of everything submitted to it.
+#[cfg(test)]
+pub struct RecordingStrategy {
+    kinds: Arc<Mutex<Vec<&'static str>>>,
+}
+
+#[cfg(test)]
+impl RecordingStrategy {
+    /// Returns the strategy and a handle on what it records.
+    pub fn new() -> (Self, Arc<Mutex<Vec<&'static str>>>) {
+        let kinds = Arc::new(Mutex::new(Vec::new()));
+        (
+            Self {
+                kinds: kinds.clone(),
+            },
+            kinds,
+        )
+    }
+}
+
+#[cfg(test)]
+impl ProcessingStrategy<RoutedValue> for RecordingStrategy {
+    fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
+        Ok(None)
+    }
+
+    fn submit(&mut self, message: Message<RoutedValue>) -> Result<(), SubmitError<RoutedValue>> {
+        self.kinds
+            .lock()
+            .unwrap()
+            .push(payload_kind(&message.into_payload().payload));
+        Ok(())
+    }
+
+    fn terminate(&mut self) {}
+
+    fn join(&mut self, _: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
+        Ok(None)
+    }
 }
 
 pub fn initialize_python() {

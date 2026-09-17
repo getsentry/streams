@@ -50,22 +50,24 @@ impl ProcessingStrategy<RoutedValue> for Filter {
             return self.next_step.submit(message);
         }
 
-        let RoutedValuePayload::PyStreamingMessage(ref py_streaming_msg) =
-            message.payload().payload
-        else {
-            unreachable!("Watermark message trying to be passed to filter function.")
+        // Exhaustive on purpose: every `RoutedValuePayload` variant has to be spelled out so
+        // adding a variant is a build failure rather than a panic on the first message.
+        let py_arg: Py<PyAny> = match &message.payload().payload {
+            RoutedValuePayload::PyStreamingMessage(py_streaming_msg) => py_streaming_msg.into(),
+            // The filter function only reads the message to make a decision, so the Python copy
+            // is transient: a message that passes the filter keeps its Rust payload.
+            RoutedValuePayload::RustRawMessage(raw) => raw.into(),
+            RoutedValuePayload::WatermarkMessage(..) => {
+                unreachable!("Watermark message trying to be passed to filter function.")
+            }
         };
 
         let stats = get_stats();
         stats.step_exec(&self.step_name);
         let start = Instant::now();
         let res = traced_with_gil!(|py| {
-            try_apply_py(
-                py,
-                &self.callable,
-                (Into::<Py<PyAny>>::into(py_streaming_msg),),
-            )
-            .and_then(|py_res| py_res.is_truthy(py).map_err(|_| ApplyError::ApplyFailed))
+            try_apply_py(py, &self.callable, (py_arg,))
+                .and_then(|py_res| py_res.is_truthy(py).map_err(|_| ApplyError::ApplyFailed))
         });
         let elapsed = start.elapsed().as_secs_f64();
 
@@ -104,9 +106,11 @@ mod tests {
     use crate::fake_strategy::FakeStrategy;
     use crate::messages::Watermark;
     use crate::routes::Route;
+    use crate::testutils::build_raw_routed_value;
     use crate::testutils::build_routed_value;
     use crate::testutils::import_py_dep;
     use crate::testutils::make_lambda;
+    use crate::testutils::RecordingStrategy;
     use crate::transformer::build_filter;
     use crate::utils::traced_with_gil;
     use chrono::Utc;
@@ -302,6 +306,37 @@ mod tests {
             assert!(watermark_res.is_ok());
             let watermark_messages = submitted_watermarks_clone.lock().unwrap();
             assert_eq!(watermark_messages[0], Watermark::new(BTreeMap::new(), 0));
+        });
+    }
+
+    /// The filter only reads the payload to make a decision, so it must forward the Rust form
+    /// untouched: a Rust step downstream keeps the cheap path.
+    #[test]
+    fn test_filter_forwards_rust_message_unconverted() {
+        crate::testutils::initialize_python();
+        traced_with_gil!(|py| {
+            let (recorder, kinds) = RecordingStrategy::new();
+            let callable = make_lambda(py, c_str!("lambda x: x.payload == b'keep'"));
+            let mut strategy = build_filter(
+                &Route::new("source1".to_string(), vec!["waypoint1".to_string()]),
+                callable,
+                "test_step".to_string(),
+                Box::new(recorder),
+            );
+
+            let keep = Message::new_any_message(
+                build_raw_routed_value(b"keep".to_vec(), "source1", vec!["waypoint1".to_string()]),
+                BTreeMap::new(),
+            );
+            assert!(strategy.submit(keep).is_ok());
+
+            let drop = Message::new_any_message(
+                build_raw_routed_value(b"drop".to_vec(), "source1", vec!["waypoint1".to_string()]),
+                BTreeMap::new(),
+            );
+            assert!(strategy.submit(drop).is_ok());
+
+            assert_eq!(kinds.lock().unwrap().deref(), &["rust_raw"]);
         });
     }
 }
