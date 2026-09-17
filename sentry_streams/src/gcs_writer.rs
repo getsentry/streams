@@ -13,6 +13,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
 use reqwest::ClientBuilder;
+use reqwest::StatusCode;
 use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskError;
 use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskFunc;
 use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
@@ -25,6 +26,11 @@ use std::time::Duration;
 use tokio::sync::OnceCell;
 
 const METRIC_SINK_GCS_WRITER_BYTES: &str = "streams.pipeline.sink.gcs_writer.bytes";
+/// Counter: one increment per retried attempt.
+const METRIC_SINK_GCS_WRITER_RETRIES: &str = "streams.pipeline.sink.gcs_writer.retries";
+/// Counter: one increment per upload that gave up after exhausting all attempts.
+const METRIC_SINK_GCS_WRITER_RETRIES_EXHAUSTED: &str =
+    "streams.pipeline.sink.gcs_writer.retries_exhausted";
 
 /// Max attempts for a single GCS upload (initial try + retries).
 const GCS_UPLOAD_MAX_ATTEMPTS: u32 = 3;
@@ -68,10 +74,18 @@ enum RetryPolicyError {
     Exhausted,
 }
 
+/// Counter names and labels `retry_policy` emits, so the policy itself stays caller agnostic.
+struct RetryMetrics {
+    retries: &'static str,
+    exhausted: &'static str,
+    labels: Vec<(String, String)>,
+}
+
 /// Runs `operation` until it succeeds, returns a permanent error, or exhausts attempts.
 async fn retry_policy<T, F, Fut>(
     max_attempts: u32,
     backoff: impl Fn(u32) -> Duration,
+    retry_metrics: &RetryMetrics,
     mut operation: F,
 ) -> Result<T, RetryPolicyError>
 where
@@ -86,13 +100,23 @@ where
                 if attempt == max_attempts {
                     break;
                 }
+                metrics::counter!(retry_metrics.retries, &retry_metrics.labels).increment(1);
                 tokio::time::sleep(backoff(attempt - 1)).await;
             }
             Err(error) => return Err(RetryPolicyError::Permanent(error)),
         }
     }
 
+    metrics::counter!(retry_metrics.exhausted, &retry_metrics.labels).increment(1);
     Err(RetryPolicyError::Exhausted)
+}
+
+/// Client (4xx) errors are permanent, except the two GCS documents as retryable: 429 rate
+/// limiting and 408 request timeout. Everything else (5xx and friends) is transient.
+fn is_permanent_http_status(status: StatusCode) -> bool {
+    status.is_client_error()
+        && status != StatusCode::TOO_MANY_REQUESTS
+        && status != StatusCode::REQUEST_TIMEOUT
 }
 
 /// Single GCS upload attempt. Token, network, and 5xx/other HTTP failures are retryable.
@@ -162,8 +186,7 @@ async fn upload_to_gcs(
         return Ok(());
     }
 
-    // Client (4xx) errors are permanent. Everything else is treated as transient.
-    if status.is_client_error() {
+    if is_permanent_http_status(status) {
         let body = response.text().await;
         // Permanent client errors must crash the consumer so offsets are not committed.
         return Err(RunTaskError::Other(anyhow::anyhow!(
@@ -261,19 +284,30 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 })
                 .await;
 
-            match retry_policy(GCS_UPLOAD_MAX_ATTEMPTS, gcs_upload_backoff, |attempt| {
-                upload_to_gcs(
-                    &client,
-                    auth_provider.as_ref(),
-                    &url,
-                    bytes.clone(),
-                    &bucket_str,
-                    &object_name,
-                    pybytes_ms,
-                    &route_source,
-                    attempt,
-                )
-            })
+            let retry_metrics = RetryMetrics {
+                retries: METRIC_SINK_GCS_WRITER_RETRIES,
+                exhausted: METRIC_SINK_GCS_WRITER_RETRIES_EXHAUSTED,
+                labels: vec![("source".to_string(), route_source.clone())],
+            };
+
+            match retry_policy(
+                GCS_UPLOAD_MAX_ATTEMPTS,
+                gcs_upload_backoff,
+                &retry_metrics,
+                |attempt| {
+                    upload_to_gcs(
+                        &client,
+                        auth_provider.as_ref(),
+                        &url,
+                        bytes.clone(),
+                        &bucket_str,
+                        &object_name,
+                        pybytes_ms,
+                        &route_source,
+                        attempt,
+                    )
+                },
+            )
             .await
             {
                 Ok(()) => Ok(message),
@@ -294,8 +328,9 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 #[cfg(test)]
 mod tests {
     use crate::testutils::make_raw_routed_msg;
-    use reqwest::StatusCode;
+    use metrics::{Key, KeyName, Metadata, Recorder, SharedString, Unit};
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Mutex;
 
     use super::*;
 
@@ -323,26 +358,93 @@ mod tests {
 
     #[test]
     fn test_permanent_http_status_classification() {
-        assert!(StatusCode::BAD_REQUEST.is_client_error());
-        assert!(StatusCode::UNAUTHORIZED.is_client_error());
-        assert!(StatusCode::FORBIDDEN.is_client_error());
-        assert!(StatusCode::NOT_FOUND.is_client_error());
-        assert!(StatusCode::TOO_MANY_REQUESTS.is_client_error());
-        assert!(!StatusCode::INTERNAL_SERVER_ERROR.is_client_error());
-        assert!(!StatusCode::BAD_GATEWAY.is_client_error());
-        assert!(!StatusCode::SERVICE_UNAVAILABLE.is_client_error());
-        assert!(!StatusCode::GATEWAY_TIMEOUT.is_client_error());
+        assert!(is_permanent_http_status(StatusCode::BAD_REQUEST));
+        assert!(is_permanent_http_status(StatusCode::UNAUTHORIZED));
+        assert!(is_permanent_http_status(StatusCode::FORBIDDEN));
+        assert!(is_permanent_http_status(StatusCode::NOT_FOUND));
+        assert!(!is_permanent_http_status(StatusCode::INTERNAL_SERVER_ERROR));
+        assert!(!is_permanent_http_status(StatusCode::BAD_GATEWAY));
+        assert!(!is_permanent_http_status(StatusCode::SERVICE_UNAVAILABLE));
+        assert!(!is_permanent_http_status(StatusCode::GATEWAY_TIMEOUT));
+    }
+
+    #[test]
+    fn test_gcs_throttling_statuses_are_retried() {
+        // GCS documents 429 and 408 as retryable, so they must back off instead of
+        // crashing the consumer.
+        assert!(!is_permanent_http_status(StatusCode::TOO_MANY_REQUESTS));
+        assert!(!is_permanent_http_status(StatusCode::REQUEST_TIMEOUT));
     }
 
     fn no_backoff(_: u32) -> Duration {
         Duration::ZERO
     }
 
+    fn test_retry_metrics() -> RetryMetrics {
+        RetryMetrics {
+            retries: METRIC_SINK_GCS_WRITER_RETRIES,
+            exhausted: METRIC_SINK_GCS_WRITER_RETRIES_EXHAUSTED,
+            labels: vec![("source".to_string(), "source1".to_string())],
+        }
+    }
+
+    /// Counter-only recorder modeled on `pipeline_stats::tests::CaptureRecorder`.
+    #[derive(Default)]
+    struct CaptureRecorder {
+        counters: Arc<Mutex<Vec<(Key, u64)>>>,
+    }
+
+    impl Recorder for CaptureRecorder {
+        fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+        fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+        fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+        fn register_counter(&self, key: &Key, _: &Metadata<'_>) -> metrics::Counter {
+            metrics::Counter::from_arc(Arc::new(CaptureCounter {
+                key: key.clone(),
+                counters: Arc::clone(&self.counters),
+            }))
+        }
+        fn register_gauge(&self, _: &Key, _: &Metadata<'_>) -> metrics::Gauge {
+            metrics::Gauge::noop()
+        }
+        fn register_histogram(&self, _: &Key, _: &Metadata<'_>) -> metrics::Histogram {
+            metrics::Histogram::noop()
+        }
+    }
+
+    struct CaptureCounter {
+        key: Key,
+        counters: Arc<Mutex<Vec<(Key, u64)>>>,
+    }
+
+    impl metrics::CounterFn for CaptureCounter {
+        fn increment(&self, value: u64) {
+            self.counters
+                .lock()
+                .unwrap()
+                .push((self.key.clone(), value));
+        }
+        fn absolute(&self, value: u64) {
+            self.counters
+                .lock()
+                .unwrap()
+                .push((self.key.clone(), value));
+        }
+    }
+
+    fn total_for(counters: &[(Key, u64)], name: &str) -> u64 {
+        counters
+            .iter()
+            .filter(|(k, _)| k.name() == name)
+            .map(|(_, v)| *v)
+            .sum()
+    }
+
     #[tokio::test]
     async fn test_retry_policy_retries_retryable_then_succeeds() {
         let attempts = Arc::new(AtomicU32::new(0));
         let attempts_for_op = attempts.clone();
-        let result = retry_policy(5, no_backoff, |_| {
+        let result = retry_policy(5, no_backoff, &test_retry_metrics(), |_| {
             let attempts_for_op = attempts_for_op.clone();
             async move {
                 let n = attempts_for_op.fetch_add(1, Ordering::SeqCst) + 1;
@@ -363,7 +465,7 @@ mod tests {
     async fn test_retry_policy_does_not_retry_permanent_errors() {
         let attempts = Arc::new(AtomicU32::new(0));
         let attempts_for_op = attempts.clone();
-        let result = retry_policy(5, no_backoff, |_| {
+        let result = retry_policy(5, no_backoff, &test_retry_metrics(), |_| {
             let attempts_for_op = attempts_for_op.clone();
             async move {
                 attempts_for_op.fetch_add(1, Ordering::SeqCst);
@@ -380,7 +482,7 @@ mod tests {
     async fn test_retry_policy_exhausts_retryable_errors() {
         let attempts = Arc::new(AtomicU32::new(0));
         let attempts_for_op = attempts.clone();
-        let result = retry_policy(3, no_backoff, |_| {
+        let result = retry_policy(3, no_backoff, &test_retry_metrics(), |_| {
             let attempts_for_op = attempts_for_op.clone();
             async move {
                 attempts_for_op.fetch_add(1, Ordering::SeqCst);
@@ -394,5 +496,51 @@ mod tests {
             "expected exhausted retries"
         );
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn test_retry_policy_counts_retries_and_exhaustion() {
+        let counters = Arc::new(Mutex::new(Vec::<(Key, u64)>::new()));
+        let recorder = CaptureRecorder {
+            counters: Arc::clone(&counters),
+        };
+
+        let result = {
+            let _guard = metrics::set_default_local_recorder(&recorder);
+            retry_policy(3, no_backoff, &test_retry_metrics(), |_| async {
+                Err::<(), _>(RunTaskError::RetryableError)
+            })
+            .await
+        };
+
+        assert!(matches!(result, Err(RetryPolicyError::Exhausted)));
+        let counters = counters.lock().unwrap();
+        // 3 attempts means 2 retries, then a single give-up.
+        assert_eq!(total_for(&counters, METRIC_SINK_GCS_WRITER_RETRIES), 2);
+        assert_eq!(
+            total_for(&counters, METRIC_SINK_GCS_WRITER_RETRIES_EXHAUSTED),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn test_retry_policy_does_not_count_successful_upload() {
+        let counters = Arc::new(Mutex::new(Vec::<(Key, u64)>::new()));
+        let recorder = CaptureRecorder {
+            counters: Arc::clone(&counters),
+        };
+
+        let result = {
+            let _guard = metrics::set_default_local_recorder(&recorder);
+            retry_policy(3, no_backoff, &test_retry_metrics(), |_| async { Ok(1) }).await
+        };
+
+        assert!(matches!(result, Ok(1)));
+        let counters = counters.lock().unwrap();
+        assert_eq!(total_for(&counters, METRIC_SINK_GCS_WRITER_RETRIES), 0);
+        assert_eq!(
+            total_for(&counters, METRIC_SINK_GCS_WRITER_RETRIES_EXHAUSTED),
+            0
+        );
     }
 }
