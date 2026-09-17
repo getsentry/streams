@@ -45,6 +45,7 @@ from sentry_streams.pipeline.function_template import (
 )
 from sentry_streams.pipeline.message import Message
 from sentry_streams.pipeline.pipeline import (
+    ArrowBatchParser,
     Batch,
     Broadcast,
     ComplexStep,
@@ -497,6 +498,23 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
         loaded_config: Mapping[str, Any] = self.steps_config.get(name, {})
         step.override_config(loaded_config)
         step.validate()
+
+        if isinstance(step, ArrowBatchParser):
+            logger.info(f"Adding Arrow batch parser (native): {step.name} to pipeline")
+            self.__consumers[stream.source].add_step(
+                RuntimeOperator.ArrowBatchParser(
+                    route=route,
+                    step_name=step.name,
+                    schema_name=step.schema_name,
+                    max_batch_size=step.batch_size,
+                    max_batch_time_ms=(
+                        step.batch_timedelta.total_seconds() * 1000.0
+                        if step.batch_timedelta is not None
+                        else None
+                    ),
+                )
+            )
+            return stream
 
         if isinstance(step, Batch):
             max_batch_time_ms: float | None

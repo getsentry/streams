@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+mod arrow_batch_parser;
 mod batch_step;
 mod broadcaster;
 mod callers;
@@ -6,6 +7,7 @@ mod commit_policy;
 mod committable;
 mod consumer;
 mod dev_null_sink;
+mod extractors;
 mod filter_step;
 mod gcs_writer;
 mod header_filter_step;

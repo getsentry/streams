@@ -1,3 +1,4 @@
+use crate::arrow_batch_parser::build_arrow_batch_parser_step;
 use crate::batch_step::build_batch_step;
 use crate::broadcaster::Broadcaster;
 use crate::header_filter_step::build_header_int_filter;
@@ -110,6 +111,23 @@ pub enum RuntimeOperator {
         /// `None` means no size limit (time-only window).
         max_batch_size: Option<usize>,
         /// Wall-clock duration in milliseconds; `None` means no time limit (size-only batch).
+        max_batch_time_ms: Option<f64>,
+    },
+    /// Batches raw Kafka payloads and decodes them into an Apache Arrow `RecordBatch`
+    /// entirely in Rust, emitting one `PyAnyMessage` whose payload is an
+    /// `ArrowRecordBatch`.
+    ///
+    /// `schema_name` is the source topic's *logical* name, captured by the adapter
+    /// before any deployment topic override, and is what resolves the extractor.
+    /// It has to travel in the variant because [`build`] is handed no topic.
+    #[pyo3(name = "ArrowBatchParser")]
+    ArrowBatchParser {
+        route: Route,
+        step_name: String,
+        schema_name: String,
+        /// `None` means no size limit (time-only window).
+        max_batch_size: Option<usize>,
+        /// Wall-clock duration in milliseconds; `None` means no time limit.
         max_batch_time_ms: Option<f64>,
     },
     /// Delegates messages processing to a Python operator that provides
@@ -237,6 +255,23 @@ pub fn build(
         } => {
             let max_t = max_batch_time_ms.map(|ms| Duration::from_secs_f64((ms / 1000.0).max(0.0)));
             build_batch_step(route, *max_batch_size, max_t, step_name.clone(), next)
+        }
+        RuntimeOperator::ArrowBatchParser {
+            route,
+            step_name,
+            schema_name,
+            max_batch_size,
+            max_batch_time_ms,
+        } => {
+            let max_t = max_batch_time_ms.map(|ms| Duration::from_secs_f64((ms / 1000.0).max(0.0)));
+            build_arrow_batch_parser_step(
+                route,
+                schema_name,
+                step_name.clone(),
+                *max_batch_size,
+                max_t,
+                next,
+            )
         }
         RuntimeOperator::PythonAdapter {
             route,

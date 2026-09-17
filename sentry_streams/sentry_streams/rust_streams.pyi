@@ -143,6 +143,15 @@ class RuntimeOperator:
         max_batch_time_ms: float | None = None,
     ) -> Self: ...
     @classmethod
+    def ArrowBatchParser(
+        cls,
+        route: Route,
+        step_name: str,
+        schema_name: str,
+        max_batch_size: int | None = None,
+        max_batch_time_ms: float | None = None,
+    ) -> Self: ...
+    @classmethod
     def PythonAdapter(cls, route: Route, delegate_Factory: RustOperatorFactory) -> Self: ...
 
 class ArroyoConsumer:

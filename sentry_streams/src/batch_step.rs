@@ -20,6 +20,7 @@ use sentry_arroyo::processing::strategies::{
 use sentry_arroyo::types::{Message, Partition};
 use sentry_arroyo::utils::timing::Deadline;
 use std::collections::{BTreeMap, VecDeque};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const METRIC_BATCH_SIZE: &str = "streams.pipeline.batch.size";
@@ -58,6 +59,74 @@ fn list_item_for_streaming_message(
     }
 }
 
+/// One element of an open batch window.
+///
+/// Today the source hands Rust every payload already boxed in Python memory
+/// (`consumer.rs::to_routed_value`), so an element is a [`PyStreamingMessage`].
+/// When the source starts emitting Rust-native messages this alias is the single
+/// line that changes. See `docs/design/arrow-batch-parser.md`.
+pub(crate) type BatchElement = PyStreamingMessage;
+
+/// Turns a flushed batch window into the message sent downstream.
+///
+/// [`BatchStep`] owns windowing, watermark ordering and backpressure; a producer
+/// owns only the shape of the emitted payload. [`PyListFlushProducer`] builds the
+/// Python list the `Batch` step has always built; the Arrow batch parser swaps in
+/// a producer that decodes the same payloads into an Arrow `RecordBatch` without
+/// ever materialising them as Python objects.
+pub(crate) trait BatchFlushProducer: Send + Sync {
+    fn produce(
+        &self,
+        route: &Route,
+        elements: &[BatchElement],
+        committable: BTreeMap<Partition, u64>,
+    ) -> Result<Message<RoutedValue>, StrategyError>;
+}
+
+/// The historical `Batch` behaviour: one `PyAnyMessage` whose payload is a Python
+/// `list`, one item per element, schema taken from the first element.
+pub(crate) struct PyListFlushProducer;
+
+impl BatchFlushProducer for PyListFlushProducer {
+    fn produce(
+        &self,
+        route: &Route,
+        elements: &[BatchElement],
+        committable: BTreeMap<Partition, u64>,
+    ) -> Result<Message<RoutedValue>, StrategyError> {
+        let route = route.clone();
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+
+        let content = traced_with_gil!(|py| -> PyResult<Py<PyAnyMessage>> {
+            let first_schema = first_element_schema(py, &elements[0]);
+            let py_items: Result<Vec<Py<PyAny>>, _> = elements
+                .iter()
+                .map(|el| list_item_for_streaming_message(py, el))
+                .collect();
+            let py_items = py_items.map_err(|e: PyErr| e)?;
+            let list = PyList::new(py, &py_items)?.unbind();
+            let inner = PyAnyMessage {
+                payload: list.into_any(),
+                headers: vec![],
+                timestamp: ts,
+                schema: first_schema,
+            };
+            into_pyany(py, inner)
+        })
+        .map_err(|e| StrategyError::Other(Box::new(e)))?;
+
+        let py_streaming = PyStreamingMessage::PyAnyMessage { content };
+        let rv = RoutedValue {
+            route,
+            payload: RoutedValuePayload::PyStreamingMessage(py_streaming),
+        };
+        Ok(Message::new_any_message(rv, committable))
+    }
+}
+
 /// Count- and/or time-based window of streaming elements for one route. On flush, output is
 /// always a batched `PyAnyMessage` with a list payload.
 pub(crate) struct Batch {
@@ -67,13 +136,17 @@ pub(crate) struct Batch {
     batch_deadline: Option<Deadline>,
     /// Wall time when the first element opened this batch window.
     created_at: Instant,
-    elements: Vec<PyStreamingMessage>,
+    elements: Vec<BatchElement>,
     batch_offsets: BTreeMap<Partition, u64>,
+    producer: Arc<dyn BatchFlushProducer>,
 }
 
 impl Batch {
     /// First element in a window. `committable` and `first` are from the same [`RoutedValue`]
     /// (see [`BatchStep::submit`]). Later elements may use either `PyAnyMessage` or `RawMessage`.
+    /// Convenience form defaulting to [`PyListFlushProducer`]. Only the tests
+    /// use it now: [`BatchStep`] always supplies its own producer.
+    #[cfg(test)]
     pub fn from_initial(
         route: Route,
         max_batch_size: Option<usize>,
@@ -82,6 +155,26 @@ impl Batch {
         // we will return when the batch is flushed.
         committable: BTreeMap<Partition, u64>,
         first: PyStreamingMessage,
+    ) -> Self {
+        Self::from_initial_with_producer(
+            route,
+            max_batch_size,
+            max_batch_time,
+            committable,
+            first,
+            Arc::new(PyListFlushProducer),
+        )
+    }
+
+    /// As [`Self::from_initial`], but emitting through `producer` instead of
+    /// building a Python list.
+    pub fn from_initial_with_producer(
+        route: Route,
+        max_batch_size: Option<usize>,
+        max_batch_time: Option<Duration>,
+        committable: BTreeMap<Partition, u64>,
+        first: BatchElement,
+        producer: Arc<dyn BatchFlushProducer>,
     ) -> Self {
         let mut batch_offsets: BTreeMap<Partition, u64> = BTreeMap::new();
         for (p, o) in committable {
@@ -98,10 +191,11 @@ impl Batch {
             created_at: Instant::now(),
             elements: vec![first],
             batch_offsets,
+            producer,
         }
     }
 
-    pub fn append(&mut self, committable: BTreeMap<Partition, u64>, pysm: PyStreamingMessage) {
+    pub fn append(&mut self, committable: BTreeMap<Partition, u64>, pysm: BatchElement) {
         for (p, o) in committable {
             self.batch_offsets
                 .entry(p)
@@ -163,39 +257,11 @@ impl Batch {
         })
     }
 
+    /// Delegates to the step's [`BatchFlushProducer`]; the window itself has no
+    /// opinion on the shape of the emitted message.
     pub fn flush(&self) -> Result<Message<RoutedValue>, StrategyError> {
-        let route = self.route.clone();
-        let committable = self.batch_offsets.clone();
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs_f64())
-            .unwrap_or(0.0);
-
-        let content = traced_with_gil!(|py| -> PyResult<Py<PyAnyMessage>> {
-            let first_schema = first_element_schema(py, &self.elements[0]);
-            let py_items: Result<Vec<Py<PyAny>>, _> = self
-                .elements
-                .iter()
-                .map(|el| list_item_for_streaming_message(py, el))
-                .collect();
-            let py_items = py_items.map_err(|e: PyErr| e)?;
-            let list = PyList::new(py, &py_items)?.unbind();
-            let inner = PyAnyMessage {
-                payload: list.into_any(),
-                headers: vec![],
-                timestamp: ts,
-                schema: first_schema,
-            };
-            into_pyany(py, inner)
-        })
-        .map_err(|e| StrategyError::Other(Box::new(e)))?;
-
-        let py_streaming = PyStreamingMessage::PyAnyMessage { content };
-        let rv = RoutedValue {
-            route,
-            payload: RoutedValuePayload::PyStreamingMessage(py_streaming),
-        };
-        Ok(Message::new_any_message(rv, committable))
+        self.producer
+            .produce(&self.route, &self.elements, self.batch_offsets.clone())
     }
 }
 
@@ -208,6 +274,8 @@ pub struct BatchStep {
     max_batch_time: Option<Duration>,
     /// `None` until the first streaming message in a window.
     batch: Option<Batch>,
+    /// Shapes the message emitted on flush. Shared by every window this step opens.
+    producer: Arc<dyn BatchFlushProducer>,
     /// Watermarks received while the current batch window is open; on successful batch send they
     /// are appended to [`Self::outbound`].
     ///
@@ -242,6 +310,27 @@ impl BatchStep {
         step_name: String,
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     ) -> Self {
+        Self::with_producer(
+            route,
+            max_batch_size,
+            max_batch_time,
+            step_name,
+            next_step,
+            Arc::new(PyListFlushProducer),
+        )
+    }
+
+    /// As [`Self::new`], but emitting flushed windows through `producer`.
+    /// Everything else -- windowing, watermark ordering, backpressure -- is
+    /// identical, which is the point of the seam.
+    pub fn with_producer(
+        route: Route,
+        max_batch_size: Option<usize>,
+        max_batch_time: Option<Duration>,
+        step_name: String,
+        next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
+        producer: Arc<dyn BatchFlushProducer>,
+    ) -> Self {
         let step_labels = vec![("step".to_string(), step_name.clone())];
         Self {
             next_step,
@@ -250,6 +339,7 @@ impl BatchStep {
             max_batch_size,
             max_batch_time,
             batch: None,
+            producer,
             watermark_buffer: Vec::new(),
             outbound: VecDeque::new(),
             pending_batch: false,
@@ -496,12 +586,13 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
             }
             RoutedValuePayload::PyStreamingMessage(pysm) => {
                 if self.batch.is_none() {
-                    self.batch = Some(Batch::from_initial(
+                    self.batch = Some(Batch::from_initial_with_producer(
                         self.route.clone(),
                         self.max_batch_size,
                         self.max_batch_time,
                         committable,
                         pysm,
+                        Arc::clone(&self.producer),
                     ));
                 } else {
                     self.batch
@@ -1050,6 +1141,120 @@ mod tests {
                 vec![1, 3],
                 "immediate first emit, then the accumulated count once the interval passes"
             );
+        }
+    }
+
+    mod producer_seam {
+        //! The generalisation added for the Arrow batch parser: [`BatchStep`]
+        //! delegates the *shape* of the flushed message to a
+        //! [`BatchFlushProducer`], and nothing else about the step changes.
+
+        use crate::batch_step::{BatchElement, BatchFlushProducer, BatchStep};
+        use crate::fake_strategy::FakeStrategy;
+        use crate::messages::{PyAnyMessage, PyStreamingMessage, RoutedValuePayload};
+        use crate::routes::{Route, RoutedValue};
+        use crate::testutils::build_routed_value;
+        use crate::utils::traced_with_gil;
+        use pyo3::prelude::*;
+        use pyo3::IntoPyObject;
+        use sentry_arroyo::processing::strategies::{ProcessingStrategy, StrategyError};
+        use sentry_arroyo::types::{Message, Partition, Topic};
+        use std::collections::BTreeMap;
+        use std::sync::{Arc, Mutex};
+
+        /// Emits a fixed marker payload and records what it was handed, so the
+        /// test can assert on the elements and committable the step passes in.
+        struct RecordingProducer {
+            seen: Arc<Mutex<Vec<(usize, BTreeMap<Partition, u64>)>>>,
+        }
+
+        impl BatchFlushProducer for RecordingProducer {
+            fn produce(
+                &self,
+                route: &Route,
+                elements: &[BatchElement],
+                committable: BTreeMap<Partition, u64>,
+            ) -> Result<Message<RoutedValue>, StrategyError> {
+                self.seen
+                    .lock()
+                    .unwrap()
+                    .push((elements.len(), committable.clone()));
+
+                let content = traced_with_gil!(|py| {
+                    crate::messages::into_pyany(
+                        py,
+                        PyAnyMessage {
+                            payload: "produced-by-seam"
+                                .into_pyobject(py)
+                                .unwrap()
+                                .into_any()
+                                .unbind(),
+                            headers: vec![],
+                            timestamp: 0.0,
+                            schema: None,
+                        },
+                    )
+                })
+                .unwrap();
+
+                Ok(Message::new_any_message(
+                    RoutedValue {
+                        route: route.clone(),
+                        payload: RoutedValuePayload::PyStreamingMessage(
+                            PyStreamingMessage::PyAnyMessage { content },
+                        ),
+                    },
+                    committable,
+                ))
+            }
+        }
+
+        #[test]
+        fn custom_producer_shapes_the_flushed_message() {
+            crate::testutils::initialize_python();
+            let route = Route::new("s".into(), vec!["w".into()]);
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let sub = Arc::new(Mutex::new(Vec::new()));
+            let wms = Arc::new(Mutex::new(Vec::new()));
+
+            let mut step = BatchStep::with_producer(
+                route,
+                Some(2),
+                None,
+                "test_seam".to_string(),
+                Box::new(FakeStrategy::new(sub.clone(), wms, false)),
+                Arc::new(RecordingProducer { seen: seen.clone() }),
+            );
+
+            let partition = Partition::new(Topic::new("t"), 0);
+            traced_with_gil!(|py| {
+                for (i, offset) in [7_u64, 9].into_iter().enumerate() {
+                    let payload = (i as i32).into_pyobject(py).unwrap().into_any().unbind();
+                    let msg = Message::new_any_message(
+                        build_routed_value(py, payload, "s", vec!["w".into()]),
+                        BTreeMap::from([(partition, offset)]),
+                    );
+                    step.submit(msg).unwrap();
+                }
+                step.poll().unwrap();
+            });
+
+            // The producer saw the whole window, with offsets collapsed to max.
+            let seen = seen.lock().unwrap();
+            assert_eq!(seen.len(), 1, "exactly one flush");
+            assert_eq!(
+                seen[0].0, 2,
+                "producer receives every element in the window"
+            );
+            assert_eq!(seen[0].1, BTreeMap::from([(partition, 9)]));
+
+            // ... and its message, not a Python list, reached downstream.
+            let out = sub.lock().unwrap();
+            assert_eq!(out.len(), 1);
+            traced_with_gil!(|py| {
+                let payload: String = out[0].bind(py).extract().unwrap();
+                assert_eq!(payload, "produced-by-seam");
+            });
         }
     }
 }
