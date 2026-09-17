@@ -3,6 +3,7 @@ use crate::messages::RoutedValuePayload;
 use crate::routes::Route;
 use crate::routes::RoutedValue;
 use crate::utils::traced_with_gil;
+use bytes::Bytes;
 use core::panic;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
@@ -12,13 +13,13 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
 use reqwest::ClientBuilder;
-use reqwest::StatusCode;
 use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskError;
 use sentry_arroyo::processing::strategies::run_task_in_threads::RunTaskFunc;
 use sentry_arroyo::processing::strategies::run_task_in_threads::TaskRunner;
 use sentry_arroyo::types::Message;
 
 use gcp_auth::{provider, TokenProvider};
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::OnceCell;
@@ -26,9 +27,9 @@ use tokio::sync::OnceCell;
 const METRIC_SINK_GCS_WRITER_BYTES: &str = "streams.pipeline.sink.gcs_writer.bytes";
 
 /// Max attempts for a single GCS upload (initial try + retries).
-const GCS_UPLOAD_MAX_ATTEMPTS: u32 = 5;
+const GCS_UPLOAD_MAX_ATTEMPTS: u32 = 3;
 const GCS_UPLOAD_INITIAL_BACKOFF: Duration = Duration::from_millis(500);
-const GCS_UPLOAD_MAX_BACKOFF: Duration = Duration::from_secs(30);
+const GCS_UPLOAD_MAX_BACKOFF: Duration = Duration::from_secs(10);
 
 pub struct GCSWriter {
     client: Client,
@@ -58,9 +59,125 @@ fn gcs_upload_backoff(failure_index: u32) -> Duration {
     backoff.min(GCS_UPLOAD_MAX_BACKOFF)
 }
 
-/// Client (4xx) errors are permanent. Everything else is treated as transient.
-fn is_permanent_http_status(status: StatusCode) -> bool {
-    status.is_client_error()
+/// Outcome of one attempt. `retry_policy` retries `RunTaskError::RetryableError`.
+type AttemptResult<T> = Result<T, RunTaskError<anyhow::Error>>;
+
+#[derive(Debug)]
+enum RetryPolicyError {
+    Permanent(RunTaskError<anyhow::Error>),
+    Exhausted,
+}
+
+/// Runs `operation` until it succeeds, returns a permanent error, or exhausts attempts.
+async fn retry_policy<T, F, Fut>(
+    max_attempts: u32,
+    backoff: impl Fn(u32) -> Duration,
+    mut operation: F,
+) -> Result<T, RetryPolicyError>
+where
+    F: FnMut(u32) -> Fut,
+    Fut: Future<Output = AttemptResult<T>>,
+{
+    for attempt in 1..=max_attempts {
+        match operation(attempt).await {
+            Ok(value) => return Ok(value),
+            Err(RunTaskError::RetryableError) => {
+                tracing::warn!("retryable error, attempt {}/{}", attempt, max_attempts);
+                if attempt == max_attempts {
+                    break;
+                }
+                tokio::time::sleep(backoff(attempt - 1)).await;
+            }
+            Err(error) => return Err(RetryPolicyError::Permanent(error)),
+        }
+    }
+
+    Err(RetryPolicyError::Exhausted)
+}
+
+/// Single GCS upload attempt. Token, network, and 5xx/other HTTP failures are retryable.
+/// `bytes` is reference counted, so retrying an attempt does not copy the payload.
+#[allow(clippy::too_many_arguments)]
+async fn upload_to_gcs(
+    client: &Client,
+    auth_provider: &dyn TokenProvider,
+    url: &str,
+    bytes: Bytes,
+    bucket_str: &str,
+    object_name: &str,
+    pybytes_ms: u128,
+    route_source: &str,
+    attempt: u32,
+) -> AttemptResult<()> {
+    let scopes = &["https://www.googleapis.com/auth/devstorage.read_write"];
+    let bytes_len = bytes.len();
+
+    // Get a fresh token (gcp_auth caches and only refreshes when expired).
+    let token_start = std::time::Instant::now();
+    let token = match auth_provider.token(scopes).await {
+        Ok(token) => token,
+        Err(e) => {
+            tracing::warn!("Failed to obtain token: {:?}", e);
+            return Err(RunTaskError::RetryableError);
+        }
+    };
+    let token_ms = token_start.elapsed().as_millis();
+
+    let request_start = std::time::Instant::now();
+    let response = match client
+        .post(url)
+        .header(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", token.as_str())).unwrap(),
+        )
+        .body(bytes)
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(e) => {
+            tracing::warn!("Failed to send request: {:?}", e);
+            return Err(RunTaskError::RetryableError);
+        }
+    };
+    let request_ms = request_start.elapsed().as_millis();
+
+    let status = response.status();
+    if status.is_success() {
+        tracing::info!(
+            "Finished writing file to GCS bucket: {}, file name: {}",
+            bucket_str,
+            object_name
+        );
+        tracing::info!(
+            "Length of bytes successfully written: {} (pybytes_to_bytes_ms={}, token_ms={}, request_ms={}, attempts={})",
+            bytes_len,
+            pybytes_ms,
+            token_ms,
+            request_ms,
+            attempt
+        );
+        let gcs_labels = vec![("source".to_string(), route_source.to_string())];
+        metrics::histogram!(METRIC_SINK_GCS_WRITER_BYTES, &gcs_labels).record(bytes_len as f64);
+        return Ok(());
+    }
+
+    // Client (4xx) errors are permanent. Everything else is treated as transient.
+    if status.is_client_error() {
+        let body = response.text().await;
+        // Permanent client errors must crash the consumer so offsets are not committed.
+        return Err(RunTaskError::Other(anyhow::anyhow!(
+            "Fatal error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
+            status,
+            body
+        )));
+    }
+
+    tracing::warn!(
+        "Transient error encountered while attempting write to GCS. Status code: {}",
+        status
+    );
+    Err(RunTaskError::RetryableError)
 }
 
 impl GCSWriter {
@@ -106,15 +223,17 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
             self.bucket.clone(),
             object
         );
-        let bucket_str = format!("{}", self.bucket);
+        let bucket_str = self.bucket.to_string();
 
         let route = message.payload().route.clone();
         let actual_route = self.route.clone();
 
         let pybytes_start = std::time::Instant::now();
-        let bytes: Vec<u8> = match message.payload().payload {
+        // `Bytes::from` takes ownership of the `Vec` allocation, so the payload is copied out of
+        // Python exactly once and every retry only bumps a reference count.
+        let bytes: Bytes = match message.payload().payload {
             RoutedValuePayload::PyStreamingMessage(ref py_message) => {
-                traced_with_gil!(|py| pybytes_to_bytes(py_message, py)).unwrap()
+                Bytes::from(traced_with_gil!(|py| pybytes_to_bytes(py_message, py)).unwrap())
             }
             RoutedValuePayload::WatermarkMessage(..) => {
                 return Box::pin(async move { Ok(message) });
@@ -122,7 +241,6 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
         };
         let pybytes_ms = pybytes_start.elapsed().as_millis();
 
-        let bytes_len = bytes.len();
         let route_source = self.route.source.clone();
 
         let auth_provider_cell = self.auth_provider.clone();
@@ -143,105 +261,32 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
                 })
                 .await;
 
-            let scopes = &["https://www.googleapis.com/auth/devstorage.read_write"];
-            let mut last_error: Option<String> = None;
-
-            for attempt in 1..=GCS_UPLOAD_MAX_ATTEMPTS {
-                // Get a fresh token (gcp_auth caches and only refreshes when expired).
-                // Token fetch failures are transient and retried with backoff.
-                let token_start = std::time::Instant::now();
-                let token = match auth_provider.token(scopes).await {
-                    Ok(token) => token,
-                    Err(e) => {
-                        let err = format!("Failed to obtain token: {:?}", e);
-                        tracing::warn!("{}, attempt {}/{}", err, attempt, GCS_UPLOAD_MAX_ATTEMPTS);
-                        last_error = Some(err);
-                        if attempt == GCS_UPLOAD_MAX_ATTEMPTS {
-                            break;
-                        }
-                        tokio::time::sleep(gcs_upload_backoff(attempt - 1)).await;
-                        continue;
-                    }
-                };
-                let token_ms = token_start.elapsed().as_millis();
-
-                let request_start = std::time::Instant::now();
-                let response = match client
-                    .post(&url)
-                    .header(
-                        AUTHORIZATION,
-                        HeaderValue::from_str(&format!("Bearer {}", token.as_str())).unwrap(),
-                    )
-                    .body(bytes.clone())
-                    .send()
-                    .await
-                {
-                    Ok(response) => response,
-                    Err(e) => {
-                        let err = format!("Failed to send request: {:?}", e);
-                        tracing::warn!("{}, attempt {}/{}", err, attempt, GCS_UPLOAD_MAX_ATTEMPTS);
-                        last_error = Some(err);
-                        if attempt == GCS_UPLOAD_MAX_ATTEMPTS {
-                            break;
-                        }
-                        tokio::time::sleep(gcs_upload_backoff(attempt - 1)).await;
-                        continue;
-                    }
-                };
-                let request_ms = request_start.elapsed().as_millis();
-
-                let status = response.status();
-                if status.is_success() {
-                    tracing::info!(
-                        "Finished writing file to GCS bucket: {}, file name: {}",
-                        bucket_str,
-                        object_name
-                    );
-                    tracing::info!(
-                        "Length of bytes successfully written: {} (pybytes_to_bytes_ms={}, token_ms={}, request_ms={}, attempts={})",
-                        bytes_len,
-                        pybytes_ms,
-                        token_ms,
-                        request_ms,
-                        attempt
-                    );
-                    let gcs_labels = vec![("source".to_string(), route_source.clone())];
-                    metrics::histogram!(METRIC_SINK_GCS_WRITER_BYTES, &gcs_labels)
-                        .record(bytes_len as f64);
-                    return Ok(message);
-                }
-
-                if is_permanent_http_status(status) {
-                    let body = response.text().await;
-                    // Permanent client errors must crash the consumer so offsets are not committed.
-                    return Err(RunTaskError::Other(anyhow::anyhow!(
-                        "Fatal error encountered while attempting write to GCS. Status code: {}, Response body: {:?}",
-                        status,
-                        body
-                    )));
-                }
-
-                let err = format!(
-                    "Transient error encountered while attempting write to GCS. Status code: {}",
-                    status
-                );
-                tracing::warn!("{}, attempt {}/{}", err, attempt, GCS_UPLOAD_MAX_ATTEMPTS);
-                last_error = Some(err);
-                if attempt == GCS_UPLOAD_MAX_ATTEMPTS {
-                    break;
-                }
-                tokio::time::sleep(gcs_upload_backoff(attempt - 1)).await;
+            match retry_policy(GCS_UPLOAD_MAX_ATTEMPTS, gcs_upload_backoff, |attempt| {
+                upload_to_gcs(
+                    &client,
+                    auth_provider.as_ref(),
+                    &url,
+                    bytes.clone(),
+                    &bucket_str,
+                    &object_name,
+                    pybytes_ms,
+                    &route_source,
+                    attempt,
+                )
+            })
+            .await
+            {
+                Ok(()) => Ok(message),
+                Err(RetryPolicyError::Permanent(error)) => Err(error),
+                // Exhausted retries: permanent error so arroyo crashes the consumer and does not
+                // commit offsets past the failed parquet batch.
+                Err(RetryPolicyError::Exhausted) => Err(RunTaskError::Other(anyhow::anyhow!(
+                    "GCS write failed after {} attempts for bucket {}, object {}",
+                    GCS_UPLOAD_MAX_ATTEMPTS,
+                    bucket_str,
+                    object_name,
+                ))),
             }
-
-            // Exhausted retries: permanent error so arroyo crashes the consumer and does not
-            // commit offsets past the failed parquet batch.
-            Err(RunTaskError::Other(anyhow::anyhow!(
-                "GCS write failed after {} attempts for bucket {}, object {}: {}",
-                GCS_UPLOAD_MAX_ATTEMPTS,
-                bucket_str,
-                object_name,
-                last_error.unwrap_or_else(|| "unknown error".to_string())
-            )))
         })
     }
 }
@@ -249,6 +294,8 @@ impl TaskRunner<RoutedValue, RoutedValue, anyhow::Error> for GCSWriter {
 #[cfg(test)]
 mod tests {
     use crate::testutils::make_raw_routed_msg;
+    use reqwest::StatusCode;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::*;
 
@@ -276,14 +323,76 @@ mod tests {
 
     #[test]
     fn test_permanent_http_status_classification() {
-        assert!(is_permanent_http_status(StatusCode::BAD_REQUEST));
-        assert!(is_permanent_http_status(StatusCode::UNAUTHORIZED));
-        assert!(is_permanent_http_status(StatusCode::FORBIDDEN));
-        assert!(is_permanent_http_status(StatusCode::NOT_FOUND));
-        assert!(is_permanent_http_status(StatusCode::TOO_MANY_REQUESTS));
-        assert!(!is_permanent_http_status(StatusCode::INTERNAL_SERVER_ERROR));
-        assert!(!is_permanent_http_status(StatusCode::BAD_GATEWAY));
-        assert!(!is_permanent_http_status(StatusCode::SERVICE_UNAVAILABLE));
-        assert!(!is_permanent_http_status(StatusCode::GATEWAY_TIMEOUT));
+        assert!(StatusCode::BAD_REQUEST.is_client_error());
+        assert!(StatusCode::UNAUTHORIZED.is_client_error());
+        assert!(StatusCode::FORBIDDEN.is_client_error());
+        assert!(StatusCode::NOT_FOUND.is_client_error());
+        assert!(StatusCode::TOO_MANY_REQUESTS.is_client_error());
+        assert!(!StatusCode::INTERNAL_SERVER_ERROR.is_client_error());
+        assert!(!StatusCode::BAD_GATEWAY.is_client_error());
+        assert!(!StatusCode::SERVICE_UNAVAILABLE.is_client_error());
+        assert!(!StatusCode::GATEWAY_TIMEOUT.is_client_error());
+    }
+
+    fn no_backoff(_: u32) -> Duration {
+        Duration::ZERO
+    }
+
+    #[tokio::test]
+    async fn test_retry_policy_retries_retryable_then_succeeds() {
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_for_op = attempts.clone();
+        let result = retry_policy(5, no_backoff, |_| {
+            let attempts_for_op = attempts_for_op.clone();
+            async move {
+                let n = attempts_for_op.fetch_add(1, Ordering::SeqCst) + 1;
+                if n < 3 {
+                    Err(RunTaskError::RetryableError)
+                } else {
+                    Ok(42)
+                }
+            }
+        })
+        .await;
+
+        assert!(matches!(result, Ok(42)));
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn test_retry_policy_does_not_retry_permanent_errors() {
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_for_op = attempts.clone();
+        let result = retry_policy(5, no_backoff, |_| {
+            let attempts_for_op = attempts_for_op.clone();
+            async move {
+                attempts_for_op.fetch_add(1, Ordering::SeqCst);
+                Err::<(), _>(RunTaskError::Other(anyhow::anyhow!("fatal")))
+            }
+        })
+        .await;
+
+        assert!(matches!(result, Err(RetryPolicyError::Permanent(_))));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_retry_policy_exhausts_retryable_errors() {
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_for_op = attempts.clone();
+        let result = retry_policy(3, no_backoff, |_| {
+            let attempts_for_op = attempts_for_op.clone();
+            async move {
+                attempts_for_op.fetch_add(1, Ordering::SeqCst);
+                Err::<(), _>(RunTaskError::RetryableError)
+            }
+        })
+        .await;
+
+        assert!(
+            matches!(result, Err(RetryPolicyError::Exhausted)),
+            "expected exhausted retries"
+        );
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 }
