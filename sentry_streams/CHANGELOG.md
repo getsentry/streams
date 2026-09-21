@@ -1,3 +1,13 @@
+## 0.0.66
+
+### Bug Fixes 🐛
+
+- (gcs) Retry transient uploads before crashing consumer by @sentry-junior in [#371](https://github.com/getsentry/streams/pull/371)
+
+### Other
+
+- Architecture docs by @fpacifici in [#377](https://github.com/getsentry/streams/pull/377)
+
 ## 0.0.65
 
 - Allow skipping validation by @fpacifici in [#370](https://github.com/getsentry/streams/pull/370)
