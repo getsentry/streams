@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const METRIC_BATCH_SIZE: &str = "streams.pipeline.batch.size";
+const METRIC_BATCH_SIZE_BYTES: &str = "streams.pipeline.batch.size_bytes";
 const METRIC_BATCH_TIME_MS: &str = "streams.pipeline.batch.time_ms";
 const METRIC_BATCH_SUBMIT_DURATION_MS: &str = "streams.pipeline.batch.submit_duration_ms";
 const METRIC_BATCH_SUBMIT_REJECTED: &str = "streams.pipeline.batch.submit_rejected";
@@ -55,6 +56,27 @@ fn list_item_for_streaming_message(
             let p = &content.bind(py).borrow().payload;
             Ok(PyBytes::new(py, p).into_any().unbind())
         }
+    }
+}
+
+/// Number of payload bytes contributed by a single element, summed for the
+/// `streams.pipeline.batch.size_bytes` metric.
+///
+/// `RawMessage` payloads are raw bytes, so their length is exact. `PyAnyMessage`
+/// payloads are arbitrary Python objects: they are counted when the payload is
+/// `bytes`, and contribute 0 otherwise. We deliberately do not fall back to a
+/// Python-level size call, which would be shallow for containers and would cost
+/// a Python round trip per element.
+fn payload_byte_len(py: Python<'_>, pysm: &PyStreamingMessage) -> usize {
+    match pysm {
+        PyStreamingMessage::PyAnyMessage { content } => {
+            let inner = content.bind(py).borrow();
+            match inner.payload.bind(py).cast::<PyBytes>() {
+                Ok(b) => b.as_bytes().len(),
+                Err(_) => 0,
+            }
+        }
+        PyStreamingMessage::RawMessage { content } => content.bind(py).borrow().payload.len(),
     }
 }
 
@@ -163,7 +185,7 @@ impl Batch {
         })
     }
 
-    pub fn flush(&self) -> Result<Message<RoutedValue>, StrategyError> {
+    pub fn flush(&self) -> Result<(Message<RoutedValue>, usize), StrategyError> {
         let route = self.route.clone();
         let committable = self.batch_offsets.clone();
         let ts = SystemTime::now()
@@ -171,31 +193,32 @@ impl Batch {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
 
-        let content = traced_with_gil!(|py| -> PyResult<Py<PyAnyMessage>> {
-            let first_schema = first_element_schema(py, &self.elements[0]);
-            let py_items: Result<Vec<Py<PyAny>>, _> = self
-                .elements
-                .iter()
-                .map(|el| list_item_for_streaming_message(py, el))
-                .collect();
-            let py_items = py_items.map_err(|e: PyErr| e)?;
-            let list = PyList::new(py, &py_items)?.unbind();
-            let inner = PyAnyMessage {
-                payload: list.into_any(),
-                headers: vec![],
-                timestamp: ts,
-                schema: first_schema,
-            };
-            into_pyany(py, inner)
-        })
-        .map_err(|e| StrategyError::Other(Box::new(e)))?;
+        let (content, payload_bytes) =
+            traced_with_gil!(|py| -> PyResult<(Py<PyAnyMessage>, usize)> {
+                let first_schema = first_element_schema(py, &self.elements[0]);
+                let mut payload_bytes: usize = 0;
+                let mut py_items: Vec<Py<PyAny>> = Vec::with_capacity(self.elements.len());
+                for el in self.elements.iter() {
+                    payload_bytes += payload_byte_len(py, el);
+                    py_items.push(list_item_for_streaming_message(py, el)?);
+                }
+                let list = PyList::new(py, &py_items)?.unbind();
+                let inner = PyAnyMessage {
+                    payload: list.into_any(),
+                    headers: vec![],
+                    timestamp: ts,
+                    schema: first_schema,
+                };
+                Ok((into_pyany(py, inner)?, payload_bytes))
+            })
+            .map_err(|e| StrategyError::Other(Box::new(e)))?;
 
         let py_streaming = PyStreamingMessage::PyAnyMessage { content };
         let rv = RoutedValue {
             route,
             payload: RoutedValuePayload::PyStreamingMessage(py_streaming),
         };
-        Ok(Message::new_any_message(rv, committable))
+        Ok((Message::new_any_message(rv, committable), payload_bytes))
     }
 }
 
@@ -373,14 +396,17 @@ impl BatchStep {
         let batch_elements = b.len() as f64;
         let batch_open_ms = b.created_at.elapsed().as_millis() as f64;
         let flush_start = Instant::now();
-        let batch_msg = b.flush()?;
+        let (batch_msg, batch_payload_bytes) = b.flush()?;
         get_stats().step_timing(&self.step_name, flush_start.elapsed().as_secs_f64());
         metrics::histogram!(METRIC_BATCH_SIZE, &self.step_labels).record(batch_elements);
+        metrics::histogram!(METRIC_BATCH_SIZE_BYTES, &self.step_labels)
+            .record(batch_payload_bytes as f64);
         metrics::histogram!(METRIC_BATCH_TIME_MS, &self.step_labels).record(batch_open_ms);
         log::info!(
-            "Batch flushed. step: {:?}, batch_elements: {:?}, batch_open_ms: {:?} created_at: {:?}",
+            "Batch flushed. step: {:?}, batch_elements: {:?}, batch_payload_bytes: {:?}, batch_open_ms: {:?} created_at: {:?}",
             self.step_name,
             batch_elements,
+            batch_payload_bytes,
             batch_open_ms,
             b.created_at
         );
@@ -595,7 +621,7 @@ mod tests {
                 let mut b = Batch::from_initial(r.clone(), Some(2), None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
-                let msg = b.flush().expect("build");
+                let (msg, _) = b.flush().expect("build");
                 assert!(
                     msg.committable().any(|(p, o)| p == part && o == 2),
                     "committable should include merged batch offsets"
@@ -611,6 +637,65 @@ mod tests {
                 assert_eq!(list.len(), 2);
                 assert_eq!(list.get_item(0).unwrap().extract::<i32>().unwrap(), 1);
                 assert_eq!(list.get_item(1).unwrap().extract::<i32>().unwrap(), 2);
+            });
+        }
+
+        #[test]
+        fn flush_reports_payload_bytes_for_raw_messages() {
+            traced_with_gil!(|py| {
+                let r = route();
+                let part = Partition::new(Topic::new("t"), 0);
+                // RawMessage payloads are counted exactly: 2 + 3 = 5 bytes.
+                let m1 = Message::new_any_message(
+                    build_raw_routed_value(py, vec![1, 2], "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 1u64)]),
+                );
+                let m2 = Message::new_any_message(
+                    build_raw_routed_value(py, vec![3, 4, 5], "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 2u64)]),
+                );
+                let (c1, el1) = committable_and_streaming(m1);
+                let mut b = Batch::from_initial(r, Some(2), None, c1, el1);
+                let (c2, el2) = committable_and_streaming(m2);
+                b.append(c2, el2);
+                let (_msg, payload_bytes) = b.flush().expect("build");
+                assert_eq!(payload_bytes, 5);
+            });
+        }
+
+        #[test]
+        fn flush_counts_bytes_payload_inside_pyany() {
+            traced_with_gil!(|py| {
+                let r = route();
+                let part = Partition::new(Topic::new("t"), 0);
+                // A PyAnyMessage whose payload happens to be `bytes` is counted.
+                let p = PyBytes::new(py, &[1u8, 2, 3]).into_any().unbind();
+                let m = Message::new_any_message(
+                    build_routed_value(py, p, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 1u64)]),
+                );
+                let (c, el) = committable_and_streaming(m);
+                let b = Batch::from_initial(r, Some(1), None, c, el);
+                let (_msg, payload_bytes) = b.flush().expect("build");
+                assert_eq!(payload_bytes, 3);
+            });
+        }
+
+        #[test]
+        fn flush_counts_zero_for_non_bytes_pyany() {
+            traced_with_gil!(|py| {
+                let r = route();
+                let part = Partition::new(Topic::new("t"), 0);
+                // Arbitrary Python payloads are not sized; they contribute 0.
+                let p = 1i32.into_pyobject(py).unwrap().into_any().unbind();
+                let m = Message::new_any_message(
+                    build_routed_value(py, p, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 1u64)]),
+                );
+                let (c, el) = committable_and_streaming(m);
+                let b = Batch::from_initial(r, Some(1), None, c, el);
+                let (_msg, payload_bytes) = b.flush().expect("build");
+                assert_eq!(payload_bytes, 0);
             });
         }
 
@@ -631,7 +716,7 @@ mod tests {
                 let mut b = Batch::from_initial(r, Some(2), None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
-                let msg = b.flush().expect("build");
+                let (msg, _) = b.flush().expect("build");
                 let RoutedValuePayload::PyStreamingMessage(pysm) = &msg.payload().payload else {
                     panic!("expected PyStreamingMessage");
                 };
