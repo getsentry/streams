@@ -1,3 +1,9 @@
+## 0.0.67
+
+### New Features ✨
+
+- (batch) Add streams.pipeline.batch.size_bytes metric by @enochtangg in [#380](https://github.com/getsentry/streams/pull/380)
+
 ## 0.0.66
 
 ### Bug Fixes 🐛
