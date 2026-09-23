@@ -140,6 +140,7 @@ class RuntimeOperator:
         route: Route,
         step_name: str,
         max_batch_size: int | None = None,
+        max_batch_size_bytes: int | None = None,
         max_batch_time_ms: float | None = None,
     ) -> Self: ...
     @classmethod

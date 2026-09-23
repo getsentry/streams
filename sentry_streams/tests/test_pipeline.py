@@ -282,6 +282,47 @@ def test_batch_size_override_config(
     assert step.batch_timedelta == expected_timedelta
 
 
+@pytest.mark.parametrize(
+    "loaded_config, default_bytes, expected_bytes",
+    [
+        pytest.param({"batch_size_bytes": 2048}, 1024, 2048, id="Loaded value wins"),
+        pytest.param({}, 1024, 1024, id="Falls back to the app default"),
+        pytest.param({"batch_size_bytes": 2048}, None, 2048, id="Set only in config"),
+    ],
+)
+def test_batch_size_bytes_override_config(
+    loaded_config: Mapping[str, MeasurementUnit],
+    default_bytes: int | None,
+    expected_bytes: int,
+) -> None:
+    step: BatchStep[MeasurementUnit, bytes] = BatchStep(
+        name="test-batch", batch_size=100, batch_size_bytes=default_bytes
+    )
+
+    step.override_config(loaded_config=loaded_config)
+
+    assert step.batch_size_bytes == expected_bytes
+
+
+def test_batch_size_bytes_alone_does_not_satisfy_validate() -> None:
+    """A byte cap can be unmeasurable, so it must not be the only bound."""
+    with pytest.raises(ValueError) as e:
+        step: Any = BatchStep(
+            name="test-batch", batch_size=None, batch_timedelta=None, batch_size_bytes=1024
+        )
+        step.validate()
+
+    assert "At least one of batch_size or batch_timedelta must be set." in str(e.value)
+
+
+def test_batch_size_bytes_rejects_non_positive() -> None:
+    with pytest.raises(ValueError) as e:
+        step: Any = BatchStep(name="test-batch", batch_size=100, batch_size_bytes=0)
+        step.validate()
+
+    assert "batch_size_bytes must be greater than 0." in str(e.value)
+
+
 def test_batch_step_both_window_args_are_not_none() -> None:
     with pytest.raises(ValueError) as e:
         step: Any = BatchStep(name="test-batch", batch_size=None, batch_timedelta=None)

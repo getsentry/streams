@@ -629,25 +629,36 @@ class Batch(
     batch_timedelta (time duration). If neither is specified, defaults
     to a 10-second time window.
 
+    ``batch_size_bytes`` also closes the window on accumulated payload bytes. Approximate,
+    Rust adapter only, and counts bytes-like payloads only. Size it from the
+    ``streams.pipeline.batch.size_bytes`` metric, not from a memory budget.
+
     The native Rust batch step batches ``PyAnyMessage`` and/or ``RawMessage`` rows; the emitted
     message has a single ``PyAnyMessage`` with a ``list`` payload (mixed Python values and/or
     ``bytes`` per element).
 
-    Both batch_size and batch_timedelta can be overridden via the
-    deployment config's steps_config section.
+    batch_size, batch_size_bytes and batch_timedelta can all be overridden via
+    the deployment config's steps_config section.
     """
 
     # TODO: Use concept of custom triggers to close window
     # by either size or time
 
     batch_size: int | None = None
+    batch_size_bytes: int | None = None
     batch_timedelta: timedelta | None = timedelta(seconds=10)
     step_type: StepType = StepType.REDUCE
 
     def validate(self) -> None:
         """Validate that at least one of batch_size or batch_timedelta is set."""
+        # batch_size_bytes deliberately does NOT satisfy this rule. Payloads that
+        # are not bytes-like measure 0, so a batch bounded only by a byte cap
+        # would never close at all.
         if self.batch_size is None and self.batch_timedelta is None:
             raise ValueError("At least one of batch_size or batch_timedelta must be set.")
+
+        if self.batch_size_bytes is not None and self.batch_size_bytes <= 0:
+            raise ValueError("batch_size_bytes must be greater than 0.")
 
     @property
     def group_by(self) -> Optional[GroupBy]:
@@ -674,6 +685,9 @@ class Batch(
     def override_config(self, loaded_config: Mapping[str, Any]) -> None:
         if loaded_config.get("batch_size") is not None:
             self.batch_size = loaded_config.get("batch_size")
+
+        if loaded_config.get("batch_size_bytes") is not None:
+            self.batch_size_bytes = loaded_config.get("batch_size_bytes")
 
         if loaded_config.get("batch_timedelta") is not None:
             loaded_kwargs = loaded_config.get("batch_timedelta")

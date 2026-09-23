@@ -1,4 +1,4 @@
-use crate::batch_step::build_batch_step;
+use crate::batch_step::{build_batch_step, BatchLimits};
 use crate::broadcaster::Broadcaster;
 use crate::header_filter_step::build_header_int_filter;
 use crate::kafka_config::PyKafkaProducerConfig;
@@ -109,6 +109,10 @@ pub enum RuntimeOperator {
         step_name: String,
         /// `None` means no size limit (time-only window).
         max_batch_size: Option<usize>,
+        /// Accumulated payload bytes; `None` means no byte limit. Approximate:
+        /// bytes are measured in chunks, so a batch may exceed this slightly.
+        /// Only `RawMessage` and bytes-like `PyAnyMessage` payloads are counted.
+        max_batch_size_bytes: Option<usize>,
         /// Wall-clock duration in milliseconds; `None` means no time limit (size-only batch).
         max_batch_time_ms: Option<f64>,
     },
@@ -233,10 +237,17 @@ pub fn build(
             route,
             step_name,
             max_batch_size,
+            max_batch_size_bytes,
             max_batch_time_ms,
         } => {
             let max_t = max_batch_time_ms.map(|ms| Duration::from_secs_f64((ms / 1000.0).max(0.0)));
-            build_batch_step(route, *max_batch_size, max_t, step_name.clone(), next)
+            let limits = BatchLimits {
+                max_size: *max_batch_size,
+                max_bytes: *max_batch_size_bytes,
+                max_time: max_t,
+                ..Default::default()
+            };
+            build_batch_step(route, limits, step_name.clone(), next)
         }
         RuntimeOperator::PythonAdapter {
             route,
