@@ -35,10 +35,6 @@ class ReportedPodStatus:
     reason: str | None = None
     permanent: bool = False
 
-    @property
-    def is_unhealthy(self) -> bool:
-        return self.unhealthy
-
     def to_status_dict(self) -> PodStatusEntry:
         entry: PodStatusEntry = {
             "name": self.name,

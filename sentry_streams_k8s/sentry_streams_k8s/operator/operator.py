@@ -2,26 +2,36 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import os
 from collections.abc import Mapping
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, cast
 
 import kopf
 from kubernetes import client
+from kubernetes.client import V1Pod
+from kubernetes.client.exceptions import ApiException
 
 from sentry_streams_k8s.k8s_types import V1ConditionDict
 from sentry_streams_k8s.operator.constants import (
+    FIELD_MANAGER,
     GROUP,
     HEALTH_SCAN_INTERVAL_SECONDS,
+    MANAGED_BY_LABEL,
     MAX_CONCURRENT_RECONCILES,
+    OWNER_UID_LABEL,
     PLURAL,
     VERSION,
     WORKLOAD_NAMESPACE_ENV,
     Logger,
 )
+from sentry_streams_k8s.operator.pod_health import pod_health
+from sentry_streams_k8s.operator.pod_resources import delete_owned_pods
 from sentry_streams_k8s.operator.reconcile import (
     PipelineStatusPatch,
-    _prune_stale_resources,
+    prune_stale_configmaps,
     reconcile_pipeline,
 )
 
@@ -85,14 +95,37 @@ def _workload_namespace() -> str:
     return namespace
 
 
-def _previous_conditions(body: kopf.Body) -> list[V1ConditionDict] | None:
-    status = body.get("status")
-    if not isinstance(status, Mapping):
-        return None
+def _published_conditions(status: Mapping[str, object]) -> list[V1ConditionDict] | None:
     conditions = status.get("conditions")
     if not isinstance(conditions, list):
         return None
     return cast(list[V1ConditionDict], conditions)
+
+
+def _deserialize_pod(body: kopf.Body) -> V1Pod:
+    # kopf provides the event's raw JSON body so we need to deserialize.
+    # Use a simple namespace since ApiClient expects a RESTResponse:
+    json_response = SimpleNamespace(data=json.dumps(dict(body)))
+    return cast(V1Pod, client.ApiClient().deserialize(json_response, "V1Pod"))
+
+
+def _get_pipeline_status(name: str, namespace: str) -> Mapping[str, object]:
+    api = client.CustomObjectsApi()
+    try:
+        obj = api.get_namespaced_custom_object(
+            group=GROUP,
+            version=VERSION,
+            namespace=namespace,
+            plural=PLURAL,
+            name=name,
+        )
+    except ApiException as e:
+        if e.status == 404:
+            return {}
+        raise
+    obj = cast(Mapping[str, object], obj)
+    status = obj.get("status")
+    return cast(Mapping[str, object], status) if isinstance(status, Mapping) else {}
 
 
 def _patch_pipeline_status(name: str, namespace: str, status: PipelineStatusPatch) -> None:
@@ -147,7 +180,6 @@ async def _reconcile_once(
     logger: Logger,
     scheduler: ReconcileScheduler,
     stopped: kopf.DaemonStopped,
-    previous_conditions: list[V1ConditionDict] | None = None,
 ) -> float | None:
     status_patch: PipelineStatusPatch = {}
     try:
@@ -156,6 +188,7 @@ async def _reconcile_once(
                 if stopped:
                     return None
                 try:
+                    published = await asyncio.to_thread(_get_pipeline_status, name, namespace)
                     await asyncio.to_thread(
                         reconcile_pipeline,
                         spec=copy.deepcopy(dict(spec)),
@@ -165,7 +198,8 @@ async def _reconcile_once(
                         workload_namespace=_workload_namespace(),
                         logger=logger,
                         status=status_patch,
-                        previous_conditions=previous_conditions,
+                        previous_conditions=_published_conditions(published),
+                        previous_generations=published.get("generations"),
                     )
                 except kopf.PermanentError as e:
                     if status_patch:
@@ -188,7 +222,6 @@ async def _reconcile_once(
 async def reconcile_pipeline_daemon(
     stopped: kopf.DaemonStopped,
     spec: kopf.Spec,
-    body: kopf.Body,
     name: str,
     namespace: str | None,
     uid: str,
@@ -212,7 +245,6 @@ async def reconcile_pipeline_daemon(
                 logger=logger,
                 scheduler=scheduler,
                 stopped=stopped,
-                previous_conditions=_previous_conditions(body),
             )
             if stopped:
                 break
@@ -221,16 +253,52 @@ async def reconcile_pipeline_daemon(
         scheduler.unregister(uid, event)
 
 
+@kopf.on.event("", "v1", "pods", labels={MANAGED_BY_LABEL: FIELD_MANAGER})
+async def handle_pipeline_pod_event(
+    type: str | None,
+    body: kopf.Body,
+    meta: kopf.Meta,
+    labels: kopf.Labels,
+    name: str | None,
+    namespace: str | None,
+    memo: kopf.Memo,
+    logger: Logger,
+    **_: Any,
+) -> None:
+    if type not in {"DELETED", "MODIFIED"}:
+        return
+
+    if type == "MODIFIED" and meta.deletion_timestamp is None:
+        health = pod_health(_deserialize_pod(body), datetime.now(timezone.utc))
+        if not health.delete:
+            return
+
+    owner_uid = labels.get(OWNER_UID_LABEL)
+    if not owner_uid:
+        logger.warning(
+            "managed Pod %s/%s is missing its owner UID label; cannot reconcile",
+            namespace,
+            name,
+        )
+        return
+
+    if _scheduler(memo).notify(owner_uid):
+        logger.info("requested reconciliation after Pod %s event=%s", name, type)
+
+
 @kopf.on.delete(GROUP, VERSION, PLURAL)
 async def cleanup(uid: str, memo: kopf.Memo, logger: Logger, **_: Any) -> None:
     scheduler = _scheduler(memo)
     async with scheduler.limit:
         async with scheduler.lock(uid):
+            workload_namespace = _workload_namespace()
+            core = client.CoreV1Api()
+            await asyncio.to_thread(delete_owned_pods, core, workload_namespace, uid, logger)
             await asyncio.to_thread(
-                _prune_stale_resources,
-                workload_namespace=_workload_namespace(),
+                prune_stale_configmaps,
+                core=core,
+                workload_namespace=workload_namespace,
                 owner_uid=uid,
-                desired_deployments=set(),
                 desired_configmaps=set(),
                 logger=logger,
             )

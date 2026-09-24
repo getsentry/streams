@@ -82,14 +82,6 @@ def _first_waiting_reason(
     return None
 
 
-def _first_unhealthy_waiting(statuses: list[V1ContainerStatus] | None) -> str | None:
-    return _first_waiting_reason(statuses, UNHEALTHY_WAITING_REASONS)
-
-
-def _first_permanent_waiting(statuses: list[V1ContainerStatus] | None) -> str | None:
-    return _first_waiting_reason(statuses, PERMANENT_WAITING_REASONS)
-
-
 def _container_failed_terminated_reason(status: V1ContainerStatus) -> str | None:
     terminated = status.state.terminated if status.state else None
     if terminated is None:
@@ -140,27 +132,6 @@ class PodHealth:
     permanent: bool = False
 
 
-def _verdict(
-    pod_name: str,
-    *,
-    ready: bool = False,
-    reason: str | None = None,
-    unhealthy: bool = False,
-    delete: bool = False,
-    force: bool = False,
-    permanent: bool = False,
-) -> PodHealth:
-    return PodHealth(
-        name=pod_name,
-        ready=ready,
-        reason=reason,
-        unhealthy=unhealthy,
-        delete=delete,
-        force=force,
-        permanent=permanent,
-    )
-
-
 def _container_statuses_verdict(
     pod_name: str,
     statuses: list[V1ContainerStatus] | None,
@@ -169,9 +140,9 @@ def _container_statuses_verdict(
     *,
     reason_prefix: str = "",
 ) -> PodHealth | None:
-    permanent_waiting = _first_permanent_waiting(statuses)
+    permanent_waiting = _first_waiting_reason(statuses, PERMANENT_WAITING_REASONS)
     if permanent_waiting is not None:
-        return _verdict(
+        return PodHealth(
             pod_name,
             reason=f"{reason_prefix}{permanent_waiting}",
             unhealthy=True,
@@ -180,16 +151,16 @@ def _container_statuses_verdict(
 
     terminated_reason = _first_failed_terminated_reason(statuses)
     if terminated_reason is not None:
-        return _verdict(
+        return PodHealth(
             pod_name,
             reason=f"{reason_prefix}{terminated_reason}",
             unhealthy=True,
             delete=True,
         )
 
-    unhealthy_waiting = _first_unhealthy_waiting(statuses)
+    unhealthy_waiting = _first_waiting_reason(statuses, UNHEALTHY_WAITING_REASONS)
     if unhealthy_waiting is not None:
-        return _verdict(
+        return PodHealth(
             pod_name,
             reason=f"{reason_prefix}{unhealthy_waiting}",
             unhealthy=True,
@@ -198,7 +169,7 @@ def _container_statuses_verdict(
 
     waiting_reason = _first_waiting_reason(statuses)
     if waiting_reason is not None:
-        return _verdict(
+        return PodHealth(
             pod_name,
             reason=f"{reason_prefix}{waiting_reason}",
         )
@@ -228,7 +199,7 @@ def pod_health(pod: V1Pod, now: datetime) -> PodHealth:
     if terminating_age is not None:
         stuck = terminating_age >= POD_TERMINATING_GRACE_SECONDS
         reason = "StuckTerminating" if stuck else "Terminating"
-        return _verdict(
+        return PodHealth(
             pod_name,
             reason=reason,
             unhealthy=stuck,
@@ -238,10 +209,10 @@ def pod_health(pod: V1Pod, now: datetime) -> PodHealth:
 
     status = pod.status
     if status is None:
-        return _verdict(pod_name)
+        return PodHealth(pod_name)
 
     if _pod_unschedulable(status.conditions):
-        return _verdict(pod_name, reason="Unschedulable", unhealthy=True)
+        return PodHealth(pod_name, reason="Unschedulable", unhealthy=True)
 
     init_verdict = _container_statuses_verdict(
         pod_name,
@@ -256,7 +227,7 @@ def pod_health(pod: V1Pod, now: datetime) -> PodHealth:
     phase = status.phase
 
     if phase == "Succeeded":
-        return _verdict(pod_name, reason="Succeeded", delete=True)
+        return PodHealth(pod_name, reason="Succeeded", delete=True)
 
     app_verdict = _container_statuses_verdict(
         pod_name,
@@ -269,6 +240,6 @@ def pod_health(pod: V1Pod, now: datetime) -> PodHealth:
 
     if phase == "Failed":
         reason = status.reason or phase or "Terminated"
-        return _verdict(pod_name, reason=reason, unhealthy=True, delete=True)
+        return PodHealth(pod_name, reason=reason, unhealthy=True, delete=True)
 
-    return _verdict(pod_name, ready=pod_is_ready(pod))
+    return PodHealth(pod_name, ready=pod_is_ready(pod))

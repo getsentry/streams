@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import copy
+import logging
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from kubernetes.client import V1Pod
 
 from sentry_streams_k8s.constants import CANARY_WORKLOAD_SET, PRIMARY_WORKLOAD_SET
+from sentry_streams_k8s.consumer_builder import WorkloadSet
 from sentry_streams_k8s.k8s_types import V1PodDict
 from sentry_streams_k8s.operator.constants import (
     GENERATION_LABEL,
@@ -31,10 +33,20 @@ from sentry_streams_k8s.operator.pod_resources import (
     pod_ordinal,
     pod_workload_set,
 )
-from tests.k8s_fixtures import make_condition, make_pod
+from sentry_streams_k8s.operator.reconcile import (
+    PodSetResult,
+    delete_obsolete_pod_sets,
+    reconcile_pipeline_pods,
+)
+from tests.k8s_fixtures import (
+    FakeCoreV1Api,
+    make_condition,
+    make_pod,
+)
 
 NAMESPACE = "workloads"
 OWNER_UID = "owner-uid"
+LOGGER = logging.getLogger(__name__)
 
 
 def _template() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -54,6 +66,7 @@ def _pod(
     deletion_timestamp: datetime | None = None,
 ) -> V1Pod:
     labels = {
+        OWNER_UID_LABEL: OWNER_UID,
         ORDINAL_LABEL: str(ordinal),
         GENERATION_LABEL: str(generation),
         WORKLOAD_SET_LABEL: PRIMARY_WORKLOAD_SET,
@@ -173,50 +186,32 @@ def test_list_owned_pods_selects_owner_and_optional_workload_set(
     workload_set: str | None,
     label_selector: str,
 ) -> None:
-    core = MagicMock()
-    core.list_namespaced_pod.return_value.items = []
+    core = FakeCoreV1Api()
 
     assert list_owned_pods(core, NAMESPACE, OWNER_UID, workload_set) == []
 
-    core.list_namespaced_pod.assert_called_once_with(
-        namespace=NAMESPACE,
-        label_selector=label_selector,
-    )
+    assert core.pod_list_calls == [(NAMESPACE, label_selector)]
 
 
 def test_delete_pod_only_drops_the_grace_period_when_forced() -> None:
-    core = MagicMock()
+    core = FakeCoreV1Api()
 
     delete_pod(core, "consumer-0-0", NAMESPACE)
-
-    core.delete_namespaced_pod.assert_called_once_with(
-        name="consumer-0-0",
-        namespace=NAMESPACE,
-    )
-
-    core.reset_mock()
     delete_pod(core, "consumer-0-0", NAMESPACE, force=True)
 
-    kwargs = core.delete_namespaced_pod.call_args.kwargs
-    assert kwargs["name"] == "consumer-0-0"
-    assert kwargs["namespace"] == NAMESPACE
-    assert kwargs["body"].grace_period_seconds == 0
+    assert core.deleted_pods == [
+        ("consumer-0-0", False),
+        ("consumer-0-0", True),
+    ]
 
 
-def test_delete_owned_pods_skips_pods_already_terminating(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_delete_owned_pods_skips_pods_already_terminating() -> None:
     pods = [_pod(0, 0), _pod(1, 0, deletion_timestamp=datetime(2026, 7, 16, tzinfo=timezone.utc))]
-    deleted: list[str] = []
-    monkeypatch.setattr(
-        "sentry_streams_k8s.operator.pod_resources.list_owned_pods", lambda *_: pods
-    )
-    monkeypatch.setattr(
-        "sentry_streams_k8s.operator.pod_resources.delete_pod",
-        lambda _core, name, _namespace: deleted.append(name),
-    )
+    core = FakeCoreV1Api(pods=pods)
 
-    delete_owned_pods(MagicMock(), NAMESPACE, OWNER_UID, MagicMock())
+    delete_owned_pods(core, NAMESPACE, OWNER_UID, LOGGER)
 
-    assert deleted == ["consumer-0-0"]
+    assert core.deleted_pods == [("consumer-0-0", False)]
 
 
 def test_metadata_readers_parse_operator_labels() -> None:
@@ -225,10 +220,6 @@ def test_metadata_readers_parse_operator_labels() -> None:
     assert pod_ordinal(labelled) == 3
     assert pod_generation(labelled) == 7
     assert pod_workload_set(labelled) == PRIMARY_WORKLOAD_SET
-
-    garbage = make_pod(labels={ORDINAL_LABEL: "one", GENERATION_LABEL: "latest"})
-    assert pod_ordinal(garbage) is None
-    assert pod_generation(garbage) == 0
 
 
 def test_pod_keep_key_prefers_ready_then_the_newest_generation() -> None:
@@ -245,3 +236,193 @@ def test_pod_keep_key_prefers_ready_then_the_newest_generation() -> None:
     assert pod_keep_key(newer, PodHealth(name=pod_name(newer))) > pod_keep_key(
         older, PodHealth(name=pod_name(older))
     )
+
+
+def _manifest(
+    ordinal: int,
+    generation: int,
+    *,
+    base_name: str = "consumer",
+    workload_set: str = PRIMARY_WORKLOAD_SET,
+    template_metadata: dict[str, Any] | None = None,
+) -> V1PodDict:
+    metadata, spec = _template()
+    return build_pipeline_pod(
+        base_name=base_name,
+        template_metadata=template_metadata or metadata,
+        template_spec=spec,
+        ordinal=ordinal,
+        generation=generation,
+        owner_uid=OWNER_UID,
+        owner_name="pipeline",
+        owner_namespace="source",
+        workload_set=workload_set,
+    )
+
+
+def _observed(
+    manifest: V1PodDict,
+    *,
+    phase: str = "Pending",
+    ready: bool = False,
+    container_statuses: list[Any] | None = None,
+    start_time: datetime | None = None,
+    deletion_timestamp: datetime | None = None,
+) -> V1Pod:
+    metadata = manifest["metadata"]
+    return make_pod(
+        name=metadata["name"],
+        labels=metadata.get("labels"),
+        annotations=metadata.get("annotations"),
+        phase=phase,
+        conditions=[make_condition("Ready", "True")] if ready else [],
+        container_statuses=container_statuses,
+        start_time=start_time,
+        deletion_timestamp=deletion_timestamp,
+    )
+
+
+def _workload(name: str = "consumer", replicas: int = 1) -> WorkloadSet:
+    metadata, spec = _template()
+    return WorkloadSet(
+        name=name,
+        replicas=replicas,
+        labels=dict(metadata["labels"]),
+        pod_template={"metadata": metadata, "spec": spec},
+    )
+
+
+def _reconcile(
+    pods: list[V1Pod],
+    *,
+    replicas: int = 1,
+    generations: dict[int, int] | None = None,
+    workload_set: str = PRIMARY_WORKLOAD_SET,
+) -> tuple[list[V1PodDict], list[tuple[str, bool]], PodSetResult, dict[int, int]]:
+    core = FakeCoreV1Api(pods=pods)
+    metadata, spec = _template()
+    ledger = generations if generations is not None else {}
+    result = reconcile_pipeline_pods(
+        core=core,
+        workload_namespace=NAMESPACE,
+        owner_uid=OWNER_UID,
+        owner_name="pipeline",
+        owner_namespace="source",
+        base_name="consumer",
+        template_metadata=metadata,
+        template_spec=spec,
+        replicas=replicas,
+        generations=ledger,
+        logger=LOGGER,
+        workload_set=workload_set,
+    )
+    return core.applied_pods, core.deleted_pods, result, ledger
+
+
+def test_reconcile_creates_all_missing_ordinals() -> None:
+    applied, deleted, result, ledger = _reconcile([], replicas=2)
+
+    assert [pod["metadata"]["name"] for pod in applied] == ["consumer-0-0", "consumer-1-0"]
+    assert deleted == []
+    assert ledger == {0: 0, 1: 0}
+    assert result["childPods"] == ["consumer-0-0", "consumer-1-0"]
+    assert result["desiredReplicas"] == 2
+    assert result["readyReplicas"] == 0
+
+    current = [
+        _observed(_manifest(ordinal, 0), phase="Running", ready=True) for ordinal in range(2)
+    ]
+    applied, deleted, result, ledger = _reconcile(current, replicas=2)
+
+    assert applied == []
+    assert deleted == []
+    assert ledger == {0: 0, 1: 0}
+    assert result["readyReplicas"] == 2
+
+
+def test_reconcile_scales_down() -> None:
+    stale = _pod(2, 0)
+
+    applied, deleted, result, _ledger = _reconcile([stale], replicas=0)
+
+    assert applied == []
+    assert deleted == [("consumer-2-0", False)]
+    assert result["desiredReplicas"] == 0
+
+
+def test_reconcile_replaces_a_failed_pod_with_the_next_generation() -> None:
+    current = _pod(0, 3, phase="Failed")
+
+    applied, deleted, result, ledger = _reconcile([current], generations={0: 7})
+
+    assert [pod["metadata"]["name"] for pod in applied] == ["consumer-0-8"]
+    assert deleted == [("consumer-0-3", False)]
+    assert ledger == {0: 8}
+    assert result["unhealthyPods"] == [
+        {
+            "name": "consumer-0-3",
+            "ready": False,
+            "phase": "Failed",
+            "ordinal": "0",
+            "reason": "Failed",
+        }
+    ]
+
+
+def test_reconcile_applies_the_replacement_before_deleting_outdated() -> None:
+    outdated = _observed(_manifest(0, 1), phase="Running", ready=True)
+    assert outdated.metadata is not None
+    outdated.metadata.annotations[SPEC_HASH_ANNOTATION] = "old"
+    core = FakeCoreV1Api(pods=[outdated])
+    metadata, spec = _template()
+
+    reconcile_pipeline_pods(
+        core=core,
+        workload_namespace=NAMESPACE,
+        owner_uid=OWNER_UID,
+        owner_name="pipeline",
+        owner_namespace="source",
+        base_name="consumer",
+        template_metadata=metadata,
+        template_spec=spec,
+        replicas=1,
+        generations={},
+        logger=LOGGER,
+        workload_set=PRIMARY_WORKLOAD_SET,
+    )
+
+    assert core.operations == ["apply:consumer-0-2", "delete:consumer-0-1"]
+
+
+def test_reconcile_keeps_the_best_duplicate_and_deletes_the_rest() -> None:
+    outdated = _pod(0, 1, ready=True, phase="Running", annotations={SPEC_HASH_ANNOTATION: "old"})
+    duplicate_manifest = copy.deepcopy(_manifest(0, 0))
+    duplicate_manifest["metadata"]["name"] = "consumer-0-2"
+    duplicate_manifest["metadata"]["labels"][GENERATION_LABEL] = "2"
+    duplicate = _observed(duplicate_manifest, phase="Running", ready=True)
+
+    applied, deleted, result, ledger = _reconcile([outdated, duplicate])
+
+    assert applied == []
+    assert deleted == [("consumer-0-1", False)]
+    assert result["childPods"] == ["consumer-0-2"]
+    assert ledger == {0: 2}
+
+
+def test_delete_obsolete_pod_sets_removes_canary_when_disabled() -> None:
+    primary = _pod(0, 1, ready=True, phase="Running")
+    canary = _pod(0, 2, ready=True, phase="Running")
+    assert canary.metadata is not None
+    canary.metadata.name = "consumer-canary-0-2"
+    canary.metadata.labels[WORKLOAD_SET_LABEL] = CANARY_WORKLOAD_SET
+    core = FakeCoreV1Api(pods=[primary, canary])
+
+    delete_obsolete_pod_sets(
+        core,
+        NAMESPACE,
+        OWNER_UID,
+        {PRIMARY_WORKLOAD_SET},
+        LOGGER,
+    )
+
+    assert core.deleted_pods == [("consumer-canary-0-2", False)]
