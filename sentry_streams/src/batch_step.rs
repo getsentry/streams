@@ -192,14 +192,19 @@ impl Batch {
                 .or_insert(o);
         }
         let batch_deadline = limits.max_time.map(Deadline::new);
+        let measure_chunk = limits.measure_chunk.max(1);
         Self {
             route,
             max_batch_size: limits.max_size,
             max_batch_size_bytes: limits.max_bytes,
             measured_bytes: 0,
             measured_upto: 0,
-            next_measure_at: limits.measure_chunk.max(1),
-            measure_chunk: limits.measure_chunk.max(1),
+            // The first measurement uses the floor, not the full chunk. There is
+            // no mean payload size yet to scale the chunk by, so measuring at the
+            // full chunk would let large payloads overshoot the cap many times
+            // over before the adaptive sizing ever runs.
+            next_measure_at: MIN_BYTE_MEASURE_CHUNK.min(measure_chunk),
+            measure_chunk,
             batch_deadline,
             created_at: Instant::now(),
             elements: vec![first],
@@ -730,7 +735,7 @@ mod tests {
     mod batch {
         //! [`Batch`] in isolation: elements, committable, `should_flush`, list build (GIL).
 
-        use crate::batch_step::{Batch, BatchLimits, FlushReason};
+        use crate::batch_step::{Batch, BatchLimits, FlushReason, MIN_BYTE_MEASURE_CHUNK};
         use crate::messages::{PyStreamingMessage, RoutedValuePayload};
         use crate::routes::{Route, RoutedValue};
         use crate::testutils::{build_raw_routed_value, build_routed_value};
@@ -935,6 +940,26 @@ mod tests {
                 assert!(b.should_flush().is_none());
                 assert_eq!(b.measured_upto, 1, "it did measure");
                 assert_eq!(b.measured_bytes, 0, "but found nothing countable");
+            });
+        }
+
+        #[test]
+        fn first_byte_measurement_uses_floor_not_full_chunk() {
+            traced_with_gil!(|py| {
+                // Production chunk size. Before any measurement there is no mean
+                // to scale by, so the first check must come at the floor. Waiting
+                // for the full chunk would put 256 KB in a batch capped at 20 KB.
+                let limits = BatchLimits {
+                    max_bytes: Some(20_000),
+                    ..Default::default()
+                };
+                let mut b = raw_batch(py, &[1_000; MIN_BYTE_MEASURE_CHUNK - 1], limits);
+                assert!(b.should_flush().is_none());
+                assert_eq!(b.measured_upto, 0, "no measurement before the floor");
+
+                let mut b = raw_batch(py, &[1_000; MIN_BYTE_MEASURE_CHUNK], limits);
+                assert_eq!(b.should_flush(), Some(FlushReason::Bytes));
+                assert_eq!(b.measured_upto, MIN_BYTE_MEASURE_CHUNK);
             });
         }
 
