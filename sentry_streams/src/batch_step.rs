@@ -27,81 +27,11 @@ const METRIC_BATCH_SIZE_BYTES: &str = "streams.pipeline.batch.size_bytes";
 const METRIC_BATCH_TIME_MS: &str = "streams.pipeline.batch.time_ms";
 const METRIC_BATCH_SUBMIT_DURATION_MS: &str = "streams.pipeline.batch.submit_duration_ms";
 const METRIC_BATCH_SUBMIT_REJECTED: &str = "streams.pipeline.batch.submit_rejected";
-const METRIC_BATCH_FLUSH_REASON: &str = "streams.pipeline.batch.flush_reason";
-const METRIC_BATCH_BYTE_CAP_UNMEASURABLE: &str = "streams.pipeline.batch.byte_cap_unmeasurable";
 
 /// How often the debounced "MessageRejected" log line and counter metric may be
 /// emitted. Submits are retried in a tight loop under backpressure, so we
 /// aggregate rejections instead of emitting one per attempt.
 const REJECTED_DEBOUNCE_INTERVAL: Duration = Duration::from_secs(3);
-
-/// Upper bound on how many newly appended elements may accumulate before the
-/// accumulated byte total is recomputed.
-///
-/// This is deliberately a COUNT and not a time-based debounce. The failure this
-/// guards against is the message rate spiking when a consumer falls behind. A
-/// time debounce would let proportionally more bytes accumulate between checks
-/// exactly when the batch is growing fastest, degrading under the very
-/// condition it exists to catch. A count chunk is rate-invariant.
-const BYTE_MEASURE_CHUNK: usize = 256;
-
-/// Floor for the adaptive chunk, so byte measurement never approaches one GIL
-/// acquisition per message.
-const MIN_BYTE_MEASURE_CHUNK: usize = 32;
-
-/// How often the "byte cap configured but nothing measurable" warning may be logged.
-const UNMEASURABLE_WARN_INTERVAL: Duration = Duration::from_secs(60);
-
-/// Why a batch window closed. Emitted as the `reason` label on
-/// [`METRIC_BATCH_FLUSH_REASON`], so it is possible to tell whether a configured
-/// byte cap is actually firing or is dead config.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FlushReason {
-    Count,
-    Bytes,
-    Deadline,
-    Join,
-}
-
-impl FlushReason {
-    fn as_str(self) -> &'static str {
-        match self {
-            FlushReason::Count => "count",
-            FlushReason::Bytes => "bytes",
-            FlushReason::Deadline => "deadline",
-            FlushReason::Join => "join",
-        }
-    }
-}
-
-/// Limits that close a batch window. The first one reached wins.
-#[derive(Clone, Copy, Debug)]
-pub struct BatchLimits {
-    /// Maximum number of elements. `None` means no count limit.
-    pub max_size: Option<usize>,
-    /// Maximum accumulated payload bytes. `None` means no byte limit.
-    ///
-    /// Approximate by design: measuring payload bytes requires the GIL and the
-    /// submit path deliberately does not hold it, so bytes are measured in
-    /// chunks and a batch may exceed this by up to one chunk of elements.
-    pub max_bytes: Option<usize>,
-    /// Wall-clock window. `None` means no time limit.
-    pub max_time: Option<Duration>,
-    /// Upper bound on elements between byte measurements. Present so tests can
-    /// shrink it; production uses [`BYTE_MEASURE_CHUNK`].
-    pub measure_chunk: usize,
-}
-
-impl Default for BatchLimits {
-    fn default() -> Self {
-        Self {
-            max_size: None,
-            max_bytes: None,
-            max_time: None,
-            measure_chunk: BYTE_MEASURE_CHUNK,
-        }
-    }
-}
 
 fn first_element_schema(py: Python<'_>, first: &PyStreamingMessage) -> Option<String> {
     match first {
@@ -150,21 +80,28 @@ fn payload_byte_len(py: Python<'_>, pysm: &PyStreamingMessage) -> usize {
     }
 }
 
-/// Count- and/or time-based window of streaming elements for one route. On flush, output is
+/// Payload bytes of `pysm` if a byte cap is set, otherwise 0.
+///
+/// This runs once per message. That is cheap because the consumer thread holds the
+/// GIL for as long as it runs, so `traced_with_gil!` here does not wait on anything.
+/// Skipping it when no cap is set keeps the no-cap path exactly as before.
+fn tracked_payload_bytes(max_batch_size_bytes: Option<usize>, pysm: &PyStreamingMessage) -> usize {
+    if max_batch_size_bytes.is_none() {
+        return 0;
+    }
+    traced_with_gil!(|py| payload_byte_len(py, pysm))
+}
+
+/// Count-, byte- and/or time-based window of streaming elements for one route. On flush, output is
 /// always a batched `PyAnyMessage` with a list payload.
 pub(crate) struct Batch {
     route: Route,
     max_batch_size: Option<usize>,
-    /// Accumulated-payload-bytes limit; see [`BatchLimits::max_bytes`].
+    /// Accumulated payload bytes at which to flush. `None` means no byte limit.
+    /// Only `RawMessage` and bytes `PyAnyMessage` payloads are counted.
     max_batch_size_bytes: Option<usize>,
-    /// Payload bytes of `elements[..measured_upto]`.
-    measured_bytes: usize,
-    /// How far into `elements` [`Self::measured_bytes`] has been computed.
-    measured_upto: usize,
-    /// Element count at which to measure again.
-    next_measure_at: usize,
-    /// Upper bound on elements between measurements.
-    measure_chunk: usize,
+    /// Payload bytes appended so far. Only tracked when a byte limit is set.
+    payload_bytes: usize,
     /// Set when the window is time-bounded; elapsed means flush by time.
     batch_deadline: Option<Deadline>,
     /// Wall time when the first element opened this batch window.
@@ -178,7 +115,9 @@ impl Batch {
     /// (see [`BatchStep::submit`]). Later elements may use either `PyAnyMessage` or `RawMessage`.
     pub fn from_initial(
         route: Route,
-        limits: BatchLimits,
+        max_batch_size: Option<usize>,
+        max_batch_size_bytes: Option<usize>,
+        max_batch_time: Option<Duration>,
         // Keeps track of the highest offset for each partition. This represent the committable
         // we will return when the batch is flushed.
         committable: BTreeMap<Partition, u64>,
@@ -191,20 +130,13 @@ impl Batch {
                 .and_modify(|e| *e = (*e).max(o))
                 .or_insert(o);
         }
-        let batch_deadline = limits.max_time.map(Deadline::new);
-        let measure_chunk = limits.measure_chunk.max(1);
+        let batch_deadline = max_batch_time.map(Deadline::new);
+        let payload_bytes = tracked_payload_bytes(max_batch_size_bytes, &first);
         Self {
             route,
-            max_batch_size: limits.max_size,
-            max_batch_size_bytes: limits.max_bytes,
-            measured_bytes: 0,
-            measured_upto: 0,
-            // The first measurement uses the floor, not the full chunk. There is
-            // no mean payload size yet to scale the chunk by, so measuring at the
-            // full chunk would let large payloads overshoot the cap many times
-            // over before the adaptive sizing ever runs.
-            next_measure_at: MIN_BYTE_MEASURE_CHUNK.min(measure_chunk),
-            measure_chunk,
+            max_batch_size,
+            max_batch_size_bytes,
+            payload_bytes,
             batch_deadline,
             created_at: Instant::now(),
             elements: vec![first],
@@ -219,6 +151,7 @@ impl Batch {
                 .and_modify(|e| *e = (*e).max(o))
                 .or_insert(o);
         }
+        self.payload_bytes += tracked_payload_bytes(self.max_batch_size_bytes, &pysm);
         self.elements.push(pysm);
     }
 
@@ -230,72 +163,27 @@ impl Batch {
         self.elements.len()
     }
 
-    /// Measures the elements appended since the last call and folds them into
-    /// [`Self::measured_bytes`]. One GIL acquisition regardless of how many
-    /// elements are pending, and each element is measured exactly once.
-    fn refresh_measured_bytes(&mut self) {
-        if self.measured_upto >= self.elements.len() {
-            return;
-        }
-        let elements = &self.elements;
-        let from = self.measured_upto;
-        let added: usize = traced_with_gil!(|py| elements[from..]
-            .iter()
-            .map(|el| payload_byte_len(py, el))
-            .sum());
-        self.measured_bytes += added;
-        self.measured_upto = self.elements.len();
-        self.next_measure_at = self.next_checkpoint();
-    }
-
-    /// Element count at which to measure again. Scaled to the remaining byte
-    /// budget so that a batch of large payloads cannot overshoot by much more
-    /// than half of what is left, while a fixed chunk still caps the GIL cost.
-    fn next_checkpoint(&self) -> usize {
-        // `max(1)` guarantees forward progress; `min` keeps the clamp bounds
-        // ordered when `measure_chunk` is below the floor, as it is in tests.
-        let chunk_cap = self.measure_chunk.max(1);
-        let floor = MIN_BYTE_MEASURE_CHUNK.min(chunk_cap);
-        let mean = self
-            .measured_bytes
-            .checked_div(self.measured_upto)
-            .unwrap_or(0);
-        let chunk = match self.max_batch_size_bytes {
-            // mean == 0 means nothing measurable so far; fall back to the fixed chunk.
-            Some(max_bytes) if mean > 0 => {
-                let remaining = max_bytes.saturating_sub(self.measured_bytes);
-                (remaining / mean / 2).clamp(floor, chunk_cap)
-            }
-            _ => chunk_cap,
-        };
-        self.measured_upto + chunk
-    }
-
-    /// Cheap checks first: the byte check is the only one that needs the GIL, so
-    /// it runs last and only when a byte cap is actually configured.
-    pub fn should_flush(&mut self) -> Option<FlushReason> {
+    pub fn should_flush(&self) -> bool {
         if self.is_empty() {
-            return None;
+            return false;
         }
         if self.max_batch_size.is_some_and(|m| self.len() >= m) {
-            return Some(FlushReason::Count);
+            return true;
+        }
+        if self
+            .max_batch_size_bytes
+            .is_some_and(|m| self.payload_bytes >= m)
+        {
+            return true;
         }
         if self
             .batch_deadline
             .as_ref()
             .is_some_and(|d| d.has_elapsed())
         {
-            return Some(FlushReason::Deadline);
+            return true;
         }
-        if let Some(max_bytes) = self.max_batch_size_bytes {
-            if self.elements.len() >= self.next_measure_at {
-                self.refresh_measured_bytes();
-            }
-            if self.measured_bytes >= max_bytes {
-                return Some(FlushReason::Bytes);
-            }
-        }
-        None
+        false
     }
 
     pub fn current_offsets_snapshot(&self) -> BTreeMap<Partition, u64> {
@@ -367,7 +255,9 @@ pub struct BatchStep {
 
     route: Route,
     step_name: String,
-    limits: BatchLimits,
+    max_batch_size: Option<usize>,
+    max_batch_size_bytes: Option<usize>,
+    max_batch_time: Option<Duration>,
     /// `None` until the first streaming message in a window.
     batch: Option<Batch>,
     /// Watermarks received while the current batch window is open; on successful batch send they
@@ -394,14 +284,14 @@ pub struct BatchStep {
     rejected_first_at: Option<SystemTime>,
     /// Monotonic time of the last debounced emission.
     rejected_last_emitted: Option<Instant>,
-    /// Monotonic time of the last "byte cap unmeasurable" warning.
-    unmeasurable_last_warned: Option<Instant>,
 }
 
 impl BatchStep {
     pub fn new(
         route: Route,
-        limits: BatchLimits,
+        max_batch_size: Option<usize>,
+        max_batch_size_bytes: Option<usize>,
+        max_batch_time: Option<Duration>,
         step_name: String,
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
     ) -> Self {
@@ -410,7 +300,9 @@ impl BatchStep {
             next_step,
             route,
             step_name,
-            limits,
+            max_batch_size,
+            max_batch_size_bytes,
+            max_batch_time,
             batch: None,
             watermark_buffer: Vec::new(),
             outbound: VecDeque::new(),
@@ -420,7 +312,6 @@ impl BatchStep {
             rejected_count: 0,
             rejected_first_at: None,
             rejected_last_emitted: None,
-            unmeasurable_last_warned: None,
         }
     }
 
@@ -520,15 +411,9 @@ impl BatchStep {
         if self.batch.as_ref().map_or(true, |b| b.is_empty()) {
             return Ok(());
         }
-        // `force` short-circuits, so the join path never pays for byte measurement.
-        let flush_reason = if force {
-            FlushReason::Join
-        } else {
-            match self.batch.as_mut().and_then(|b| b.should_flush()) {
-                Some(reason) => reason,
-                None => return Ok(()),
-            }
-        };
+        if !force && !self.batch.as_ref().map_or(true, |b| b.should_flush()) {
+            return Ok(());
+        }
 
         let b = self
             .batch
@@ -548,9 +433,6 @@ impl BatchStep {
         metrics::histogram!(METRIC_BATCH_SIZE_BYTES, &self.step_labels)
             .record(batch_payload_bytes as f64);
         metrics::histogram!(METRIC_BATCH_TIME_MS, &self.step_labels).record(batch_open_ms);
-        let mut reason_labels = self.step_labels.clone();
-        reason_labels.push(("reason".to_string(), flush_reason.as_str().to_string()));
-        metrics::counter!(METRIC_BATCH_FLUSH_REASON, &reason_labels).increment(1);
         log::info!(
             "Batch flushed. step: {:?}, batch_elements: {:?}, batch_payload_bytes: {:?}, batch_open_ms: {:?} created_at: {:?}",
             self.step_name,
@@ -560,26 +442,6 @@ impl BatchStep {
             b.created_at
         );
         self.batch = None;
-        // A configured byte cap that measures nothing can never fire. Surface it
-        // rather than letting it look like protection that is not there.
-        if self.limits.max_bytes.is_some() && batch_payload_bytes == 0 && batch_elements > 0.0 {
-            metrics::counter!(METRIC_BATCH_BYTE_CAP_UNMEASURABLE, &self.step_labels).increment(1);
-            let now = Instant::now();
-            if self
-                .unmeasurable_last_warned
-                .is_none_or(|t| now.duration_since(t) >= UNMEASURABLE_WARN_INTERVAL)
-            {
-                self.unmeasurable_last_warned = Some(now);
-                log::warn!(
-                    "step {:?} has a byte cap configured but measured 0 payload bytes across \
-                     {} elements, so the cap can never fire. This happens when the batched \
-                     payloads are not bytes-like; only RawMessage and bytes PyAnyMessage \
-                     payloads are counted.",
-                    self.step_name,
-                    batch_elements as u64,
-                );
-            }
-        }
         let wm_after_batch: Vec<_> = std::mem::take(&mut self.watermark_buffer);
 
         self.outbound.push_back(batch_msg);
@@ -633,11 +495,20 @@ impl BatchStep {
 
 pub fn build_batch_step(
     route: &Route,
-    limits: BatchLimits,
+    max_batch_size: Option<usize>,
+    max_batch_size_bytes: Option<usize>,
+    max_batch_time: Option<Duration>,
     step_name: String,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
 ) -> Box<dyn ProcessingStrategy<RoutedValue>> {
-    Box::new(BatchStep::new(route.clone(), limits, step_name, next))
+    Box::new(BatchStep::new(
+        route.clone(),
+        max_batch_size,
+        max_batch_size_bytes,
+        max_batch_time,
+        step_name,
+        next,
+    ))
 }
 
 impl ProcessingStrategy<RoutedValue> for BatchStep {
@@ -686,7 +557,9 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
                 if self.batch.is_none() {
                     self.batch = Some(Batch::from_initial(
                         self.route.clone(),
-                        self.limits,
+                        self.max_batch_size,
+                        self.max_batch_size_bytes,
+                        self.max_batch_time,
                         committable,
                         pysm,
                     ));
@@ -735,7 +608,7 @@ mod tests {
     mod batch {
         //! [`Batch`] in isolation: elements, committable, `should_flush`, list build (GIL).
 
-        use crate::batch_step::{Batch, BatchLimits, FlushReason, MIN_BYTE_MEASURE_CHUNK};
+        use crate::batch_step::Batch;
         use crate::messages::{PyStreamingMessage, RoutedValuePayload};
         use crate::routes::{Route, RoutedValue};
         use crate::testutils::{build_raw_routed_value, build_routed_value};
@@ -746,7 +619,6 @@ mod tests {
         use pyo3::IntoPyObject;
         use sentry_arroyo::types::{Message, Partition, Topic};
         use std::collections::BTreeMap;
-        use std::time::Duration;
 
         fn route() -> Route {
             Route::new("s".into(), vec!["w".into()])
@@ -780,15 +652,7 @@ mod tests {
                     BTreeMap::from([(part, 2u64)]),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(
-                    r.clone(),
-                    BatchLimits {
-                        max_size: Some(2),
-                        ..Default::default()
-                    },
-                    c1,
-                    el1,
-                );
+                let mut b = Batch::from_initial(r.clone(), Some(2), None, None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
                 let (msg, _) = b.flush().expect("build");
@@ -810,177 +674,6 @@ mod tests {
             });
         }
 
-        /// Builds a batch of `RawMessage`s of the given sizes under `limits`.
-        fn raw_batch(py: Python<'_>, sizes: &[usize], limits: BatchLimits) -> Batch {
-            let part = Partition::new(Topic::new("t"), 0);
-            let mut it = sizes.iter().enumerate();
-            let (i0, n0) = it.next().expect("at least one size");
-            let m0 = Message::new_any_message(
-                build_raw_routed_value(py, vec![1u8; *n0], "s", vec!["w".into()]),
-                BTreeMap::from([(part, i0 as u64)]),
-            );
-            let (c0, el0) = committable_and_streaming(m0);
-            let mut b = Batch::from_initial(route(), limits, c0, el0);
-            for (i, n) in it {
-                let m = Message::new_any_message(
-                    build_raw_routed_value(py, vec![1u8; *n], "s", vec!["w".into()]),
-                    BTreeMap::from([(part, i as u64)]),
-                );
-                let (c, el) = committable_and_streaming(m);
-                b.append(c, el);
-            }
-            b
-        }
-
-        #[test]
-        fn should_flush_when_byte_cap_reached() {
-            traced_with_gil!(|py| {
-                let limits = BatchLimits {
-                    max_bytes: Some(5),
-                    measure_chunk: 1,
-                    ..Default::default()
-                };
-                // 3 bytes: under the cap.
-                let mut b = raw_batch(py, &[3], limits);
-                assert!(b.should_flush().is_none(), "3 bytes is under a 5 byte cap");
-                // 3 + 3 = 6 bytes: over.
-                let mut b = raw_batch(py, &[3, 3], limits);
-                assert_eq!(b.should_flush(), Some(FlushReason::Bytes));
-            });
-        }
-
-        #[test]
-        fn byte_cap_overshoot_bounded_by_chunk() {
-            traced_with_gil!(|py| {
-                // Measurement happens every 2 elements, so a 5 byte cap is not
-                // noticed until element 2, by which point the batch holds 6 bytes.
-                let limits = BatchLimits {
-                    max_bytes: Some(5),
-                    measure_chunk: 2,
-                    ..Default::default()
-                };
-                let mut b = raw_batch(py, &[3], limits);
-                assert!(
-                    b.should_flush().is_none(),
-                    "no measurement before the chunk boundary"
-                );
-                let mut b = raw_batch(py, &[3, 3], limits);
-                assert_eq!(b.should_flush(), Some(FlushReason::Bytes));
-                assert_eq!(b.measured_bytes, 6, "overshoot is bounded by one chunk");
-            });
-        }
-
-        #[test]
-        fn byte_cap_not_measured_when_unset() {
-            traced_with_gil!(|py| {
-                // Guards the hot path: no byte cap must mean no GIL work per poll.
-                let limits = BatchLimits {
-                    max_size: Some(100),
-                    measure_chunk: 1,
-                    ..Default::default()
-                };
-                let mut b = raw_batch(py, &[3, 3, 3, 3, 3], limits);
-                assert!(b.should_flush().is_none());
-                assert_eq!(b.measured_upto, 0, "must not measure without a byte cap");
-            });
-        }
-
-        #[test]
-        fn count_cap_short_circuits_before_byte_measurement() {
-            traced_with_gil!(|py| {
-                let limits = BatchLimits {
-                    max_size: Some(1),
-                    max_bytes: Some(1),
-                    measure_chunk: 1,
-                    ..Default::default()
-                };
-                let mut b = raw_batch(py, &[3], limits);
-                assert_eq!(b.should_flush(), Some(FlushReason::Count));
-                assert_eq!(b.measured_upto, 0, "count check must run first");
-            });
-        }
-
-        #[test]
-        fn deadline_short_circuits_before_byte_measurement() {
-            traced_with_gil!(|py| {
-                let limits = BatchLimits {
-                    max_bytes: Some(1),
-                    max_time: Some(Duration::ZERO),
-                    measure_chunk: 1,
-                    ..Default::default()
-                };
-                let mut b = raw_batch(py, &[3], limits);
-                assert_eq!(b.should_flush(), Some(FlushReason::Deadline));
-                assert_eq!(b.measured_upto, 0, "deadline check must run first");
-            });
-        }
-
-        #[test]
-        fn non_bytes_pyany_never_trips_byte_cap() {
-            traced_with_gil!(|py| {
-                // Known limitation, encoded deliberately: arbitrary Python payloads
-                // measure 0, so the byte cap cannot fire and count/time still apply.
-                let part = Partition::new(Topic::new("t"), 0);
-                let p = 1i32.into_pyobject(py).unwrap().into_any().unbind();
-                let m = Message::new_any_message(
-                    build_routed_value(py, p, "s", vec!["w".into()]),
-                    BTreeMap::from([(part, 1u64)]),
-                );
-                let (c, el) = committable_and_streaming(m);
-                let mut b = Batch::from_initial(
-                    route(),
-                    BatchLimits {
-                        max_bytes: Some(1),
-                        measure_chunk: 1,
-                        ..Default::default()
-                    },
-                    c,
-                    el,
-                );
-                assert!(b.should_flush().is_none());
-                assert_eq!(b.measured_upto, 1, "it did measure");
-                assert_eq!(b.measured_bytes, 0, "but found nothing countable");
-            });
-        }
-
-        #[test]
-        fn first_byte_measurement_uses_floor_not_full_chunk() {
-            traced_with_gil!(|py| {
-                // Production chunk size. Before any measurement there is no mean
-                // to scale by, so the first check must come at the floor. Waiting
-                // for the full chunk would put 256 KB in a batch capped at 20 KB.
-                let limits = BatchLimits {
-                    max_bytes: Some(20_000),
-                    ..Default::default()
-                };
-                let mut b = raw_batch(py, &[1_000; MIN_BYTE_MEASURE_CHUNK - 1], limits);
-                assert!(b.should_flush().is_none());
-                assert_eq!(b.measured_upto, 0, "no measurement before the floor");
-
-                let mut b = raw_batch(py, &[1_000; MIN_BYTE_MEASURE_CHUNK], limits);
-                assert_eq!(b.should_flush(), Some(FlushReason::Bytes));
-                assert_eq!(b.measured_upto, MIN_BYTE_MEASURE_CHUNK);
-            });
-        }
-
-        #[test]
-        fn flush_reports_exact_bytes_after_partial_measurement() {
-            traced_with_gil!(|py| {
-                // The metric must stay exact even though the flush decision uses
-                // an approximation, so real overshoot can be measured in prod.
-                let limits = BatchLimits {
-                    max_bytes: Some(1_000),
-                    measure_chunk: 100,
-                    ..Default::default()
-                };
-                let mut b = raw_batch(py, &[3, 2], limits);
-                assert!(b.should_flush().is_none());
-                assert_eq!(b.measured_upto, 0, "chunk boundary not reached");
-                let (_msg, payload_bytes) = b.flush().expect("build");
-                assert_eq!(payload_bytes, 5, "flush reports the exact total");
-            });
-        }
-
         #[test]
         fn flush_reports_payload_bytes_for_raw_messages() {
             traced_with_gil!(|py| {
@@ -996,15 +689,7 @@ mod tests {
                     BTreeMap::from([(part, 2u64)]),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(
-                    r,
-                    BatchLimits {
-                        max_size: Some(2),
-                        ..Default::default()
-                    },
-                    c1,
-                    el1,
-                );
+                let mut b = Batch::from_initial(r, Some(2), None, None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
                 let (_msg, payload_bytes) = b.flush().expect("build");
@@ -1024,15 +709,7 @@ mod tests {
                     BTreeMap::from([(part, 1u64)]),
                 );
                 let (c, el) = committable_and_streaming(m);
-                let b = Batch::from_initial(
-                    r,
-                    BatchLimits {
-                        max_size: Some(1),
-                        ..Default::default()
-                    },
-                    c,
-                    el,
-                );
+                let b = Batch::from_initial(r, Some(1), None, None, c, el);
                 let (_msg, payload_bytes) = b.flush().expect("build");
                 assert_eq!(payload_bytes, 3);
             });
@@ -1050,15 +727,7 @@ mod tests {
                     BTreeMap::from([(part, 1u64)]),
                 );
                 let (c, el) = committable_and_streaming(m);
-                let b = Batch::from_initial(
-                    r,
-                    BatchLimits {
-                        max_size: Some(1),
-                        ..Default::default()
-                    },
-                    c,
-                    el,
-                );
+                let b = Batch::from_initial(r, Some(1), None, None, c, el);
                 let (_msg, payload_bytes) = b.flush().expect("build");
                 assert_eq!(payload_bytes, 0);
             });
@@ -1078,15 +747,7 @@ mod tests {
                     BTreeMap::from([(part, 2u64)]),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(
-                    r,
-                    BatchLimits {
-                        max_size: Some(2),
-                        ..Default::default()
-                    },
-                    c1,
-                    el1,
-                );
+                let mut b = Batch::from_initial(r, Some(2), None, None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
                 let (msg, _) = b.flush().expect("build");
@@ -1136,7 +797,7 @@ mod tests {
                     Utc::now(),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(r, BatchLimits::default(), c1, el1);
+                let mut b = Batch::from_initial(r, None, None, None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
                 let snap = b.current_offsets_snapshot();
@@ -1160,23 +821,82 @@ mod tests {
                     BTreeMap::from([(part, 1u64)]),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(
-                    r,
-                    BatchLimits {
-                        max_size: Some(2),
-                        ..Default::default()
-                    },
-                    c1,
-                    el1,
-                );
-                assert!(b.should_flush().is_none(), "one element, limit 2");
+                let mut b = Batch::from_initial(r, Some(2), None, None, c1, el1);
+                assert!(!b.should_flush(), "one element, limit 2");
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
-                assert_eq!(
-                    b.should_flush(),
-                    Some(FlushReason::Count),
-                    "two elements, limit 2"
+                assert!(b.should_flush(), "two elements, limit 2");
+            });
+        }
+
+        /// Builds a batch of `RawMessage`s with the given payload sizes.
+        fn raw_batch(py: Python<'_>, sizes: &[usize], max_bytes: Option<usize>) -> Batch {
+            let part = Partition::new(Topic::new("t"), 0);
+            let mut b: Option<Batch> = None;
+            for (i, n) in sizes.iter().enumerate() {
+                let m = Message::new_any_message(
+                    build_raw_routed_value(py, vec![1u8; *n], "s", vec!["w".into()]),
+                    BTreeMap::from([(part, i as u64)]),
                 );
+                let (c, el) = committable_and_streaming(m);
+                match b.as_mut() {
+                    None => b = Some(Batch::from_initial(route(), None, max_bytes, None, c, el)),
+                    Some(batch) => batch.append(c, el),
+                }
+            }
+            b.expect("at least one size")
+        }
+
+        #[test]
+        fn should_flush_when_byte_cap_reached() {
+            traced_with_gil!(|py| {
+                let b = raw_batch(py, &[3], Some(5));
+                assert!(!b.should_flush(), "3 bytes, limit 5");
+                let b = raw_batch(py, &[3, 2], Some(5));
+                assert!(b.should_flush(), "5 bytes, limit 5");
+                assert_eq!(b.payload_bytes, 5, "every message is counted exactly");
+            });
+        }
+
+        #[test]
+        fn payload_bytes_not_tracked_without_byte_cap() {
+            traced_with_gil!(|py| {
+                let b = raw_batch(py, &[3, 3, 3], None);
+                assert!(!b.should_flush());
+                assert_eq!(b.payload_bytes, 0, "no byte cap, no measuring");
+            });
+        }
+
+        #[test]
+        fn byte_cap_counts_bytes_inside_pyany() {
+            traced_with_gil!(|py| {
+                let part = Partition::new(Topic::new("t"), 0);
+                let p = PyBytes::new(py, b"abcdef").into_any().unbind();
+                let m = Message::new_any_message(
+                    build_routed_value(py, p, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 1u64)]),
+                );
+                let (c, el) = committable_and_streaming(m);
+                let b = Batch::from_initial(route(), None, Some(6), None, c, el);
+                assert!(b.should_flush(), "6 bytes, limit 6");
+            });
+        }
+
+        #[test]
+        fn non_bytes_pyany_never_trips_byte_cap() {
+            traced_with_gil!(|py| {
+                // Known limitation: payloads that are not bytes measure 0, so only
+                // the count and time limits can close the batch.
+                let part = Partition::new(Topic::new("t"), 0);
+                let p = 1i32.into_pyobject(py).unwrap().into_any().unbind();
+                let m = Message::new_any_message(
+                    build_routed_value(py, p, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 1u64)]),
+                );
+                let (c, el) = committable_and_streaming(m);
+                let b = Batch::from_initial(route(), None, Some(1), None, c, el);
+                assert!(!b.should_flush());
+                assert_eq!(b.payload_bytes, 0);
             });
         }
     }
@@ -1184,7 +904,7 @@ mod tests {
     mod step {
         //! [`BatchStep`] as [`ProcessingStrategy`]: routing, mixed streaming rows, backpressure, watermarks.
 
-        use super::super::{BatchLimits, BatchStep, Message};
+        use super::super::{BatchStep, Message};
         use crate::fake_strategy::FakeStrategy;
         use crate::testutils::{
             build_raw_routed_value, build_routed_value, build_routed_value_with_timestamp,
@@ -1200,13 +920,16 @@ mod tests {
         use sentry_arroyo::types::{Partition, Topic};
         use std::collections::BTreeMap;
         use std::sync::{Arc, Mutex};
+        use std::time::Duration;
 
         use crate::messages::RoutedValuePayload;
         use crate::routes::Route;
 
         fn batch_step_with_fake(
             route: Route,
-            limits: BatchLimits,
+            max_n: Option<usize>,
+            max_b: Option<usize>,
+            max_t: Option<Duration>,
         ) -> (
             BatchStep,
             Arc<Mutex<Vec<Py<PyAny>>>>,
@@ -1215,15 +938,21 @@ mod tests {
             let sub = Arc::new(Mutex::new(Vec::new()));
             let wms = Arc::new(Mutex::new(Vec::new()));
             let next = FakeStrategy::new(sub.clone(), wms.clone(), false);
-            let step = BatchStep::new(route, limits, "test_batch".to_string(), Box::new(next));
+            let step = BatchStep::new(
+                route,
+                max_n,
+                max_b,
+                max_t,
+                "test_batch".to_string(),
+                Box::new(next),
+            );
             (step, sub, wms)
         }
 
         #[test]
         fn forwards_mismatched_route_to_next_strategy() {
             let step_route = Route::new("a".into(), vec![]);
-            let (mut step, captured, _wms) =
-                batch_step_with_fake(step_route, BatchLimits::default());
+            let (mut step, captured, _wms) = batch_step_with_fake(step_route, None, None, None);
             traced_with_gil!(|py| {
                 let p = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let rv = crate::testutils::build_routed_value(py, p, "b", vec![]);
@@ -1236,13 +965,7 @@ mod tests {
         #[test]
         fn flushes_one_message_to_downstream_when_batch_full() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, out, _wms) = batch_step_with_fake(
-                route,
-                BatchLimits {
-                    max_size: Some(2),
-                    ..Default::default()
-                },
-            );
+            let (mut step, out, _wms) = batch_step_with_fake(route, Some(2), None, None);
             traced_with_gil!(|py| {
                 let p1 = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let p2 = 2i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -1266,15 +989,32 @@ mod tests {
         }
 
         #[test]
+        fn flushes_when_byte_cap_reached() {
+            let route = Route::new("s".into(), vec!["w".into()]);
+            let (mut step, out, _wms) = batch_step_with_fake(route, None, Some(5), None);
+            traced_with_gil!(|py| {
+                let m1 = Message::new_any_message(
+                    build_raw_routed_value(py, vec![1u8; 3], "s", vec!["w".into()]),
+                    BTreeMap::new(),
+                );
+                step.submit(m1).unwrap();
+                step.poll().unwrap();
+                assert_eq!(out.lock().unwrap().len(), 0, "3 bytes, limit 5");
+
+                let m2 = Message::new_any_message(
+                    build_raw_routed_value(py, vec![1u8; 3], "s", vec!["w".into()]),
+                    BTreeMap::new(),
+                );
+                step.submit(m2).unwrap();
+                step.poll().unwrap();
+            });
+            assert_eq!(out.lock().unwrap().len(), 1, "6 bytes, limit 5");
+        }
+
+        #[test]
         fn submit_accepts_raw_broker_message_after_pyany() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out, _wms) = batch_step_with_fake(
-                route,
-                BatchLimits {
-                    max_size: Some(10),
-                    ..Default::default()
-                },
-            );
+            let (mut step, _out, _wms) = batch_step_with_fake(route, Some(10), None, None);
             let part = Partition::new(Topic::new("topic"), 0);
             traced_with_gil!(|py| {
                 let p0 = 0i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -1299,13 +1039,7 @@ mod tests {
         #[test]
         fn submit_mixed_streaming_raw_after_streaming_any_flushes_mixed_list() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, out, _wms) = batch_step_with_fake(
-                route,
-                BatchLimits {
-                    max_size: Some(2),
-                    ..Default::default()
-                },
-            );
+            let (mut step, out, _wms) = batch_step_with_fake(route, Some(2), None, None);
             let part = Partition::new(Topic::new("topic"), 0);
             traced_with_gil!(|py| {
                 let p0 = 0i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -1339,7 +1073,7 @@ mod tests {
         #[test]
         fn watermark_forwarded_immediately_when_batch_empty() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out, wms) = batch_step_with_fake(route.clone(), BatchLimits::default());
+            let (mut step, _out, wms) = batch_step_with_fake(route.clone(), None, None, None);
             let rv = crate::routes::RoutedValue {
                 route,
                 payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0, None),
@@ -1353,13 +1087,7 @@ mod tests {
         #[test]
         fn synthetic_watermark_uses_oldest_row_timestamp() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out, wms) = batch_step_with_fake(
-                route,
-                BatchLimits {
-                    max_size: Some(2),
-                    ..Default::default()
-                },
-            );
+            let (mut step, _out, wms) = batch_step_with_fake(route, Some(2), None, None);
             traced_with_gil!(|py| {
                 let p1 = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let p2 = 2i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -1383,8 +1111,7 @@ mod tests {
         #[test]
         fn submit_rejects_while_batch_stalled_in_outbound() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out, _wms) =
-                batch_step_with_fake(route.clone(), BatchLimits::default());
+            let (mut step, _out, _wms) = batch_step_with_fake(route.clone(), None, None, None);
             traced_with_gil!(|py| {
                 let p_carried = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let p_next = 2i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -1410,9 +1137,7 @@ mod tests {
         //! [`BatchStep::record_rejected_submit`]: the debounced log/metric emitted
         //! for `MessageRejected` outcomes while draining the outbound queue.
 
-        use super::super::{
-            BatchLimits, BatchStep, METRIC_BATCH_SUBMIT_REJECTED, REJECTED_DEBOUNCE_INTERVAL,
-        };
+        use super::super::{BatchStep, METRIC_BATCH_SUBMIT_REJECTED, REJECTED_DEBOUNCE_INTERVAL};
         use crate::fake_strategy::FakeStrategy;
         use crate::routes::Route;
         use metrics::{
@@ -1466,7 +1191,9 @@ mod tests {
             let next = FakeStrategy::new(sub, wms, false);
             BatchStep::new(
                 Route::new("s".into(), vec!["w".into()]),
-                BatchLimits::default(),
+                None,
+                None,
+                None,
                 "test_batch".to_string(),
                 Box::new(next),
             )

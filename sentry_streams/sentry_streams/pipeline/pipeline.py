@@ -629,9 +629,10 @@ class Batch(
     batch_timedelta (time duration). If neither is specified, defaults
     to a 10-second time window.
 
-    ``batch_size_bytes`` also closes the window on accumulated payload bytes. Approximate,
-    Rust adapter only, and counts bytes-like payloads only. Size it from the
-    ``streams.pipeline.batch.size_bytes`` metric, not from a memory budget.
+    ``batch_size_bytes`` also closes the window once accumulated payload bytes reach it.
+    Rust adapter only. Only bytes payloads are counted: if the batch holds parsed
+    Python objects (for example after a ``Parser``), they count as 0 and the byte
+    limit never fires.
 
     The native Rust batch step batches ``PyAnyMessage`` and/or ``RawMessage`` rows; the emitted
     message has a single ``PyAnyMessage`` with a ``list`` payload (mixed Python values and/or
