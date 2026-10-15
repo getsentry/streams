@@ -1154,14 +1154,14 @@ wheels = [
 
 [[package]]
 name = "sentry-arroyo"
-version = "2.40.3"
+version = "2.46.0"
 source = { registry = "https://sfw.security.sentry.io/pypi/simple" }
 dependencies = [
     { name = "confluent-kafka" },
 ]
-sdist = { url = "https://sfw.security.sentry.io/pypi/packages/3b/cd/9e37e2698f347081db478f043e7d8cda34afb33f0607c812b821ed8c736c/sentry_arroyo-2.40.3.tar.gz", hash = "sha256:be698f6b0549338911a6b69d99d21c01be9c6f68d2d88c0b824a8e40df74cbf2", size = 93992, upload-time = "2026-06-18T19:36:40.04Z" }
+sdist = { url = "https://sfw.security.sentry.io/pypi/packages/d9/d6/4f7f587c55420a6a52b03bc170779d090a34a541c0ea5e545d7c92789dd5/sentry_arroyo-2.46.0.tar.gz", hash = "sha256:0e9cedf94c3e662d6663c31c70a61b3456fdedd9fda13062d3b4f7661c2d417e", size = 100473, upload-time = "2026-10-13T18:59:27.224Z" }
 wheels = [
-    { url = "https://sfw.security.sentry.io/pypi/packages/09/11/e82645edc7f2fd8fc97301102a9f189d0ecb2702635f30b72954adceda91/sentry_arroyo-2.40.3-py3-none-any.whl", hash = "sha256:d10b9767cbb572de86b8a41b3894bcb371d112ac5d6f70cd66f35cabdbf6ea9b", size = 121816, upload-time = "2026-06-18T19:36:38.906Z" },
+    { url = "https://sfw.security.sentry.io/pypi/packages/98/3c/92ea5f2b09fe1a5053bdc0802baa8564cf63871730dc31863b2601613f2a/sentry_arroyo-2.46.0-py3-none-any.whl", hash = "sha256:27e0a075a08082ae4bdfa0c11106582da404071127b670f6347ace4aabdb2ddd", size = 128710, upload-time = "2026-10-13T18:59:25.885Z" },
 ]
 
 [[package]]
@@ -1223,7 +1223,7 @@ wheels = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.65"
+version = "0.0.67"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1264,7 +1264,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.31.0,<1.32" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", specifier = ">=2.32.3" },
-    { name = "sentry-arroyo", specifier = ">=2.39.2" },
+    { name = "sentry-arroyo", specifier = ">=2.46.0,<2.47.0" },
     { name = "sentry-kafka-schemas", specifier = ">=2.2.0" },
 ]
 
