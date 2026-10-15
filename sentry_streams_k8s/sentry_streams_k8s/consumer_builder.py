@@ -223,7 +223,7 @@ def build_container(
     if enable_liveness_probe:
         pipeline_additions["livenessProbe"] = {
             "exec": {
-                "command": ["rm", "/tmp/health.txt"],
+                "command": ["python", "-c", "import os; os.remove('/tmp/health.txt')"],
             },
             "failureThreshold": 31,
             "periodSeconds": 10,
