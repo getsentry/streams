@@ -238,7 +238,7 @@ def test_build_container() -> None:
         ],
         "livenessProbe": {
             "exec": {
-                "command": ["python", "-c", "import os; os.remove('/tmp/health.txt')"],
+                "command": ["python", "-m", "arroyo.healthcheck", "/tmp/health.txt"],
             },
             "failureThreshold": 31,
             "periodSeconds": 10,
@@ -655,8 +655,9 @@ def test_run_includes_liveness_probe_when_enabled() -> None:
     assert "livenessProbe" in container
     assert container["livenessProbe"]["exec"]["command"] == [
         "python",
-        "-c",
-        "import os; os.remove('/tmp/health.txt')",
+        "-m",
+        "arroyo.healthcheck",
+        "/tmp/health.txt",
     ]
     assert container["livenessProbe"]["failureThreshold"] == 31
     assert container["livenessProbe"]["periodSeconds"] == 10
