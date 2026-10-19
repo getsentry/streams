@@ -1,3 +1,13 @@
+## 0.0.68
+
+### New Features ✨
+
+- (batch) Add batch_size_bytes flush trigger by @enochtangg in [#385](https://github.com/getsentry/streams/pull/385)
+
+### Internal Changes 🔧
+
+- (deps) Bump sentry-arroyo to 2.47.0 by @sentry-junior in [#391](https://github.com/getsentry/streams/pull/391)
+
 ## 0.0.67
 
 ### New Features ✨
