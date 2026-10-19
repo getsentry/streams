@@ -1154,14 +1154,14 @@ wheels = [
 
 [[package]]
 name = "sentry-arroyo"
-version = "2.40.3"
+version = "2.47.0"
 source = { registry = "https://sfw.security.sentry.io/pypi/simple" }
 dependencies = [
     { name = "confluent-kafka" },
 ]
-sdist = { url = "https://sfw.security.sentry.io/pypi/packages/3b/cd/9e37e2698f347081db478f043e7d8cda34afb33f0607c812b821ed8c736c/sentry_arroyo-2.40.3.tar.gz", hash = "sha256:be698f6b0549338911a6b69d99d21c01be9c6f68d2d88c0b824a8e40df74cbf2", size = 93992, upload-time = "2026-06-18T19:36:40.04Z" }
+sdist = { url = "https://sfw.security.sentry.io/pypi/packages/ef/4b/98bb4cea86ba3ac0e9d9cf69c4a625e49a4fc9473a7fc091efc113cf166b/sentry_arroyo-2.47.0.tar.gz", hash = "sha256:65bc18aa4df8877ad9af95c353573e7986b3211d5d3870e3d3256e6eedcfb979", size = 100424, upload-time = "2026-10-19T13:58:24.075Z" }
 wheels = [
-    { url = "https://sfw.security.sentry.io/pypi/packages/09/11/e82645edc7f2fd8fc97301102a9f189d0ecb2702635f30b72954adceda91/sentry_arroyo-2.40.3-py3-none-any.whl", hash = "sha256:d10b9767cbb572de86b8a41b3894bcb371d112ac5d6f70cd66f35cabdbf6ea9b", size = 121816, upload-time = "2026-06-18T19:36:38.906Z" },
+    { url = "https://sfw.security.sentry.io/pypi/packages/59/d1/9ab7d10d40ed3576c9b67ba307ff7349cf1106f4737fe385476b39f7ed9a/sentry_arroyo-2.47.0-py3-none-any.whl", hash = "sha256:8839a5ab50898268757b985c4ec8f73896cfff3cf89aa5f46070185ec197b397", size = 128711, upload-time = "2026-10-19T13:58:22.768Z" },
 ]
 
 [[package]]
@@ -1223,7 +1223,7 @@ wheels = [
 
 [[package]]
 name = "sentry-streams"
-version = "0.0.65"
+version = "0.0.67"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1264,7 +1264,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.31.0,<1.32" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", specifier = ">=2.32.3" },
-    { name = "sentry-arroyo", specifier = ">=2.39.2" },
+    { name = "sentry-arroyo", specifier = ">=2.47.0" },
     { name = "sentry-kafka-schemas", specifier = ">=2.2.0" },
 ]
 

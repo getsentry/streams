@@ -166,7 +166,8 @@ pub fn build(
             topic_name,
             kafka_config,
         } => {
-            let producer = KafkaProducer::new(kafka_config.clone().into());
+            let producer = KafkaProducer::new(kafka_config.clone().into())
+                .expect("Failed to create StreamSink Kafka producer");
             Box::new(StreamSink::new(
                 route.clone(),
                 producer,
