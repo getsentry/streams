@@ -15,8 +15,13 @@ from sentry_streams.adapters.arroyo.adapter import (
 from sentry_streams.adapters.stream_adapter import RuntimeTranslator
 from sentry_streams.config_types import KafkaConsumerConfig
 from sentry_streams.pipeline.pipeline import (
+    Batch,
+    BatchParser,
     Pipeline,
+    Serializer,
+    StreamSink,
     StreamSource,
+    streaming_source,
 )
 from sentry_streams.runner import iterate_edges
 
@@ -99,3 +104,31 @@ def test_adapter(
     msg2 = broker.consume(Partition(topic, 0), 1)
     assert msg2 is not None and msg2.payload.value == json.dumps(transformed_metric).encode("utf-8")
     assert broker.consume(Partition(topic, 0), 2) is None
+
+
+def test_batch_size_bytes_rejected_on_python_adapter(
+    broker: LocalBroker[KafkaPayload],
+) -> None:
+    # The Python adapter has no byte-based window, so accepting the setting would
+    # silently drop the limit. It must fail loudly at build time instead.
+    pipeline = (
+        streaming_source("myinput", stream_name="ingest-metrics")
+        .apply(Batch("mybatch", batch_size=2, batch_size_bytes=1024))
+        .apply(BatchParser[IngestMetric]("batch_parser"))  # type: ignore[arg-type]
+        .apply(Serializer("serializer"))
+        .sink(StreamSink("kafkasink", stream_name="transformed-events"))
+    )
+    adapter = ArroyoAdapter.build(
+        {
+            "env": {},
+            "steps_config": {
+                "myinput": {"myinput": {}},
+                "kafkasink": {"kafkasink": {}},
+            },
+        },
+        {"myinput": cast(KafkaConsumer, broker.get_consumer("ingest-metrics"))},
+        {"kafkasink": cast(KafkaProducer, broker.get_producer())},
+    )
+
+    with pytest.raises(ValueError, match="batch_size_bytes is only supported by the Rust adapter"):
+        iterate_edges(pipeline, RuntimeTranslator(adapter))

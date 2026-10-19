@@ -80,11 +80,28 @@ fn payload_byte_len(py: Python<'_>, pysm: &PyStreamingMessage) -> usize {
     }
 }
 
-/// Count- and/or time-based window of streaming elements for one route. On flush, output is
+/// Payload bytes of `pysm` if a byte cap is set, otherwise 0.
+///
+/// This runs once per message. That is cheap because the consumer thread holds the
+/// GIL for as long as it runs, so `traced_with_gil!` here does not wait on anything.
+/// Skipping it when no cap is set keeps the no-cap path exactly as before.
+fn tracked_payload_bytes(max_batch_size_bytes: Option<usize>, pysm: &PyStreamingMessage) -> usize {
+    if max_batch_size_bytes.is_none() {
+        return 0;
+    }
+    traced_with_gil!(|py| payload_byte_len(py, pysm))
+}
+
+/// Count-, byte- and/or time-based window of streaming elements for one route. On flush, output is
 /// always a batched `PyAnyMessage` with a list payload.
 pub(crate) struct Batch {
     route: Route,
     max_batch_size: Option<usize>,
+    /// Accumulated payload bytes at which to flush. `None` means no byte limit.
+    /// Only `RawMessage` and bytes `PyAnyMessage` payloads are counted.
+    max_batch_size_bytes: Option<usize>,
+    /// Payload bytes appended so far. Only tracked when a byte limit is set.
+    payload_bytes: usize,
     /// Set when the window is time-bounded; elapsed means flush by time.
     batch_deadline: Option<Deadline>,
     /// Wall time when the first element opened this batch window.
@@ -99,6 +116,7 @@ impl Batch {
     pub fn from_initial(
         route: Route,
         max_batch_size: Option<usize>,
+        max_batch_size_bytes: Option<usize>,
         max_batch_time: Option<Duration>,
         // Keeps track of the highest offset for each partition. This represent the committable
         // we will return when the batch is flushed.
@@ -113,9 +131,12 @@ impl Batch {
                 .or_insert(o);
         }
         let batch_deadline = max_batch_time.map(Deadline::new);
+        let payload_bytes = tracked_payload_bytes(max_batch_size_bytes, &first);
         Self {
             route,
             max_batch_size,
+            max_batch_size_bytes,
+            payload_bytes,
             batch_deadline,
             created_at: Instant::now(),
             elements: vec![first],
@@ -130,6 +151,7 @@ impl Batch {
                 .and_modify(|e| *e = (*e).max(o))
                 .or_insert(o);
         }
+        self.payload_bytes += tracked_payload_bytes(self.max_batch_size_bytes, &pysm);
         self.elements.push(pysm);
     }
 
@@ -146,6 +168,12 @@ impl Batch {
             return false;
         }
         if self.max_batch_size.is_some_and(|m| self.len() >= m) {
+            return true;
+        }
+        if self
+            .max_batch_size_bytes
+            .is_some_and(|m| self.payload_bytes >= m)
+        {
             return true;
         }
         if self
@@ -228,6 +256,7 @@ pub struct BatchStep {
     route: Route,
     step_name: String,
     max_batch_size: Option<usize>,
+    max_batch_size_bytes: Option<usize>,
     max_batch_time: Option<Duration>,
     /// `None` until the first streaming message in a window.
     batch: Option<Batch>,
@@ -261,6 +290,7 @@ impl BatchStep {
     pub fn new(
         route: Route,
         max_batch_size: Option<usize>,
+        max_batch_size_bytes: Option<usize>,
         max_batch_time: Option<Duration>,
         step_name: String,
         next_step: Box<dyn ProcessingStrategy<RoutedValue>>,
@@ -271,6 +301,7 @@ impl BatchStep {
             route,
             step_name,
             max_batch_size,
+            max_batch_size_bytes,
             max_batch_time,
             batch: None,
             watermark_buffer: Vec::new(),
@@ -465,6 +496,7 @@ impl BatchStep {
 pub fn build_batch_step(
     route: &Route,
     max_batch_size: Option<usize>,
+    max_batch_size_bytes: Option<usize>,
     max_batch_time: Option<Duration>,
     step_name: String,
     next: Box<dyn ProcessingStrategy<RoutedValue>>,
@@ -472,6 +504,7 @@ pub fn build_batch_step(
     Box::new(BatchStep::new(
         route.clone(),
         max_batch_size,
+        max_batch_size_bytes,
         max_batch_time,
         step_name,
         next,
@@ -525,6 +558,7 @@ impl ProcessingStrategy<RoutedValue> for BatchStep {
                     self.batch = Some(Batch::from_initial(
                         self.route.clone(),
                         self.max_batch_size,
+                        self.max_batch_size_bytes,
                         self.max_batch_time,
                         committable,
                         pysm,
@@ -618,7 +652,7 @@ mod tests {
                     BTreeMap::from([(part, 2u64)]),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(r.clone(), Some(2), None, c1, el1);
+                let mut b = Batch::from_initial(r.clone(), Some(2), None, None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
                 let (msg, _) = b.flush().expect("build");
@@ -655,7 +689,7 @@ mod tests {
                     BTreeMap::from([(part, 2u64)]),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(r, Some(2), None, c1, el1);
+                let mut b = Batch::from_initial(r, Some(2), None, None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
                 let (_msg, payload_bytes) = b.flush().expect("build");
@@ -675,7 +709,7 @@ mod tests {
                     BTreeMap::from([(part, 1u64)]),
                 );
                 let (c, el) = committable_and_streaming(m);
-                let b = Batch::from_initial(r, Some(1), None, c, el);
+                let b = Batch::from_initial(r, Some(1), None, None, c, el);
                 let (_msg, payload_bytes) = b.flush().expect("build");
                 assert_eq!(payload_bytes, 3);
             });
@@ -693,7 +727,7 @@ mod tests {
                     BTreeMap::from([(part, 1u64)]),
                 );
                 let (c, el) = committable_and_streaming(m);
-                let b = Batch::from_initial(r, Some(1), None, c, el);
+                let b = Batch::from_initial(r, Some(1), None, None, c, el);
                 let (_msg, payload_bytes) = b.flush().expect("build");
                 assert_eq!(payload_bytes, 0);
             });
@@ -713,7 +747,7 @@ mod tests {
                     BTreeMap::from([(part, 2u64)]),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(r, Some(2), None, c1, el1);
+                let mut b = Batch::from_initial(r, Some(2), None, None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
                 let (msg, _) = b.flush().expect("build");
@@ -763,7 +797,7 @@ mod tests {
                     Utc::now(),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(r, None, None, c1, el1);
+                let mut b = Batch::from_initial(r, None, None, None, c1, el1);
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
                 let snap = b.current_offsets_snapshot();
@@ -787,11 +821,82 @@ mod tests {
                     BTreeMap::from([(part, 1u64)]),
                 );
                 let (c1, el1) = committable_and_streaming(m1);
-                let mut b = Batch::from_initial(r, Some(2), None, c1, el1);
+                let mut b = Batch::from_initial(r, Some(2), None, None, c1, el1);
                 assert!(!b.should_flush(), "one element, limit 2");
                 let (c2, el2) = committable_and_streaming(m2);
                 b.append(c2, el2);
                 assert!(b.should_flush(), "two elements, limit 2");
+            });
+        }
+
+        /// Builds a batch of `RawMessage`s with the given payload sizes.
+        fn raw_batch(py: Python<'_>, sizes: &[usize], max_bytes: Option<usize>) -> Batch {
+            let part = Partition::new(Topic::new("t"), 0);
+            let mut b: Option<Batch> = None;
+            for (i, n) in sizes.iter().enumerate() {
+                let m = Message::new_any_message(
+                    build_raw_routed_value(py, vec![1u8; *n], "s", vec!["w".into()]),
+                    BTreeMap::from([(part, i as u64)]),
+                );
+                let (c, el) = committable_and_streaming(m);
+                match b.as_mut() {
+                    None => b = Some(Batch::from_initial(route(), None, max_bytes, None, c, el)),
+                    Some(batch) => batch.append(c, el),
+                }
+            }
+            b.expect("at least one size")
+        }
+
+        #[test]
+        fn should_flush_when_byte_cap_reached() {
+            traced_with_gil!(|py| {
+                let b = raw_batch(py, &[3], Some(5));
+                assert!(!b.should_flush(), "3 bytes, limit 5");
+                let b = raw_batch(py, &[3, 2], Some(5));
+                assert!(b.should_flush(), "5 bytes, limit 5");
+                assert_eq!(b.payload_bytes, 5, "every message is counted exactly");
+            });
+        }
+
+        #[test]
+        fn payload_bytes_not_tracked_without_byte_cap() {
+            traced_with_gil!(|py| {
+                let b = raw_batch(py, &[3, 3, 3], None);
+                assert!(!b.should_flush());
+                assert_eq!(b.payload_bytes, 0, "no byte cap, no measuring");
+            });
+        }
+
+        #[test]
+        fn byte_cap_counts_bytes_inside_pyany() {
+            traced_with_gil!(|py| {
+                let part = Partition::new(Topic::new("t"), 0);
+                let p = PyBytes::new(py, b"abcdef").into_any().unbind();
+                let m = Message::new_any_message(
+                    build_routed_value(py, p, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 1u64)]),
+                );
+                let (c, el) = committable_and_streaming(m);
+                let b = Batch::from_initial(route(), None, Some(6), None, c, el);
+                assert!(b.should_flush(), "6 bytes, limit 6");
+            });
+        }
+
+        #[test]
+        fn non_bytes_pyany_never_trips_byte_cap() {
+            traced_with_gil!(|py| {
+                // Known limitation: payloads that are not bytes measure 0, so only
+                // the count and time limits can close the batch.
+                let part = Partition::new(Topic::new("t"), 0);
+                let p = 1i32.into_pyobject(py).unwrap().into_any().unbind();
+                let m = Message::new_any_message(
+                    build_routed_value(py, p, "s", vec!["w".into()]),
+                    BTreeMap::from([(part, 1u64)]),
+                );
+                let (c, el) = committable_and_streaming(m);
+                let b = Batch::from_initial(route(), None, Some(1), None, c, el);
+                assert!(!b.should_flush());
+                assert_eq!(b.payload_bytes, 0);
             });
         }
     }
@@ -823,6 +928,7 @@ mod tests {
         fn batch_step_with_fake(
             route: Route,
             max_n: Option<usize>,
+            max_b: Option<usize>,
             max_t: Option<Duration>,
         ) -> (
             BatchStep,
@@ -835,6 +941,7 @@ mod tests {
             let step = BatchStep::new(
                 route,
                 max_n,
+                max_b,
                 max_t,
                 "test_batch".to_string(),
                 Box::new(next),
@@ -845,7 +952,7 @@ mod tests {
         #[test]
         fn forwards_mismatched_route_to_next_strategy() {
             let step_route = Route::new("a".into(), vec![]);
-            let (mut step, captured, _wms) = batch_step_with_fake(step_route, None, None);
+            let (mut step, captured, _wms) = batch_step_with_fake(step_route, None, None, None);
             traced_with_gil!(|py| {
                 let p = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let rv = crate::testutils::build_routed_value(py, p, "b", vec![]);
@@ -858,7 +965,7 @@ mod tests {
         #[test]
         fn flushes_one_message_to_downstream_when_batch_full() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, out, _wms) = batch_step_with_fake(route, Some(2), None);
+            let (mut step, out, _wms) = batch_step_with_fake(route, Some(2), None, None);
             traced_with_gil!(|py| {
                 let p1 = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let p2 = 2i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -882,9 +989,32 @@ mod tests {
         }
 
         #[test]
+        fn flushes_when_byte_cap_reached() {
+            let route = Route::new("s".into(), vec!["w".into()]);
+            let (mut step, out, _wms) = batch_step_with_fake(route, None, Some(5), None);
+            traced_with_gil!(|py| {
+                let m1 = Message::new_any_message(
+                    build_raw_routed_value(py, vec![1u8; 3], "s", vec!["w".into()]),
+                    BTreeMap::new(),
+                );
+                step.submit(m1).unwrap();
+                step.poll().unwrap();
+                assert_eq!(out.lock().unwrap().len(), 0, "3 bytes, limit 5");
+
+                let m2 = Message::new_any_message(
+                    build_raw_routed_value(py, vec![1u8; 3], "s", vec!["w".into()]),
+                    BTreeMap::new(),
+                );
+                step.submit(m2).unwrap();
+                step.poll().unwrap();
+            });
+            assert_eq!(out.lock().unwrap().len(), 1, "6 bytes, limit 5");
+        }
+
+        #[test]
         fn submit_accepts_raw_broker_message_after_pyany() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out, _wms) = batch_step_with_fake(route, Some(10), None);
+            let (mut step, _out, _wms) = batch_step_with_fake(route, Some(10), None, None);
             let part = Partition::new(Topic::new("topic"), 0);
             traced_with_gil!(|py| {
                 let p0 = 0i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -909,7 +1039,7 @@ mod tests {
         #[test]
         fn submit_mixed_streaming_raw_after_streaming_any_flushes_mixed_list() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, out, _wms) = batch_step_with_fake(route, Some(2), None);
+            let (mut step, out, _wms) = batch_step_with_fake(route, Some(2), None, None);
             let part = Partition::new(Topic::new("topic"), 0);
             traced_with_gil!(|py| {
                 let p0 = 0i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -943,7 +1073,7 @@ mod tests {
         #[test]
         fn watermark_forwarded_immediately_when_batch_empty() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out, wms) = batch_step_with_fake(route.clone(), None, None);
+            let (mut step, _out, wms) = batch_step_with_fake(route.clone(), None, None, None);
             let rv = crate::routes::RoutedValue {
                 route,
                 payload: RoutedValuePayload::make_watermark_payload(BTreeMap::new(), 0, None),
@@ -957,7 +1087,7 @@ mod tests {
         #[test]
         fn synthetic_watermark_uses_oldest_row_timestamp() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out, wms) = batch_step_with_fake(route, Some(2), None);
+            let (mut step, _out, wms) = batch_step_with_fake(route, Some(2), None, None);
             traced_with_gil!(|py| {
                 let p1 = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let p2 = 2i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -981,7 +1111,7 @@ mod tests {
         #[test]
         fn submit_rejects_while_batch_stalled_in_outbound() {
             let route = Route::new("s".into(), vec!["w".into()]);
-            let (mut step, _out, _wms) = batch_step_with_fake(route.clone(), None, None);
+            let (mut step, _out, _wms) = batch_step_with_fake(route.clone(), None, None, None);
             traced_with_gil!(|py| {
                 let p_carried = 1i32.into_pyobject(py).unwrap().into_any().unbind();
                 let p_next = 2i32.into_pyobject(py).unwrap().into_any().unbind();
@@ -1061,6 +1191,7 @@ mod tests {
             let next = FakeStrategy::new(sub, wms, false);
             BatchStep::new(
                 Route::new("s".into(), vec!["w".into()]),
+                None,
                 None,
                 None,
                 "test_batch".to_string(),
