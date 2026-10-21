@@ -4,7 +4,7 @@ reset:
 .PHONY: reset
 
 install-dev:
-	which uv || (curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh)
+	which uv || (curl -LsSf https://astral.sh/uv/0.13.4/install.sh | sh)
 	uv sync --project ./sentry_streams
 	PROJECT_ROOT=`pwd`/sentry_streams_k8s uv sync --project ./sentry_streams_k8s
 .PHONY: install-dev
