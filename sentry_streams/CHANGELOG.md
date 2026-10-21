@@ -1,3 +1,9 @@
+## 0.0.69
+
+### Internal Changes 🔧
+
+- (deps) Bump openssl from 0.10.73 to 0.10.81 in /sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms by @dependabot in [#336](https://github.com/getsentry/streams/pull/336)
+
 ## 0.0.68
 
 ### New Features ✨
