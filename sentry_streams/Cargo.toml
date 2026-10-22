@@ -14,7 +14,7 @@ ctrlc = "3.4.6"
 rdkafka = { version = "0.37.0", features = ["cmake-build", "tracing"] }
 anyhow = "1.0.98"
 bytes = "1.11.1"
-reqwest = "0.12.15"
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "http2", "charset"] }
 tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread"] }
 log = "0.4.27"
 serde_json = "1.0.141"
@@ -24,7 +24,9 @@ metrics = "0.24.0"
 metrics-exporter-dogstatsd = "0.9.0"
 rand = "0.9"
 sentry = { version = "0.48.1", default-features = false, features = [
-    # default features, but `reqwest` instead of `transport`
+    # Default features, but `reqwest` instead of `transport`: sentry's `native-tls`
+    # feature pulls ureq + webpki-root-certs into Cargo.lock. TLS comes from the
+    # `native-tls` feature on our own reqwest dependency below.
     "backtrace",
     "contexts",
     "debug-images",
@@ -32,8 +34,6 @@ sentry = { version = "0.48.1", default-features = false, features = [
     "release-health",
     "reqwest",
 ] }
-# TLS for sentry's transport. Not using sentry's `native-tls` feature, which pulls ureq + webpki-root-certs into Cargo.lock.
-sentry-reqwest = { package = "reqwest", version = "0.13", default-features = false, features = ["native-tls"] }
 
 [lib]
 name = "rust_streams"
