@@ -12,7 +12,7 @@ from sentry_streams_k8s.operator.streaming_pipeline import (
     REQUIRED_FIELDS,
     StreamingPipelineSpec,
     from_crd_spec,
-    render,
+    render_deployments,
     validate,
 )
 
@@ -119,7 +119,7 @@ def test_validate_lists_missing_fields() -> None:
 
 
 def test_render_produces_manifests_from_inputs() -> None:
-    result = render(consumer_spec())
+    result = render_deployments(consumer_spec())
 
     deployment = result["deployment"]
     configmap = result["configmap"]
@@ -150,12 +150,12 @@ def test_render_produces_manifests_from_inputs() -> None:
 def test_render_passes_envvar_tokens_through_config() -> None:
     config = pipeline_config()
     config["metrics"] = {"type": "datadog", "host": "${envvar:HOST_IP}", "port": 8128}
-    result = render(consumer_spec(pipeline_config=config))
+    result = render_deployments(consumer_spec(pipeline_config=config))
     assert "${envvar:HOST_IP}" in result["configmap"]["data"]["pipeline_config.yaml"]
 
 
 def test_render_canary_split() -> None:
-    result = render(consumer_spec(with_canary=True, replicas=4))
+    result = render_deployments(consumer_spec(with_canary=True, replicas=4))
     assert result["deployment"]["spec"]["replicas"] == 3
     assert result["canary_deployment"]["spec"]["replicas"] == 1
     assert result["deployment"]["spec"]["selector"]["matchLabels"]["env"] == "primary"
@@ -166,7 +166,7 @@ def test_render_rejects_liveness_probe_conflict() -> None:
     template = container_template()
     template["livenessProbe"] = {"exec": {"command": ["true"]}}
     with pytest.raises(ValueError, match="livenessProbe"):
-        render(consumer_spec(container_template=template))
+        render_deployments(consumer_spec(container_template=template))
 
 
 def test_render_matches_macro_adapter() -> None:
@@ -190,7 +190,7 @@ def test_render_matches_macro_adapter() -> None:
             "replicas": spec["replicas"],
         }
     )
-    operator_result = render(spec)
+    operator_result = render_deployments(spec)
     assert operator_result == macro_result
 
 
