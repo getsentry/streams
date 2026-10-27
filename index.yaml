@@ -2,6 +2,18 @@ apiVersion: v1
 entries:
   streaming-operator:
   - apiVersion: v2
+    appVersion: 6c740952a676aa83bb751494568e3d8d38aa52be
+    created: "2026-10-27T19:23:53.499748995Z"
+    digest: 88266e17398b6564dd0968904b9f2d4239aff9d5d9b5e1b5265ead51f7646ad9
+    kubeVersion: '>=1.23.0-0'
+    name: streaming-operator
+    sources:
+    - https://github.com/getsentry/streams/tree/main/sentry_streams_k8s
+    type: application
+    urls:
+    - https://github.com/getsentry/streams/releases/download/streaming-operator-0.0.455/streaming-operator-0.0.455.tgz
+    version: 0.0.455
+  - apiVersion: v2
     appVersion: a5101f5ea251a65189cab5c2500afc38ad412e91
     created: "2026-10-21T14:58:55.554247616Z"
     digest: 6d1c94e1adf34b40b9472096cd7f9760578c9bfc59ea6ed3df1502d69d19c79b
@@ -169,4 +181,4 @@ entries:
     urls:
     - https://github.com/getsentry/streams/releases/download/streaming-operator-0.0.0-667bfbc420909a60c48527635f5a819e793575b6/streaming-operator-0.0.0-667bfbc420909a60c48527635f5a819e793575b6.tgz
     version: 0.0.0-667bfbc420909a60c48527635f5a819e793575b6
-generated: "2026-10-21T14:58:55.554367682Z"
+generated: "2026-10-27T19:23:53.49983913Z"
