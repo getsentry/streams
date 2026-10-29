@@ -1,3 +1,12 @@
+## 0.0.70
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump arroyo to 2.49.0 by @elramen in [#409](https://github.com/getsentry/streams/pull/409)
+- Bump rustls-webpki to 0.103.16 in rust_test_functions by @geoffg-sentry with @sentry-junior in [#404](https://github.com/getsentry/streams/pull/404)
+
 ## 0.0.69
 
 ### Internal Changes 🔧
