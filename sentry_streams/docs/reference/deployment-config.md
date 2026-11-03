@@ -101,7 +101,7 @@ value appears to be ignored:
 | `StreamSource` | `topic`, `consumer_group` |
 | `StreamSink` | `topic` |
 | `GCSSink` | `bucket`, `parallelism.threads` |
-| `Batch` | `batch_size`, `batch_timedelta` (a mapping of `timedelta` kwargs) |
+| `Batch` | `batch_size`, `batch_size_bytes`, `batch_timedelta` (a mapping of `timedelta` kwargs) |
 | `DevNullSink` | `batch_size`, `batch_time_ms`, `average_sleep_time_ms`, `max_sleep_time_ms` |
 
 **Read by the adapter**, not by the step: `starts_segment`, `parallelism`,

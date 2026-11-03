@@ -1,3 +1,28 @@
+## 0.0.70
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump arroyo to 2.49.0 by @elramen in [#409](https://github.com/getsentry/streams/pull/409)
+- Bump rustls-webpki to 0.103.16 in rust_test_functions by @geoffg-sentry with @sentry-junior in [#404](https://github.com/getsentry/streams/pull/404)
+
+## 0.0.69
+
+### Internal Changes 🔧
+
+- (deps) Bump openssl from 0.10.73 to 0.10.81 in /sentry_streams/sentry_streams/examples/rust_simple_map_filter/rust_transforms by @dependabot in [#336](https://github.com/getsentry/streams/pull/336)
+
+## 0.0.68
+
+### New Features ✨
+
+- (batch) Add batch_size_bytes flush trigger by @enochtangg in [#385](https://github.com/getsentry/streams/pull/385)
+
+### Internal Changes 🔧
+
+- (deps) Bump sentry-arroyo to 2.47.0 by @sentry-junior in [#391](https://github.com/getsentry/streams/pull/391)
+
 ## 0.0.67
 
 ### New Features ✨

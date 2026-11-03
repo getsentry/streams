@@ -44,6 +44,7 @@ from sentry_streams.pipeline.function_template import (
     OutputType,
 )
 from sentry_streams.pipeline.pipeline import (
+    Batch,
     Broadcast,
     ComplexStep,
     Filter,
@@ -271,6 +272,13 @@ class ArroyoAdapter(StreamAdapter[Route, Route]):
         assert (
             stream.source in self.__consumers
         ), f"Stream starting at source {stream.source} not found when adding a reduce"
+
+        if isinstance(step, Batch) and step.batch_size_bytes is not None:
+            raise ValueError(
+                f"Step {step.name}: batch_size_bytes is only supported by the Rust adapter. "
+                "The Python Arroyo adapter has no byte-based window, so the limit would "
+                "silently not apply. Remove it or run this pipeline on the Rust adapter."
+            )
 
         self.__consumers[stream.source].add_step(ReduceStep(route=stream, pipeline_step=step))
         return stream

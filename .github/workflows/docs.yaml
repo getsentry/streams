@@ -5,6 +5,11 @@ on:
     branches:
       - main
 
+env:
+  # librdkafka (via rdkafka-sys) does not configure with CMake 4, which ships
+  # on ubuntu-latest (ubuntu-26.04) runners.
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
 jobs:
   docs:
     name: Sphinx

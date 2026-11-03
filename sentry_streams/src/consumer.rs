@@ -231,7 +231,8 @@ pub fn build_dlq_policy(
 
             // Create Kafka producer for DLQ
             let producer_config = dlq_config.producer_config.clone().into();
-            let kafka_producer = KafkaProducer::new(producer_config);
+            let kafka_producer =
+                KafkaProducer::new(producer_config).expect("Failed to create DLQ Kafka producer");
             let dlq_producer = KafkaDlqProducer::new(kafka_producer, Topic::new(&dlq_config.topic));
 
             // Use default DLQ limits (no limits) and no max buffered messages

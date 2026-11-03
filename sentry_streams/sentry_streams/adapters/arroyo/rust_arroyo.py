@@ -510,6 +510,7 @@ class RustArroyoAdapter(StreamAdapter[Route, Route]):
                     route=route,
                     step_name=step.name,
                     max_batch_size=step.batch_size,
+                    max_batch_size_bytes=step.batch_size_bytes,
                     max_batch_time_ms=max_batch_time_ms,
                 )
             )

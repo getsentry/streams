@@ -1,43 +1,73 @@
 use crate::metrics_config::PyMetricConfig;
-use metrics::Label;
+use metrics::{
+    Counter, Gauge, Histogram, Key, KeyName, Label, Metadata, Recorder, SharedString, Unit,
+};
 use metrics_exporter_dogstatsd::DogStatsDBuilder;
-use sentry_arroyo::metrics::{init as arroyo_init, Metric, MetricType, Recorder};
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
-struct MetricsFacadeRecorder;
+const ARROYO_METRIC_PREFIX: &str = "arroyo.";
+const STREAMS_METRIC_PREFIX: &str = "streams.pipeline.";
 
-impl Recorder for MetricsFacadeRecorder {
-    fn record_metric(&self, metric: Metric<'_>) {
-        let key = format!("streams.pipeline.{}", metric.key);
-        let value_f64 = match metric.value {
-            sentry_arroyo::metrics::MetricValue::I64(v) => v as f64,
-            sentry_arroyo::metrics::MetricValue::U64(v) => v as f64,
-            sentry_arroyo::metrics::MetricValue::F64(v) => v,
-            sentry_arroyo::metrics::MetricValue::Duration(d) => d.as_millis() as f64,
-            _ => return,
-        };
+/// Arroyo emits its own metrics (`arroyo.*`) through the global metrics-rs
+/// recorder. This wrapper namespaces them under `streams.pipeline.` so they
+/// keep the same names as before and match the Python side, while leaving
+/// streams' own metrics (already `streams.pipeline.*`) untouched.
+struct ArroyoPrefixRecorder<R> {
+    inner: R,
+}
 
-        let labels: Vec<(String, String)> = metric
-            .tags
-            .iter()
-            .map(|(key, value_dyn)| (key.to_string(), format!("{}", value_dyn)))
-            .collect();
+fn prefixed_name(name: &str) -> Option<String> {
+    name.starts_with(ARROYO_METRIC_PREFIX)
+        .then(|| format!("{STREAMS_METRIC_PREFIX}{name}"))
+}
 
-        match metric.ty {
-            MetricType::Counter => {
-                let counter = metrics::counter!(key, &labels);
-                counter.increment(value_f64 as u64);
-            }
-            MetricType::Gauge => {
-                let gauge = metrics::gauge!(key, &labels);
-                gauge.set(value_f64);
-            }
-            MetricType::Timer => {
-                let histogram = metrics::histogram!(key, &labels);
-                histogram.record(value_f64);
-            }
-            _ => {}
+fn prefix_key_name(key: KeyName) -> KeyName {
+    match prefixed_name(key.as_str()) {
+        Some(name) => KeyName::from(name),
+        None => key,
+    }
+}
+
+fn prefix_key(key: &Key) -> Option<Key> {
+    prefixed_name(key.name())
+        .map(|name| Key::from_parts(name, key.labels().cloned().collect::<Vec<_>>()))
+}
+
+impl<R: Recorder> Recorder for ArroyoPrefixRecorder<R> {
+    fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+        self.inner
+            .describe_counter(prefix_key_name(key), unit, description)
+    }
+
+    fn describe_gauge(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+        self.inner
+            .describe_gauge(prefix_key_name(key), unit, description)
+    }
+
+    fn describe_histogram(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+        self.inner
+            .describe_histogram(prefix_key_name(key), unit, description)
+    }
+
+    fn register_counter(&self, key: &Key, metadata: &Metadata<'_>) -> Counter {
+        match prefix_key(key) {
+            Some(key) => self.inner.register_counter(&key, metadata),
+            None => self.inner.register_counter(key, metadata),
+        }
+    }
+
+    fn register_gauge(&self, key: &Key, metadata: &Metadata<'_>) -> Gauge {
+        match prefix_key(key) {
+            Some(key) => self.inner.register_gauge(&key, metadata),
+            None => self.inner.register_gauge(key, metadata),
+        }
+    }
+
+    fn register_histogram(&self, key: &Key, metadata: &Metadata<'_>) -> Histogram {
+        match prefix_key(key) {
+            Some(key) => self.inner.register_histogram(&key, metadata),
+            None => self.inner.register_histogram(key, metadata),
         }
     }
 }
@@ -77,21 +107,52 @@ pub fn configure_metrics(metric_config: Option<PyMetricConfig>) {
             builder = builder.with_flush_interval(duration);
         }
 
-        match builder.install() {
+        let recorder = match builder.build() {
+            Ok(recorder) => recorder,
+            Err(e) => {
+                error!("Failed to build DogStatsD recorder: {}", e);
+                return;
+            }
+        };
+
+        match metrics::set_global_recorder(ArroyoPrefixRecorder { inner: recorder }) {
             Ok(_) => {
                 info!("Successfully initialized DogStatsD metrics exporter");
             }
             Err(e) => {
                 error!("Failed to install DogStatsD recorder: {}", e);
-                return;
             }
         }
+    }
+}
 
-        if arroyo_init(MetricsFacadeRecorder).is_err() {
-            warn!("Arroyo metrics recorder already initialized, skipping");
-            return;
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        info!("Successfully initialized arroyo metrics");
+    #[test]
+    fn test_prefixed_name() {
+        assert_eq!(
+            prefixed_name("arroyo.consumer.run.count").as_deref(),
+            Some("streams.pipeline.arroyo.consumer.run.count")
+        );
+        assert_eq!(prefixed_name("streams.pipeline.input.messages"), None);
+    }
+
+    #[test]
+    fn test_prefix_key_keeps_labels() {
+        let key = Key::from_parts(
+            "arroyo.producer.produce_status",
+            vec![Label::new("status", "success")],
+        );
+        let prefixed = prefix_key(&key).unwrap();
+        assert_eq!(
+            prefixed.name(),
+            "streams.pipeline.arroyo.producer.produce_status"
+        );
+        assert_eq!(
+            prefixed.labels().collect::<Vec<_>>(),
+            key.labels().collect::<Vec<_>>()
+        );
     }
 }
