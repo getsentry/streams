@@ -6,6 +6,7 @@ from sentry_streams_k8s.consumer_builder import (
     ConsumerBuilder,
     ConsumerSpec,
     RenderedDeployments,
+    RenderedPods,
 )
 
 
@@ -74,8 +75,15 @@ def to_consumer_spec(spec: StreamingPipelineSpec) -> ConsumerSpec:
     )
 
 
-def render(spec: StreamingPipelineSpec) -> RenderedDeployments:
+def render_deployments(spec: StreamingPipelineSpec) -> RenderedDeployments:
     builder = ConsumerBuilder(spec["deployment_template"], spec["container_template"])
     consumer = to_consumer_spec(spec)
     builder.validate(consumer, spec["pipeline_config"])
     return builder.build_deployments(consumer, spec["pipeline_config"])
+
+
+def render_pods(spec: StreamingPipelineSpec) -> RenderedPods:
+    builder = ConsumerBuilder(spec["deployment_template"], spec["container_template"])
+    consumer = to_consumer_spec(spec)
+    builder.validate(consumer, spec["pipeline_config"])
+    return builder.build_pods(consumer, spec["pipeline_config"])
