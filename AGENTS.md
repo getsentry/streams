@@ -43,9 +43,9 @@ Installs development dependencies for all packages using `uv`. This will:
 - Set up virtual environments for `sentry_streams` and `sentry_streams_k8s`
 
 ```bash
-make install-pre-commit-hook
+make install-prek-hook
 ```
-Installs pre-commit hooks for code quality checks.
+Installs prek hooks for code quality checks.
 
 ```bash
 make reset

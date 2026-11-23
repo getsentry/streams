@@ -34,7 +34,7 @@ docs = [
 ]
 dev = [
     "mypy>=1.14.1",
-    "pre-commit>=4.1.0",
+    "prek>=0.5.10",
     "pytest>=8.3.4",
     "maturin>=1.5.1",
     "types-PyYAML>=6.0.12",
