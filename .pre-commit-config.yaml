@@ -1,6 +1,5 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+  - repo: builtin
     hooks:
       - id: check-case-conflict
       - id: check-merge-conflict
@@ -8,13 +7,16 @@ repos:
       - id: check-symlinks
       - id: check-xml
       - id: check-yaml
-      - id: detect-private-key
       - id: end-of-file-fixer
         # Exclude CHANGELOG.md from this hook as Craft generates updates
         # that make pre-commit fail on the release branch.
         # An extra new line is added at the end.
         exclude: "^sentry_streams/CHANGELOG.md|^sentry_streams_k8s/CHANGELOG.md"
       - id: trailing-whitespace
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
       - id: fix-encoding-pragma
         args: ["--remove"]
   - repo: https://github.com/psf/black

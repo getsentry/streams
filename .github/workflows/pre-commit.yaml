@@ -22,4 +22,4 @@ jobs:
     - run: |
         make install-dev
         . sentry_streams/.venv/bin/activate
-        pre-commit run
+        prek run

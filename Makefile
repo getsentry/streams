@@ -9,9 +9,9 @@ install-dev:
 	PROJECT_ROOT=`pwd`/sentry_streams_k8s uv sync --project ./sentry_streams_k8s
 .PHONY: install-dev
 
-install-pre-commit-hook:
-	./sentry_streams/.venv/bin/pre-commit install --install-hooks
-.PHONY: install-pre-commit-hook
+install-prek-hook:
+	./sentry_streams/.venv/bin/prek install --prepare-hooks -f
+.PHONY: install-prek-hook
 
 tests-streams:
 	./sentry_streams/.venv/bin/pytest -vv sentry_streams/tests
